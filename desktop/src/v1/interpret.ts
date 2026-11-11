@@ -19,6 +19,7 @@ export interface TrailEvent {
   op: string;
   /** Append-only teach correction. Interpret does not turn these into steps. */
   decision?: string;
+  signIn?: { firstEventId: string; lastEventId: string };
   detail?: string;
   cardId?: string;
   intent?: string;

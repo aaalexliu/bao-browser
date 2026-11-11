@@ -2218,13 +2218,13 @@ function signInEditor(card: TeachCardView, cards: TeachCardView[]): string {
   return `<fieldset class="teach-signin" hidden>
     <legend>You complete sign-in</legend>
     <p class="meta">Finish demonstrating sign-in, then include every step through the last password, PIN, or code. Bao will wait, not type or submit.</p>
-    <label>From <select data-signin-first>${options("first")}</select></label>
-    <label>Through <select data-signin-last>${options("last")}</select></label>
+    <label>From <select data-signin-first data-focus-key="${esc(card.id)}:signin-first">${options("first")}</select></label>
+    <label>Through <select data-signin-last data-focus-key="${esc(card.id)}:signin-last">${options("last")}</select></label>
     <p class="meta">Bao resumes when the last recorded check holds, or when you confirm you are done if there is no check.</p>
     <div class="row teach-actions">
-      <button type="button" class="primary" data-signin-confirm>I'll complete sign-in</button>
-      <button type="button" data-owner-step>Only this step</button>
-      <button type="button" data-signin-cancel>Cancel</button>
+      <button type="button" class="primary" data-signin-confirm data-focus-key="${esc(card.id)}:signin-confirm">I'll complete sign-in</button>
+      <button type="button" data-owner-step data-focus-key="${esc(card.id)}:owner-step">Only this step</button>
+      <button type="button" data-signin-cancel data-focus-key="${esc(card.id)}:signin-cancel">Cancel</button>
     </div>
   </fieldset>`;
 }
@@ -2258,7 +2258,7 @@ export function teachCard(card: TeachCardView, opts: { edit?: boolean; on?: bool
   const editor = opts.edit ? `<div class="teach-edit">
       <span class="badge quiet-badge" data-narrator="${esc(card.narrator)}">${esc(who)}</span>
       <label>Rename <input class="intent" data-intent value="${esc(card.intent)}" aria-label="Intent"></label>
-      ${card.outcome ? `<p class="meta">Expected: ${esc(card.outcome)}</p>` : ""}
+      ${card.outcome ? `<p class="meta" data-teach-outcome>Expected: ${esc(card.outcome)}</p>` : ""}
       ${values}
       <div class="row teach-actions">
         <button type="button" data-correct="human">You do this</button>
@@ -2272,7 +2272,7 @@ export function teachCard(card: TeachCardView, opts: { edit?: boolean; on?: bool
       <label>Note <input class="note" data-note value="${esc(card.note)}" placeholder="Note" aria-label="Note"></label>
     </div>` : "";
   const covered = card.signIn?.status === "confirmed" ? (opts.signInCards || []).filter((item) => card.eventIds?.includes(item.id)) : [];
-  const coverage = covered.length ? `<details class="teach-signin-steps"><summary>Sign-in steps (${covered.length})</summary><ol>${covered.map((item) => `<li>${esc(item.id === card.id ? "Marked step" : item.intent)}</li>`).join("")}</ol><p class="meta">You do all of these steps. Bao does not replay them.</p></details>` : "";
+  const coverage = covered.length ? `<details class="teach-signin-steps"><summary data-focus-key="${esc(card.id)}:signin-steps">Sign-in steps (${covered.length})</summary><ol>${covered.map((item) => `<li>${esc(item.id === card.id ? "Marked step" : item.intent)}</li>`).join("")}</ol><p class="meta">You do all of these steps. Bao does not replay them.</p></details>` : "";
   const classes = ["step-card", "teach-card", card.human ? "human" : "", opts.on ? "on" : ""].filter(Boolean).join(" ");
   const at = typeof card.at === "number" ? String(card.at) : "";
   const shown = typeof card.shownAt === "number" ? String(card.shownAt) : "";

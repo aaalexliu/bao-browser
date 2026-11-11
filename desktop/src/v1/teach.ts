@@ -238,6 +238,7 @@ export function decisionEvent(decision: TeachDecision, index: number): TrailEven
     kind: "decision",
     op: "decision",
     decision: decision.kind,
+    ...(decision.signIn ? { signIn: { ...decision.signIn } } : {}),
     detail: decision.detail,
     cardId: decision.cardId,
     intent: decision.intent,
@@ -446,7 +447,7 @@ export function teachIntentCase(
   const raw = publicTrail(events);
   const human = projected.cards.flatMap((card) => {
     if (card.dropped || card.merged || !card.human) return [];
-    const gate: "login" | "confirm" = card.action === "login" ? "login" : "confirm";
+    const gate: "login" | "confirm" = card.action === "login" || card.signIn?.status === "confirmed" ? "login" : "confirm";
     return [{ id: card.eventIds[0] || card.id, gate, target: card.intent || card.id }];
   });
   const nodes: Identity[] = [];
@@ -523,6 +524,9 @@ function ownSignIn(drafts: Draft[], marked: Draft, span: TeachSignInSpan, events
   const last = drafts.findIndex((draft) => draft.card.eventIds.includes(span.lastEventId));
   const index = drafts.indexOf(marked);
   if (first < 0 || last < first || index < first || index > last) throw new Error("Include the marked step between the first and last sign-in steps.");
+  if (drafts[first]!.card.eventIds[0] !== span.firstEventId || drafts[last]!.card.eventIds.at(-1) !== span.lastEventId) {
+    throw new Error("Choose the whole first and last sign-in steps.");
+  }
   const members = drafts.slice(first, last + 1);
   if (members.some((draft) => draft.dropped || draft.merged)) throw new Error("Choose sign-in steps that have not been dropped or merged.");
   if (members.some((draft) => draft.card.signIn?.status === "confirmed")) throw new Error("Sign-in spans cannot overlap.");
@@ -542,7 +546,7 @@ function ownSignIn(drafts: Draft[], marked: Draft, span: TeachSignInSpan, events
   Object.assign(marked.card, {
     signIn: { ...span, status: "confirmed" }, eventIds: source.map((event) => event.id),
     action: "handoff", human: true, verify: false, values: [], intent,
-    outcome: completion && "match" in completion ? completion.match : "You confirm when sign-in is finished",
+    outcome: completion && "match" in completion ? completion.match : "",
   });
   for (const draft of members) {
     if (draft === marked) continue;
@@ -622,6 +626,7 @@ function applyDecision(
   if (decision.kind === "verify" || decision.kind === "check") {
     const match = fileText(decision.outcome || draft.card.outcome || "the check holds", events);
     if (draft.step.action === "handoff" && draft.card.signIn?.status === "confirmed") {
+      if (!decision.outcome || match === draft.card.outcome) return;
       draft.step.check = { kind: "text", match, timeoutMs: 15000 };
       draft.card.outcome = match;
       return;

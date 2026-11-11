@@ -57,7 +57,9 @@ A target is `{ locators, hint }`. Locators are `role`, `text`, `testid`, `css`, 
 
 `check` is one of `settled`, `url`, `text`, `value`, `element`, `absent`, or `state`. A true check of those kinds passes. `extract`, `for_each`, and `note` have no check.
 
-`handoff` has `reason`: `sign-in`, `code`, or `owner-press`. Replay does not click the control. A recorded confirm is `owner-press`, never sign-in. Resume with `confirmed`, or with no real check, ends the handoff. A code handoff asks for the code.
+`handoff` has `reason`: `sign-in`, `code`, or `owner-press`. A sign-in also has `actor`: `owner` or `credentials`. An old sign-in without `actor` loads as `credentials` and keeps credential-assisted behavior. An owner sign-in has no target and never types, clicks, submits, or calls credential recovery. It waits for its recorded completion check, or for the owner's completion when no check exists. A recorded confirm is `owner-press`, never sign-in. Resume with `confirmed`, or with no real check, ends an owner-press handoff. A code handoff asks for the code.
+
+In Teach, "You do this" on a sign-in card offers an inline range confirmation. The suggested range is only a default. The owner confirms its first and last recorded steps. Teach replaces that whole interval, including focus clicks, checks, Enter, and later challenges, with one owner sign-in. Absorbed actions leave the executable workflow; their source events stay in the trail. A later unrelated action stays outside the handoff. The last step's URL, text, element, or absence check becomes the completion check. A settled, field-value, or control-state check does not establish a completed sign-in; without a suitable check, the owner confirms completion.
 
 `navigate`, `open`, and `download` read their address from `url`, `open.url`, or `download.url`. A download may keep `target` when that target has locators or a hint.
 

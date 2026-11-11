@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import Ajv from "ajv/dist/2020";
-import { decide, projectTeach, type TeachDecision } from "../../src/v1/teach";
+import { decide, projectTeach, teachIntentCase, type TeachDecision } from "../../src/v1/teach";
 import type { TrailEvent } from "../../src/v1/interpret";
 import { parseWorkflow, validateWorkflow, type Identity, type WorkflowV2 } from "../../src/v1/schema";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
@@ -64,6 +64,9 @@ test("renames and notes survive folding in either correction order, and repeated
   assert.equal(projectTeach(events, later, meta).workflow.steps[0]?.caption.text, "Complete every sign-in screen");
   const repeat = owned(events, "evt-9", later);
   assert.deepEqual(repeat.workflow.steps.map((step) => step.action), ["handoff", "click"]);
+  const exported = teachIntentCase("signin", events, repeat.decisions, meta);
+  assert.deepEqual(exported.human.map((handoff) => handoff.gate), ["login"]);
+  assert.deepEqual(exported.decisions.find((decision) => decision.kind === "human")?.signIn, result.decisions.at(-1)?.signIn);
 });
 
 test("invalid, partial-card and overlapping spans do not silently fold another interval", () => {
@@ -76,6 +79,11 @@ test("invalid, partial-card and overlapping spans do not silently fold another i
     const decisions = decide([], { kind: "human", cardId: "evt-1", signIn: span }, 1);
     assert.throws(() => projectTeach(events, decisions, meta), /Include the marked step/);
   }
+  const withCompletionNote = events.flatMap((event): TrailEvent[] => event.id === "evt-14"
+    ? [event, { id: "completion-note", ts: event.ts + 1, kind: "act", op: "note", afterText: "Account overview is visible" }]
+    : [event]);
+  const partial = decide([], { kind: "human", cardId: "evt-1", signIn: { firstEventId: "evt-0", lastEventId: "evt-14" } }, 1);
+  assert.throws(() => projectTeach(withCompletionNote, partial, meta), /Choose the whole/);
   const result = owned(events, "evt-1");
   const overlap = decide(result.decisions, { kind: "human", cardId: "evt-15", signIn: { firstEventId: "evt-0", lastEventId: "evt-15" } }, 2);
   assert.throws(() => projectTeach(events, overlap, meta), /dropped or merged|overlap/);
@@ -138,11 +146,14 @@ test("completion resumes at the unrelated next action without replaying any sign
 });
 
 test("a span without a recorded completion waits for explicit owner completion", async () => {
-  const workflow: WorkflowV2 = owned(load("multi"), "evt-1").workflow;
+  const events = load("multi");
+  const decisions = decide([], { kind: "human", cardId: "evt-1", signIn: { firstEventId: "evt-0", lastEventId: "evt-12" } }, 1);
+  const repeatedCheck = decide(decisions, { kind: "verify", cardId: "evt-1" }, 2);
+  const workflow: WorkflowV2 = projectTeach(events, repeatedCheck, meta).workflow;
   workflow.steps = workflow.steps.slice(0, 1);
   const step = workflow.steps[0]!;
   if (step.action !== "handoff") throw new Error("Expected a handoff");
-  delete step.check;
+  assert.equal(step.check, undefined, "Check must not turn the owner-completion instruction into a page check");
   const probe = observingDriver();
   const paused = await replay(workflow, { password: "supplied-secret" }, probe.driver, { yieldHuman: true });
   assert.equal(paused.status, "paused");

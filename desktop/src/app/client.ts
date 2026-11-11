@@ -2257,6 +2257,7 @@ function teachMarkup(root: HTMLElement): string {
   if (timer) timer.textContent = "0:00";
   clone.querySelectorAll(".teach-card.open").forEach((el) => el.classList.remove("open"));
   clone.querySelectorAll(".teach-row[aria-expanded]").forEach((el) => el.setAttribute("aria-expanded", "false"));
+  clone.querySelectorAll(".teach-signin-steps[open]").forEach((el) => el.removeAttribute("open"));
   clone.querySelectorAll<HTMLElement>(".teach-signin").forEach((el) => { el.hidden = true; });
   clone.querySelectorAll<HTMLElement>("[data-teach-error]").forEach((el) => { el.hidden = true; el.textContent = ""; });
   clone.querySelectorAll(".thumb img").forEach((img) => img.remove());
@@ -2276,14 +2277,14 @@ function paintTeach(): void {
   const float = document.getElementById("float");
   if (!float || state.teach?.phase !== "live") return;
   const html = teachPanel(state.teach);
-  if (float.querySelector("#teach-panel") && teachMarkup(float) === html) {
+  const expected = document.createElement("template");
+  expected.innerHTML = html;
+  if (float.querySelector("#teach-panel") && teachMarkup(float) === expected.innerHTML) {
     retryShots(float);
     return;
   }
   const active = document.activeElement;
-  const signInControl = active instanceof HTMLElement && active.closest(".teach-signin")
-    ? ["data-signin-confirm", "data-signin-first", "data-signin-last", "data-owner-step", "data-signin-cancel"].find((attribute) => active.hasAttribute(attribute))
-    : undefined;
+  const focusKey = active instanceof HTMLElement && float.contains(active) ? active.dataset.focusKey : undefined;
   const barNote = active instanceof HTMLInputElement && active.id === "teach-note" ? active.value : "";
   const editing = active instanceof HTMLInputElement && float.contains(active) && active.id !== "teach-note" ? teachFieldKey(active) : "";
   const value = editing && active instanceof HTMLInputElement ? active.value : "";
@@ -2291,7 +2292,13 @@ function paintTeach(): void {
   const end = editing && active instanceof HTMLInputElement ? active.selectionEnd : null;
   if (active instanceof HTMLInputElement && float.contains(active)) active.onchange = null;
   const openId = float.querySelector(".teach-card.open")?.getAttribute("data-card") || teachOpenId;
+  const expandedSpans = [...float.querySelectorAll<HTMLDetailsElement>(".teach-signin-steps[open]")].map((details) => details.closest<HTMLElement>("[data-card]")?.dataset.card);
   float.innerHTML = html;
+  for (const id of expandedSpans) {
+    if (!id) continue;
+    const details = float.querySelector<HTMLDetailsElement>(`[data-card="${CSS.escape(id)}"] .teach-signin-steps`);
+    if (details) details.open = true;
+  }
   if (openId) {
     const opened = float.querySelector(`[data-card="${CSS.escape(openId)}"]`);
     opened?.classList.add("open");
@@ -2312,9 +2319,7 @@ function paintTeach(): void {
     teachHighlighted = highlightedId;
     highlighted?.scrollIntoView({ block: "nearest" });
   }
-  if (signInControl && teachSignInDraft) {
-    float.querySelector<HTMLElement>(`[data-card="${CSS.escape(teachSignInDraft.cardId)}"] [${signInControl}]`)?.focus();
-  }
+  if (focusKey) float.querySelector<HTMLElement>(`[data-focus-key="${CSS.escape(focusKey)}"]`)?.focus();
   if (!editing) return;
   const next = float.querySelector(editing) as HTMLInputElement | null;
   if (!next) return;
@@ -2436,7 +2441,7 @@ function bindTeach(root: ParentNode): void {
         const name = (row?.querySelector("input[data-param]") as HTMLInputElement | null)?.value
           || card.querySelector<HTMLInputElement>("[data-param]")?.value
           || "";
-        const outcome = card.querySelector("p.meta")?.textContent?.replace(/^Expected:\s*/, "") || "";
+        const outcome = card.querySelector("[data-teach-outcome]")?.textContent?.replace(/^Expected:\s*/, "") || "";
         void correct(id, kind, { name, outcome });
       };
     });
