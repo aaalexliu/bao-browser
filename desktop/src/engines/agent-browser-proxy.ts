@@ -1294,6 +1294,7 @@ export class AgentBrowserProxy {
     const wall = wait !== "off" && wait !== "pending" && ownerWall(wait.page) !== null;
     const result = this.ownerResult("waiting", session);
     if (!wall && wait !== "off" && wait !== "pending") await this.ownerBanner(session, wait.targetId, false).catch(() => undefined);
+    if (session.abort.signal.aborted) return this.ownerClosed(session);
     if (!wall) this.setWait(session, "off");
     return result;
   }
