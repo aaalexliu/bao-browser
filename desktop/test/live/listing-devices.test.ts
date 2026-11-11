@@ -1,6 +1,6 @@
 import { testWorkflow } from "../support/workflow";
 // Marketplace listing and Devices against a local `vercel dev`. No deploy.
-// Run: node --test desktop/test/live/listing-devices.test.ts
+// Run: node --test --test-timeout=120000 --test-force-exit desktop/test/live/listing-devices.test.ts
 
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";

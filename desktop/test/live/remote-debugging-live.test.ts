@@ -1,5 +1,5 @@
 // Opt-in. Starts throwaway copies of the installed Google Chrome, never the daily profile.
-// Run: BAO_REMOTE_DEBUGGING_LIVE=1 BAO_OS_HELPER=<signed BaoOSHelper.app> npx tsc -p tsconfig.desktop.json && node --test desktop/dist/desktop/test/live/remote-debugging-live.test.js
+// Run: BAO_REMOTE_DEBUGGING_LIVE=1 BAO_OS_HELPER=<signed BaoOSHelper.app> npx tsc -p tsconfig.desktop.json && node --test --test-timeout=120000 --test-force-exit desktop/dist/desktop/test/live/remote-debugging-live.test.js
 
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";

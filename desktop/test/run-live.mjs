@@ -2,6 +2,7 @@ import { execFileSync, spawn } from "node:child_process";
 import { rmSync } from "node:fs";
 import path from "node:path";
 import { compiledTestPlan, laneChildEnv, playwrightVersionError } from "../dist/desktop/test/runtime.js";
+import { runnerTestArgs } from "./runner-flags.mjs";
 
 const versionError = playwrightVersionError();
 if (versionError) {
@@ -35,7 +36,7 @@ const files = plan.run
   .filter((name) => named.length === 0 || named.includes(name))
   .map((name) => path.join(distDir, name));
 const env = laneChildEnv("live", process.env);
-const child = spawn(process.execPath, ["--test", isolationArg(), ...files], {
+const child = spawn(process.execPath, ["--test", isolationArg(), ...runnerTestArgs(), ...files], {
   env,
   stdio: "inherit",
 });

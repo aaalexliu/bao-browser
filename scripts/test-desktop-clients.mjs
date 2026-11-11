@@ -952,4 +952,5 @@ export async function main(args) {
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   try { await main(process.argv.slice(2)); }
   catch (error) { console.error(error.message); process.exitCode = 1; }
+  process.exit(process.exitCode ?? 0);
 }

@@ -16,7 +16,7 @@ const binary = process.env.AGENT_BROWSER_PROXY_BINARY;
 test("Experian-shaped pass-through hands sign-in and bot walls to the owner and follows redirects", { skip: !binary, timeout: scaledMs(60_000) }, async (t) => {
   const started = performance.now();
   const root = await mkdtemp(path.join(tmpdir(), "bao-experian-proxy-"));
-  const fixture = await startExperianFixture({ loopbackHttp: true });
+  const fixture = await startExperianFixture(t, { loopbackHttp: true });
   const source = path.join(root, "source");
   const home = path.join(root, "library");
   await mkdir(path.join(source, "Default"), { recursive: true });

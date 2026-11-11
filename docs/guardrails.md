@@ -20,7 +20,7 @@ lists the deleted suites, timings, and behavior.
 npm ci
 npm run check:static
 npm run test:guardrails
-node --test test/essential-manifest.test.mjs
+node scripts/run-node-test.mjs test/essential-manifest.test.mjs
 npx playwright install chromium
 npm run build:desktop
 # Run one group from test/essential.json, with an isolated HOME:
@@ -173,9 +173,11 @@ safe `node:test` registration, type-only cycles, and budget pruning pass.
 
 See [Desktop tests](../desktop/test/README.md) for the runner's concurrency
 default and override options. CI uses TAP to report failures at once.
-`--test-force-exit` ends each test process after its tests finish, so a failed
-browser startup cannot leave a fixture server open until the job times out.
-Failed assertions still fail the job.
+`--test-timeout` fails a test that does not finish. `--test-force-exit` ends
+each test process after its tests finish, so a failed browser startup cannot
+leave a fixture server open until the job times out. The desktop runners, the
+essential runner, and the coverage runner pass both. Failed assertions still
+fail the job.
 
 ## Compiler floor
 

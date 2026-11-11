@@ -1623,7 +1623,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 if (require.main === module) {
-  main().catch((err) => {
+  main().then(() => process.exit(process.exitCode ?? 0), (err) => {
     console.error(err);
     process.exit(1);
   });

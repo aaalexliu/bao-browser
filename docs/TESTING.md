@@ -39,7 +39,7 @@ npx playwright install chromium
 npm run check:static
 npm run build:desktop
 npm run build:extension
-node --test test/essential-manifest.test.mjs
+node scripts/run-node-test.mjs test/essential-manifest.test.mjs
 npm run test:guardrails
 ```
 
@@ -60,7 +60,7 @@ const home = mkdtempSync(path.join(tmpdir(), 'bao-focused-'));
 try {
   const env = laneChildEnv('hermetic', { ...process.env, HOME: home });
   const result = spawnSync(process.execPath, [
-    '--test', '--test-force-exit',
+    '--test', '--test-timeout=120000', '--test-force-exit',
     'desktop/dist/desktop/test/unit/install-scripts.test.js',
   ], { env, stdio: 'inherit' });
   process.exitCode = result.status ?? 1;

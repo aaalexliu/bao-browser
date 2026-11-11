@@ -1,7 +1,7 @@
 import { testWorkflow } from "../support/workflow";
 import { stepTarget, locatorValue, type WorkflowV2 } from "../../src/v1/schema";
 // Pair, push, and pull against a local `vercel dev` (no deploy, no linked project).
-// Not part of test:v1. Run: node --test desktop/test/live/vercel-dev-sync.test.ts
+// Not part of test:v1. Run: node --test --test-timeout=120000 --test-force-exit desktop/test/live/vercel-dev-sync.test.ts
 
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";

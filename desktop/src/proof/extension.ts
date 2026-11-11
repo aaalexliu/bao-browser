@@ -1716,4 +1716,7 @@ async function main(): Promise<void> {
   if (results.fatal) process.exitCode = 1;
 }
 
-void main();
+main().then(() => process.exit(process.exitCode ?? 0), (error) => {
+  console.error(error);
+  process.exit(1);
+});
