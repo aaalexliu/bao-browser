@@ -695,3 +695,148 @@ test("stop during a resumed held run stops the replay and returns", { timeout: 9
     await new Promise<void>((resolve) => site.close(() => resolve()));
   }
 });
+
+async function killDuringHeldReplay(
+  label: string,
+  follow: (tool: (name: string, args: Record<string, unknown>) => Promise<Record<string, unknown>>, token: string) => Promise<Record<string, unknown>>,
+): Promise<{ pay: number; result: Record<string, unknown> }> {
+  process.env.BAO_HEADED = "0";
+  process.env.BAO_CHROME_NO_SANDBOX = "1";
+  const home = mkdtempSync(path.join(tmpdir(), `bao-remote-${label}-`));
+  const library = new Library(home);
+  let marks = 0;
+  let pay = 0;
+  const site = createServer((req, res) => {
+    if (req.method === "POST" && req.url === "/mark") marks += 1;
+    if (req.method === "POST" && req.url === "/pay") pay += 1;
+    res.writeHead(req.method === "POST" ? 204 : 200, { "content-type": "text/html; charset=utf-8" });
+    if (req.method === "POST") {
+      res.end();
+      return;
+    }
+    res.end("<body><button id=\"mark\" onclick=\"fetch('/mark',{method:'POST'})\">Mark</button><button id=\"pay\" onclick=\"fetch('/pay',{method:'POST'}).then(()=>document.getElementById('status').textContent='Paid')\">Pay</button><p id=\"status\"></p></body>");
+  });
+  const directory = new MemoryDirectory();
+  directory.addDevice(`dev-${label}`, `user-${label}`);
+  const relay = createRelay({ store: new MemoryJobStore(), directory, enabled: () => true });
+  const server = await listenRelay(relay, { principal: () => ({ userId: `user-${label}` }) });
+  let stopped = false;
+  const remote = createRemoteAgent({
+    library, prompts: { shouldStop: () => stopped },
+    stop() { stopped = true; }, clearStop() { stopped = false; },
+  });
+  async function post(route: string, body: unknown, auth?: string): Promise<Record<string, unknown>> {
+    const res = await fetch(`${server.origin}${route}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(auth ? { authorization: `Bearer ${auth}` } : {}) },
+      body: JSON.stringify(body),
+    });
+    const json = await res.json() as Record<string, unknown>;
+    assert.equal(res.status, 200, JSON.stringify(json));
+    return json;
+  }
+  let result: Record<string, unknown> = {};
+  try {
+    await new Promise<void>((resolve) => site.listen(0, "127.0.0.1", resolve));
+    const address = site.address();
+    assert.ok(address && typeof address === "object");
+    const click = (id: string, name: string, check: string): WorkflowV2["steps"][number] => ({
+      id,
+      index: id === "mark" ? 1 : 2,
+      timeoutMs: 1000,
+      caption: { text: name, citation: { text: name, source: "name" } },
+      heal: "never",
+      action: "click",
+      target: {
+        locators: [
+          { kind: "role", role: "button", name },
+          { kind: "text", value: name },
+          { kind: "css", value: `#${id}` },
+          { kind: "xpath", value: `//*[@id=\"${id}\"]` },
+        ],
+        hint: { role: "button", surface: "dom", id },
+      },
+      check: { kind: "text", match: check, timeoutMs: id === "mark" ? 30_000 : 3000 },
+    });
+    library.save(testWorkflow({
+      schema: "bao.workflow/v4", id: `${label}-held`, name: label, createdAt: 1,
+      startUrl: `http://127.0.0.1:${address.port}/`, inputs: [], steps: [
+        { id: "confirm", index: 0, timeoutMs: 5000, caption: { text: "Confirm on the site" }, action: "handoff", reason: "owner-press" },
+        click("mark", "Mark", "Ready"),
+        click("pay", "Pay", "Paid"),
+      ],
+    }));
+    library.updateSettings({ remoteMcp: true });
+    const issued = await post("/api/agent/pair", {});
+    const paired = await post("/api/agent/pair/claim", { code: issued.code, name: label, deviceId: `dev-${label}` });
+    const agent = await directory.mintAgent(`user-${label}`, `dev-${label}`);
+    assert.ok(agent);
+    saveRelay(home, { server: server.origin, token: String(paired.token), deviceId: String(paired.deviceId), tokenId: String(paired.tokenId) });
+    async function tool(name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+      const body = await post("/mcp", { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }, agent!.token);
+      const content = body.result as { content?: { type: string; text?: string }[] };
+      const text = content.content?.find((item) => item.type === "text")?.text;
+      assert.ok(text, JSON.stringify(body));
+      return JSON.parse(text) as Record<string, unknown>;
+    }
+    remote.start();
+    let online = false;
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      if ((await tool("search_workflows", { query: label })).outcome === "ok") { online = true; break; }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.ok(online, "remote worker did not connect");
+    const held = await tool("run_workflow", { id: `${label}-held` });
+    assert.equal(held.outcome, "needs_human", JSON.stringify(held));
+    const token = String(held.resume || held.resume_token || "");
+    assert.ok(token);
+    await waitFor(() => remote.view().phase === "waiting" && remote.view().stepId === "confirm");
+    remote.continue(token, "confirm");
+    await waitFor(() => marks === 1);
+    await withHeldPage(token, async (page) => {
+      const evaluate = page.evaluate;
+      let release = () => {};
+      let waiting = false;
+      const blocked = new Promise<void>((resolve) => { release = resolve; });
+      page.evaluate = (async (...args: unknown[]) => {
+        waiting = true;
+        await blocked;
+        return Reflect.apply(evaluate, page, args) as ReturnType<typeof evaluate>;
+      }) as typeof page.evaluate;
+      try {
+        await waitFor(() => waiting);
+        remote.kill();
+        await waitFor(() => remote.view().phase === "idle");
+        const pending = follow(tool, token);
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        await page.locator("#status").evaluate((node) => { node.textContent = "Ready"; });
+        release();
+        page.evaluate = evaluate;
+        result = await pending;
+      } finally {
+        release();
+        page.evaluate = evaluate;
+      }
+    });
+  } finally {
+    await remote.stop();
+    await server.close();
+    await new Promise<void>((resolve) => site.close(() => resolve()));
+  }
+  return { pay, result };
+}
+
+test("a new run after kill does not let the held replay click the next step", { timeout: 90_000 }, async () => {
+  const { pay, result } = await killDuringHeldReplay("kill-next", (tool) => tool("run_workflow", { id: "missing-workflow" }));
+  assert.equal(pay, 0, "a killed replay clicked its next recorded step");
+  assert.equal(result.outcome, "failed", JSON.stringify(result));
+  assert.equal(hasHeldRuns(), false, "the killed replay was still in the catalog");
+});
+
+test("a retried resume of a killed token does not return the running replay", { timeout: 90_000 }, async () => {
+  const { pay, result } = await killDuringHeldReplay("kill-resume", (tool, token) => tool("resume_workflow", { resume: token }));
+  assert.equal(pay, 0, "a retried resume returned the running replay and it clicked the next step");
+  assert.equal(result.outcome, "failed", JSON.stringify(result));
+  assert.match(String(result.reason), /not held|browser is gone/, "a retried resume returned the running replay");
+  assert.equal(hasHeldRuns(), false);
+});

@@ -60,7 +60,7 @@ type SlotEvent =
   | { type: "kill" }
   | { type: "expired"; resume: string }
   | { type: "continue-held"; resume: string; completion: "observed" | "owner" }
-  | { type: "run-finished"; jobId: string; result: Record<string, unknown>; hold: { kind: "confirm"; resume: string; deadline: number | null } | { kind: "signin" | "wall"; resume: string } | null; local?: true; release?: string }
+  | { type: "run-finished"; jobId: string; result: Record<string, unknown>; hold: { kind: "confirm"; resume: string; deadline: number | null } | { kind: "park"; resume: string } | null; local?: true; release?: string }
   | { type: "settled"; jobId: string; reason: string | null };
 
 type SlotEffect =
@@ -360,8 +360,7 @@ export function createRemoteAgent(opts: {
       const deadline = typeof info?.deadline === "number" ? info.deadline : null;
       const hold: Extract<SlotEvent, { type: "run-finished" }>["hold"] =
         resume && kind === "confirm" ? { kind: "confirm", resume, deadline }
-        : resume && kind === "signin" ? { kind: "signin", resume }
-        : resume && kind === "wall" ? { kind: "wall", resume }
+        : resume && (kind === "signin" || kind === "wall") ? { kind: "park", resume }
         : null;
       clearTimeout(deadlineTimer);
       transition({ type: "run-finished", jobId, result, hold, local: localToken ? true : undefined }, request);
@@ -399,7 +398,8 @@ export function createRemoteAgent(opts: {
           locallyMoved.delete(token);
           return moved;
         }
-        opts.clearStop();
+        await released;
+        if (!stopped) opts.clearStop();
         if (opts.runners?.resume) return opts.runners.resume(token);
         if (!["signin", "confirm", "wall"].includes(resumeInfo(token)?.kind || "")) {
           return { outcome: "failed", reason: "This run is not held for a human interaction. Use run_workflow to start a new run." };
@@ -431,8 +431,8 @@ export function createRemoteAgent(opts: {
 
   async function run(job: AssignedJob): Promise<Record<string, unknown>> {
     const id = job.workflowId || stringArg(job.args.id);
-    opts.clearStop();
     await released;
+    if (!stopped) opts.clearStop();
     await releaseContext();
     let workflow: WorkflowV2;
     try {
