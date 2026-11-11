@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { chmod, cp, lstat, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { readFileSync, writeFileSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import path from "node:path";
 import type { BrowserContext, Page } from "playwright";
@@ -53,6 +54,13 @@ const SKIPPED_ENTRIES = new Set([
 const MAGIC = "bao-profile-copy-v1";
 const SAVED_TABS = new Set(["Sessions", "Current Session", "Current Tabs", "Last Session", "Last Tabs"]);
 
+export type ProfileLease =
+  | { state: "claimed"; pid: number; token: string }
+  | { state: "retained"; pid: number; token: string }
+  | { state: "releasing"; pid: number; token: string };
+
+type CopiedProfileLease = ProfileLease & { magic: typeof MAGIC; namespace: string };
+
 export interface CopiedProfile {
   userDataDir: string;
   profileDirectory: string;
@@ -90,31 +98,60 @@ export async function copyChromeProfile(options: {
   for (const entry of await readdir(root, { withFileTypes: true })) {
     if (!entry.isDirectory() || !/^run-[a-f0-9-]+$/.test(entry.name)) continue;
     const dir = path.join(root, entry.name);
-    const lease = object(await readFile(path.join(dir, "lease.json"), "utf8").then(JSON.parse).catch(() => null));
+    let lease: Record<string, unknown>;
+    try { lease = object(JSON.parse(readFileSync(path.join(dir, "lease.json"), "utf8"))); }
+    catch { continue; }
     if (lease.magic !== MAGIC || lease.namespace !== namespace || typeof lease.pid !== "number") continue;
     let active = false;
     try { process.kill(lease.pid, 0); active = true; } catch (error) { active = (error as NodeJS.ErrnoException).code !== "ESRCH"; }
-    if (active && lease.retained !== true) throw new Error("a Chrome profile copy is still open; end that run before refreshing it");
-    await closeRetainedChrome(dir);
+    const state = lease.state ?? (lease.retained === true ? "retained" : "claimed");
+    if (active && state !== "retained") throw new Error("a Chrome profile copy is still open; end that run before refreshing it");
+    const releasing: CopiedProfileLease = { magic: MAGIC, namespace, state: "releasing", pid: process.pid, token: randomUUID() };
+    writeFileSync(path.join(dir, "lease.json"), JSON.stringify(releasing), { mode: 0o600 });
+    try { await closeRetainedChrome(dir); }
+    catch (error) {
+      const retained: CopiedProfileLease = { ...releasing, state: "retained" };
+      writeFileSync(path.join(dir, "lease.json"), JSON.stringify(retained), { mode: 0o600 });
+      throw error;
+    }
     if (pidsForDataDir(dir).length) {
-      if (lease.retained !== true) await writeFile(path.join(dir, "lease.json"), JSON.stringify({ ...lease, retained: true }), { mode: 0o600 });
+      const retained: CopiedProfileLease = { ...releasing, state: "retained" };
+      writeFileSync(path.join(dir, "lease.json"), JSON.stringify(retained), { mode: 0o600 });
       continue;
     }
     await rm(dir, { recursive: true, force: true });
   }
   const userDataDir = path.join(root, `run-${randomUUID()}`);
   await mkdir(userDataDir, { mode: 0o700 });
-  await writeFile(path.join(userDataDir, "lease.json"), JSON.stringify({ magic: MAGIC, namespace, pid: process.pid }), { mode: 0o600 });
+  const token = randomUUID();
+  const leaseFile = path.join(userDataDir, "lease.json");
+  const writeLease = (state: ProfileLease["state"]) => {
+    const lease: CopiedProfileLease = { magic: MAGIC, namespace, state, pid: process.pid, token };
+    writeFileSync(leaseFile, JSON.stringify(lease), { mode: 0o600 });
+  };
+  const readLease = (): CopiedProfileLease | undefined => {
+    try {
+      const lease = JSON.parse(readFileSync(leaseFile, "utf8")) as CopiedProfileLease;
+      return lease.token === token ? lease : undefined;
+    } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined; throw error; }
+  };
+  writeLease("claimed");
   const started = Date.now();
   let bytes = 0;
-  const keepOpen = () => writeFile(path.join(userDataDir, "lease.json"), JSON.stringify({ magic: MAGIC, namespace, pid: process.pid, retained: true }), { mode: 0o600 });
+  const keepOpen = async () => {
+    const lease = readLease();
+    if (lease && lease.state !== "releasing") writeLease("retained");
+  };
   const close = async () => {
+    if (!readLease()) return;
+    writeLease("releasing");
     const deadline = Date.now() + 3000;
     // An unreadable process list counts as still open: the copy is kept for the next run to remove.
     const open = () => listedPids(userDataDir)?.length !== 0;
     while (open() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 80));
+    if (!readLease()) return;
     if (open()) {
-      await keepOpen();
+      writeLease("retained");
       console.error(`bao profile copy browser still shutting down profile=${userDataDir}`);
       return;
     }
@@ -251,7 +288,12 @@ export async function openCopiedChromeForProxy(options: {
     return {
       target: { kind: "bao", portFile: chrome.portFile }, targetId, closed: chrome.closed, close,
       isClosed: chrome.isClosed,
-      async keepOpen() { await copy.keepOpen(); chrome!.keepOpen(); },
+      async keepOpen() {
+        if (closing) return closing;
+        await copy.keepOpen();
+        if (closing) return closing;
+        chrome!.keepOpen();
+      },
       bytes: copy.bytes, copyMs: copy.copyMs,
     };
   } catch (error) { await close(); throw error; }

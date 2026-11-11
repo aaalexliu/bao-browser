@@ -160,6 +160,94 @@ test("copy is private, fresh, selected-profile-only, and leaves source bytes unc
   } finally { if (privateRoot) await rm(privateRoot, { recursive: true, force: true }); await f.close(); }
 });
 
+test("copy leases record claimed, retained and releasing with one owner identity", async (t) => {
+  const f = await fixture();
+  const launches = require("../../src/launch") as typeof import("../../src/launch");
+  let copy: Awaited<ReturnType<typeof copyChromeProfile>> | undefined;
+  try {
+    copy = await copyChromeProfile({ ...f, directory: "Default" });
+    const leaseFile = path.join(copy.userDataDir, "lease.json");
+    const claimed = JSON.parse(await readFile(leaseFile, "utf8")) as { state: string; pid: number; token: string };
+    assert.equal(claimed.state, "claimed");
+    assert.equal(claimed.pid, process.pid);
+    assert.ok(claimed.token);
+    await copy.keepOpen();
+    assert.deepEqual(JSON.parse(await readFile(leaseFile, "utf8")), { ...claimed, state: "retained" });
+    t.mock.method(launches, "listedPids", () => {
+      assert.deepEqual(JSON.parse(readFileSync(leaseFile, "utf8")), { ...claimed, state: "releasing" });
+      return [];
+    });
+    await copy.close();
+    await assert.rejects(stat(copy.userDataDir), /ENOENT/);
+    await copy.keepOpen();
+    await copy.close();
+    t.mock.restoreAll();
+    copy = await copyChromeProfile({ ...f, directory: "Default" });
+    const current = JSON.parse(await readFile(path.join(copy.userDataDir, "lease.json"), "utf8")) as Record<string, unknown>;
+    await writeFile(path.join(copy.userDataDir, "lease.json"), JSON.stringify({ ...current, state: "releasing" }));
+    await assert.rejects(copyChromeProfile({ ...f, directory: "Default" }), /still open/);
+    await copy.keepOpen();
+    assert.equal((JSON.parse(await readFile(path.join(copy.userDataDir, "lease.json"), "utf8")) as { state: string }).state, "releasing");
+  } finally {
+    t.mock.restoreAll();
+    await copy?.close();
+    await f.close();
+  }
+});
+
+test("copy reclaim owns a releasing lease that the old handle cannot alter", async (t) => {
+  const f = await fixture();
+  const launches = require("../../src/launch") as typeof import("../../src/launch");
+  const previous = await copyChromeProfile({ ...f, directory: "Default" });
+  await previous.keepOpen();
+  const leaseFile = path.join(previous.userDataDir, "lease.json");
+  const retained = JSON.parse(await readFile(leaseFile, "utf8")) as { token: string };
+  let entered!: () => void;
+  const reclaiming = new Promise<void>((resolve) => { entered = resolve; });
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  t.mock.method(launches, "closeRetainedChrome", async () => { entered(); await gate; });
+  const opening = copyChromeProfile({ ...f, directory: "Default" });
+  let next: Awaited<typeof opening> | undefined;
+  try {
+    await reclaiming;
+    const releasing = await readFile(leaseFile, "utf8");
+    const lease = JSON.parse(releasing) as { state: string; pid: number; token: string };
+    assert.equal(lease.state, "releasing");
+    assert.equal(lease.pid, process.pid);
+    assert.notEqual(lease.token, retained.token);
+    await previous.keepOpen();
+    await previous.close();
+    assert.equal(await readFile(leaseFile, "utf8"), releasing);
+    await assert.rejects(copyChromeProfile({ ...f, directory: "Default" }), /still open/);
+    release();
+    next = await opening;
+    await assert.rejects(stat(previous.userDataDir), /ENOENT/);
+  } finally {
+    release();
+    next ??= await opening;
+    await next.close();
+    await f.close();
+  }
+});
+
+test("copy reclaims retained leases from the previous disk format", async () => {
+  const f = await fixture();
+  let copy: Awaited<ReturnType<typeof copyChromeProfile>> | undefined;
+  try {
+    copy = await copyChromeProfile({ ...f, directory: "Default" });
+    const leaseFile = path.join(copy.userDataDir, "lease.json");
+    const { magic, namespace, pid } = JSON.parse(await readFile(leaseFile, "utf8")) as { magic: string; namespace: string; pid: number };
+    await writeFile(leaseFile, JSON.stringify({ magic, namespace, pid, retained: true }));
+    const previous = copy.userDataDir;
+    copy = await copyChromeProfile({ ...f, directory: "Default" });
+    await assert.rejects(stat(previous), /ENOENT/);
+  } finally {
+    await copy?.close();
+    await f.close();
+  }
+});
+
 test("copy uses the penguin when either source avatar store names the fox", async () => {
   const f = await fixture();
   try {
@@ -499,6 +587,51 @@ test("copied Chrome restores two tabs through delayed product startup while sour
     await opened?.close();
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("keepOpen joins a copied-profile close instead of retaining a directory being removed", { timeout: 30_000 }, async (t) => {
+  const f = await fixture();
+  const launches = require("../../src/launch") as typeof import("../../src/launch");
+  const launch = launches.launchOwnedChromeEndpoint;
+  let userDataDir = "";
+  let entered!: () => void;
+  const closing = new Promise<void>((resolve) => { entered = resolve; });
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  t.mock.method(launches, "launchOwnedChromeEndpoint", async (options: Parameters<typeof launch>[0]) => {
+    userDataDir = options.userDataDir;
+    const browser = await launch({ ...options, headless: true });
+    return { ...browser, close: async () => { entered(); await gate; await browser.close(); } };
+  });
+  let opened: Awaited<ReturnType<typeof openCopiedChromeForProxy>> | undefined;
+  let close: Promise<void> | undefined;
+  let keep: Promise<void> | undefined;
+  try {
+    opened = await openCopiedChromeForProxy({ ...f, directory: "Default", restoreTabs: false });
+    close = opened.close();
+    await closing;
+    keep = opened.keepOpen();
+    const outcome = await Promise.race([
+      keep.then(() => "retained"),
+      new Promise<string>((resolve) => setTimeout(() => resolve("waiting"), 200)),
+    ]);
+    assert.equal(outcome, "waiting", "keepOpen must wait for the close that owns the directory");
+    release();
+    await Promise.all([close, keep]);
+    await assert.rejects(stat(userDataDir), /ENOENT/);
+    await opened.keepOpen();
+    await assert.rejects(stat(userDataDir), /ENOENT/, "keepOpen after close must not recreate the directory");
+    opened = await openCopiedChromeForProxy({ ...f, directory: "Default", restoreTabs: false });
+    keep = opened.keepOpen();
+    close = opened.close();
+    await Promise.all([keep, close]);
+    await assert.rejects(stat(userDataDir), /ENOENT/, "close also joins a keepOpen that started first");
+  } finally {
+    release();
+    await Promise.allSettled([close, keep]);
+    await opened?.close();
+    await f.close();
   }
 });
 
