@@ -54,6 +54,65 @@ async function openOwnerTab(probe: CdpSocket, url: string) {
   return { owner, ownerState };
 }
 
+test("Running Chrome open returns at DOM readiness while an image still loads, and honors an explicit load wait", { skip: !binary, timeout: 90_000 }, async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-current-ready-"));
+  const images: import("node:http").ServerResponse[] = [];
+  const server = createServer((request, response) => {
+    if (request.url === "/image") { images.push(response); return; }
+    if (request.url === "/broken") { request.socket.destroy(); return; }
+    response.setHeader("content-type", "text/html");
+    response.end(`<!doctype html><title>Usable page</title><h1>News</h1>
+      <button id=read onclick="this.textContent='Read'">Read article</button><img src=/image alt="">
+      <script>addEventListener('DOMContentLoaded', () => document.querySelector('h1').textContent = 'Ready to read')</script>`);
+  });
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const sourceRoot = await chromeProfiles(path.join(root, "chrome"));
+  const chrome = await launchOwnedChromeEndpoint({ userDataDir: sourceRoot, headless: true, args: ["--no-startup-window"] });
+  const endpoint = await readDevToolsActivePort(chrome.portFile);
+  const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
+  const probe = await connectCdp(endpoint.port, endpoint.browserPath);
+  t.mock.method(currentChrome, "openCurrentChrome", async () => {
+    const shared = await shareConnection(cdp);
+    return { pid: 7, executable: pinTestBrowser(), root: sourceRoot, endpoint: shared.endpoint, cdp, closed: cdp.disconnected,
+      isClosed: () => !cdp.isOpen, detach: () => { shared.close(); cdp.close(); } };
+  });
+  const proxy = new AgentBrowserProxy({ home: path.join(root, "home"), sourceRoot, executable: binary });
+  try {
+    for (const route of ["/first", "/next"]) {
+      const [opened] = await proxy.execute("open", [`${base}${route}`], route === "/first" ? "current" : undefined,
+        false, undefined, {}, proxy.activeRunId);
+      assert.equal(opened!.exitCode, 0, opened!.stderr);
+      const [snapshot] = await proxy.execute("snapshot", [], undefined, false, undefined, {}, proxy.activeRunId);
+      assert.match(snapshot!.stdout, /Ready to read/);
+      const { targetInfos } = await probe.send<{ targetInfos: { targetId: string; url: string }[] }>("Target.getTargets");
+      const task = targetInfos.find(target => target.url === `${base}${route}`)!.targetId;
+      assert.equal(await evaluate(probe, task, "document.readyState"), "interactive", "the page is usable before load fires");
+      const [clicked] = await proxy.execute("click", ["#read"], undefined, false, undefined, {}, proxy.activeRunId);
+      assert.equal(clicked!.exitCode, 0, clicked!.stderr);
+      assert.equal(await evaluate(probe, task, "document.querySelector('#read').textContent"), "Read");
+    }
+    assert.equal(images.length, 2);
+    let settled = false;
+    const explicit = proxy.execute("open", [`${base}/explicit`, "--wait-until", "load"], undefined,
+      false, undefined, {}, proxy.activeRunId).finally(() => { settled = true; });
+    while (images.length < 3 && !t.signal.aborted) await new Promise(resolve => setTimeout(resolve, 20));
+    await new Promise(resolve => setTimeout(resolve, 150));
+    assert.equal(settled, false, "an explicit load wait still waits for the image");
+    images.at(-1)!.end();
+    assert.equal((await explicit)[0]!.exitCode, 0);
+    const [broken] = await proxy.execute("open", [`${base}/broken`], undefined, false, undefined, {}, proxy.activeRunId);
+    assert.notEqual(broken!.exitCode, 0, "DOM readiness must not hide navigation errors");
+  } finally {
+    await proxy.end();
+    probe.close();
+    cdp.close();
+    await chrome.close();
+    server.closeAllConnections();
+    await new Promise<void>(resolve => server.close(() => resolve()));
+    await rm(root, { recursive: true, force: true });
+  }
+});
 test("the owner's Chrome keeps its active tab while the agent works in a background task tab", { skip: !binary, timeout: 60_000 }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-current-background-"));
   const server = createServer((request, response) => {
