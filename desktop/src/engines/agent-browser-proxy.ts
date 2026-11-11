@@ -18,7 +18,7 @@ import { ChromeFolderDenied } from "../chrome-access";
 import { baoAgentProfileDir, openBaoChromeForProxy, type SignInImport } from "./bao-profile";
 import { baoPick, boundOpenPlan, boundRoute, chromeApp, ChromeProfileQuestion, chooseChromeProfile, failedPickLine, fallbackPlan, fallsBack, openOrFallBack, pickLine, RoutesFailed, shortPickLine, signInLine, signInSource, type BrowserPick, type BrowserPlan, type RouteWhy } from "./browser-pick";
 import { BOUND_REASON, boundSite, purgeBoundSites } from "./bound-sign-in";
-import { OWNER_WAIT_LIMIT_MS, ownerWall, ownerCanResume, ownerTask, ownerWaitTimeout, ownerWaitInstruction, type OwnerPage } from "../cdp-live/owner-wait";
+import { OWNER_WAIT_LIMIT_MS, ownerWall, ownerWallOnAddress, ownerCanResume, ownerTask, ownerWaitTimeout, ownerWaitInstruction, type OwnerPage } from "../cdp-live/owner-wait";
 import { pageWall } from "../cdp-live/page-wall";
 import { BROWSER_CHOICES, DEFAULT_BROWSER } from "../browser-choice";
 import { targetBox } from "../v1/caption";
@@ -102,6 +102,16 @@ function webSite(value: string | undefined): string | undefined {
   } catch { return undefined; }
 }
 
+function httpPage(url: string | undefined): string | undefined {
+  return url && /^https?:\/\//.test(url) ? url : undefined;
+}
+
+function hostName(url: string | undefined): string | undefined {
+  const http = httpPage(url);
+  if (!http) return undefined;
+  try { return new URL(http).hostname; } catch { return undefined; }
+}
+
 /** The browser a later open is compared with: the route that actually opened. The extension counts as running Chrome. */
 function openedChoice(pick: BrowserPick): AgentBrowser {
   return pick.route === "bao" || pick.route === "copy" ? pick.route : "current";
@@ -112,8 +122,6 @@ type Moved = { line: string; pick?: BrowserPick; site?: string };
 
 interface SessionData {
   browser: AgentBrowser;
-  /** The site the latest open asked for. A sign-in wall's fallback reopens it. */
-  site?: string;
   stateDir: string;
   executable: string;
   flags: string[];
@@ -121,9 +129,12 @@ interface SessionData {
   abort: AbortController;
   recording: AgentBrowserRun;
   workflow: AgentBrowserWorkflow;
-  ownerWait?: { targetId: string; page: OwnerPage } | "pending";
+  /** `reopen` is the http(s) page Running Chrome should open, when Bao knows one. */
+  ownerWait?: { targetId: string; page: OwnerPage; reopen?: string } | "pending";
   /** Chrome's own URL and title for the active tab, from the latest metadata read. */
   page?: OwnerPage;
+  /** The latest http(s) page whose URL and title are not a sign-in or check. A click or later navigation reopens this at an address wall or a cross-host sign-in title. */
+  beforeWall?: OwnerPage;
   /** The latest sign-in or check page, kept for the owner-wait card. */
   ownerPage?: OwnerPage;
   /** When Bao first stopped for the current or latest owner handoff. */
@@ -428,7 +439,7 @@ export class AgentBrowserProxy {
       if (this.disconnected) throw new Error(AGENT_DISCONNECTED);
       if (continuing && command !== "close" && command !== "wait_for_owner") {
         await this.detectOwnerWall(session);
-        const opened = session.ownerWait ? await this.moveAway(session, this.wallWords(session), session.site) : undefined;
+        const opened = session.ownerWait ? await this.moveAway(session, this.wallWords(session), session.ownerWait !== "pending" ? session.ownerWait.reopen : this.pageToReopen(session, session.page)) : undefined;
         // Refs from Bao's browser do not hold in the new tab, so an action waits for a fresh snapshot.
         if (opened && (session.ownerWait || command !== "snapshot" && command !== "open")) {
           step = recording.begin("open", [this.moved!.site!]);
@@ -446,7 +457,6 @@ export class AgentBrowserProxy {
       this.latest = { runId: recording.id, step, steps: recording.steps };
       if (command === "open") {
         const site = webSite(args[0]);
-        if (site) session.site = site;
         if (continuing && site && this.bound(session, site)) {
           const opened = await this.moveAway(session, BOUND_REASON, site, true);
           if (opened) {
@@ -458,18 +468,18 @@ export class AgentBrowserProxy {
       if (command === "wait_for_owner") {
         const timeout = ownerWaitTimeout(args[0] === undefined ? undefined : Number(args[0]));
         const deadline = Date.now() + timeout;
-        const wall = session.ownerWait && session.ownerWait !== "pending" ? session.ownerWait.page : undefined;
+        const wall = session.ownerWait && session.ownerWait !== "pending" ? session.ownerWait : undefined;
         const read = !wall && this.movable(session, true) ? await this.activePage(session).catch(() => undefined) : undefined;
-        const page = wall ?? read?.page;
-        const opened = page && await this.moveAway(session, wall ? this.wallWords(session) : "a step that needs the owner",
-          wall ? session.site ?? page.url : page.url, true);
+        const stop = wall ?? (read ? this.stopped(session, read) : undefined);
+        const page = stop?.page;
+        const opened = stop && await this.moveAway(session, this.wallWords(session), stop.reopen, true);
         if (opened) {
           results.push(...session.ownerWait ? this.ownerResult("halted", session) : [opened]);
           return results;
         }
-        if (read && (!session.ownerWait || session.ownerWait === "pending")) {
+        if (stop && read && (!session.ownerWait || session.ownerWait === "pending")) {
           if (!session.ownerWait) session.ownerSince = session.ownerTouched = Date.now();
-          session.ownerWait = read;
+          session.ownerWait = stop;
           session.ownerPage = read.page;
           await this.ownerBanner(session, read.targetId, true).catch(() => undefined);
         }
@@ -491,7 +501,7 @@ export class AgentBrowserProxy {
       }, () => !!session.ownerWait);
       if (command !== "close" && results[0]?.exitCode === 0) {
         const inPage = !session.ownerWait && command === "snapshot" && this.movable(session) && pageWall(results[0].stdout);
-        const opened = session.ownerWait ? await this.moveAway(session, this.wallWords(session), session.site)
+        const opened = session.ownerWait ? await this.moveAway(session, this.wallWords(session), session.ownerWait !== "pending" ? session.ownerWait.reopen : this.pageToReopen(session, session.page))
           : inPage && session.page ? await this.moveAway(session, "a sign-in or verification prompt", session.page.url) : undefined;
         if (opened) results.splice(0, results.length, command === "snapshot" && !session.ownerWait ? await this.run(session, "snapshot", args) : opened);
       }
@@ -783,22 +793,48 @@ export class AgentBrowserProxy {
     return boundSite(site, profile && path.join(profile.root, profile.directory));
   }
 
+  /**
+   * The http(s) page Running Chrome should open. An open reopens the URL it asked for, except a check title, which keeps
+   * its own URL. A click or later navigation reopens the page before an address wall or a sign-in title on another host.
+   */
+  private pageToReopen(session: Session, page: OwnerPage | undefined, openedSite?: string): string | undefined {
+    const before = session.beforeWall?.url;
+    if (openedSite && !(page && ownerWall(page) === "bot_wall" && !ownerWallOnAddress(page))) return openedSite;
+    if (page && ownerWallOnAddress(page)) return before ?? httpPage(page.url);
+    if (page && ownerWall(page) === "login_wall") {
+      const wallHost = hostName(page.url);
+      const beforeHost = hostName(before);
+      if (before && beforeHost && wallHost && beforeHost !== wallHost) return before;
+    }
+    return httpPage(page?.url) ?? before;
+  }
+
+  /** The page Running Chrome should open, stored on the wall so a later retry opens that page. */
+  private stopped(session: Session, active: { targetId: string; page: OwnerPage }, openedSite?: string): { targetId: string; page: OwnerPage; reopen?: string } {
+    return { targetId: active.targetId, page: active.page, reopen: this.pageToReopen(session, active.page, openedSite) };
+  }
+
   private wallWords(session: Session): string {
     const page = session.ownerWait && session.ownerWait !== "pending" ? session.ownerWait.page : session.page;
-    return page && ownerWall(page) === "bot_wall" ? "a human check" : "a sign-in page";
+    const wall = page && ownerWall(page);
+    if (wall === "bot_wall") return "a human check";
+    if (wall === "login_wall") return "a sign-in page";
+    return "a step that needs the owner";
   }
 
   /**
-   * A Bao-profile session that stopped at a wall continues in the owner's running Chrome over remote debugging, on the Chrome
-   * profile its sign-in import read, in the same session and run. Bao opens the page there, then closes its own window. When
-   * that does not work, the session stays in Bao's window and the line says why. Returns the open result in the new tab.
+   * Continues a Bao-profile session in the owner's running Chrome over remote debugging, on the Chrome profile its sign-in
+   * import read, in the same session and run. Opens the http(s) page it is given, or the wall or active page when it is given
+   * none, then closes Bao's window. When the move does not work, the session stays and the line says why. Returns the open
+   * result in the new tab.
    */
   private async moveAway(session: Session, what: string, url: string | undefined, retry = false): Promise<AgentBrowserCommandResult | undefined> {
     const bound = what === BOUND_REASON;
     if (!this.movable(session, retry, bound) || session.kind !== "copy" || session.pick.route === "extension" || session.pick.route === "current") return undefined;
     const wall = session.ownerWait && session.ownerWait !== "pending" ? session.ownerWait.page : undefined;
-    const site = url ?? wall?.url ?? session.page?.url;
-    let host = site ?? "this site";
+    const site = url !== undefined ? httpPage(url) : httpPage(wall?.url) ?? httpPage(session.page?.url);
+    const named = bound ? site : httpPage(wall?.url ?? session.page?.url) ?? site;
+    let host = named ?? "this site";
     try { host = new URL(host).hostname; } catch {}
     const stopped = bound ? `Bao did not open ${host} in its own browser because ${BOUND_REASON}` : `Bao's own browser hit ${what} on ${host}`;
     const profile = session.pick.profile;
@@ -871,7 +907,7 @@ export class AgentBrowserProxy {
   private fallback(session: Session): string {
     if (session.kind !== "copy" || session.pick.route === "extension") return "";
     if (session.pick.route === "bao" && session.moveError === undefined) return "";
-    const site = session.site ?? session.ownerPage?.url;
+    const site = session.ownerWait && session.ownerWait !== "pending" ? session.ownerWait.reopen : undefined;
     const profile = session.pick.profile?.directory;
     const open = { command: "open", ...(site ? { args: [site] } : {}), browser: "current", ...profile ? { profile } : {} };
     const bao = session.pick.route === "bao";
@@ -1027,7 +1063,8 @@ export class AgentBrowserProxy {
       cdp = await this.connectSession(session, { timeoutMs: CDP_PROGRESS_CEILING_MS, signal });
       const { targetInfo } = await cdp.sendUntilProgress<{ targetInfo: { url: string; title: string } }>("Target.getTargetInfo", { targetId: active.targetId }, undefined, { signal });
       session.page = { url: targetInfo.url, title: targetInfo.title };
-      return { targetId: active.targetId, targetIds: tabs.flatMap((tab) => tab.targetId ? [tab.targetId] : []), page: { url: targetInfo.url, title: targetInfo.title } };
+      if (!ownerWall(session.page) && httpPage(session.page.url)) session.beforeWall = session.page;
+      return { targetId: active.targetId, targetIds: tabs.flatMap((tab) => tab.targetId ? [tab.targetId] : []), page: session.page };
     } catch (error) {
       if (error instanceof TaskTabClosed) throw error;
       if (session.abort.signal.aborted || (error instanceof Error && error.name === "AbortError")) throw error;
@@ -1055,7 +1092,7 @@ export class AgentBrowserProxy {
         if (!ownerWall(active.page)) return;
       }
     }
-    session.ownerWait = active;
+    session.ownerWait = this.stopped(session, active, openedSite);
     session.ownerPage = active.page;
     session.ownerSince = session.ownerTouched = Date.now();
     session.recording.ownerWaiting(true);
@@ -1100,11 +1137,11 @@ export class AgentBrowserProxy {
   }
 
   private ownerClosed(session: Session): AgentBrowserCommandResult[] {
+    const result = this.ownerResult("closed", session);
     session.abort.abort();
-    session.ownerWait = undefined;
     session.workflow.unavailable("the owner wait did not finish");
     session.recording.finish("session_closed");
-    return this.ownerResult("closed", session);
+    return result;
   }
 
   private async waitForOwner(session: Session, deadline: number): Promise<AgentBrowserCommandResult[]> {
@@ -1126,7 +1163,7 @@ export class AgentBrowserProxy {
           if (!session.ownerWait || session.ownerWait === "pending") {
             const active = await this.activePage(session);
             if (!active) return this.ownerClosed(session);
-            session.ownerWait = active;
+            session.ownerWait = this.stopped(session, active);
             session.ownerPage = active.page;
             await this.ownerBanner(session, active.targetId, true);
           }
@@ -1145,10 +1182,11 @@ export class AgentBrowserProxy {
           if (ready && Date.now() - stableAt >= 750) {
             await this.ownerBanner(session, waiting.targetId, false);
             if (session.abort.signal.aborted || !cdp.isOpen) return this.ownerClosed(session);
+            const result = this.ownerResult("ready", session);
             session.ownerWait = undefined;
             session.page = { url: page.url, title: page.title };
             session.recording.ownerWaiting(false);
-            return this.ownerResult("ready", session);
+            return result;
           }
         } catch (error) {
           if (error instanceof TaskTabClosed) throw error;
@@ -1360,7 +1398,8 @@ export class AgentBrowserProxy {
   private armIdle(session: Session): void {
     clearTimeout(session.idleTimer);
     if (this.session !== session || session.removing || this.disconnected) return;
-    if (session.ownerWait) {
+    // A closed wait still names its page, but the session expires on the idle timer.
+    if (session.ownerWait && !session.abort.signal.aborted) {
       session.idleTimer = setTimeout(() => {
         void this.endOwnerWait(session).catch((error: unknown) => process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`));
       }, Math.max(0, (session.ownerTouched ?? Date.now()) + OWNER_WAIT_LIMIT_MS - Date.now()));
