@@ -613,8 +613,19 @@
     #run-outputs .output-actions a { color: var(--accent); }
     #run-outputs .output-scroll { overflow: auto; max-height: 420px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
     #run-outputs table { width: 100%; border-collapse: collapse; }
-    #run-outputs th, #run-outputs td { text-align: left; padding: 0.4rem 0.45rem; border-bottom: 1px solid var(--line); color: var(--ink); }
+    #run-outputs th, #run-outputs td {
+      text-align: start;
+      vertical-align: top;
+      padding: 0.4rem 0.45rem;
+      border-bottom: 1px solid var(--line);
+      color: var(--ink);
+      overflow-wrap: break-word;
+      word-break: normal;
+    }
     #run-outputs th { color: var(--quiet); font-weight: 600; }
+    /* 1% lets the column shrink to the value, so long text keeps the remaining width. */
+    #run-outputs .output-whole { white-space: nowrap; width: 1%; font-variant-numeric: tabular-nums; }
+    #run-outputs th.output-url, #run-outputs td.output-url { overflow-wrap: anywhere; }
     #extract-picker { margin-top: 0.5rem; background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 12px; padding: 0.75rem; max-width: 520px; }
     #float:has(#extract-picker) { position: fixed; inset: 12px 12px 20px; z-index: 30; display: flex; flex-direction: column; justify-content: flex-end; gap: 8px; pointer-events: none; }
     #float:has(#extract-picker) #record-bar { position: static; transform: none; width: max-content; max-width: 100%; flex-wrap: wrap; flex-shrink: 0; align-self: center; pointer-events: auto; }
