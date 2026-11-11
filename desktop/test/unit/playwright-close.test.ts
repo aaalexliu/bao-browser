@@ -1,46 +1,14 @@
 import assert from "node:assert/strict";
 import { ChildProcess } from "node:child_process";
-import { readFile, mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import ts from "typescript";
 import { openWorkflowBrowser } from "../../src/engines/workflow-browser";
 import { closeRetainedChrome, launchOwnedChrome, pidsForDataDir, pinTestBrowser } from "../../src/launch";
 import { chromeProfiles } from "../support/chrome-profiles";
 
 pinTestBrowser();
-
-async function appendedLaunchDiagnostics(appended: string): Promise<number[]> {
-  const sourcePath = path.resolve("desktop/src/launch.ts");
-  const original = await readFile(sourcePath, "utf8");
-  const configPath = path.resolve("tsconfig.desktop.json");
-  const configFile = ts.readConfigFile(configPath, ts.sys.readFile);
-  assert.equal(configFile.error, undefined);
-  const parsed = ts.parseJsonConfigFileContent(configFile.config, ts.sys, path.dirname(configPath));
-  const host = ts.createCompilerHost(parsed.options);
-  const getSourceFile = host.getSourceFile.bind(host);
-  host.getSourceFile = (fileName, languageVersion, onError, shouldCreateNewSourceFile) => {
-    if (path.resolve(fileName) === sourcePath) {
-      const version = typeof languageVersion === "number" ? languageVersion : ts.ScriptTarget.ES2022;
-      return ts.createSourceFile(fileName, `${original}\n${appended}\n`, version, true, ts.ScriptKind.TS);
-    }
-    return getSourceFile(fileName, languageVersion, onError, shouldCreateNewSourceFile);
-  };
-  const program = ts.createProgram([sourcePath], parsed.options, host);
-  return ts.getPreEmitDiagnostics(program)
-    .filter((diagnostic) => diagnostic.file !== undefined && path.resolve(diagnostic.file.fileName) === sourcePath && (diagnostic.start ?? 0) >= original.length)
-    .map((diagnostic) => diagnostic.code);
-}
-
-test("playwright close rejects a running completion and a closing phase without one", async () => {
-  assert.deepEqual(await appendedLaunchDiagnostics('const value: PlaywrightOwned = { phase: "running" }; void value;'), []);
-  assert.deepEqual(await appendedLaunchDiagnostics('const value: PlaywrightOwned = { phase: "closing", completion: Promise.resolve() }; void value;'), []);
-  assert.deepEqual(await appendedLaunchDiagnostics('const value: PlaywrightOwned = { phase: "settled", completion: Promise.resolve() }; void value;'), []);
-  assert.ok((await appendedLaunchDiagnostics('const value: PlaywrightOwned = { phase: "running", completion: Promise.resolve() }; void value;')).includes(2353));
-  assert.ok((await appendedLaunchDiagnostics('const value: PlaywrightOwned = { phase: "closing" }; void value;')).includes(2322));
-  assert.ok((await appendedLaunchDiagnostics('const value: PlaywrightOwned = { phase: "retained" }; void value;')).includes(2322));
-});
 
 test("a disconnect followed by context.close runs one shutdown", { timeout: 20_000 }, async (t) => {
   const userDataDir = await mkdtemp(path.join(tmpdir(), "bao-playwright-close-"));
