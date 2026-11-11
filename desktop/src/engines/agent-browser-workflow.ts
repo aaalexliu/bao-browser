@@ -240,10 +240,11 @@ export class AgentBrowserWorkflow {
     }
   }
 
-  finish(): string {
+  finish(failedTask = false): string {
     if (this.finished) return this.finished;
     if (this.failedStep) this.unavailable("the task ended with a failed action", this.failedStep);
     if (!this.startUrl || !this.events.length) this.unavailable("it contained no replayable actions");
+    if (failedTask) this.unavailable("the task failed");
     if (!this.reason) {
       try {
         const workflow = interpret(this.events, { id: this.workflowId, name: `Browser task on ${new URL(this.startUrl!).hostname}`, startUrl: this.startUrl!, preserveActions: true });

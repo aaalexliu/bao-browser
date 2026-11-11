@@ -122,6 +122,12 @@ test("a refused workflow save names the step that blocked it", async () => {
       return ok;
     }, () => false);
     assert.equal(inflight.finish(), "Not saved as a workflow: the owner closed the window before the task finished.");
+
+    const failed = new AgentBrowserWorkflow(root, "run-failed", async () => { throw new Error("unused"); });
+    assert.equal(failed.finish(true), "Not saved as a workflow: it contained no replayable actions.");
+    const named = new AgentBrowserWorkflow(root, "run-named", async () => { throw new Error("unused"); });
+    named.unavailable("the owner closed the window before the task finished");
+    assert.equal(named.finish(true), "Not saved as a workflow: the owner closed the window before the task finished.");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

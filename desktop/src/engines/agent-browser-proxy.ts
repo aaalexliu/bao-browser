@@ -601,7 +601,6 @@ export class AgentBrowserProxy {
     this.shown = session && { session, command: "finish_task" };
     if (!session) return undefined;
     session.outcome = outcome;
-    if (outcome.outcome === "failed") session.workflow.unavailable(outcome.reason);
     try {
       await this.remove(session, this.options.keepOpen?.() === true);
       session.recording.finish(outcome);
@@ -1480,7 +1479,7 @@ export class AgentBrowserProxy {
           }
           await rm(session.stateDir, { recursive: true, force: true });
         } finally {
-          this.workflowOutcome = session.workflow.finish();
+          this.workflowOutcome = session.workflow.finish(session.outcome?.outcome === "failed");
         }
       })());
       if (session.kind === "copy" && (session.closing || this.pendingCloses > 0) && !session.chrome.isClosed()) {
