@@ -110,8 +110,8 @@ test("CLI serve and the MCP client bind short sockets from a deep TMPDIR", { tim
   await mkdir(deep);
   deepTmpdir(t, deep);
   const home = path.join(deep, "home");
-  const env: NodeJS.ProcessEnv = { ...process.env, HOME: root, BAO_HOME: home, TMPDIR: deep, BAO_HEAL_CURSOR_ACCOUNT: "0" };
-  delete env.BAO_MCP_SOCK;
+  const mcpSock = path.join(root, "mcp.sock");
+  const env: NodeJS.ProcessEnv = { ...process.env, HOME: root, BAO_HOME: home, TMPDIR: deep, BAO_HEAL_CURSOR_ACCOUNT: "0", BAO_MCP_SOCK: mcpSock };
   const cli = path.resolve(__dirname, "../../src/app/cli.js");
   const app = spawn(process.execPath, [cli, "serve", "--home", home, "--port", "0"], { env, detached: true });
   let client: ChildProcess | undefined;
@@ -122,16 +122,38 @@ test("CLI serve and the MCP client bind short sockets from a deep TMPDIR", { tim
     assert.ok(Buffer.byteLength(bridge) <= 103);
     await stop(app, true);
     client = spawn(process.execPath, [path.resolve(__dirname, "../../src/mcp/client.js"), "serve"], { env, detached: true });
-    await started(client, /mcp client listening/);
-    const mcpSock = "/tmp/bao-mcp.sock";
+    const listened = await started(client, /mcp client listening/);
+    assert.ok(listened.includes(`mcp client listening ${mcpSock}`));
     assert.ok((await lstat(mcpSock)).isSocket());
     assert.ok(Buffer.byteLength(mcpSock) <= 103);
     assert.equal((await lstat(socketRoot(home))).mode & 0o777, 0o700);
   } finally {
     await stop(app, true);
     if (client) await stop(client, true);
-    await rm("/tmp/bao-mcp.sock", { force: true });
+    await rm(mcpSock, { force: true });
     await rm(socketRoot(home), { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a long BAO_MCP_SOCK override exits with the byte-length error", { timeout: 15_000 }, async () => {
+  const root = await mkdtemp("/tmp/bao-mcp-long-");
+  const mcpSock = path.join(root, "x".repeat(120));
+  assert.ok(Buffer.byteLength(mcpSock) > 103);
+  const client = spawn(process.execPath, [path.resolve(__dirname, "../../src/mcp/client.js"), "serve"], {
+    env: { ...process.env, HOME: root, BAO_HOME: root, BAO_HEAL_CURSOR_ACCOUNT: "0", BAO_MCP_SOCK: mcpSock },
+  });
+  let errors = "";
+  client.stderr?.on("data", chunk => { errors += String(chunk); });
+  const exited = once(client, "exit");
+  const timer = setTimeout(() => client.kill("SIGTERM"), 10_000);
+  try {
+    const [code] = await exited;
+    assert.equal(code, 1);
+    assert.equal(errors.trim(), `Unix socket path is ${Buffer.byteLength(mcpSock)} bytes (maximum 103): ${mcpSock}`);
+  } finally {
+    clearTimeout(timer);
+    await stop(client);
     await rm(root, { recursive: true, force: true });
   }
 });
