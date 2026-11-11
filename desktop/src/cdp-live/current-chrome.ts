@@ -215,7 +215,7 @@ export async function openCurrentChrome(options: {
   return connectOwnedChrome(options, overrides);
 }
 
-/** The one Chrome socket. Only the hold process calls this. A session joins the endpoint it publishes. */
+/** The one Chrome socket. `bao chrome-hold` passes this into the hold. A session joins the endpoint it publishes. */
 export async function connectOwnedChrome(options: {
   root: string;
   axLog: string;

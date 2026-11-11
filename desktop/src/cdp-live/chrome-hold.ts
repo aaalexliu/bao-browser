@@ -447,8 +447,11 @@ function flag(args: readonly string[], name: string): string | undefined {
   return index >= 0 ? args[index + 1] : undefined;
 }
 
-/** `bao chrome-hold`. Not a user command: sessions start it and then join its endpoint. */
-export async function holdMain(args: readonly string[]): Promise<void> {
+/** `bao chrome-hold`. Not a user command: sessions start it and then join its endpoint. The opener is passed in so this module does not import the session entry that joins it. */
+export async function holdMain(
+  args: readonly string[],
+  openChrome?: (options: { root: string; axLog: string }) => Promise<CurrentChrome>,
+): Promise<void> {
   const rootArg = flag(args, "--root");
   const axLog = flag(args, "--ax-log");
   if (!rootArg || !axLog) throw new Error("usage: bao chrome-hold --root dir --ax-log file");
@@ -461,8 +464,10 @@ export async function holdMain(args: readonly string[]): Promise<void> {
   process.once("SIGINT", () => stopping.abort());
   try {
     const fixture = readFixture();
-    const { connectOwnedChrome } = await import("./current-chrome");
-    const chrome = fixture ? await connectFixture(root, fixture) : await connectOwnedChrome({ root, axLog });
+    let chrome: CurrentChrome;
+    if (fixture) chrome = await connectFixture(root, fixture);
+    else if (openChrome) chrome = await openChrome({ root, axLog });
+    else throw new Error("bao chrome-hold was started without its Chrome opener");
     await serveHold(chrome, stopping.signal);
     process.exit(0);
   } catch (error) {
