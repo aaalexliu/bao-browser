@@ -615,6 +615,17 @@ test("the Chrome profile question is a sentence and the exact retry call, with a
   assert.equal("_meta" in profileQuestionResult(question, { command: "open" }, false), false);
 });
 
+test("finish_task carries an ended owner wait in both text and the model receipt", () => {
+  const endedWait = "Bao ended an earlier owner wait from 11:10 AM; nobody continued it for 30 minutes.";
+  for (const ui of [false, true]) {
+    const finished = finishToolResult(undefined, { outcome: "no_session", reason: "No browser task is open.", endedWait }, ui);
+    assert.ok(finished.content.some((block) => block.type === "text" && block.text === endedWait));
+    assert.equal(finished.structuredContent.endedWait, endedWait);
+    assert.equal(finished.structuredContent.outcome, "no_session");
+    assert.equal("endedWait" in finishToolResult(undefined, { outcome: "no_session" }, ui).structuredContent, false);
+  }
+});
+
 test("an owner wait and finish_task carry the browser lines in structuredContent, which Codex and Claude Code read instead of text", () => {
   const browser = ['Browser: Bao profile, Chrome profile "Default".', 'If the site asks for a sign-in that did not carry over, the fallback is the owner\'s running Chrome.'];
   const wait = textToolResult([{ stdout: JSON.stringify({ outcome: "waiting", instruction: "Keep waiting." }), stderr: "", exitCode: 0 }],

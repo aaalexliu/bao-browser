@@ -225,6 +225,66 @@ for (const { browser, check, bare } of [
   } finally { await h.cleanup(browser, observer); }
 });
 
+test("an owner wait follows a later wall in its card, instruction, banner, and ready baseline", { timeout: 30_000 }, async (t) => {
+  const h = await ownerProxy(t);
+  const { proxy, fixture } = h;
+  let observer: Awaited<ReturnType<typeof chromium.connectOverCDP>> | undefined;
+  try {
+    await proxy.execute("open", [fixture.url("/owner/sign-in?two-factor")], "copy");
+    const runId = proxy.activeRunId!;
+    const since = proxy.ownerPage!.since;
+    const endpoint = await readDevToolsActivePort(path.join(h.copyDir, "DevToolsActivePort"));
+    observer = await chromium.connectOverCDP(`http://127.0.0.1:${endpoint.port}`);
+    const page = observer.contexts()[0]!.pages().find((page) => page.url().includes("/owner/sign-in"))!;
+    const waiting = proxy.execute("wait_for_owner", ["1500"], undefined, false, undefined, {}, runId);
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    const result = await waiting;
+    assert.equal(outcome(result), "waiting");
+    assert.deepEqual(proxy.ownerPage, { url: fixture.url("/owner/verify"), title: "Two-factor authentication", since });
+    assert.match(instruction(result), /Ask the owner to finish the check on 127\.0\.0\.1/);
+    assert.equal(proxy.lastCommand!.step.summary!.owner!.title, "Two-factor authentication");
+    assert.equal(proxy.lastCommand!.step.summary!.owner!.url, fixture.url("/owner/verify"));
+    assert.match(await page.locator("#bao-owner-wait").innerText(), /waiting for you to finish the check/);
+    await page.evaluate(() => { document.title = "Confirm your account"; });
+    assert.equal(outcome(await proxy.execute("wait_for_owner", ["300"], undefined, false, undefined, {}, runId)), "waiting");
+    assert.equal(proxy.ownerPage!.title, "Confirm your account", "a title-only change on a wall updates the same wait");
+    assert.equal(await page.locator("#bao-owner-wait").count(), 1, "replacing a banner does not stack it");
+    await page.getByRole("button", { name: "Verify", exact: true }).click();
+    assert.equal(outcome(await proxy.execute("wait_for_owner", ["2000"], undefined, false, undefined, {}, runId)), "ready");
+    assert.equal(await page.locator("#bao-owner-wait").count(), 0);
+    assert.equal(proxy.activeRunId, runId);
+    assert.equal(outcome(await proxy.execute("wait_for_owner", ["50"], undefined, false, undefined, {}, runId)), "waiting");
+    await page.goto(fixture.url("/owner/verify"));
+    assert.equal(outcome(await proxy.execute("wait_for_owner", ["300"], undefined, false, undefined, {}, runId)), "waiting");
+    // Returning to an unrecognized wait's first page must count as a change from the later wall.
+    await page.goto(fixture.url("/member"));
+    assert.equal(outcome(await proxy.execute("wait_for_owner", ["2000"], undefined, false, undefined, {}, runId)), "ready");
+  } finally { await h.cleanup("copy", observer); }
+});
+
+test("finish_task reports a wait the timer ended once, not on the next browser call", { timeout: 30_000 }, async (t) => {
+  const h = await ownerProxy(t);
+  const { proxy, fixture } = h;
+  let offset = 0;
+  const now = Date.now;
+  t.mock.method(Date, "now", () => now() + offset);
+  try {
+    await proxy.execute("open", [fixture.url("/owner/start?check=captcha")], "copy");
+    const runId = proxy.activeRunId!;
+    offset = proxy.ownerPage!.since! + OWNER_WAIT_LIMIT_MS - 5000 - now();
+    await proxy.execute("snapshot", [], undefined, false, undefined, {}, runId);
+    const deadline = now() + 10_000;
+    while (proxy.hasSession() && now() < deadline) await new Promise((resolve) => setTimeout(resolve, 25));
+    assert.equal(proxy.hasSession(), false, "the timer ended the session before finish_task");
+    assert.equal(await proxy.finishTask({ outcome: "failed", reason: "The wait ended" }, runId), undefined);
+    assert.match(proxy.endedWait ?? "", /Bao ended an earlier owner wait .*nobody continued it for 30 minutes\./);
+    await proxy.finishTask({ outcome: "failed", reason: "No session" }, runId);
+    assert.equal(proxy.endedWait, undefined, "finish_task consumes the notice only once");
+    await proxy.execute("open", [fixture.url("/")], "copy");
+    assert.equal(proxy.endedWait, undefined, "a later browser call does not inherit the old notice");
+  } finally { await h.cleanup("copy"); }
+});
+
 test("an owner wait nobody continues ends by itself at its limit, and a later open starts a new task that names the wait Bao ended", { timeout: 60_000 }, async (t) => {
   const h = await ownerProxy(t);
   const { fixture, home, proxy } = h;

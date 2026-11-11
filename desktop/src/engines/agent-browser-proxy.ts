@@ -582,6 +582,7 @@ export class AgentBrowserProxy {
    * run_id while a session is open is an error.
    */
   async finishTask(outcome: AgentBrowserTaskOutcome, runId?: string): Promise<string | undefined> {
+    this.endedLine = undefined;
     this.workflowOutcome = undefined;
     this.notOpened = undefined;
     this.refusal = undefined;
@@ -596,6 +597,8 @@ export class AgentBrowserProxy {
       if (runId === undefined) throw new Error(runIdNeeded("finish_task"));
       return undefined;
     }
+    this.endedLine = this.staleWait;
+    this.staleWait = undefined;
     this.currentEnded = false;
     this.taskTabEnded = false;
     this.shown = session && { session, command: "finish_task" };
@@ -1121,6 +1124,7 @@ export class AgentBrowserProxy {
       const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true }, undefined, 2000);
       attached = sessionId;
       const expression = waiting ? `(() => {
+        document.getElementById('bao-owner-wait')?.remove();
         const banner = document.createElement('div');
         banner.id = 'bao-owner-wait'; banner.setAttribute('role', 'status');
         banner.textContent = ${JSON.stringify(`Bao is waiting for you to ${ownerTask(ownerWaitPage(session))}. The agent will continue in this window. Only URL and title are read while waiting.`)};
@@ -1176,6 +1180,11 @@ export class AgentBrowserProxy {
           const page = targetInfos.find((tab) => tab.targetId === waiting.targetId);
           if (!page && cdp.isOpen && this.noTaskTabLeft(session, targetInfos)) return this.endTaskTab(session);
           if (!page || session.abort.signal.aborted || !cdp.isOpen) return this.ownerClosed(session);
+          if (ownerWall(page) && (waiting.page.url !== page.url || waiting.page.title !== page.title)) {
+            waiting.page = { url: page.url, title: page.title };
+            session.ownerPage = session.page = waiting.page;
+            await this.ownerBanner(session, waiting.targetId, true);
+          }
           const ready = ownerCanResume(waiting.page, page);
           const signature = ready ? JSON.stringify([page.url, page.title]) : "";
           if (!ready || candidate !== signature) { candidate = signature; stableAt = Date.now(); }

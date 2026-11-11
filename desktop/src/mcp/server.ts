@@ -276,7 +276,7 @@ async function handle(msg: Rpc, ctx: Context): Promise<void> {
         let card;
         try { card = runId ? finishCardFor(ctx.library, runId) : undefined; }
         catch { card = undefined; }
-        result = { ...finishToolResult(card, { ...receipt, workflow: ctx.proxy.lastWorkflowOutcome }, ctx.ui, ctx.proxy.pickLines),
+        result = { ...finishToolResult(card, { ...receipt, workflow: ctx.proxy.lastWorkflowOutcome, endedWait: ctx.proxy.endedWait }, ctx.ui, ctx.proxy.pickLines),
           ...(ctx.ui && card ? { _meta: { baoToolCard: card } } : {}) };
       }
       else {
