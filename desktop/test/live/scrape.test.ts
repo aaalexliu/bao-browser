@@ -99,6 +99,7 @@ test("books.toscrape: record a category list, replay another category, CSV match
     assert.equal(extract?.extract?.pagination?.maxPages, 3);
     assert.equal(workflow.outputs?.[0]?.name, "books");
 
+    await post(app.port, "/api/sessions/commit", { name: "Books by category" });
     const run = await post(app.port, "/api/replay", {
       id: workflow.id,
       args: { category: "Historical Fiction" },
@@ -190,13 +191,18 @@ test("for_each types a 3-row CSV into the-internet login and submits every row",
     const loop = workflow.steps.find((step) => step.action === "for_each");
     assert.equal(loop?.forEach?.over.kind, "input");
     const table = workflow.inputs.find((input) => input.type === "table");
-    const secret = workflow.inputs.find((input) => input.type === "secret");
-    assert.ok(table && secret, JSON.stringify(workflow.inputs));
-    const username = loop?.forEach?.steps.find((step) => step.action === "type");
-    assert.deepEqual(username?.text, { literal: "{{row.username}}" });
+    assert.ok(table, JSON.stringify(workflow.inputs));
+    assert.deepEqual(workflow.inputs.map((input) => input.type), ["table"]);
+    const typed = loop?.forEach?.steps.filter((step) => step.action === "type");
+    assert.deepEqual(typed?.map((step) => step.text), [
+      { literal: "{{row.username}}" },
+      { literal: "{{row.password}}" },
+    ]);
+    assert.equal(typed?.[1]?.sensitive, true);
+    await post(app.port, "/api/sessions/commit", { name: "Login rows" });
     const run = await post(app.port, "/api/replay", {
       id: workflow.id,
-      args: { [table!.name]: csv, [secret!.name]: "example" },
+      args: { [table.name]: csv },
     }) as {
       status: string;
       modelCalls: number;
