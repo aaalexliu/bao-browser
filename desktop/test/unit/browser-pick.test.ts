@@ -5,12 +5,14 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test, { type TestContext } from "node:test";
+import { startApp } from "../../src/app/server";
 import { ChromeFolderDenied } from "../../src/chrome-access";
 import { baoAgentProfileDir } from "../../src/engines/bao-profile";
 import { chooseChromeProfile, ChromeProfileQuestion, openOrFallBack, pickLine, RoutesFailed, signInLine, type BrowserPlan } from "../../src/engines/browser-pick";
 import { BOUND_REASON } from "../../src/engines/bound-sign-in";
 import { McpClient } from "../../src/eval/mcp-client";
 import { launchOwnedChrome, pidsForDataDir, pinTestBrowser, resolveNormalChrome } from "../../src/launch";
+import { runWorkflow } from "../../src/mcp/catalog";
 import { openWorkflowBrowser, settingsProfileQuestion } from "../../src/engines/workflow-browser";
 import { Library } from "../../src/v1/store";
 import { chromeProfiles, type ProfileNames } from "../support/chrome-profiles";
@@ -85,6 +87,70 @@ test("a saved workflow on a Chrome copy or Running Chrome uses the named or Sett
     await assert.rejects(openWorkflowBrowser({ browser, home: root, site: "about:blank", sourceRoot: root, directory: "Profile 2", profile: "Profile 9" }),
       /^Error: Chrome has no profile "Profile 9" in .+\. Choose one of: "Default" \(Alex\); "Profile 2" \(Work\)\.$/);
   }
+});
+
+test("a run_workflow that fails while choosing a profile names the route and folder Bao tried", async (t) => {
+  const root = await chromeRoot(t, { Default: { name: "Alex", user_name: "alex@example.test" }, "Profile 2": { name: "Work" } });
+  const home = await mkdtemp(path.join(tmpdir(), "bao-run-miss-"));
+  const previous = process.env.BAO_AGENT_BROWSER_PROFILE_ROOT;
+  process.env.BAO_AGENT_BROWSER_PROFILE_ROOT = root;
+  t.after(async () => {
+    if (previous === undefined) delete process.env.BAO_AGENT_BROWSER_PROFILE_ROOT;
+    else process.env.BAO_AGENT_BROWSER_PROFILE_ROOT = previous;
+    await rm(home, { recursive: true, force: true });
+  });
+  const library = new Library(home);
+  library.save(testWorkflow({ id: "hello", startUrl: "about:blank", steps: [] }));
+  const chrome = resolveNormalChrome();
+  const tried = (route: string, folder: string) =>
+    `Browser: ${route}, named by the agent, did not open. Chrome app: ${chrome}. Profile: "${folder}" in ${root}.`;
+
+  const missing = await runWorkflow(library, { id: "hello", browser: "copy", profile: "Profile 9", why: "named by the agent" });
+  assert.equal(missing.outcome, "failed");
+  assert.match(missing.reason ?? "", /Chrome has no profile "Profile 9"/);
+  assert.equal(missing.browser?.[0], tried("Chrome copy", "Profile 9"));
+
+  library.updateSettings({ chromeProfile: "Profile 9" });
+  const stale = await runWorkflow(library, { id: "hello", browser: "current", why: "named by the agent" });
+  assert.match(stale.reason ?? "", /Pick it again in Bao Settings/);
+  assert.equal(stale.browser?.[0], tried("Running Chrome over remote debugging", "Profile 9"));
+
+  library.updateSettings({ chromeProfile: undefined });
+  const asked = await runWorkflow(library, { id: "hello", browser: "copy", why: "named by the agent" });
+  assert.match(asked.reason ?? "", /so Bao opened nothing/);
+  assert.equal(asked.browser, undefined, "a profile question is not a failed open");
+
+  try {
+    await chmod(root, 0o000);
+    const denied = await runWorkflow(library, { id: "hello", browser: "copy", profile: "Default", why: "named by the agent" });
+    assert.match(denied.reason ?? "", /macOS did not let Bao read Google Chrome's folder/);
+    assert.equal(denied.browser?.[0], tried("Chrome copy", "Default"));
+  } finally {
+    await chmod(root, 0o700);
+  }
+});
+
+test("an app replay that fails while choosing a profile names the route the owner picked", async (t) => {
+  pinTestBrowser();
+  const root = await chromeRoot(t, { Default: { name: "Alex" }, "Profile 2": { name: "Work" } });
+  const home = await mkdtemp(path.join(tmpdir(), "bao-app-miss-"));
+  const app = await startApp({ home, chromeProfilesRoot: root, baoProfile: path.join(home, "chrome-profile"), extensionHost: false });
+  t.after(async () => {
+    await app.close();
+    await rm(home, { recursive: true, force: true });
+  });
+  app.library.updateSettings({ chromeProfile: "Profile 9" });
+  app.library.save(testWorkflow({ id: "hello", startUrl: "about:blank", steps: [] }));
+  const response = await fetch(`http://127.0.0.1:${app.port}/api/replay`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ id: "hello", browser: "copy", args: {} }),
+  });
+  const body = await response.json() as { error?: string };
+  assert.equal(response.status, 500);
+  assert.match(body.error ?? "", /^Browser: Chrome copy, picked in the Bao app, did not open\. Chrome app: .+ Profile: "Profile 9" in .+\./);
+  assert.match(body.error ?? "", /Pick it again in Bao Settings/);
+  assert.doesNotMatch(body.error ?? "", /named by the agent/);
 });
 
 test("the sign-in import line says what Bao read and wrote, a wall retry, or why it could not read the profile", () => {

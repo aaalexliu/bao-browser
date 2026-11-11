@@ -35,9 +35,9 @@ import { openReplayVideo } from "../v1/replay-video";
 import { pageEngineName } from "../engines/agent-browser";
 import { chromeProfilesRoot as systemChromeProfilesRoot, listChromeProfiles } from "../engines/chrome-profile-copy";
 import { browserChoice, DEFAULT_BROWSER, type BrowserChoice } from "../browser-choice";
-import { defaultRoute, type RouteWhy } from "../engines/browser-pick";
+import { ChromeProfileQuestion, defaultRoute, PICKED_IN_APP, type RouteWhy } from "../engines/browser-pick";
 import { BOUND_REASON, boundInProfiles, ownerBoundSites, ownerProfileDirs, purgeBoundSites } from "../engines/bound-sign-in";
-import { navigateWorkflowBrowser, openWorkflowBrowser, ownerPrompts, releaseWorkflowBrowser, settingsProfileQuestion, showWorkflowPage, workflowMovesFiles, type WorkflowBrowser } from "../engines/workflow-browser";
+import { navigateWorkflowBrowser, openWorkflowBrowser, ownerPrompts, planWorkflowBrowser, releaseWorkflowBrowser, settingsProfileQuestion, showWorkflowPage, triedPickLine, workflowMovesFiles, type WorkflowBrowser } from "../engines/workflow-browser";
 import { capabilityReport, type HelperStatus } from "../helper-capabilities";
 import { bundledHelperApp, MacOsHelper } from "../proxy/os-macos";
 import { cursorAccountHeal, cursorAccountModelLabel, readCursorAccount } from "../v1/cursor-account";
@@ -1189,7 +1189,7 @@ export async function startApp(opts: {
         const movesFiles = workflowMovesFiles(workflow);
         const sourceRoot = profileSourceRoot ?? process.env.BAO_AGENT_BROWSER_PROFILE_ROOT;
         const settingsProfile = settingsDirectory();
-        const chosen = picked && defaultRoute(picked, picked === DEFAULT_BROWSER ? "the default" : "named by the agent", movesFiles);
+        const chosen = picked && defaultRoute(picked, picked === DEFAULT_BROWSER ? "the default" : PICKED_IN_APP, movesFiles);
         const boundDirs = ownerProfileDirs(sourceRoot ?? chromeUserData, settingsProfile);
         // A named copy is not rewritten here. The planner still sends a bound site to running Chrome, and a remote-debugging failure opens the copy. Only a named Bao profile becomes running Chrome here, so that failure opens the app's own profile.
         const route: { browser: BrowserChoice; why: RouteWhy } | undefined = chosen?.browser === "bao" && !movesFiles && boundInProfiles(workflow.startUrl, boundDirs)
@@ -2935,6 +2935,7 @@ async function runRecorded(
     return result;
   }
   const session = await openReplay(library, workflow.id, replays, profileDir, browser, workflow.startUrl, workflowMovesFiles(workflow), boundSites ?? browser?.boundSites);
+  const withPick = (stored: Parameters<Library["saveRun"]>[0]) => session.pick ? { ...stored, browser: session.pick } : stored;
   let paused = false;
   try {
     const page = session.page;
@@ -2975,12 +2976,12 @@ async function runRecorded(
         // The desktop waits. The proof scores the pause and must not sit on a bot wall.
         holdForPerson: process.env.BAO_PROOF_PAGE !== "1",
         onPause: (partial) => {
-          library.saveRun(persistedRun(partial, workflow, args, {
+          library.saveRun(withPick(persistedRun(partial, workflow, args, {
             promotion: undefined,
             recorded: { wrote: false },
             videoStartedAt,
             secretList,
-          }));
+          })));
         },
       } satisfies ReplayOptions);
     } finally {
@@ -2995,8 +2996,7 @@ async function runRecorded(
     }
     const promotion = recordProvisional(library, workflow, result.heals);
     result.pageEngine = engineName;
-    const saved = persistedRun(result, workflow, args, { promotion, recorded, videoStartedAt, secretList });
-    library.saveRun(saved);
+    library.saveRun(withPick(persistedRun(result, workflow, args, { promotion, recorded, videoStartedAt, secretList })));
     paused = result.status === "paused";
     if (!paused) clearPendingPrompt(library.root);
     const hold = Number(process.env.BAO_REPLAY_HOLD_MS || 0);
@@ -3042,9 +3042,15 @@ async function openReplay(
     replays.delete(id);
   }
   if (browser) {
-    const session = await openWorkflowBrowser({ browser: browser.choice, home: library.root, site, sourceRoot: browser.sourceRoot, directory: library.settings().chromeProfile,
+    const options = { browser: browser.choice, home: library.root, site, sourceRoot: browser.sourceRoot, directory: library.settings().chromeProfile,
       why: browser.why, movesFiles, extensionRoute: library.settings().runningChromeExtension === true,
-      fallback: async () => { await browser.closeSignIn(); return openReplay(library, id, replays, browser.appProfile, undefined, site, false, browser.boundSites); } }).catch((error: unknown) => { throw settingsProfileQuestion(error); });
+      fallback: async () => { await browser.closeSignIn(); return openReplay(library, id, replays, browser.appProfile, undefined, site, false, browser.boundSites); } };
+    const plan = await planWorkflowBrowser(options).catch((error: unknown) => {
+      if (error instanceof ChromeProfileQuestion) throw settingsProfileQuestion(error);
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`${triedPickLine(options)} ${message}`, { cause: error });
+    });
+    const session = await openWorkflowBrowser(options, plan);
     replays.set(id, session);
     return session;
   }

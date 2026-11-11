@@ -12,7 +12,7 @@ import type { PersonPrompts } from "../v1/browser-driver";
 import type { WorkflowStep } from "../v1/schema";
 import { chromeProfilesRoot, openCopiedChromeForProxy } from "./chrome-profile-copy";
 import { baoAgentProfileDir, openBaoChromeForProxy, type SignInImport } from "./bao-profile";
-import { baoPick, boundOpenPlan, boundRoute, chooseChromeProfile, ChromeProfileQuestion, fallbackPlan, fallsBack, openOrFallBack, RUNNING_CHROME_FALLBACK, signInSource, type BrowserPick, type BrowserPlan, type ChosenProfile, type RouteWhy } from "./browser-pick";
+import { baoPick, boundOpenPlan, boundRoute, chromeApp, chooseChromeProfile, ChromeProfileQuestion, failedPickLine, fallbackPlan, fallsBack, openOrFallBack, RUNNING_CHROME_FALLBACK, signInSource, type BrowserPick, type BrowserPlan, type ChosenProfile, type RouteWhy } from "./browser-pick";
 import { purgeBoundSites } from "./bound-sign-in";
 
 interface BrowserPage {
@@ -104,13 +104,18 @@ export interface WorkflowBrowserOptions {
   fallback?: () => Promise<WorkflowBrowser>;
 }
 
+/** The Chrome folder a workflow run reads: the caller's root, then the fixture root, then Chrome's own folder. A pinned test browser with none of those is refused, so that run never reads the owner's Chrome. */
+export function workflowChromeRoot(options: WorkflowBrowserOptions): string {
+  const sourceRoot = options.sourceRoot ?? process.env.BAO_AGENT_BROWSER_PROFILE_ROOT;
+  if (process.env.BAO_TEST_BROWSER && !sourceRoot) throw new Error("tests must supply a throwaway Chrome profile source");
+  return sourceRoot ?? chromeProfilesRoot();
+}
+
 /** The route and Chrome profile for a saved workflow run, settled before Bao opens anything. */
 export async function planWorkflowBrowser(options: WorkflowBrowserOptions): Promise<BrowserPlan> {
   const why = options.why ?? "named by the agent";
   if (options.browser === "current" && options.extensionRoute) return { route: "extension", why };
-  const sourceRoot = options.sourceRoot ?? process.env.BAO_AGENT_BROWSER_PROFILE_ROOT;
-  if (process.env.BAO_TEST_BROWSER && !sourceRoot) throw new Error("tests must supply a throwaway Chrome profile source");
-  const root = sourceRoot ?? chromeProfilesRoot();
+  const root = workflowChromeRoot(options);
   // Bao's own profile, and a run that did not name a route, work without Chrome's profiles: Bao's profile opens with no sign-in import.
   const fallback = fallsBack(options.browser, why);
   const source = options.browser === "bao" || fallback ? await baoSource(root, options.profile, options.directory)
@@ -122,6 +127,18 @@ export async function planWorkflowBrowser(options: WorkflowBrowserOptions): Prom
   }
   if (options.browser === "bao") return { route: "bao", why, profile: source.profile };
   return { route: options.browser, why, profile: source.profile };
+}
+
+/**
+ * What Bao tried when choosing the profile failed before a plan existed. The folder is the one the agent named, or the Settings
+ * pick. The root is the one the planner uses. A pinned test browser with no supplied root does not name the owner's Chrome.
+ */
+export function triedPickLine(options: WorkflowBrowserOptions): string {
+  const why = options.why ?? "named by the agent";
+  const directory = options.profile ?? options.directory;
+  let root: string | undefined;
+  try { root = workflowChromeRoot(options); } catch { root = undefined; }
+  return failedPickLine(options.browser, why, chromeApp(), directory && root ? { directory, root } : undefined);
 }
 
 /**
@@ -200,7 +217,7 @@ async function openPlanned(options: WorkflowBrowserOptions, plan: BrowserPlan): 
   const launch = { home: options.home, site: options.site };
   const chrome = plan.route === "bao"
     ? await openBaoChromeForProxy({ ...launch, ...signInSource(plan), boundSites: purgeBoundSites(
-        options.sourceRoot ?? process.env.BAO_AGENT_BROWSER_PROFILE_ROOT ?? chromeProfilesRoot(), options.directory,
+        workflowChromeRoot(options), options.directory,
         plan.profile ? path.join(plan.profile.root, plan.profile.directory) : undefined) })
     : await openCopiedChromeForProxy({ ...launch, sourceRoot: plan.profile.root, directory: plan.profile.directory, restoreTabs: false });
   try {
