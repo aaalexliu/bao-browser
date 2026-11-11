@@ -613,7 +613,6 @@ export function captureStartUrl(events: { op?: string; beforeUrl?: string; list?
 const WHOLE_VALUE_MAX = 16;
 
 function columnStaysWhole(column: OutputColumn, rows: Record<string, string>[]): boolean {
-  if (column.type === "number") return true;
   if (column.type === "url") return false;
   return rows.every((row) => (row[column.name] ?? "").length <= WHOLE_VALUE_MAX);
 }

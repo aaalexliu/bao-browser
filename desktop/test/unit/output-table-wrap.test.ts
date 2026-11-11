@@ -60,6 +60,28 @@ test("short output columns stay whole and long text does not", () => {
   assert.match(marked, /<td class="output-whole">£5&lt;6<\/td>/);
 });
 
+test("a long number column wraps while short numbers stay whole", () => {
+  const html = outputsHtml("run-1", [{
+    name: "counts",
+    label: "counts",
+    type: "table",
+    columns: [
+      { name: "count", type: "number" },
+      { name: "rating", type: "number" },
+      { name: "reviews", type: "number" },
+    ],
+    rows: [{
+      count: "1280",
+      rating: "4.5",
+      reviews: "1,234 customer reviews in the last 30 days",
+    }],
+  }]);
+  assert.match(html, /<td class="output-whole">1280<\/td>/);
+  assert.match(html, /<td class="output-whole">4\.5<\/td>/);
+  assert.match(html, /<td>1,234 customer reviews in the last 30 days<\/td>/);
+  assert.doesNotMatch(html, /class="output-whole"[^<]*>1,234 customer reviews/);
+});
+
 test("the running output table keeps ratings and prices whole in a narrow window", { timeout: 60_000 }, async () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-output-wrap-"));
   const app = await startApp({
