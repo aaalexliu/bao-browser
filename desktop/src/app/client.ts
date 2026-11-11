@@ -2680,8 +2680,8 @@ function zoomShot(host: HTMLElement, img: HTMLImageElement, box: string): void {
   const [x, y, width, height, viewW, viewH] = box.split(",").map(Number);
   if (![x, y, width, height, viewW, viewH].every((n) => Number.isFinite(n)) || viewW <= 0 || viewH <= 0 || width <= 0 || height <= 0) return;
   const aspect = viewW / viewH;
-  const pad = 160;
-  const cropW = Math.min(viewW, Math.max(width + pad * 2, (height + pad * 2) * aspect, 640));
+  const pad = 64;
+  const cropW = Math.min(viewW, Math.max(width + pad * 2, (height + pad * 2) * aspect, 360));
   const cropH = cropW / aspect;
   const cropX = Math.min(Math.max(x + width / 2 - cropW / 2, 0), viewW - cropW);
   const cropY = Math.min(Math.max(y + height / 2 - cropH / 2, 0), viewH - cropH);

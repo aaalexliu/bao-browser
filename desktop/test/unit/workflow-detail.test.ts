@@ -326,17 +326,30 @@ test("the Inspector zooms a boxed step picture around its target and keeps the m
   try {
     const fixture = await browser.newPage({ viewport: { width: 1280, height: 820 } });
     await fixture.goto(`http://127.0.0.1:${app.port}/fixture`);
-    const field = (await fixture.locator("#username").boundingBox())!;
+    await fixture.evaluate(() => {
+      for (const [id, x, y] of [["top-left", 110, 140], ["center", 620, 400], ["bottom-right", 1240, 790]] as const) {
+        const button = document.createElement("button");
+        button.id = id;
+        button.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:36px;height:20px`;
+        document.body.append(button);
+      }
+    });
+    const targets = await Promise.all(["username", "top-left", "center", "bottom-right"].map(async (id) => ({ id, box: (await fixture.locator(`#${id}`).boundingBox())! })));
     const shots = path.join(dirs.home, "shots", "workflows", "zoom");
     mkdirSync(shots, { recursive: true });
     const png = await fixture.screenshot();
-    writeFileSync(path.join(shots, "name.png"), png);
-    writeFileSync(path.join(shots, "name.viewport.png"), png);
+    for (const { id } of targets) {
+      writeFileSync(path.join(shots, `${id}.png`), png);
+      writeFileSync(path.join(shots, `${id}.viewport.png`), png);
+    }
     await fixture.close();
-    const targetBox = { x: field.x, y: field.y, width: field.width, height: field.height, viewport: { width: 1280, height: 820 } };
     app.library.save(testWorkflow({
       id: "zoom", name: "Zoom", startUrl: "/fixture",
-      steps: [{ id: "name", index: 0, action: "click", timeoutMs: 100, caption: { text: "Click Username", targetBox }, target: targetFor({ surface: "dom", path: [], role: "textbox", name: "Username" }) }],
+      steps: targets.map(({ id, box }, index) => ({
+        id, index, action: "click", timeoutMs: 100,
+        caption: { text: `Click ${id}`, targetBox: { ...box, viewport: { width: 1280, height: 820 } } },
+        target: targetFor({ surface: "dom", path: [], role: "button", id }),
+      })),
     }));
     for (const theme of ["light", "dark"]) {
       const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
@@ -344,19 +357,27 @@ test("the Inspector zooms a boxed step picture around its target and keeps the m
       await page.goto(`http://127.0.0.1:${app.port}/`);
       await page.locator("#rail [data-place=workflows]").click();
       await page.locator('[data-open-workflow="zoom"]').click();
-      const picture = page.locator('[data-step-panel="name"] .wf-picture');
-      await picture.locator(".shot-box").waitFor();
-      const frame = (await picture.boundingBox())!;
-      const image = (await picture.locator("img").boundingBox())!;
-      const mark = (await picture.locator(".shot-box").boundingBox())!;
-      assert.ok(image.width > frame.width * 1.5, `the picture is not zoomed: ${image.width} in ${frame.width}`);
-      assert.ok(Math.abs(frame.width / frame.height - 1280 / 820) < 0.02);
-      const scale = image.width / 1280;
-      assert.ok(Math.abs((mark.x - image.x) / scale - field.x) < 3, theme);
-      assert.ok(Math.abs((mark.y - image.y) / scale - field.y) < 3, theme);
-      assert.ok(Math.abs(mark.width / scale - field.width) < 3, theme);
-      assert.ok(mark.x >= frame.x && mark.x + mark.width <= frame.x + frame.width, theme);
-      assert.ok(mark.y >= frame.y && mark.y + mark.height <= frame.y + frame.height, theme);
+      for (const { id, box } of targets) {
+        await page.locator(`[data-workflow-step="${id}"]`).click();
+        const picture = page.locator(`[data-step-panel="${id}"] .wf-picture`);
+        await picture.locator(".shot-box").waitFor();
+        const frame = (await picture.boundingBox())!;
+        const image = (await picture.locator("img").boundingBox())!;
+        const mark = (await picture.locator(".shot-box").boundingBox())!;
+        assert.ok(image.width > frame.width * 1.5, `the picture is not zoomed: ${image.width} in ${frame.width}`);
+        assert.ok(Math.abs(frame.width / frame.height - 1280 / 820) < 0.02);
+        const scale = image.width / 1280;
+        if (box.width <= 36) assert.ok(scale >= 0.8, `the control is too small to read: scale ${scale}`);
+        assert.deepEqual(await picture.evaluate((node) => {
+          const style = getComputedStyle(node);
+          return { border: style.borderTopWidth, radius: style.borderTopLeftRadius };
+        }), { border: "1px", radius: "6px" }, theme);
+        assert.ok(Math.abs((mark.x - image.x) / scale - box.x) < 3, `${theme} ${id}`);
+        assert.ok(Math.abs((mark.y - image.y) / scale - box.y) < 3, `${theme} ${id}`);
+        assert.ok(Math.abs(mark.width / scale - box.width) < 3, `${theme} ${id}`);
+        assert.ok(mark.x >= frame.x && mark.x + mark.width <= frame.x + frame.width, `${theme} ${id}`);
+        assert.ok(mark.y >= frame.y && mark.y + mark.height <= frame.y + frame.height, `${theme} ${id}`);
+      }
       await page.close();
     }
   } finally {

@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { Library } from "../../src/v1/store";
-import type { TrailEvent } from "../../src/v1/interpret";
+import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
 import { UI_EXTENSION, VIEWER_MIME } from "../../src/mcp/viewer";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
@@ -34,6 +34,14 @@ async function fixture(ui = false) {
   let ownerReady = false;
   const server = createServer((req, res) => {
     const url = new URL(req.url!, "http://fixture");
+    if (url.pathname === "/unnamed") {
+      res.end(`<!doctype html><title>Account room</title><h1>Account room</h1><button id="continue">Continue</button> <button id="unnamed" style="width:36px;height:20px" onclick="document.querySelector('#result').textContent='Done'"></button><p id="result">Ready</p>`);
+      return;
+    }
+    if (url.pathname === "/checkbox") {
+      res.end(`<!doctype html><title>Preferences</title><h1>Preferences</h1><input type="checkbox" style="display:block;margin:24px 0 0 24px;width:16px;height:16px">`);
+      return;
+    }
     if (url.pathname === "/stores") {
       const content = url.searchParams.has("interactive")
         ? '<button data-testid="store-button" onclick="document.querySelector(\'#selected\').textContent=\'Selected B\'"><span id="store-b">Store B</span></button>'
@@ -172,6 +180,73 @@ test("a failed action with only viewport movement stays saveable after retry", {
   }
 });
 
+test("an unnamed recorded click keeps the plain caption", { timeout: 30_000 }, async () => {
+  const f = await fixture();
+  const profile = path.join(f.root, "unnamed-profile");
+  const context = await launchOwnedChrome({ userDataDir: profile, headless: true });
+  try {
+    const page = context.pages()[0]!;
+    const endpoint = await readDevToolsActivePort(path.join(profile, "DevToolsActivePort"));
+    const session = await context.newCDPSession(page);
+    const { targetInfo } = await session.send("Target.getTargetInfo");
+    await session.detach();
+    const workflow = new AgentBrowserWorkflow(f.home, "run-unnamed", async () => ({
+      ...endpoint, targetId: targetInfo.targetId, targetIds: [targetInfo.targetId],
+    }));
+    const success = { stdout: "", stderr: "", exitCode: 0 };
+    await workflow.record("open", [f.url + "unnamed"], "open", async () => {
+      await page.goto(f.url + "unnamed");
+      return success;
+    }, () => false);
+    await workflow.record("click", ["#unnamed"], "click", async () => {
+      await page.locator("#unnamed").click();
+      return success;
+    }, () => false);
+    assert.match(workflow.finish(), /Saved workflow:/);
+    const saved = f.library.list().workflows[0]!;
+    assert.equal(saved.steps[0]!.caption.text, "Click the button");
+    assert.equal(saved.steps[0]!.caption.citation, undefined);
+    assert.equal(locatorValue(stepTarget(saved.steps[0]), "css"), "#unnamed");
+    assert.equal((stepLocators(saved.steps[0]) ?? []).some((locator) => locator.kind === "anchor"), false);
+    assert.equal(await page.locator("#result").innerText(), "Done");
+  } finally {
+    await context.close();
+    await f.close();
+  }
+});
+
+test("an unnamed checkbox with only a nearby anchor is not saved", { timeout: 30_000 }, async () => {
+  const f = await fixture();
+  const profile = path.join(f.root, "checkbox-profile");
+  const context = await launchOwnedChrome({ userDataDir: profile, headless: true });
+  try {
+    const page = context.pages()[0]!;
+    const endpoint = await readDevToolsActivePort(path.join(profile, "DevToolsActivePort"));
+    const session = await context.newCDPSession(page);
+    const { targetInfo } = await session.send("Target.getTargetInfo");
+    await session.detach();
+    const workflow = new AgentBrowserWorkflow(f.home, "run-checkbox", async () => ({
+      ...endpoint, targetId: targetInfo.targetId, targetIds: [targetInfo.targetId],
+    }));
+    const success = { stdout: "", stderr: "", exitCode: 0 };
+    const box = page.locator('input[type="checkbox"]');
+    await workflow.record("open", [f.url + "checkbox"], "open", async () => {
+      await page.goto(f.url + "checkbox");
+      return success;
+    }, () => false);
+    await workflow.record("click", ["input[type=checkbox]"], "click", async () => {
+      await box.click();
+      return success;
+    }, () => false);
+    assert.equal(await box.isChecked(), true);
+    assert.match(workflow.finish(), /an action had no durable target/);
+    assert.equal(f.library.list().workflows.length, 0);
+  } finally {
+    await context.close();
+    await f.close();
+  }
+});
+
 test("native ref capture saves a discoverable workflow that replays with new inputs after DOM reordering", { skip: !binary, timeout: 120_000 }, async () => {
   const f = await fixture();
   try {
@@ -248,6 +323,29 @@ test("native clicks never substitute a structural ancestor for an unaddressable 
     const replay = await f.request("tools/call", { name: "run_workflow", arguments: { id: workflow.id } });
     assert.equal((JSON.parse(text(replay)) as { status: string }).status, "ok", text(replay));
   } finally { await f.close(); }
+});
+
+test("a locator-less element postcondition fails the save", async () => {
+  const home = await mkdtemp(path.join(tmpdir(), "bao-element-check-"));
+  try {
+    const workflow = interpret([{
+      id: "expect",
+      ts: 1,
+      kind: "act",
+      op: "verify",
+      performed: false,
+      identity: { surface: "dom", role: "button", path: [] },
+    }], { id: "wf-element", name: "Element check", startUrl: "https://example.test/" });
+    const step = workflow.steps[0];
+    assert.ok(step);
+    assert.equal(step.action, "verify");
+    const check = stepCheck(step);
+    assert.equal(check?.kind, "element");
+    assert.equal(check && "locators" in check ? check.locators.length : 1, 0);
+    assert.throws(() => new Library(home).save(workflow), /check /);
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
 });
 
 test("trial replay accepts only an explicit playwright driver and still refuses retired drivers", () => {
