@@ -539,9 +539,10 @@ for (const outcome of ["failed-task", "failed-command", "owner-wait"] as const) 
       const waiting = await c.call("wait_for_owner", ["1"]);
       assert.equal(waiting.isError, false);
       const reply = waiting.structuredContent as { summary: string; outcome: string; instruction: string; browser: string[] };
-      assert.equal(reply.outcome, "waiting");
+      assert.equal(reply.outcome, "recording");
+      assert.match(reply.instruction, /The wait is over and the run is recording/);
       assert.deepEqual(reply.browser, [COPY_DEFAULT]);
-      assert.deepEqual(waiting.content!.map((block) => block.text), [reply.summary, `Run ${f.library.listRuns()[0]!.id} · waiting`, reply.instruction, COPY_DEFAULT],
+      assert.deepEqual(waiting.content!.map((block) => block.text), [reply.summary, `Run ${f.library.listRuns()[0]!.id} · recording`, reply.instruction, COPY_DEFAULT],
         "text clients get words, the run id, and the browser Bao used, not the reply's JSON");
       assert.equal(f.library.listRuns()[0]!.status, "recording", "a page that is not a wall does not stay needs_human after the wait");
     }

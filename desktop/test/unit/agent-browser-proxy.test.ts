@@ -1070,6 +1070,28 @@ test("a wait_for_owner on a normal page shows needs_human while it waits, then r
   } finally { await f.close(); }
 });
 
+test("a snapshot sign-in dialog stays waiting at the deadline, with the fallback, and the next click does not run", async (t) => {
+  const f = await fixture(t);
+  try {
+    await writeFile(path.join(f.root, "page.txt"), `- dialog "Verify it's you"\n  - StaticText "Enter the verification code we sent"\n  - textbox "Enter code" [ref=e1]\n`);
+    await f.proxy.execute("open", ["http://127.0.0.1/"], "copy");
+    const runId = f.proxy.activeRunId!;
+    const [waited] = await f.proxy.execute("wait_for_owner", ["40"], undefined, false, undefined, {}, runId);
+    const reply = JSON.parse(waited!.stdout) as { outcome: string; instruction: string };
+    assert.equal(reply.outcome, "waiting");
+    assert.equal(f.proxy.ownerPage?.url, "http://127.0.0.1/");
+    assert.equal(f.proxy.ownerPage?.title, "Fixture", "the page URL and title are not a wall; the snapshot is");
+    assert.ok(reply.instruction.includes(`{"command":"close","run_id":"${runId}"}`), reply.instruction);
+    assert.ok(reply.instruction.includes('"browser":"current"'), reply.instruction);
+    assert.ok(reply.instruction.includes("Bao does not switch on its own."), reply.instruction);
+    const sent = (await f.calls()).length;
+    const [blocked] = await f.proxy.execute("click", ["@e1"], undefined, false, undefined, {}, runId);
+    assert.equal((JSON.parse(blocked!.stdout) as { outcome: string }).outcome, "halted");
+    assert.equal((await f.calls()).length, sent, "a snapshot dialog deadline does not let the next click run");
+    assert.equal(new Library(path.join(f.root, "home")).readRun(runId).status, "needs_human");
+  } finally { await f.close(); }
+});
+
 test("a wall wait at its deadline still returns waiting and the next click does not run", async (t) => {
   const f = await fixture(t);
   try {

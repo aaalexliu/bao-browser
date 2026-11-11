@@ -177,8 +177,11 @@ type Opened = { pick: BrowserPick } & (
 type Session = SessionData & Opened;
 type OwnedChrome = Awaited<ReturnType<typeof openCopiedChromeForProxy>> | Awaited<ReturnType<typeof openBaoChromeForProxy>>;
 
+/** A page the owner wait is on. `wall` is set when Bao recognized a sign-in or check, by URL and title or by one snapshot, without keeping that snapshot. */
+type WaitOn = { targetId: string; page: OwnerPage; reopen?: string; wall?: true };
+
 /** The owner wait on a live or closing session. Recording status follows this value. */
-type OwnerWait = "off" | "pending" | { targetId: string; page: OwnerPage; reopen?: string };
+type OwnerWait = "off" | "pending" | WaitOn;
 
 type CloseQueue = { n: number };
 
@@ -395,7 +398,7 @@ export class AgentBrowserProxy {
     return this.waitOf(session) !== "off" && !this.removingOf(session) && Date.now() - (session.ownerTouched ?? Date.now()) >= OWNER_WAIT_LIMIT_MS;
   }
 
-  private wallOf(session: Session): { targetId: string; page: OwnerPage; reopen?: string } | undefined {
+  private wallOf(session: Session): WaitOn | undefined {
     const wait = this.waitOf(session);
     return wait !== "off" && wait !== "pending" ? wait : undefined;
   }
@@ -597,7 +600,7 @@ export class AgentBrowserProxy {
         }
         if (stop && read && (this.waitOf(session) === "off" || this.waitOf(session) === "pending")) {
           if (this.waitOf(session) === "off") session.ownerSince = session.ownerTouched = Date.now();
-          this.setWait(session, stop);
+          this.setWait(session, await this.withWall(session, stop));
           session.ownerPage = read.page;
           await this.ownerBanner(session, read.targetId, true).catch(() => undefined);
         }
@@ -951,8 +954,28 @@ export class AgentBrowserProxy {
   }
 
   /** The page Running Chrome should open, stored on the wall so a later retry opens that page. */
-  private stopped(session: Session, active: { targetId: string; page: OwnerPage }, openedSite?: string): { targetId: string; page: OwnerPage; reopen?: string } {
+  private stopped(session: Session, active: { targetId: string; page: OwnerPage }, openedSite?: string): WaitOn {
     return { targetId: active.targetId, page: active.page, reopen: this.pageToReopen(session, active.page, openedSite) };
+  }
+
+  /**
+   * Records a recognized wall on the wait `wait_for_owner` is about to set. A URL or title wall needs no snapshot.
+   * An in-page dialog needs one snapshot read, and that text is not stored.
+   */
+  private async withWall(session: Session, wait: WaitOn): Promise<WaitOn> {
+    if (wait.wall === true || ownerWall(wait.page) !== null || await this.snapshotWall(session)) return { ...wait, wall: true };
+    return wait;
+  }
+
+  /** One snapshot, only to tell an in-page sign-in or verification dialog from a normal page. A failed read is not a wall. */
+  private async snapshotWall(session: Session): Promise<boolean> {
+    try {
+      const read = await this.run(session, "snapshot", [], 2000);
+      return read.exitCode === 0 && pageWall(read.stdout);
+    } catch (error) {
+      if (session.abort.signal.aborted) throw error;
+      return false;
+    }
   }
 
   private wallWords(session: Session): string {
@@ -1294,7 +1317,7 @@ export class AgentBrowserProxy {
   /** A non-wall deadline ends the wait and says recording. A recognized wall stays waiting. */
   private async stillWaiting(session: Session): Promise<AgentBrowserCommandResult[]> {
     const wait = this.waitOf(session);
-    const wall = wait !== "off" && wait !== "pending" && ownerWall(wait.page) !== null;
+    const wall = wait !== "off" && wait !== "pending" && (wait.wall === true || ownerWall(wait.page) !== null);
     if (!wall && wait !== "off" && wait !== "pending") await this.ownerBanner(session, wait.targetId, false).catch(() => undefined);
     if (session.abort.signal.aborted) return this.ownerClosed(session);
     if (!wall) this.setWait(session, "off");
@@ -1320,7 +1343,7 @@ export class AgentBrowserProxy {
             const active = await this.activePage(session);
             if (!active) return this.ownerClosed(session);
             if (this.waitOf(session) === "off") session.ownerSince = session.ownerTouched = Date.now();
-            this.setWait(session, this.stopped(session, active));
+            this.setWait(session, await this.withWall(session, this.stopped(session, active)));
             session.ownerPage = active.page;
             await this.ownerBanner(session, active.targetId, true);
           }
