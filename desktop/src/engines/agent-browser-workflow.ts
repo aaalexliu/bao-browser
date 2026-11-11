@@ -73,53 +73,6 @@ function effectState(observation: Observation): string {
 
 const PAGE_FUNCTIONS = `const dumpPage = ${dumpPage.toString()}; const leafTexts = ${leafTexts.toString()};`;
 
-function flat(value: string | undefined): string {
-  return (value || "").replace(/\s+/g, " ").trim();
-}
-
-function containsBox(
-  outer: { x: number; y: number; w: number; h: number },
-  inner: { x: number; y: number; w: number; h: number },
-): boolean {
-  return outer.x <= inner.x + 1 && outer.y <= inner.y + 1
-    && outer.x + outer.w + 1 >= inner.x + inner.w
-    && outer.y + outer.h + 1 >= inner.y + inner.h;
-}
-
-function namesAnchor(anchor: { role: string; name?: string; text?: string; testId?: string; id?: string }, node: DomDump): boolean {
-  if (anchor.testId && node.testId === anchor.testId) return true;
-  if (anchor.id && node.id === anchor.id) return true;
-  if (flat(anchor.role).toLowerCase() !== flat(node.role).toLowerCase()) return false;
-  const text = flat(anchor.text);
-  const name = flat(anchor.name);
-  if (text && [node.text, node.name].some((value) => flat(value) === text)) return true;
-  return !!name && [node.name, node.text, node.label].some((value) => flat(value) === name);
-}
-
-function ownVisibleText(node: DomDump, nodes: DomDump[]): boolean {
-  const shown = flat(node.name || node.text);
-  const box = node.bbox;
-  if (!shown || !box || box.w <= 0 || box.h <= 0) return false;
-  return !nodes.some((other) => {
-    if (other.handle === node.handle || other.hidden) return false;
-    const piece = flat(other.name || other.text);
-    const otherBox = other.bbox;
-    if (!piece || piece === shown || !shown.includes(piece) || !otherBox || otherBox.w <= 0 || otherBox.h <= 0) return false;
-    return containsBox(box, otherBox);
-  });
-}
-
-function captionNeighbor(anchor: { kind: string; anchor?: { role: string; name?: string; text?: string; testId?: string; id?: string } }, nodes: DomDump[], target: DomDump): boolean {
-  if (anchor.kind !== "anchor" || !anchor.anchor) return false;
-  const neighbor = nodes.find((node) => namesAnchor(anchor.anchor!, node));
-  const box = neighbor?.bbox;
-  const targetBox = target.bbox;
-  if (!neighbor || neighbor.handle === target.handle || neighbor.hidden || !box || !targetBox) return false;
-  if (box.w <= 0 || box.h <= 0 || targetBox.w <= 0 || targetBox.h <= 0) return false;
-  if (containsBox(box, targetBox) || containsBox(targetBox, box)) return false;
-  return ownVisibleText(neighbor, nodes);
-}
-
 function durableTarget(node: DomDump, page: PageDump): AgentBrowserReplayTarget | undefined {
   const { handle: _handle, bbox: _bbox, value: _value, checked: _checked, enabled: _enabled, hidden: _hidden, overlay: _overlay, inDialog: _dialog, ...identity } = node;
   if (identity.cssPath?.includes(":nth-of-type(")) delete identity.cssPath;
@@ -128,15 +81,9 @@ function durableTarget(node: DomDump, page: PageDump): AgentBrowserReplayTarget 
     const hit = matchLocator(locator, page.nodes);
     return hit !== undefined && page.nodes[hit.index]?.handle === node.handle;
   });
-  if (!locators.length) return undefined;
-  const boxes = page.nodes.map((item) => item.bbox || { x: 0, y: 0, w: 0, h: 0 });
-  const targetIndex = page.nodes.findIndex((candidate) => candidate.handle === node.handle);
-  const anchor = buildLocators(identity, page.nodes, boxes, targetIndex).find((locator) => locator.kind === "anchor");
-  const anchored = anchor && matchLocator(anchor, page.nodes, boxes);
-  if (anchor && anchored && page.nodes[anchored.index]?.handle === node.handle && captionNeighbor(anchor, page.nodes, node)) locators.push(anchor);
   const priority = ["testid", "css", "xpath", "role", "text", "anchor"];
   locators.sort((left, right) => priority.indexOf(left.kind) - priority.indexOf(right.kind));
-  return { url: page.url, identity, locators };
+  return locators.length ? { url: page.url, identity, locators } : undefined;
 }
 
 export class AgentBrowserWorkflow {
@@ -304,10 +251,6 @@ export class AgentBrowserWorkflow {
         if (workflow.steps.length !== this.events.length) throw new Error("an action could not be converted");
         workflow.driver = "playwright";
         workflow.replayed = false;
-        for (const step of workflow.steps) {
-          if (!("target" in step) || !step.target?.locators) continue;
-          step.target.locators = step.target.locators.filter((locator) => locator.kind !== "anchor");
-        }
         this.persist();
         if (this.reason) throw new Error(this.reason);
         new Library(this.home).save(workflow);
