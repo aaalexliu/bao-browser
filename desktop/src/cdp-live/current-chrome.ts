@@ -67,19 +67,16 @@ async function withConsent<T>(helper: CurrentChromeDeps["helper"], pid: number, 
       const press = presses < 3 && (!covered || again);
       const args = ["debug-allow", "--pid", String(pid)];
       if (press) args.push("--press");
-      let sawSheet = true;
       try {
         const hit = await helper.exec(args, 5000);
-        sawSheet = !!hit.found;
-        if (hit.pressed) await logAx(axLog, { what: "AXPress", role: "AXButton", name: "Allow", window: "Allow remote debugging?", at: new Date().toISOString(), via: "BaoOSHelper" });
+        if (hit.pressed) {
+          presses += 1;
+          lastPressAt = Date.now();
+          covered = true;
+          await logAx(axLog, { what: "AXPress", role: "AXButton", name: "Allow", window: "Allow remote debugging?", at: new Date().toISOString(), via: "BaoOSHelper" });
+        } else if (!hit.found) covered = false;
         pollError = undefined;
       } catch (error) { pollError = error; }
-      if (press) {
-        presses += 1;
-        lastPressAt = Date.now();
-        covered = true;
-      }
-      if (!sawSheet) covered = false;
       if (!finished) await new Promise((resolve) => setTimeout(resolve, 250));
     }
     return await pending;

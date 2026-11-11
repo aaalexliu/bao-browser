@@ -161,19 +161,22 @@ test("a sheet that stays up is pressed once", async () => {
 test("a leftover sheet does not block the next one, and a hold presses at most three times", async () => {
   const f = await fixture(true);
   try {
+    let polls = 0;
     let presses = 0;
     let firstPressAt = 0;
     let approve: () => void = () => undefined;
     const ready = new Promise<void>((resolve) => { approve = resolve; });
     f.deps.helper!.exec = async (args) => {
-      if (args[0] === "debug-allow" && args.includes("--press")) {
+      if (args[0] !== "debug-allow") return { ok: true };
+      polls += 1;
+      if (polls <= 4) return { ok: true, found: false, pressed: false };
+      if (args.includes("--press")) {
         presses += 1;
         if (presses === 1) firstPressAt = Date.now();
         else if (Date.now() - firstPressAt >= 1_000) approve();
         return { ok: true, found: true, pressed: true };
       }
-      if (args[0] === "debug-allow") return { ok: true, found: true, pressed: false };
-      return { ok: true };
+      return { ok: true, found: true, pressed: false };
     };
     f.deps.connect = async () => {
       const opened = await Promise.race([
