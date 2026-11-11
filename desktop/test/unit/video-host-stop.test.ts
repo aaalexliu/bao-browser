@@ -205,12 +205,12 @@ test("a host signal after the capture limit still points the run at the saved vi
     await session.call("tools/call", { name: "agent_browser", arguments: { command: "tab", args: ["new", `${pages.base}/task`], run_id: id } });
     const file = path.join(home, "videos", `${id}.mp4`);
     const ready = Date.now() + 20_000;
-    while (!existsSync(file) || (await stat(file)).size < 1000) {
-      assert.ok(Date.now() < ready, `capture limit wrote the video; videos=${existsSync(path.join(home, "videos")) ? (await readdir(path.join(home, "videos"))).join(",") : "missing"}`);
+    let size = 0;
+    while (size < 1000 || existsSync(`${file}.handoff.json`)) {
+      assert.ok(Date.now() < ready, `capture limit finished the video; videos=${existsSync(path.join(home, "videos")) ? (await readdir(path.join(home, "videos"))).join(",") : "missing"}`);
+      try { size = (await stat(file)).size; } catch { size = 0; }
       await wait(50);
     }
-    const settled = Date.now() + 3_000;
-    while (existsSync(`${file}.result.json`) && Date.now() < settled) await wait(50);
     for (const pid of pidsForDataDir(chrome.profile)) process.kill(pid, "SIGSTOP");
     const signaled = Date.now();
     session.child.kill("SIGTERM");

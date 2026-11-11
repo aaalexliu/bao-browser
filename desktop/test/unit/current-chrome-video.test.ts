@@ -359,10 +359,12 @@ require("node:fs").writeFileSync(process.argv.at(-1), Buffer.alloc(2000));
     await run.recordTab(cdp, "tab");
     await wait(200);
     emit();
-    const resultFile = path.join(home, "videos", `${run.id}.mp4.result.json`);
+    const file = path.join(home, "videos", `${run.id}.mp4`);
     const ready = Date.now() + 5000;
-    while (!existsSync(resultFile)) {
+    let size = 0;
+    while (size < 1000 || existsSync(`${file}.handoff.json`)) {
       assert.ok(Date.now() < ready, "capture limit finished the encode");
+      try { size = (await stat(file)).size; } catch { size = 0; }
       await wait(20);
     }
     abandonVideoOnHostStop();
@@ -370,7 +372,7 @@ require("node:fs").writeFileSync(process.argv.at(-1), Buffer.alloc(2000));
     assert.equal(saved.video, `${run.id}.mp4`);
     assert.equal(saved.videoTruncated, true);
     assert.equal(saved.videoUnavailable, undefined);
-    assert.ok((await stat(path.join(home, "videos", `${run.id}.mp4`))).size >= 1000);
+    assert.ok((await stat(file)).size >= 1000);
   } finally {
     if (previous === undefined) delete process.env.FFMPEG; else process.env.FFMPEG = previous;
     if (previousLimit === undefined) delete process.env.BAO_CDP_VIDEO_MAX_BYTES; else process.env.BAO_CDP_VIDEO_MAX_BYTES = previousLimit;
