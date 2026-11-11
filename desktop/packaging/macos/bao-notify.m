@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/stat.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -378,7 +379,11 @@ static void *accept_loop(void *unused) {
 }
 
 int bao_notify_prepare(const char *path) {
-    if (!path || !path[0] || strlen(path) >= sizeof sock_path) return -1;
+    if (!path || !path[0]) return -1;
+    if (strlen(path) >= sizeof sock_path) {
+        fprintf(stderr, "Unix socket path is %zu bytes (maximum %zu): %s\n", strlen(path), sizeof sock_path - 1, path);
+        return -1;
+    }
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) return -1;
     int flags = fcntl(fd, F_GETFD);
@@ -400,6 +405,7 @@ int bao_notify_prepare(const char *path) {
     }
     listen_fd = fd;
     snprintf(sock_path, sizeof sock_path, "%s", path);
+    atexit(bao_notify_stop);
     return 0;
 }
 
@@ -420,5 +426,13 @@ void bao_notify_stop(void) {
         close(listen_fd);
         listen_fd = -1;
     }
-    if (sock_path[0]) unlink(sock_path);
+    if (sock_path[0]) {
+        unlink(sock_path);
+        char *slash = strrchr(sock_path, '/');
+        if (slash) {
+            *slash = 0;
+            rmdir(sock_path);
+        }
+        sock_path[0] = 0;
+    }
 }
