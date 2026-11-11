@@ -30,6 +30,12 @@ export type BrowserPick = { why: RouteWhy } & (
   | { route: "extension" }
 );
 
+/** One route a run used, and the 1-based receipt step where that route started. */
+export interface RunRoute {
+  fromStep: number;
+  browser: BrowserPick;
+}
+
 /** The route and Chrome profile for a new session or workflow run, settled before Bao opens anything. */
 export type BrowserPlan = { why: RouteWhy } & (
   /** With `unread`, Bao imports no sign-ins and says why. `missed` is why running Chrome failed; the import still runs, and the line is separate from the saved pick. */

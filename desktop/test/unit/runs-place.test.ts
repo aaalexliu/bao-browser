@@ -34,6 +34,16 @@ test("Runs receipts name the saved browser and reason without guessing for older
       });
     }
     app.library.saveRun({ id: "legacy", workflowId: "deleted-workflow", status: "passed", at: Date.now(), steps: [], heals: [] });
+    const bao = picks[0]!.pick;
+    const current = picks[2]!.pick;
+    app.library.saveRun({
+      id: "history", workflowId: "deleted-workflow", browser: current, status: "passed", at: Date.now(), steps: [], heals: [],
+      routes: [{ fromStep: 1, browser: bao }, { fromStep: 3, browser: current }],
+    });
+    app.library.saveRun({
+      id: "one-route", workflowId: "deleted-workflow", browser: bao, status: "passed", at: Date.now(), steps: [], heals: [],
+      routes: [{ fromStep: 1, browser: bao }],
+    });
     const stored = JSON.stringify(app.library.listRuns());
     for (const theme of ["light", "dark"]) {
       await page.goto(`http://127.0.0.1:${app.port}/`);
@@ -56,6 +66,17 @@ test("Runs receipts name the saved browser and reason without guessing for older
       await page.locator('[data-open-run="legacy"]').first().click();
       await page.locator(".receipt-browser").waitFor({ state: "hidden" });
       assert.equal(await page.locator(".receipt-browser").count(), 0);
+      await page.locator('[data-open-run="history"]').first().click();
+      await page.waitForFunction(() => document.querySelectorAll(".receipt-browser").length === 2);
+      assert.deepEqual(await page.locator(".receipt-browser").allInnerTexts(), [
+        `Browser: Bao profile\nWhy: ${bao.why}.\nFrom step: 1`,
+        `Browser: Running Chrome\nWhy: ${current.why}.\nFrom step: 3`,
+      ]);
+      await page.locator('[data-open-run="one-route"]').first().click();
+      await page.waitForFunction(() => document.querySelectorAll(".receipt-browser").length === 1);
+      assert.deepEqual(await page.locator(".receipt-browser").allInnerTexts(), [
+        `Browser: Bao profile\nWhy: ${bao.why}.\nFrom step: 1`,
+      ]);
     }
     assert.equal(JSON.stringify(app.library.listRuns()), stored, "viewing receipts does not change stored browser choices");
   } finally {

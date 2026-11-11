@@ -77,8 +77,10 @@ export interface StoredRun {
   signInImports?: import("../engines/bao-profile").SignInImport[];
   /** A pass-through session's cleanup failed after its outcome was recorded. */
   cleanupError?: string;
-  /** The browser route, Chrome app, user-data-dir, and Chrome profile a pass-through session used, and why. */
+  /** The latest browser route a pass-through session used, with its Chrome app, user-data-dir, profile, and why. Older runs store only this. */
   browser?: import("../engines/browser-pick").BrowserPick;
+  /** Every browser route this run used, oldest first, each with the step it started at. Absent on older runs. */
+  routes?: import("../engines/browser-pick").RunRoute[];
   /** File values are names, not paths. */
   inputs?: Record<string, string>;
   /** Saved values this run used. Secrets are listed as "saved password". */
