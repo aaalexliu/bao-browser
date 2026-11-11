@@ -238,6 +238,7 @@ export class AgentBrowserRun {
       } else {
         const startedAt = Date.now();
         const capture = await startCdpVideo(cdp, sessionId, path.join(this.home, "videos", `${this.id}.mp4`), { noBlur: true });
+        if (this.run.status === "needs_human") capture.pause();
         this.video = { kind: "recording", capture, cdp, targetId, sessionId, startedAt };
         hostStopRuns.add(this);
       }

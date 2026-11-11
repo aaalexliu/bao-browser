@@ -143,6 +143,36 @@ test("tab video omits frames painted during an owner wait", { skip: !ffmpeg, tim
   } finally { await run.endVideoCapture(); await run.encodeVideo(); await f.close(); }
 });
 
+test("a capture started during an owner wait omits the wait and resumes after it", { skip: !ffmpeg, timeout: 30_000 }, async () => {
+  const f = await fixture();
+  const run = new AgentBrowserRun(path.join(f.root, "home"));
+  try {
+    const url = `${f.base}/red`;
+    const { targetId } = await f.cdp.send<{ targetId: string }>("Target.createTarget", { url });
+    const deadline = Date.now() + 5000;
+    while (!await evaluate(f.cdp, targetId, `document.readyState === 'complete' && location.href === ${JSON.stringify(url)}`)) {
+      assert.ok(Date.now() < deadline, "fixture page loaded");
+      await wait(20);
+    }
+    await run.ownerWaiting(true);
+    await evaluate(f.cdp, targetId, "document.documentElement.style.background='#00ff00';document.body.style.background='#00ff00'");
+    await run.recordTab(f.cdp, targetId);
+    await run.ownerWaiting(true);
+    await wait(800);
+    await run.ownerWaiting(false);
+    await evaluate(f.cdp, targetId, "document.documentElement.style.background='blue';document.body.style.background='blue'");
+    await wait(400);
+    await run.endVideoCapture();
+    await run.encodeVideo();
+    const file = path.join(f.root, "home", "videos", `${run.id}.mp4`);
+    assert.ok((await stat(file)).size > 1000);
+    const pixels = frames(file);
+    assert.ok(pixels.some((pixel) => pixel[2]! > 180 && pixel[0]! < 50), "recording resumes after the wait");
+    const duringWait = pixels.filter((pixel) => pixel[1]! > 180 && pixel[0]! < 80 && pixel[2]! < 80);
+    assert.equal(duringWait.length, 0, "a capture started during the wait must not keep those frames");
+  } finally { await run.endVideoCapture(); await run.encodeVideo(); await f.close(); }
+});
+
 test("unavailable tab recording does not fail commands or their receipt", { timeout: 30_000 }, async (t) => {
   const f = await fixture();
   const home = path.join(f.root, "home");
