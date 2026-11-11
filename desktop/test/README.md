@@ -20,6 +20,16 @@ The runner defaults to two files at a time, matching CI. Node's CPU-based defaul
 
 Artifacts use `BAO_ARTIFACTS_DIR`, then `BAO_ARTIFACTS`, then `out/test-artifacts/<run-id>/<test>/`. The runner drops the first two names, so a test sets them itself if needed. A leaf cannot be empty or contain a path separator or `..`. The test prints its artifact directory. Evidence errors do not replace the original test error.
 
+## Driving Bao in tests
+
+Use `desktop/test/helpers/fixtures.ts` for a synthetic Chrome profile (`syntheticChromeProfile`) and the app environment (`baoFixtureEnv`). Give the environment a temporary user home, Library, and profile root. Resolve `PLAYWRIGHT_BROWSERS_PATH` from the real home before setting a temporary HOME. The environment builder uses `laneChildEnv("hermetic", ...)` to pin Chromium, load the port guard, drop model keys, and keep browsers headless.
+
+Use `desktop/test/helpers/driver.ts` for `bao mcp` subprocesses. `baoDriver<Result>(env)` starts the compiled CLI; await `initialize()` before sending tools. `tool(name, args)` accepts current tool names from Bao's tool catalog. `request(method, params)` also supports raw MCP requests. Register `close()` in test cleanup before initializing. It ends stdin, waits for exit, and signals only its own child if shutdown stalls. Keep each test's result assertions at the call site.
+
+`snapshotRefs(snapshot, label)` returns bare refs such as `e1` from `[ref=e1]` or `[level=1, ref=e1]`. It keeps duplicate labels in snapshot order. Pass `@${ref}` as the click or fill argument. Take another snapshot after a page or daemon change; old refs may no longer name the same element.
+
+Use `testWorkflow` in `desktop/test/support/workflow.ts` for saved-workflow fixtures. It sets the current schema and numbers steps by their array position, including after filtering. Keep each action's required fields in its typed step object. Tests for refused keys and removed tools should still send raw invalid input, not use a builder that repairs it.
+
 ## Pass-through fixtures
 
 [Native executable and tests](../../docs/agent-browser-engine.md#native-executable-and-tests) lists the focused pass-through suites, including session-end coverage. `agent-browser-owner-wait.test.ts` covers metadata-only private waiting, same-session resumption, and owner-window close. `mcp.test.ts` checks the exact [standard MCP tool surface](../../docs/bao.md#mcp) and refuses removed tools.

@@ -1,15 +1,16 @@
 import assert from "node:assert/strict";
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync } from "node:child_process";
+import { baoDriver } from "../helpers/driver";
+import { baoFixtureEnv, syntheticChromeProfile } from "../helpers/fixtures";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { baoAgentProfileDir } from "../../src/engines/bao-profile";
-import { closeRetainedChrome, pidsForDataDir, pinTestBrowser } from "../../src/launch";
+import { closeRetainedChrome, pidsForDataDir } from "../../src/launch";
 import { LIST_TARGETS } from "../support/fake-agent-browser";
 
-const cli = path.resolve(__dirname, "../../src/app/cli.js");
 interface Result { isError?: boolean; content?: { text: string }[] }
 
 /** The failing Mac's listing: 285 Chrome renderers, 1,074,450 bytes, over Node's 1 MiB default pipe buffer. */
@@ -46,41 +47,19 @@ exec ${which("pgrep")} "$@"
 }
 
 function client(env: NodeJS.ProcessEnv) {
-  const child = spawn(process.execPath, [cli, "mcp"], { env, stdio: ["pipe", "pipe", "pipe"] });
-  let buffer = "";
-  let stderr = "";
-  let sequence = 0;
-  const pending = new Map<number, (result: Result) => void>();
-  child.stderr.on("data", (chunk: Buffer) => { stderr += chunk; });
-  child.stdout.on("data", (chunk: Buffer) => {
-    buffer += chunk;
-    let newline: number;
-    while ((newline = buffer.indexOf("\n")) >= 0) {
-      const reply = JSON.parse(buffer.slice(0, newline)) as { id: number; result: Result };
-      buffer = buffer.slice(newline + 1);
-      pending.get(reply.id)?.(reply.result);
-      pending.delete(reply.id);
-    }
-  });
-  const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
-  const request = (method: string, params = {}): Promise<Result> => new Promise((resolve, reject) => {
-    const id = ++sequence;
-    const timer = setTimeout(() => { pending.delete(id); reject(new Error(`MCP timed out: ${stderr}`)); }, 60_000);
-    pending.set(id, (result) => { clearTimeout(timer); resolve(result); });
-    child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
-  });
+  const driver = baoDriver<Result>(env);
   // Like an agent, the client sends back the run id from its latest agent_browser result.
   let run: string | undefined;
   return {
-    stderr: () => stderr,
-    request,
+    stderr: driver.stderr,
+    initialize: driver.initialize,
     async browser(command: string, args: string[] = []) {
-      const result = await request("tools/call", { name: "agent_browser", arguments: { command, args, ...command === "open" ? { browser: "bao" } : {}, ...(run ? { run_id: run } : {}) } });
+      const result = await driver.tool("agent_browser", { command, args, ...command === "open" ? { browser: "bao" } : {}, ...(run ? { run_id: run } : {}) });
       run = result.content?.map((block) => /^Run (\S+)$/.exec(block.text)?.[1]).find(Boolean) ?? run;
       return result;
     },
-    finish: () => request("tools/call", { name: "finish_task", arguments: { outcome: "passed", reason: "Fixture task done.", run_id: run } }),
-    async close() { child.stdin.end(); await Promise.race([exited, delay(20_000)]); if (child.exitCode === null) child.kill("SIGKILL"); },
+    finish: () => driver.tool("finish_task", { outcome: "passed", reason: "Fixture task done.", run_id: run }),
+    close: driver.close,
   };
 }
 
@@ -94,8 +73,7 @@ test("a process list over 1 MiB never breaks open, close, or finish_task, and an
   const root = await mkdtemp(path.join(tmpdir(), "bao-process-list-"));
   const home = path.join(root, "home");
   const sourceRoot = path.join(root, "source");
-  await mkdir(path.join(sourceRoot, "Default"), { recursive: true });
-  await writeFile(path.join(sourceRoot, "Local State"), JSON.stringify({ profile: { info_cache: { Default: { name: "Synthetic", user_name: "owner@example.test" } } } }));
+  await syntheticChromeProfile(sourceRoot, { name: "Synthetic", user_name: "owner@example.test" });
   const executable = path.join(root, "native");
   await writeFile(executable, `#!${process.execPath}
 ${LIST_TARGETS}
@@ -110,11 +88,9 @@ if (args.includes('--json')) {
   const { dir, failList } = await shims(root);
   const profile = baoAgentProfileDir(home);
   const env: NodeJS.ProcessEnv = {
-    PATH: `${dir}${path.delimiter}${process.env.PATH}`, TMPDIR: process.env.TMPDIR, HOME: root, BAO_HOME: home,
-    BAO_HEAL_CURSOR_ACCOUNT: "0", BAO_LANE: "hermetic", BAO_TEST_BROWSER: pinTestBrowser(), PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH,
-    BAO_AGENT_BROWSER: executable, BAO_AGENT_BROWSER_PROFILE_ROOT: sourceRoot,
-    ...(process.env.DISPLAY ? { DISPLAY: process.env.DISPLAY } : {}),
-    ...(process.env.XAUTHORITY ? { XAUTHORITY: process.env.XAUTHORITY } : {}),
+    ...baoFixtureEnv({ user: root, library: home, profiles: sourceRoot }),
+    PATH: `${dir}${path.delimiter}${process.env.PATH}`,
+    BAO_AGENT_BROWSER: executable,
   };
   assert.throws(() => execFileSync("ps", ["-axww", "-o", "pid=,ppid=,command="], { env, encoding: "utf8" }), /ENOBUFS/, "the shim reproduces the overflow");
   const mcp = client(env);
@@ -123,7 +99,7 @@ if (args.includes('--json')) {
     await closeRetainedChrome(profile).catch(() => undefined);
     await rm(root, { recursive: true, force: true });
   });
-  await mcp.request("initialize");
+  await mcp.initialize();
 
   const opened = await mcp.browser("open", ["about:blank"]);
   assert.equal(opened.isError, false, mcp.stderr());

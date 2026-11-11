@@ -1,6 +1,6 @@
 import { testWorkflow } from "../support/workflow";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { baoDriver } from "../helpers/driver";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
@@ -8,7 +8,6 @@ import path from "node:path";
 import test from "node:test";
 import { chromium } from "playwright";
 import { startApp } from "../../src/app/server";
-import { frameRpc, takeRpcChunk } from "../../src/mcp/frame";
 import { inspectRunView } from "../../src/mcp/run-view";
 import { UI_EXTENSION, VIEWER_MIME } from "../../src/mcp/viewer";
 import { STRIPPED_SECRET } from "../../../shared/saved-secrets";
@@ -38,49 +37,14 @@ function assertChain(value: unknown): void {
 }
 
 function mcp() {
-  const child = spawn(process.execPath, [path.resolve(__dirname, "../../src/app/cli.js"), "mcp"], { env: { ...process.env }, stdio: ["pipe", "pipe", "pipe"] });
-  const pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>();
-  let buffer = Buffer.alloc(0), nextId = 0, stderr = "";
-  child.stderr.on("data", (bytes: Buffer) => { stderr = (stderr + bytes.toString()).slice(-8192); });
-  child.stdout.on("data", (bytes: Buffer) => {
-    buffer = Buffer.concat([buffer, bytes]);
-    while (true) {
-      const chunk = takeRpcChunk(buffer, null);
-      if (!chunk) break;
-      buffer = Buffer.from(chunk.rest);
-      const message: unknown = JSON.parse(chunk.body);
-      if (!isRecord(message) || typeof message.id !== "number") continue;
-      const waiter = pending.get(message.id);
-      if (!waiter) continue;
-      pending.delete(message.id);
-      clearTimeout(waiter.timer);
-      if (message.error) waiter.reject(new Error(JSON.stringify(message.error)));
-      else waiter.resolve(message.result);
-    }
-  });
-  child.on("exit", (code) => {
-    for (const waiter of pending.values()) {
-      clearTimeout(waiter.timer);
-      waiter.reject(new Error(`MCP exited ${code}: ${stderr}`));
-    }
-    pending.clear();
-  });
-  function request(method: string, params: unknown): Promise<unknown> {
-    const id = ++nextId;
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { pending.delete(id); reject(new Error(`MCP timeout ${method}: ${stderr}`)); }, 10_000);
-      pending.set(id, { resolve, reject, timer });
-      child.stdin.write(frameRpc({ jsonrpc: "2.0", id, method, params }, "json"));
-    });
-  }
+  const driver = baoDriver<unknown>({ ...process.env }, 10_000);
   return {
     async initialize() {
-      await request("initialize", { protocolVersion: "2024-11-05", capabilities: { extensions: { [UI_EXTENSION]: { mimeTypes: [VIEWER_MIME] } } }, clientInfo: { name: "readback-test", version: "1" } });
-      child.stdin.write(frameRpc({ jsonrpc: "2.0", method: "notifications/initialized" }, "json"));
+      await driver.initialize({ protocolVersion: "2024-11-05", capabilities: { extensions: { [UI_EXTENSION]: { mimeTypes: [VIEWER_MIME] } } }, clientInfo: { name: "readback-test", version: "1" } });
     },
     async views(runId: string) {
-      const getRun = object(await request("tools/call", { name: "get_run", arguments: { run_id: runId } }));
-      const inspect = object(await request("tools/call", { name: "inspect_run", arguments: { run_id: runId } }));
+      const getRun = object(await driver.tool("get_run", { run_id: runId }));
+      const inspect = object(await driver.tool("inspect_run", { run_id: runId }));
       assert.equal(getRun.isError, false);
       assert.equal(inspect.isError, false);
       const viewer = object(object(inspect._meta).baoViewer);
@@ -90,14 +54,7 @@ function mcp() {
       assert.equal(object(content[0]).text, JSON.stringify(viewer));
       return JSON.stringify(viewer);
     },
-    async close() {
-      if (child.exitCode !== null) return;
-      const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
-      child.stdin.end();
-      const timer = setTimeout(() => child.kill("SIGTERM"), 3000);
-      await exited;
-      clearTimeout(timer);
-    },
+    close: driver.close,
   };
 }
 
