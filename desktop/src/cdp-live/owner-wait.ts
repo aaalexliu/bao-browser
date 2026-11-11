@@ -60,7 +60,7 @@ export function ownerTask(page: OwnerPage | undefined): string {
   }
 }
 
-/** An owner wait ends by itself this long after it started or the latest wait_for_owner call returned. */
+/** A recognized sign-in or check wait ends by itself this long after it started or the latest wait_for_owner call returned. A wait on any other page ends at the call deadline. */
 export const OWNER_WAIT_LIMIT_MS = 30 * 60 * 1000;
 
 export function ownerCanResume(before: OwnerPage, now: OwnerPage): boolean {
@@ -68,7 +68,7 @@ export function ownerCanResume(before: OwnerPage, now: OwnerPage): boolean {
   return before.url !== now.url || before.title !== now.title;
 }
 
-export const ownerWaitInstruction = (current: boolean, raised: boolean, runId: string, page?: OwnerPage) => `Keep this session open. ${raised ? "Bao brought this window to the front for the owner. " : ""}Ask the owner to ${ownerTask(page)} in ${current ? "Bao's task tab in their own Chrome" : "this Bao window"}, then call agent_browser with command=wait_for_owner, args=[\"60000\"], and run_id=\"${runId}\". Repeat it while the result is waiting; do not end your turn or start another session. Bao ends the wait if no wait_for_owner call continues it for ${OWNER_WAIT_LIMIT_MS / 60_000} minutes. On ready, take a fresh snapshot and continue in this same agent_browser session. Bao reads only URL and title while waiting. If those do not change, it keeps waiting. On closed, report that ${current ? "the owner's Chrome session ended" : "the owner closed the window"}.`;
+export const ownerWaitInstruction = (current: boolean, raised: boolean, runId: string, page?: OwnerPage) => `Keep this session open. ${raised ? "Bao brought this window to the front for the owner. " : ""}Ask the owner to ${ownerTask(page)} in ${current ? "Bao's task tab in their own Chrome" : "this Bao window"}, then call agent_browser with command=wait_for_owner, args=[\"60000\"], and run_id=\"${runId}\". Repeat a waiting reply only while the result still says waiting and this page is a recognized sign-in or check; do not end your turn or start another session. On a recognized sign-in or check, Bao ends the wait if no wait_for_owner call continues it for ${OWNER_WAIT_LIMIT_MS / 60_000} minutes. On a page that is not a sign-in or check, this call's deadline ends the wait and the run returns to recording. Once a result says recording, the wait is over and you continue. On ready, take a fresh snapshot and continue in this same agent_browser session. Bao reads only URL and title while waiting. On a recognized sign-in or check, an unchanged URL and title keep waiting. On closed, report that ${current ? "the owner's Chrome session ended" : "the owner closed the window"}.`;
 
 export function ownerWaitTimeout(value: unknown): number {
   if (value === undefined) return 60_000;

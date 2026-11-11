@@ -241,7 +241,7 @@ export function describeStep(facts: StepFacts): StepSummary {
     const ask = `Your turn: ${ownerTask(owner)} in ${browser}`;
     const waiting = owner.waitedMs !== undefined ? `, waiting ${waited(owner.waitedMs)}` : "";
     const where = owner.title ? ` The page is "${owner.title}" (${owner.url})${waiting}.` : ` The page is ${owner.url}${waiting}.`;
-    return { parts: [ask], text: `${ask}.${where} Bao reads only the title and address until the page changes.`, owner };
+    return { parts: [ask], text: `${ask}.${where} Bao reads only the title and address while waiting.`, owner };
   }
   if (outcome === "ready") {
     const back = ownerHandoff(facts.owner)?.kind === "sign-in" ? "Back from sign-in" : "Back from the check";
