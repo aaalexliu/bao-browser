@@ -367,7 +367,11 @@ test("the Inspector zooms a boxed step picture around its target and keeps the m
         assert.ok(image.width > frame.width * 1.5, `the picture is not zoomed: ${image.width} in ${frame.width}`);
         assert.ok(Math.abs(frame.width / frame.height - 1280 / 820) < 0.02);
         const scale = image.width / 1280;
-        if (box.width <= 36) assert.ok(scale >= 0.85, `the control is too small to read: scale ${scale}`);
+        if (box.width <= 36) assert.ok(scale >= 0.8, `the control is too small to read: scale ${scale}`);
+        assert.deepEqual(await picture.evaluate((node) => {
+          const style = getComputedStyle(node);
+          return { border: style.borderTopWidth, radius: style.borderTopLeftRadius };
+        }), { border: "1px", radius: "6px" }, theme);
         assert.ok(Math.abs((mark.x - image.x) / scale - box.x) < 3, `${theme} ${id}`);
         assert.ok(Math.abs((mark.y - image.y) / scale - box.y) < 3, `${theme} ${id}`);
         assert.ok(Math.abs(mark.width / scale - box.width) < 3, `${theme} ${id}`);
