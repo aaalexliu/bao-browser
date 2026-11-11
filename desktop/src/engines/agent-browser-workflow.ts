@@ -258,7 +258,7 @@ export class AgentBrowserWorkflow {
       } catch { this.unavailable("its workflow could not be saved"); }
     }
     const where = this.blocked ? `${this.blocked.id} (${this.blocked.command}): ` : "";
-    return this.finished = `Not saved as a workflow: ${where}${this.reason}.`;
+    return this.finished = `Not saved as a workflow: ${where}${(this.reason ?? "").replace(/\.$/, "")}.`;
   }
 
   private updatePending(after: Observation): void {

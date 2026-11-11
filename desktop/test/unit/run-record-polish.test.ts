@@ -10,6 +10,7 @@ import { AgentBrowserWorkflow } from "../../src/engines/agent-browser-workflow";
 import { getRun } from "../../src/mcp/catalog";
 import { browserToolResult, pageShotLine } from "../../src/mcp/tool-card";
 import { Library, type StoredRun } from "../../src/v1/store";
+import { AGENT_IDLE_REASON } from "../../src/v1/stop-copy";
 
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a6S8AAAAASUVORK5CYII=", "base64");
 const ok = { stdout: "", stderr: "", exitCode: 0 };
@@ -128,6 +129,13 @@ test("a refused workflow save names the step that blocked it", async () => {
     const named = new AgentBrowserWorkflow(root, "run-named", async () => { throw new Error("unused"); });
     named.unavailable("the owner closed the window before the task finished");
     assert.equal(named.finish(true), "Not saved as a workflow: the owner closed the window before the task finished.");
+
+    const idle = new AgentBrowserWorkflow(root, "run-idle", async () => { throw new Error("unused"); });
+    idle.unavailable(AGENT_IDLE_REASON);
+    assert.equal(idle.finish(), `Not saved as a workflow: ${AGENT_IDLE_REASON}`);
+    const plain = new AgentBrowserWorkflow(root, "run-plain", async () => { throw new Error("unused"); });
+    plain.unavailable("the task failed");
+    assert.equal(plain.finish(), "Not saved as a workflow: the task failed.");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
