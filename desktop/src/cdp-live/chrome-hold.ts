@@ -306,12 +306,18 @@ async function waitForHold(dir: string, root: string, signal?: AbortSignal): Pro
     signal?.throwIfAborted();
     const live = await readLive(dir, root);
     if (live) return live;
-    const err = await readErr(dir);
-    if (err) throw new Error(err);
     const starting = await readStarting(dir);
-    if (!starting || !pidAlive(starting.holderPid)) throw new Error(err || "Bao's Chrome connection stopped before it was ready");
-    if (Date.now() >= deadline) throw new Error("Bao's Chrome connection did not open");
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    if (starting && pidAlive(starting.holderPid)) {
+      if (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        continue;
+      }
+    }
+    const again = await readLive(dir, root);
+    if (again) return again;
+    const err = await readErr(dir);
+    if (starting && pidAlive(starting.holderPid)) throw new Error(err || "Bao's Chrome connection did not open");
+    throw new Error(err || "Bao's Chrome connection stopped before it was ready");
   }
 }
 
@@ -417,17 +423,23 @@ export async function serveHold(chrome: CurrentChrome, signal?: AbortSignal): Pr
     port: chrome.endpoint.port, browserPath: chrome.endpoint.browserPath, holderPid: process.pid,
   };
   await prepareHoldDir(dir);
-  writePrivate(path.join(dir, "hold.json"), JSON.stringify(record));
-  await rm(path.join(dir, "starting.json"), { force: true });
-  await rm(path.join(dir, "hold.err"), { force: true });
+  await withHoldLock(dir, async () => {
+    writePrivate(path.join(dir, "hold.json"), JSON.stringify(record));
+    await rm(path.join(dir, "starting.json"), { force: true });
+    await rm(path.join(dir, "hold.err"), { force: true });
+  });
   const stopped = new Promise<void>((resolve) => {
     if (signal?.aborted) resolve();
     else signal?.addEventListener("abort", () => resolve(), { once: true });
   });
   await Promise.race([chrome.closed, stopped]);
   chrome.detach();
-  await rm(path.join(dir, "hold.json"), { force: true });
-  await rm(path.join(dir, "starting.json"), { force: true });
+  await withHoldLock(dir, async () => {
+    const current = await readJson<HoldRecord>(path.join(dir, "hold.json"));
+    if (!current || current.holderPid === process.pid) await rm(path.join(dir, "hold.json"), { force: true });
+    const starting = await readStarting(dir);
+    if (!starting || starting.holderPid === process.pid) await rm(path.join(dir, "starting.json"), { force: true });
+  });
 }
 
 function flag(args: readonly string[], name: string): string | undefined {
@@ -455,8 +467,11 @@ export async function holdMain(args: readonly string[]): Promise<void> {
     process.exit(0);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    writePrivate(path.join(dir, "hold.err"), message);
-    await rm(path.join(dir, "starting.json"), { force: true });
+    await withHoldLock(dir, async () => {
+      writePrivate(path.join(dir, "hold.err"), message);
+      const starting = await readStarting(dir);
+      if (!starting || starting.holderPid === process.pid) await rm(path.join(dir, "starting.json"), { force: true });
+    });
     throw error;
   }
 }
