@@ -253,6 +253,34 @@ test("picking a card taller than the viewport still reads the list", async () =>
   }
 });
 
+test("picking a title in a row of repeated cells reads the story rows", async () => {
+  const browser = await chromium.launch({ args: ["--no-sandbox"] });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(`<!doctype html><table><tbody>
+      <tr class="athing submission"><td class="title"><span class="rank">1.</span></td><td class="title"><span class="titleline"><a href="a.html">Alpha Story</a></span></td><td class="score">10 points</td></tr>
+      <tr class="athing submission"><td class="title"><span class="rank">2.</span></td><td class="title"><span class="titleline"><a href="b.html">Beta Story</a></span></td><td class="score">20 points</td></tr>
+      <tr class="athing submission"><td class="title"><span class="rank">3.</span></td><td class="title"><span class="titleline"><a href="c.html">Gamma Story</a></span></td><td class="score">30 points</td></tr>
+    </tbody></table>`);
+    await page.evaluate(installDataPage);
+    const proposal = await page.evaluate(() => {
+      const host = window as unknown as { __baoPropose: (arg: { selector: string }) => PageProposal };
+      return host.__baoPropose({ selector: "span.titleline a" });
+    });
+    assert.equal(proposal.mode, "list");
+    assert.equal(proposal.count, 3);
+    const spec = specFromProposal(proposal, { as: "stories" });
+    const read = await page.evaluate((payload) => {
+      const host = window as unknown as { __baoReadList: (spec: unknown) => { rows: Record<string, string>[] } };
+      return host.__baoReadList(payload);
+    }, spec);
+    assert.deepEqual(read.rows.map((row) => row.link), ["Alpha Story", "Beta Story", "Gamma Story"]);
+    assert.deepEqual(read.rows.map((row) => row.score), ["10 points", "20 points", "30 points"]);
+  } finally {
+    await browser.close();
+  }
+});
+
 function workflow(): WorkflowV2 {
   return testWorkflow({
     schema: "bao.workflow/v4",
