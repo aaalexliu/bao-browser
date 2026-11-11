@@ -582,9 +582,7 @@ function observed(
     return { check: { kind: "state", state: raw.state, locators, timeoutMs } };
   }
   if ((raw.kind === "element" || raw.kind === "absent") && raw.identity) {
-    const locators = locatorsFromIdentity(raw.identity);
-    if (!locators?.length) return {};
-    return { check: { kind: raw.kind, locators, timeoutMs } };
+    return { check: { kind: raw.kind, locators: locatorsFromIdentity(raw.identity) ?? [], timeoutMs } };
   }
   if (raw.match && (raw.kind === "text" || raw.kind === "url" || raw.kind === "value")) {
     return { check: { kind: raw.kind, match: raw.match, timeoutMs } };

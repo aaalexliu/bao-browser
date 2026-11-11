@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { Library } from "../../src/v1/store";
-import type { TrailEvent } from "../../src/v1/interpret";
+import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
 import { UI_EXTENSION, VIEWER_MIME } from "../../src/mcp/viewer";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
@@ -329,6 +329,29 @@ test("native clicks never substitute a structural ancestor for an unaddressable 
     const replay = await f.request("tools/call", { name: "run_workflow", arguments: { id: workflow.id } });
     assert.equal((JSON.parse(text(replay)) as { status: string }).status, "ok", text(replay));
   } finally { await f.close(); }
+});
+
+test("a locator-less element postcondition fails the save", async () => {
+  const home = await mkdtemp(path.join(tmpdir(), "bao-element-check-"));
+  try {
+    const workflow = interpret([{
+      id: "expect",
+      ts: 1,
+      kind: "act",
+      op: "verify",
+      performed: false,
+      identity: { surface: "dom", role: "button", path: [] },
+    }], { id: "wf-element", name: "Element check", startUrl: "https://example.test/" });
+    const step = workflow.steps[0];
+    assert.ok(step);
+    assert.equal(step.action, "verify");
+    const check = stepCheck(step);
+    assert.equal(check?.kind, "element");
+    assert.equal(check && "locators" in check ? check.locators.length : 1, 0);
+    assert.throws(() => new Library(home).save(workflow), /check /);
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
 });
 
 test("trial replay accepts only an explicit playwright driver and still refuses retired drivers", () => {
