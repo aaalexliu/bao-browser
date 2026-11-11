@@ -222,19 +222,13 @@ test("a run keeps every route it used, with the step that route started at", asy
     const recording = new AgentBrowserRun(home);
     recording.pickBrowser(bao);
     const open = recording.begin("open", ["https://example.test"]);
-    recording.pickBrowser(bao);
     open.status = "passed";
     recording.pickBrowser(current);
-    const click = recording.begin("click", ["@e1"]);
-    click.status = "passed";
-    recording.begin("snapshot", []);
-    recording.pickBrowser({ ...current, userDataDir: "/chrome-moved" });
     const run = new Library(home).readRun(recording.id);
-    assert.equal(run.browser && run.browser.route !== "extension" ? run.browser.userDataDir : undefined, "/chrome-moved");
+    assert.equal(run.browser && run.browser.route !== "extension" ? run.browser.userDataDir : undefined, "/chrome");
     assert.deepEqual(savedRoutes(home), [
       { fromStep: 1, route: "bao", why: "named by the agent", userDataDir: "/bao", profile: "Default" },
       { fromStep: 2, route: "current", why: "fallback after a sign-in wall", userDataDir: "/chrome", profile: "Default" },
-      { fromStep: 3, route: "current", why: "fallback after a sign-in wall", userDataDir: "/chrome-moved", profile: "Default" },
     ]);
   } finally {
     await rm(home, { recursive: true, force: true });

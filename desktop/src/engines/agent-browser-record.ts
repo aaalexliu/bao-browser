@@ -203,9 +203,7 @@ export class AgentBrowserRun {
   pickBrowser(pick: BrowserPick): void {
     const last = this.run.steps.at(-1);
     const fromStep = last?.status === "pending" ? this.run.steps.length : this.run.steps.length + 1;
-    const routes = this.run.routes ?? [];
-    const previous = routes.at(-1);
-    if (!previous || !sameRoute(previous.browser, pick)) this.run.routes = [...routes, { fromStep, browser: pick }];
+    this.run.routes = [...this.run.routes ?? [], { fromStep, browser: pick }];
     this.run.browser = pick;
     this.persist();
   }
@@ -295,14 +293,6 @@ export class AgentBrowserRun {
   private warn(operation: string): void {
     process.stderr.write(`Bao recording unavailable: ${operation}. Command forwarding continues.\n`);
   }
-}
-
-function sameRoute(a: BrowserPick, b: BrowserPick): boolean {
-  if (a.why !== b.why || a.route !== b.route) return false;
-  if (a.route === "extension" || b.route === "extension") return true;
-  const unread = a.route === "bao" && b.route === "bao" ? a.unread === b.unread : true;
-  return unread && a.chrome === b.chrome && a.userDataDir === b.userDataDir
-    && a.profile?.directory === b.profile?.directory && a.profile?.root === b.profile?.root;
 }
 
 function pageShotError(error: unknown): string {
