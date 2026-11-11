@@ -10,7 +10,8 @@ import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { pageWall } from "../../src/cdp-live/page-wall";
 import { connectCdp, type CdpSocket } from "../../src/cdp-live/socket";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
-import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
+import { AgentBrowserRun, type RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
+import type { BrowserPick } from "../../src/engines/browser-pick";
 import * as bao from "../../src/engines/bao-profile";
 import * as launches from "../../src/launch";
 import { closeRetainedChrome, pidsForDataDir, pinTestBrowser } from "../../src/launch";
@@ -204,6 +205,35 @@ ${LIST_TARGETS}
 const MOVED = `Bao's own browser hit a sign-in or verification prompt on 127.0.0.1; continued in your running Chrome (Chrome profile "Default", Owner) over remote debugging. Take a fresh snapshot before acting.`;
 const REFUSED = "Bao's own browser hit a sign-in or verification prompt on 127.0.0.1. Bao could not continue in your running Chrome over remote debugging: Chrome is not open. Open Google Chrome, then try again. The session stays in Bao's window; Bao tries again on the next wait_for_owner.";
 const savedSteps = (home: string) => new Library(home).listRuns()[0]!.steps as RecordedAgentBrowserCommand[];
+const savedRoutes = (home: string) => new Library(home).listRuns()[0]!.routes?.map((item) => ({
+  fromStep: item.fromStep,
+  route: item.browser.route,
+  why: item.browser.why,
+  userDataDir: item.browser.route === "extension" ? undefined : item.browser.userDataDir,
+  profile: item.browser.route === "extension" ? undefined : item.browser.profile?.directory,
+}));
+
+test("a run keeps every route it used, with the step that route started at", async () => {
+  const home = await mkdtemp(path.join(tmpdir(), "bao-routes-"));
+  const profile = { root: "/chrome", directory: "Default", name: "Alex", email: "", why: "named by the agent" as const };
+  const bao: BrowserPick = { route: "bao", why: "named by the agent", chrome: "fixture", userDataDir: "/bao", profile };
+  const current: BrowserPick = { route: "current", why: "fallback after a sign-in wall", chrome: "fixture", userDataDir: "/chrome", profile: { ...profile, why: "the only profile" } };
+  try {
+    const recording = new AgentBrowserRun(home);
+    recording.pickBrowser(bao);
+    const open = recording.begin("open", ["https://example.test"]);
+    open.status = "passed";
+    recording.pickBrowser(current);
+    const run = new Library(home).readRun(recording.id);
+    assert.equal(run.browser && run.browser.route !== "extension" ? run.browser.userDataDir : undefined, "/chrome");
+    assert.deepEqual(savedRoutes(home), [
+      { fromStep: 1, route: "bao", why: "named by the agent", userDataDir: "/bao", profile: "Default" },
+      { fromStep: 2, route: "current", why: "fallback after a sign-in wall", userDataDir: "/chrome", profile: "Default" },
+    ]);
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
 
 /** Moves Bao's own tab from one page to another, the way a delayed redirect or the owner would. */
 async function navigateBao(baoDir: string, from: string, to: string): Promise<void> {
@@ -267,6 +297,10 @@ for (const { wall, page, before, after } of [
   assert.equal(runs.length, 1, "the session and its run continue");
   assert.equal(runs[0]!.status, "recording");
   assert.deepEqual(runs[0]!.browser && { route: runs[0]!.browser.route, why: runs[0]!.browser.why }, { route: "current", why: "fallback after a sign-in wall" });
+  assert.deepEqual(savedRoutes(h.home), [
+    { fromStep: 1, route: "bao", why: "named by the agent", userDataDir: h.baoDir, profile: "Default" },
+    { fromStep: 2, route: "current", why: "fallback after a sign-in wall", userDataDir: h.sourceRoot, profile: "Default" },
+  ]);
 
   assert.ok(await h.proxy.finishTask({ outcome: "passed", reason: "fixture" }, h.proxy.activeRunId));
   // Target.closeTarget answers before Chrome destroys the tab.
@@ -286,6 +320,10 @@ test("an open that lands on a sign-in URL in a Bao profile continues in the owne
   assert.ok(savedSteps(h.home)[0]!.summary!.text.startsWith(`Bao's own browser hit a sign-in page on 127.0.0.1; continued in your running Chrome (Chrome profile "Default", Owner) over remote debugging. Take a fresh snapshot before acting. Went to `));
   assert.match(h.proxy.pickLines[0]!, /^Browser: Running Chrome over remote debugging, fallback after a sign-in wall\./);
   assert.equal(new Library(h.home).listRuns()[0]!.status, "recording", "the owner wait in Bao's window ended with the move");
+  assert.deepEqual(savedRoutes(h.home), [
+    { fromStep: 1, route: "bao", why: "named by the agent", userDataDir: h.baoDir, profile: "Default" },
+    { fromStep: 1, route: "current", why: "fallback after a sign-in wall", userDataDir: h.sourceRoot, profile: "Default" },
+  ]);
   assert.ok(await baoClosed(h.baoDir));
 });
 

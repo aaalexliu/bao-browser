@@ -199,8 +199,11 @@ export class AgentBrowserRun {
     this.persist();
   }
 
-  /** The route, Chrome app, user-data-dir, and profile this session runs on, and why. */
+  /** Records this route beside any earlier one, with the step it started at. `browser` stays the latest. */
   pickBrowser(pick: BrowserPick): void {
+    const last = this.run.steps.at(-1);
+    const fromStep = last?.status === "pending" ? this.run.steps.length : this.run.steps.length + 1;
+    this.run.routes = [...this.run.routes ?? [], { fromStep, browser: pick }];
     this.run.browser = pick;
     this.persist();
   }

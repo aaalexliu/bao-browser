@@ -3,7 +3,7 @@
 
 import { importErrorView } from "./import-error";
 import type { inspectRunView } from "../mcp/run-view";
-import type { BrowserPick } from "../engines/browser-pick";
+import type { BrowserPick, RunRoute } from "../engines/browser-pick";
 import { ROUTE_LABELS } from "../engines/route-labels";
 import { shellPlaces, shellScreen, shellScreens, type Screen } from "./shell-navigation";
 import type { ImportLoginError } from "../v1/import-login-error";
@@ -86,6 +86,8 @@ export interface RunSummary {
   kind?: "replay" | "capture";
   pageEngine?: "old" | "agent-browser";
   browser?: BrowserPick;
+  /** Every route this run used, oldest first. Absent on an older run, which stores only `browser`. */
+  routes?: RunRoute[];
   allowCommit?: boolean;
   workflowId: string;
   task?: string;
@@ -2039,6 +2041,22 @@ export function receiptError(): string {
   return `<section class="connection-card"><h2>Can’t open this receipt</h2><p role="alert">Bao couldn’t load the receipt summary. Try again, choose another run, or open any detailed evidence below.</p><button id="retry-run" type="button">Retry</button></section>`;
 }
 
+function receiptRouteLabel(route: BrowserPick["route"]): string {
+  // Receipt keeps the shorter "Running Chrome". MCP lines keep the longer remote-debugging name in ROUTE_LABELS.
+  return { ...ROUTE_LABELS, current: "Running Chrome" }[route];
+}
+
+function receiptBrowserLine(browser: BrowserPick, fromStep?: number): string {
+  const step = fromStep === undefined ? "" : `<br><strong>From step:</strong> ${esc(String(fromStep))}`;
+  return `<p class="receipt-browser"><strong>Browser:</strong> ${esc(receiptRouteLabel(browser.route))}<br><strong>Why:</strong> ${esc(browser.why)}.${step}</p>`;
+}
+
+/** A route history names each route and the step it started at. An older run with only `browser` keeps the single line. */
+function receiptBrowsers(run: RunSummary): string {
+  if (run.routes?.length) return run.routes.map((route) => receiptBrowserLine(route.browser, route.fromStep)).join("");
+  return run.browser ? receiptBrowserLine(run.browser) : "";
+}
+
 function receiptStepStatus(status: string, id: string | undefined, run: RunSummary): string {
   if (status !== "pending" || ["recording", "running"].includes(run.status) || runWaiting(run)) return status;
   return typeof run.steps?.find((step) => step.id === id)?.startedAt === "number" ? "did not finish" : "not reached";
@@ -2048,14 +2066,11 @@ export function runReceipt(view: ReturnType<typeof inspectRunView>, name: string
   const kind = runListKind(run);
   const at = view.run.at === null ? "Time unknown" : formatWhen(view.run.at);
   const calls = view.run.modelCalls;
-  const browser = run.browser;
-  // Receipt keeps the shorter "Running Chrome". MCP lines keep the longer remote-debugging name in ROUTE_LABELS.
-  const browserLabel = browser && { ...ROUTE_LABELS, current: "Running Chrome" }[browser.route];
   const spoken = plainAgentReason(run);
   const ask = spoken ? undefined : view.handoff?.ask || run.envelope?.ask;
   return `<section id="run-receipt" aria-label="Run receipt"><p class="receipt-kicker"><span class="run-state ${esc(kind)}">${esc(statusLabel(kind))}</span> · ${esc(at)}</p><h2>${esc(name)}</h2>
     <p class="receipt-meta">${view.run.stepCount} step${view.run.stepCount === 1 ? "" : "s"}${calls === null ? "" : ` · ${calls} model call${calls === 1 ? "" : "s"}`}</p>
-    ${browser ? `<p class="receipt-browser"><strong>Browser:</strong> ${esc(browserLabel)}<br><strong>Why:</strong> ${esc(browser.why)}.</p>` : ""}
+    ${receiptBrowsers(run)}
     ${spoken ? `<p class="receipt-reason">${esc(spoken)}</p>` : ask ? runWaiting(run) ? `<aside class="receipt-handoff"><h3>Needs you</h3><p>${esc(ownerStopText(ask))}</p>${view.handoff?.deadline ? `<p>Deadline: ${esc(view.handoff.deadline)}</p>` : ""}</aside>` : `<h3>${esc(statusLabel(kind))}</h3><p class="receipt-reason">${esc(ownerStopText(ask))}</p>` : ""}
     ${spoken || (isAgentBrowserSession(run) && ask && runWaiting(run)) ? "" : view.reason || run.failure?.reason ? `<p class="receipt-reason">${esc(ownerStopText(view.reason || run.failure?.reason || ""))}</p>` : ""}
     ${pendingHealCount([run]) ? `<p>A target change is ready to review.</p><button type="button" data-screen="heals">Review heals</button>` : ""}
