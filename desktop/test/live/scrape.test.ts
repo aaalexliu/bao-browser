@@ -10,6 +10,7 @@ import test from "node:test";
 import { startApp } from "../../src/app/server";
 import { launchOwnedChrome, pinTestBrowser } from "../../src/launch";
 import type { PageProposal } from "../../src/v1/data-steps";
+import { parseWorkflow } from "../../src/v1/schema";
 import { testArtifacts } from "../artifacts";
 
 process.env.BAO_DRIVE = "1";
@@ -88,15 +89,8 @@ test("books.toscrape: record a category list, replay another category, CSV match
     }
     assert.deepEqual(Object.values(names).sort(), ["price", "rating", "title"]);
     await post(app.port, "/api/sessions/extract/commit", { names, drop, maxPages: 3, as: "books", vary: "category" });
-    const workflow = await post(app.port, "/api/sessions/stop") as {
-      id: string;
-      version: number;
-      startUrl: string;
-      inputs: { name: string; type: string; default?: string }[];
-      steps: { action: string; extract?: { pagination?: { maxPages: number } } }[];
-      outputs?: { name: string; type: string }[];
-    };
-    assert.equal(workflow.version, 3);
+    const workflow = parseWorkflow(await post(app.port, "/api/sessions/stop"));
+    assert.equal(workflow.schema, "bao.workflow/v4");
     assert.match(workflow.startUrl, /^https:\/\/books\.toscrape\.com\/?$/);
     const category = workflow.inputs.find((input) => input.name === "category");
     assert.ok(category, JSON.stringify(workflow.inputs));
@@ -189,21 +183,17 @@ test("for_each types a 3-row CSV into the-internet login and submits every row",
         return !!page.text?.includes("Your username is invalid");
       });
     }
-    const workflow = await post(app.port, "/api/sessions/stop") as {
-      id: string;
-      version: number;
-      inputs: { name: string; type: string }[];
-      steps: { action: string; forEach?: { over: { kind: string; name: string }; steps: { value?: string }[] } }[];
-    };
+    const workflow = parseWorkflow(await post(app.port, "/api/sessions/stop"));
     const blob = JSON.stringify(workflow);
-    assert.equal(workflow.version, 3);
+    assert.equal(workflow.schema, "bao.workflow/v4");
     assert.equal(blob.includes("ada@example.com"), false);
     const loop = workflow.steps.find((step) => step.action === "for_each");
     assert.equal(loop?.forEach?.over.kind, "input");
     const table = workflow.inputs.find((input) => input.type === "table");
     const secret = workflow.inputs.find((input) => input.type === "secret");
     assert.ok(table && secret, JSON.stringify(workflow.inputs));
-    assert.ok(loop?.forEach?.steps.some((step) => step.value === "{{row.username}}"), JSON.stringify(loop?.forEach?.steps));
+    const username = loop?.forEach?.steps.find((step) => step.action === "type");
+    assert.deepEqual(username?.text, { literal: "{{row.username}}" });
     const run = await post(app.port, "/api/replay", {
       id: workflow.id,
       args: { [table!.name]: csv, [secret!.name]: "example" },
