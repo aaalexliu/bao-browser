@@ -6,7 +6,7 @@ import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { heldConfirmReady, runWorkflow, withHeldPage } from "../../src/mcp/catalog";
+import { hasHeldRuns, heldConfirmReady, runWorkflow, withHeldPage } from "../../src/mcp/catalog";
 import { createRemoteAgent } from "../../src/v1/remote-agent";
 import { saveRelay } from "../../src/v1/relay-link";
 import { Library } from "../../src/v1/store";
@@ -488,3 +488,98 @@ async function waitFor(ready: () => boolean): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 40));
   }
 }
+
+test("a later run drops a parked sign-in page and resume together", { timeout: 60_000 }, async () => {
+  process.env.BAO_HEADED = "0";
+  process.env.BAO_CHROME_NO_SANDBOX = "1";
+  const home = mkdtempSync(path.join(tmpdir(), "bao-remote-park-"));
+  const library = new Library(home);
+  const site = createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    res.end("<body><button id=\"signin\">Sign in</button><p id=\"status\">Signed out</p></body>");
+  });
+  const directory = new MemoryDirectory();
+  directory.addDevice("dev-park", "user-park");
+  const relay = createRelay({ store: new MemoryJobStore(), directory, enabled: () => true });
+  const server = await listenRelay(relay, { principal: () => ({ userId: "user-park" }) });
+  let stopped = false;
+  const remote = createRemoteAgent({
+    library, prompts: { shouldStop: () => stopped },
+    stop() { stopped = true; }, clearStop() { stopped = false; },
+  });
+  let token = "";
+  async function post(route: string, body: unknown, auth?: string): Promise<Record<string, unknown>> {
+    const res = await fetch(`${server.origin}${route}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(auth ? { authorization: `Bearer ${auth}` } : {}) },
+      body: JSON.stringify(body),
+    });
+    const json = await res.json() as Record<string, unknown>;
+    assert.equal(res.status, 200, JSON.stringify(json));
+    return json;
+  }
+  try {
+    await new Promise<void>((resolve) => site.listen(0, "127.0.0.1", resolve));
+    const address = site.address();
+    assert.ok(address && typeof address === "object");
+    library.save(testWorkflow({
+      schema: "bao.workflow/v4", id: "parked-signin", name: "Parked sign-in", createdAt: 1,
+      startUrl: `http://127.0.0.1:${address.port}/`, inputs: [], steps: [{
+        id: "signin",
+        index: 0,
+        timeoutMs: 5000,
+        caption: { text: "Sign in" },
+        action: "handoff",
+        reason: "sign-in",
+        check: { kind: "text", match: "Signed in", timeoutMs: 5000 },
+      }],
+    }));
+    library.updateSettings({ remoteMcp: true });
+    const issued = await post("/api/agent/pair", {});
+    const paired = await post("/api/agent/pair/claim", { code: issued.code, name: "Parked Mac", deviceId: "dev-park" });
+    const agent = await directory.mintAgent("user-park", "dev-park");
+    assert.ok(agent);
+    saveRelay(home, { server: server.origin, token: String(paired.token), deviceId: String(paired.deviceId), tokenId: String(paired.tokenId) });
+    async function tool(name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+      const body = await post("/mcp", { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }, agent!.token);
+      const result = body.result as { content?: { type: string; text?: string }[] };
+      const text = result.content?.find((item) => item.type === "text")?.text;
+      assert.ok(text, JSON.stringify(body));
+      return JSON.parse(text) as Record<string, unknown>;
+    }
+    remote.start();
+    let online = false;
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      if ((await tool("search_workflows", { query: "Parked" })).outcome === "ok") { online = true; break; }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.ok(online, "remote worker did not connect");
+    const parked = await tool("run_workflow", { id: "parked-signin" });
+    assert.equal(parked.outcome, "needs_human", JSON.stringify(parked));
+    token = String(parked.resume || parked.resume_token || "");
+    assert.ok(token);
+    await waitFor(() => remote.view().phase === "idle");
+    assert.equal(remote.view().resumeToken, undefined, "a sign-in park must not hold the remote slot");
+    assert.equal(hasHeldRuns(), true);
+    await withHeldPage(token, async (page) => { assert.equal(page.isClosed(), false); });
+    const searched = await tool("search_workflows", { query: "Parked" });
+    assert.equal(searched.outcome, "ok");
+    await withHeldPage(token, async (page) => { assert.equal(page.isClosed(), false); });
+    assert.equal(remote.view().phase, "idle");
+    const later = await tool("run_workflow", { id: "missing-workflow" });
+    assert.equal(later.outcome, "failed", JSON.stringify(later));
+    await waitFor(() => remote.view().phase === "idle" && !hasHeldRuns());
+    assert.equal(existsSync(path.join(home, "resumes", `${token}.json`)), false);
+    await assert.rejects(() => withHeldPage(token, async () => undefined), /resume token/);
+    const closed = await tool("resume_workflow", { resume: token });
+    assert.equal(closed.outcome, "failed", JSON.stringify(closed));
+    assert.match(String(closed.reason), /not held/);
+    assert.equal(hasHeldRuns(), false);
+    token = "";
+  } finally {
+    if (token) await runWorkflow(library, { resume: token, cancel: true }).catch(() => undefined);
+    await remote.stop();
+    await server.close();
+    await new Promise<void>((resolve) => site.close(() => resolve()));
+  }
+});
