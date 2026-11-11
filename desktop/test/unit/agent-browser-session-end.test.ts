@@ -19,6 +19,70 @@ import { LIST_TARGETS } from "../support/fake-agent-browser";
 const cli = path.resolve(__dirname, "../../src/app/cli.js");
 /** The fixture opens browser=copy and its Chrome has only the Default profile. */
 const COPY_DEFAULT = 'Browser: Chrome copy, Chrome profile "Default".';
+/** Navigates and clicks through Chrome's debugging port, so a fake native can still leave a replayable capture. */
+const DRIVE_PAGE = `const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const call = (socket) => {
+  let id = 0;
+  const pending = new Map();
+  socket.addEventListener("message", (event) => {
+    const message = JSON.parse(String(event.data));
+    const waiter = pending.get(message.id);
+    if (!waiter) return;
+    pending.delete(message.id);
+    if (message.error) waiter.reject(new Error(JSON.stringify(message.error)));
+    else waiter.resolve(message.result);
+  });
+  return (method, params, sessionId) => new Promise((resolve, reject) => {
+    const messageId = ++id;
+    pending.set(messageId, { resolve, reject });
+    socket.send(JSON.stringify({ id: messageId, method, params, ...(sessionId ? { sessionId } : {}) }));
+  });
+};
+const withPage = async (wsUrl, body) => {
+  const socket = new WebSocket(wsUrl);
+  await new Promise((resolve, reject) => {
+    socket.addEventListener("open", resolve, { once: true });
+    socket.addEventListener("error", () => reject(new Error("CDP connection failed")), { once: true });
+  });
+  const send = call(socket);
+  try {
+    const { targetInfos } = await send("Target.getTargets");
+    const page = targetInfos.find((target) => target.type === "page" && !String(target.url).startsWith("chrome://"));
+    if (!page) throw new Error("no page target");
+    const { sessionId } = await send("Target.attachToTarget", { targetId: page.targetId, flatten: true });
+    await send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false }, sessionId);
+    return await body(send, sessionId);
+  } finally { socket.close(); }
+};
+const drive = async (args) => {
+  const wsUrl = args[args.indexOf("--cdp") + 1];
+  const at = args.indexOf("--idle-timeout");
+  const command = args[at + 2];
+  const commandArgs = args.slice(at + 3);
+  if (command === "open") {
+    const url = commandArgs[0];
+    if (!url) throw new Error("open needs a url");
+    const navigated = await withPage(wsUrl, (send, sessionId) => send("Page.navigate", { url }, sessionId));
+    if (navigated.errorText) throw new Error(navigated.errorText);
+    return;
+  }
+  if (command === "click") {
+    const selector = commandArgs[0];
+    await withPage(wsUrl, async (send, sessionId) => {
+      const box = await send("Runtime.evaluate", {
+        expression: "(() => { const el = document.querySelector(" + JSON.stringify(selector) + "); if (!el) return null; el.scrollIntoView({ block: 'center' }); const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2, w: r.width, h: r.height }; })()",
+        returnByValue: true,
+      }, sessionId);
+      const point = box.result && box.result.value;
+      if (!point || point.w <= 0 || point.h <= 0) throw new Error("click target missing");
+      await send("Input.dispatchMouseEvent", { type: "mousePressed", x: point.x, y: point.y, button: "left", clickCount: 1 }, sessionId);
+      await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: point.x, y: point.y, button: "left", clickCount: 1 }, sessionId);
+    });
+    await wait(500);
+  }
+};
+module.exports = { drive };
+`;
 interface Result { isError?: boolean; content?: { text: string }[]; structuredContent?: Record<string, unknown> }
 
 async function until(read: () => boolean | Promise<boolean>): Promise<void> {
@@ -27,7 +91,7 @@ async function until(read: () => boolean | Promise<boolean>): Promise<void> {
   throw new Error("session cleanup timed out");
 }
 
-async function fixture(blockCommand?: "snapshot" | "close") {
+async function fixture(blockCommand?: "snapshot" | "close", drivePage = false) {
   const root = await mkdtemp(path.join(tmpdir(), "bao-session-end-"));
   const home = path.join(root, "home");
   const sourceRoot = path.join(root, "source");
@@ -57,8 +121,15 @@ if (!fs.existsSync(${JSON.stringify(teardown)}) && args.includes(${JSON.stringif
   listed(4);
 } else if (args.includes('snapshot') && fs.existsSync(${JSON.stringify(path.join(root, "page.txt"))})) {
   process.stdout.write(fs.readFileSync(${JSON.stringify(path.join(root, "page.txt"))}, 'utf8'));
-} else process.stdout.write('native success\\n');
+}${drivePage ? ` else if (args.includes('open') || args.includes('click')) {
+  const { drive } = require(${JSON.stringify(path.join(root, "drive-page.js"))});
+  drive(args).then(() => { process.stdout.write('native success\\n'); process.exit(0); }, (error) => {
+    console.error(error && error.message ? error.message : String(error));
+    process.exit(1);
+  });
+}` : ""} else process.stdout.write('native success\\n');
 `, { mode: 0o700 });
+  if (drivePage) await writeFile(path.join(root, "drive-page.js"), DRIVE_PAGE);
   const env: NodeJS.ProcessEnv = {
     PATH: process.env.PATH, TMPDIR: process.env.TMPDIR, HOME: root, BAO_HOME: home,
     BAO_HEAL_CURSOR_ACCOUNT: "0", BAO_TEST_BROWSER: pinTestBrowser(), PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH,
@@ -506,6 +577,37 @@ for (const outcome of ["failed-task", "failed-command", "owner-wait"] as const) 
     }
   });
 }
+
+test("a failed finish_task on a saveable open and click says the task failed, once", { timeout: 90_000 }, async (t) => {
+  const server = createServer((_req, res) => {
+    res.end("<!doctype html><title>Grocery</title><button data-testid=\"chosen\">Add blueberries</button>");
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("fixture server has no port");
+  const url = `http://127.0.0.1:${address.port}/`;
+  const f = await fixture(undefined, true);
+  t.after(async () => {
+    try { await f.close(); }
+    finally { server.close(); }
+  });
+  const c = f.start();
+  await c.request("initialize");
+  assert.equal((await c.call("open", [url])).isError, false, c.diagnostics());
+  assert.equal((await c.call("click", ['[data-testid="chosen"]'])).isError, false, c.diagnostics());
+  const reason = "The page may be a sign-in.";
+  const result = await c.request("tools/call", { name: "finish_task", arguments: { run_id: c.run, outcome: "failed", reason } });
+  assert.equal(result.isError, false, c.diagnostics());
+  const texts = result.content!.map((block) => block.text);
+  const workflow = texts.find((text) => text.startsWith("Not saved as a workflow:"));
+  assert.equal(workflow, "Not saved as a workflow: the task failed.", "a saveable task must not repeat the agent's reason or end in '..'");
+  assert.equal(texts.filter((text) => text.includes(reason)).length, 1, texts.join("\n"));
+  assert.match(texts[0] ?? "", /^Failed: The page may be a sign-in\. /);
+  const receipt = result.structuredContent as { workflow?: string; reason?: string };
+  assert.equal(receipt.workflow, workflow);
+  assert.equal(receipt.reason, reason);
+  assert.equal(f.library.list().workflows.length, 0);
+});
 
 test("a failed open from another chat does not name the run it ended", { timeout: 60_000 }, async (t) => {
   const f = await fixture();
