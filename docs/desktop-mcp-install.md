@@ -26,7 +26,7 @@ To undo an update, quit the desktop client and restore the backup shown in Setti
 
 ## Build the Claude Desktop extension
 
-Run `npm ci` first, then build a local bundle:
+Run `npm ci` first (it also installs `web/`), then build a local bundle:
 
 ```sh
 npm run package:mcpb -- /tmp/bao.mcpb

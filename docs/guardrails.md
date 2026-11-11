@@ -18,7 +18,6 @@ lists the deleted suites, timings, and behavior.
 
 ```sh
 npm ci
-npm --prefix web ci
 npm run check:static
 npm run test:guardrails
 node --test test/essential-manifest.test.mjs
@@ -34,7 +33,7 @@ gh-axi pr edit <number> --add-label full-suite
 `check:static` runs the baseline budget check, all three TypeScript checks, typed
 ESLint, and the import gate. It never starts Bao or a browser. Enable the same
 fast checks before each push with `npm run hooks:enable`. Hooks are bypassable;
-CI is the gate. Both packages must be installed for the static checks.
+CI is the gate. `npm ci` installs both packages, which the static checks need.
 
 The PR check keeps typecheck, typed lint, architecture, baseline budgets, and
 all guardrail self-tests. [Coverage and selection evidence](ci-test-selection.md)

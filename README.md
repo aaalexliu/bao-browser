@@ -39,11 +39,10 @@ on PATH. Prepend the bin directory from `nvm which node`:
 export PATH="$(dirname "$(nvm which node)"):$PATH"
 node scripts/check-node.mjs
 npm ci
-npm --prefix web ci
 npx playwright install chromium
 ```
 
-`node scripts/check-node.mjs` exits 1 when Node is older than `.nvmrc`.
+`npm ci` installs the root lockfile, then installs `web/` from `web/package-lock.json`. `npm ci --ignore-scripts` skips the web install. `node scripts/check-node.mjs` exits 1 when Node is older than `.nvmrc`.
 
 | Task | Command or guide |
 | --- | --- |
