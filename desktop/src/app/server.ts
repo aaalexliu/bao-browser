@@ -335,8 +335,8 @@ export async function startApp(opts: {
     return captureSession.phase === "teachLive" || captureSession.phase === "teachReview" ? "teach" : "capture";
   }
   function teachPhase(): "idle" | "live" | "review" {
-    if (captureSession.phase === "teachLive") return "live";
     if (captureSession.phase === "teachReview") return "review";
+    if (captureSession.phase === "teachLive" && page && !page.isClosed()) return "live";
     return "idle";
   }
   function pendingSave(): PendingCapture | null {
@@ -1276,9 +1276,16 @@ export async function startApp(opts: {
         return json(res, { rows: rows.length });
       }
       if (req.method === "POST" && url.pathname === "/api/sessions/stop") {
-        if (sessionMode() === "teach") return json(res, await finishTeach());
-        const workflow = await enqueue(() => saveSession());
-        return json(res, workflow);
+        const teaching = sessionMode() === "teach";
+        const result = await enqueue(async () => {
+          if (teaching) {
+            if (sessionMode() !== "teach") return null;
+            return finishTeach();
+          }
+          return saveSession();
+        });
+        if (!result) return json(res, { error: "not teaching" }, 409);
+        return json(res, result);
       }
       if (req.method === "POST" && url.pathname === "/api/sessions/commit") {
         const body = await readBody(req) as { name?: string; summary?: string; intent?: string };
@@ -1519,17 +1526,27 @@ export async function startApp(opts: {
         return json(res, teachState());
       }
       if (req.method === "POST" && url.pathname === "/api/teach/stop") {
-        if (teachPhase() !== "live") return json(res, { error: "not teaching" }, 409);
-        return json(res, await finishTeach());
+        if (captureSession.phase !== "teachLive") return json(res, { error: "not teaching" }, 409);
+        const finished = await enqueue(async () => {
+          if (captureSession.phase !== "teachLive") return null;
+          return finishTeach();
+        });
+        if (!finished) return json(res, { error: "not teaching" }, 409);
+        return json(res, finished);
       }
       if (req.method === "POST" && url.pathname === "/api/teach/discard") {
-        if (teachPhase() === "idle") return json(res, { error: "not teaching" }, 409);
-        teachDecisions = [];
-        cardSeen.clear();
-        narrationCache.clear();
-        teachBaseline = [];
-        move({ type: "end-teach" });
-        await discardSession();
+        if (captureSession.phase !== "teachLive" && captureSession.phase !== "teachReview") {
+          return json(res, { error: "not teaching" }, 409);
+        }
+        await enqueue(async () => {
+          if (captureSession.phase !== "teachLive" && captureSession.phase !== "teachReview") return;
+          teachDecisions = [];
+          cardSeen.clear();
+          narrationCache.clear();
+          teachBaseline = [];
+          move({ type: "end-teach" });
+          await discardSession();
+        });
         return json(res, { phase: "idle" });
       }
       if (req.method === "POST" && url.pathname === "/api/teach/save") {
@@ -2083,65 +2100,74 @@ export async function startApp(opts: {
     const id = `wf-${Date.now()}`;
     const opened = captureOpenUrl || (page && !page.isClosed() ? page.url() : "");
     captureOpenUrl = "";
-    const clean = raw.map(storedFileEvent);
-    const startUrl = captureStartUrl(clean, opened);
-    const built = explain(clean, { id, name: "Untitled workflow", startUrl, secrets: [] });
-    const floor = workflowFloorTitle({
-      startUrl,
-      events: clean,
-      steps: built.workflow.steps,
-      pageTitle: capturePageTitle,
-    });
-    const drafted = await inferSavedWorkflow(built.workflow, {
-      floorTitle: floor,
-      startUrl,
-      events: clean,
-      steps: built.workflow.steps,
-      pageTitle: capturePageTitle,
-      groups: built.groups,
-    }, await saveCompleter());
-    if (captureVia === "extension") drafted.driver = "extension";
-    const gestures = captureVia === "extension"
-      ? gestureQueue(drafted.steps, built.groups, gestureById)
-      : undefined;
-    const previous = pendingSave();
-    if (previous) await rm(path.join(opts.home, "shots", "pending", previous.workflow.id), { recursive: true, force: true }).catch(() => undefined);
-    const shotDir = path.join(opts.home, "shots", "pending", drafted.id);
-    mkdirSync(shotDir, { recursive: true });
-    const shots = new Map<string, string>();
-    for (let i = 0; i < drafted.steps.length; i++) {
-      const group = built.groups[i] || [];
-      const event = group.find((item) => item.op !== "note") || group[0];
-      const step = drafted.steps[i];
-      const src = event ? captureShots.get(event.id) : undefined;
-      if (src && step && existsSync(src)) {
-        const dest = path.join(shotDir, workflowShotName(step.id));
-        copyFileSync(src, dest);
-        shots.set(step.id, dest);
+    let drafted: WorkflowV2;
+    try {
+      const clean = raw.map(storedFileEvent);
+      const startUrl = captureStartUrl(clean, opened);
+      const built = explain(clean, { id, name: "Untitled workflow", startUrl, secrets: [] });
+      const floor = workflowFloorTitle({
+        startUrl,
+        events: clean,
+        steps: built.workflow.steps,
+        pageTitle: capturePageTitle,
+      });
+      drafted = await inferSavedWorkflow(built.workflow, {
+        floorTitle: floor,
+        startUrl,
+        events: clean,
+        steps: built.workflow.steps,
+        pageTitle: capturePageTitle,
+        groups: built.groups,
+      }, await saveCompleter());
+      if (captureVia === "extension") drafted.driver = "extension";
+      const gestures = captureVia === "extension"
+        ? gestureQueue(drafted.steps, built.groups, gestureById)
+        : undefined;
+      const previous = pendingSave();
+      if (previous) await rm(path.join(opts.home, "shots", "pending", previous.workflow.id), { recursive: true, force: true }).catch(() => undefined);
+      const shotDir = path.join(opts.home, "shots", "pending", drafted.id);
+      mkdirSync(shotDir, { recursive: true });
+      const shots = new Map<string, string>();
+      for (let i = 0; i < drafted.steps.length; i++) {
+        const group = built.groups[i] || [];
+        const event = group.find((item) => item.op !== "note") || group[0];
+        const step = drafted.steps[i];
+        const src = event ? captureShots.get(event.id) : undefined;
+        if (src && step && existsSync(src)) {
+          const dest = path.join(shotDir, workflowShotName(step.id));
+          copyFileSync(src, dest);
+          shots.set(step.id, dest);
+        }
+        const view = event ? captureViews.get(event.id) : undefined;
+        if (view && step && existsSync(view)) copyFileSync(view, path.join(shotDir, viewportShotName(step.id)));
       }
-      const view = event ? captureViews.get(event.id) : undefined;
-      if (view && step && existsSync(view)) copyFileSync(view, path.join(shotDir, viewportShotName(step.id)));
-    }
-    let poster = "";
-    if (capturePosterPath && existsSync(capturePosterPath)) {
-      const bytes = readFileSync(capturePosterPath);
-      if (selectCardPoster([{ name: "poster.png", bytes }])) {
-        poster = path.join(shotDir, "poster.png");
-        copyFileSync(capturePosterPath, poster);
+      let poster = "";
+      if (capturePosterPath && existsSync(capturePosterPath)) {
+        const bytes = readFileSync(capturePosterPath);
+        if (selectCardPoster([{ name: "poster.png", bytes }])) {
+          poster = path.join(shotDir, "poster.png");
+          copyFileSync(capturePosterPath, poster);
+        }
       }
+      const openedSave = move({
+        type: "open-save",
+        pending: {
+          workflow: drafted,
+          events: ensureTrailTimes(clean).events,
+          shots,
+          poster,
+          floor,
+          gestures,
+        },
+      });
+      if (!openedSave.ok) throw new Error("busy");
+    } catch (err) {
+      captureOpenUrl = opened;
+      move({ type: "abort-start" });
+      await stopBrowser();
+      publishCapture();
+      throw err;
     }
-    const openedSave = move({
-      type: "open-save",
-      pending: {
-        workflow: drafted,
-        events: ensureTrailTimes(clean).events,
-        shots,
-        poster,
-        floor,
-        gestures,
-      },
-    });
-    if (!openedSave.ok) throw new Error("busy");
     capture.discard();
     captureShots.clear();
     captureViews.clear();

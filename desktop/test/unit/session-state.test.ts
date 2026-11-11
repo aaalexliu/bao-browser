@@ -139,6 +139,59 @@ test("a replay started during recording is refused", { timeout: 120_000 }, async
   }
 });
 
+async function claimedTeach(label: string): Promise<{
+  base: string;
+  hits: () => number;
+  release: () => void;
+  teach: Promise<Response>;
+  close: () => Promise<void>;
+}> {
+  const gate = holdPage();
+  let hits = 0;
+  const hung = createServer((_req, res) => {
+    hits += 1;
+    void gate.promise.then(() => {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end("<!doctype html><title>Held</title><p>Held page</p>");
+    });
+  });
+  await new Promise<void>((resolve) => hung.listen(0, "127.0.0.1", () => resolve()));
+  const address = hung.address();
+  const hungPort = typeof address === "object" && address ? address.port : 0;
+  const dirs = applyHermeticApp(label);
+  const app = await startApp({ home: dirs.home, port: 0, chromeUserData: dirs.chromeUserData });
+  const base = `http://127.0.0.1:${app.port}`;
+  const teach = fetch(`${base}/api/sessions`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ url: `http://127.0.0.1:${hungPort}/held`, teach: true }),
+  });
+  const start = Date.now();
+  let launching = false;
+  while (Date.now() - start < 15_000) {
+    const state = await (await fetch(`${base}/api/state`)).json() as { recording: boolean; teach: { phase: string } };
+    if (state.recording && state.teach.phase !== "live" && hits === 0) {
+      launching = true;
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  assert.equal(launching, true, "teach launch was not observed");
+  return {
+    base,
+    hits: () => hits,
+    release: () => gate.release(),
+    teach,
+    close: async () => {
+      gate.release();
+      await teach.catch(() => undefined);
+      await app.close();
+      await new Promise<void>((resolve, reject) => hung.close((err) => err ? reject(err) : resolve()));
+      rmSync(path.dirname(dirs.home), { recursive: true, force: true });
+    },
+  };
+}
+
 function holdPage(): { promise: Promise<void>; release: () => void } {
   let release = () => {};
   const promise = new Promise<void>((resolve) => {
@@ -189,16 +242,19 @@ test("a replay during a teach launch is refused and the teach comes up as teach"
       body: JSON.stringify({ url: `http://127.0.0.1:${hungPort}/held`, teach: true }),
     });
     const start = Date.now();
-    let claimed = false;
+    let launching = false;
     while (Date.now() - start < 15_000) {
-      const state = await (await fetch(`${base}/api/state`)).json() as { teach: { phase: string } };
-      if (state.teach.phase === "live" && hits === 0) {
-        claimed = true;
+      const state = await (await fetch(`${base}/api/state`)).json() as {
+        recording: boolean;
+        teach: { phase: string };
+      };
+      if (state.recording && state.teach.phase !== "live" && hits === 0) {
+        launching = true;
         break;
       }
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
-    assert.equal(claimed, true, "teach stayed idle until the first page was requested");
+    assert.equal(launching, true, "teach published live before the capture page existed");
     const replay = await fetch(`${base}/api/replay`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -207,7 +263,14 @@ test("a replay during a teach launch is refused and the teach comes up as teach"
     const refused = await replay.json() as { error?: string };
     assert.equal(replay.status, 409);
     assert.match(refused.error || "", /recording is open/);
+    const captureStart = fetch(`${base}/api/sessions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ url: `${base}/fixture` }),
+    });
     gate.release();
+    const captureStarted = await captureStart;
+    assert.equal(captureStarted.status, 409, await captureStarted.text());
     const started = await teach;
     assert.equal(started.status, 200, await started.text());
     const after = await (await fetch(`${base}/api/state`)).json() as {
@@ -226,6 +289,91 @@ test("a replay during a teach launch is refused and the teach comes up as teach"
     await app.close();
     await new Promise<void>((resolve, reject) => hung.close((err) => err ? reject(err) : resolve()));
     rmSync(path.dirname(dirs.home), { recursive: true, force: true });
+  }
+});
+
+test("a stop during a teach launch waits for the page", { timeout: 120_000 }, async () => {
+  assert.ok(process.env.BAO_TEST_BROWSER, "Run with laneChildEnv so Chromium is pinned");
+  const launch = await claimedTeach("teach-stop-launch");
+  try {
+    let done = false;
+    const stopping = fetch(`${launch.base}/api/teach/stop`, { method: "POST" }).then((res) => {
+      done = true;
+      return res;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    assert.equal(done, false, "stop finished before the capture page existed");
+    launch.release();
+    const stopped = await stopping;
+    assert.equal(stopped.status, 200, await stopped.text());
+    const started = await launch.teach;
+    assert.equal(started.status, 200, await started.text());
+    const after = await (await fetch(`${launch.base}/api/state`)).json() as {
+      recording: boolean;
+      teach: { phase: string };
+      saveSheet: unknown;
+    };
+    assert.equal(after.teach.phase, "review");
+    assert.equal(after.recording, false);
+    assert.equal(after.saveSheet, null);
+  } finally {
+    await launch.close();
+  }
+});
+
+test("a capture stop during a teach launch waits for the page", { timeout: 120_000 }, async () => {
+  assert.ok(process.env.BAO_TEST_BROWSER, "Run with laneChildEnv so Chromium is pinned");
+  const launch = await claimedTeach("teach-capture-stop-launch");
+  try {
+    let done = false;
+    const stopping = fetch(`${launch.base}/api/sessions/stop`, { method: "POST" }).then((res) => {
+      done = true;
+      return res;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    assert.equal(done, false, "stop finished before the capture page existed");
+    launch.release();
+    const stopped = await stopping;
+    assert.equal(stopped.status, 200, await stopped.text());
+    await launch.teach;
+    const after = await (await fetch(`${launch.base}/api/state`)).json() as {
+      recording: boolean;
+      teach: { phase: string };
+      saveSheet: unknown;
+    };
+    assert.equal(after.teach.phase, "review");
+    assert.equal(after.recording, false);
+    assert.equal(after.saveSheet, null);
+  } finally {
+    await launch.close();
+  }
+});
+
+test("a discard during a teach launch waits for the page", { timeout: 120_000 }, async () => {
+  assert.ok(process.env.BAO_TEST_BROWSER, "Run with laneChildEnv so Chromium is pinned");
+  const launch = await claimedTeach("teach-discard-launch");
+  try {
+    let done = false;
+    const discarding = fetch(`${launch.base}/api/teach/discard`, { method: "POST" }).then((res) => {
+      done = true;
+      return res;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    assert.equal(done, false, "discard finished before the capture page existed");
+    launch.release();
+    const discarded = await discarding;
+    assert.equal(discarded.status, 200, await discarded.text());
+    await launch.teach;
+    const after = await (await fetch(`${launch.base}/api/state`)).json() as {
+      recording: boolean;
+      replaying: boolean;
+      teach: { phase: string };
+    };
+    assert.equal(after.teach.phase, "idle");
+    assert.equal(after.recording, false);
+    assert.equal(after.replaying, false);
+  } finally {
+    await launch.close();
   }
 });
 
@@ -327,9 +475,13 @@ test("a failed save leaves the capture so it can be saved again", { timeout: 120
     const failure = await failed.text();
     assert.equal(failed.status, 500, failure);
     const mid = await (await fetch(`${base}/api/state`)).json() as {
+      recording: boolean;
+      replaying: boolean;
       liveTrail: { op: string }[];
       teach: { phase: string };
     };
+    assert.equal(mid.recording, false);
+    assert.equal(mid.replaying, false);
     assert.equal(mid.teach.phase, "idle");
     assert.equal(mid.liveTrail.some((event) => event.op === "note"), true);
     rmSync(blocked);
@@ -339,6 +491,52 @@ test("a failed save leaves the capture so it can be saved again", { timeout: 120
     assert.match(savedText, /keep the transfer/);
     const after = await (await fetch(`${base}/api/state`)).json() as { saveSheet: { id: string } | null };
     assert.ok(after.saveSheet);
+  } finally {
+    await app.close();
+    rmSync(path.dirname(dirs.home), { recursive: true, force: true });
+  }
+});
+
+test("a failed save leaves recording and lets a new capture start", { timeout: 120_000 }, async () => {
+  assert.ok(process.env.BAO_TEST_BROWSER, "Run with laneChildEnv so Chromium is pinned");
+  const dirs = applyHermeticApp("save-start-again");
+  const app = await startApp({ home: dirs.home, port: 0, chromeUserData: dirs.chromeUserData });
+  const base = `http://127.0.0.1:${app.port}`;
+  try {
+    const started = await fetch(`${base}/api/sessions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ url: `${base}/fixture` }),
+    });
+    assert.equal(started.status, 200, await started.text());
+    const noted = await fetch(`${base}/api/sessions/note`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text: "keep the transfer" }),
+    });
+    assert.equal(noted.status, 200, await noted.text());
+    const blocked = path.join(dirs.home, "shots", "pending");
+    mkdirSync(path.dirname(blocked), { recursive: true });
+    writeFileSync(blocked, "not a directory");
+    const failed = await fetch(`${base}/api/sessions/stop`, { method: "POST" });
+    assert.equal(failed.status, 500, await failed.text());
+    const mid = await (await fetch(`${base}/api/state`)).json() as {
+      recording: boolean;
+      replaying: boolean;
+      liveTrail: { op: string }[];
+    };
+    assert.equal(mid.recording, false);
+    assert.equal(mid.replaying, false);
+    assert.equal(mid.liveTrail.some((event) => event.op === "note"), true);
+    const again = await fetch(`${base}/api/sessions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ url: `${base}/fixture` }),
+    });
+    assert.equal(again.status, 200, await again.text());
+    const after = await (await fetch(`${base}/api/state`)).json() as { recording: boolean; replaying: boolean };
+    assert.equal(after.recording, true);
+    assert.equal(after.replaying, false);
   } finally {
     await app.close();
     rmSync(path.dirname(dirs.home), { recursive: true, force: true });
