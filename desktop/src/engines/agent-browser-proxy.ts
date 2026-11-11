@@ -1297,8 +1297,9 @@ export class AgentBrowserProxy {
   private stillWaiting(session: Session): AgentBrowserCommandResult[] {
     const wait = this.waitOf(session);
     const wall = wait !== "off" && wait !== "pending" && ownerWall(wait.page) !== null;
-    if (!wall) session.recording.ownerWaiting(false);
-    return this.ownerResult("waiting", session);
+    const result = this.ownerResult("waiting", session);
+    if (!wall) this.setWait(session, "off");
+    return result;
   }
 
   private async waitForOwner(session: Session, deadline: number): Promise<AgentBrowserCommandResult[]> {

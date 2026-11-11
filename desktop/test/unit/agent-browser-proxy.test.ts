@@ -185,14 +185,50 @@ for (const failure of ["connect", "metadata", "poll"]) test(`owner wait keeps it
     assert.equal(step.status, "passed");
     assert.equal(step.afterShot, undefined);
     assert.deepEqual(step.native.screenshots, []);
-    const calls = await f.calls();
-    for (const command of ["snapshot", "screenshot", "fill", "click", "tab"]) {
-      const blocked = await f.proxy.execute(command, [], undefined, false, undefined, {}, f.proxy.activeRunId);
-      assert.equal((JSON.parse(blocked[0]!.stdout) as { outcome: string }).outcome, "halted");
+    if (readWall) {
+      const calls = await f.calls();
+      for (const command of ["snapshot", "screenshot", "fill", "click", "tab"]) {
+        const blocked = await f.proxy.execute(command, [], undefined, false, undefined, {}, f.proxy.activeRunId);
+        assert.equal((JSON.parse(blocked[0]!.stdout) as { outcome: string }).outcome, "halted");
+      }
+      assert.deepEqual(await f.calls(), calls);
+      await f.proxy.close();
+      const closed = new Library(path.join(f.root, "home")).readRun(saved.id);
+      assert.equal(closed.status, "failed");
+      assert.equal(closed.envelope?.reason, "session_closed");
     }
-    assert.deepEqual(await f.calls(), calls);
+  } finally { await f.close(); }
+});
+
+for (const failure of ["connect", "metadata"] as const) test(`a close during an unfinished ${failure} wait records session_closed`, { timeout: 4000 }, async (t) => {
+  const f = await fixture(t);
+  try {
+    await f.proxy.execute("open", [], "copy");
+    t.mock.method(sockets, "connectCdp", async () => {
+      if (failure === "connect") throw new Error("temporary connection failure");
+      const cdp = new sockets.CdpSocket(new Socket());
+      t.mock.method(cdp, "send", async (method: string) => {
+        if (method === "Target.getTargetInfo") throw new Error("temporary metadata failure");
+        return { sessionId: "fixture" };
+      });
+      followSend(t, cdp);
+      return cdp;
+    });
+    const runId = f.proxy.activeRunId!;
+    const library = new Library(path.join(f.root, "home"));
+    const pending = f.proxy.execute("wait_for_owner", ["5000"], undefined, false, undefined, {}, runId);
+    const until = Date.now() + 2_000;
+    let during = library.readRun(runId).status;
+    while (during !== "needs_human" && Date.now() < until) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      during = library.readRun(runId).status;
+    }
+    assert.equal(during, "needs_human");
     await f.proxy.close();
-    assert.equal(new Library(path.join(f.root, "home")).readRun(saved.id).status, readWall ? "failed" : "passed");
+    await pending;
+    const saved = library.readRun(runId);
+    assert.equal(saved.status, "failed");
+    assert.equal(saved.envelope?.reason, "session_closed");
   } finally { await f.close(); }
 });
 
@@ -1014,6 +1050,10 @@ test("a wait_for_owner on a normal page shows needs_human while it waits, then r
     assert.equal((JSON.parse(waiting!.stdout) as { outcome: string }).outcome, "waiting");
     assert.equal(during, "needs_human", "the app shows the run as needing the owner while the agent waits");
     assert.equal(library.readRun(runId).status, "recording", "a page that is not a wall leaves needs_human when the wait ends");
+    const [clicked] = await f.proxy.execute("click", ["@e1"], undefined, false, undefined, {}, runId);
+    assert.equal(clicked!.stdout, "click unchanged\n");
+    assert.equal(clicked!.exitCode, 0);
+    assert.equal(library.readRun(runId).status, "recording");
     assert.equal(await f.proxy.finishTask({ outcome: "passed", reason: "The page was already open." }, runId), runId);
     assert.equal(library.readRun(runId).status, "passed");
     assert.equal(library.readRun(runId).envelope?.reason, "The page was already open.");
