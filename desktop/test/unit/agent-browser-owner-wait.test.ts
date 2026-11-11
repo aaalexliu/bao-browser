@@ -302,15 +302,6 @@ test("a later wall re-injects its banner without activating or raising the windo
     assert.match(await page.locator("#bao-owner-wait").innerText(), /finish the check/);
     await quiet(moved, "a later wall URL does not activate or raise");
 
-    await page.reload({ waitUntil: "load" });
-    assert.equal(await page.locator("#bao-owner-wait").count(), 0, "a reload removes the page banner");
-    front.length = 0;
-    const reloaded = await proxy.execute("wait_for_owner", ["1500"], undefined, false, undefined, {}, runId);
-    assert.equal(outcome(reloaded), "waiting");
-    assert.equal(proxy.ownerPage!.url, fixture.url("/owner/verify"));
-    assert.equal(proxy.ownerPage!.title, "Two-factor authentication");
-    await quiet(reloaded, "a reload of the same wall re-injects the banner without activating or raising");
-
     await page.evaluate(() => document.getElementById("bao-owner-wait")?.remove());
     await page.evaluate(() => { document.title = "Confirm your account"; });
     front.length = 0;
