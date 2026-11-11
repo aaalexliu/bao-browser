@@ -1,8 +1,10 @@
+import "./pin-playwright-cache.js";
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pinTestBrowser } from "../src/launch";
+import { swapTestHome } from "../src/playwright-cache.js";
 import type { KeySources } from "../src/login-import/keys";
 
 const SECRET_KEYS = [
@@ -56,6 +58,7 @@ export const CONNECTION_GUARD = path.resolve("desktop/test/connection-guard.cjs"
  */
 export function laneChildEnv(lane: TestLane, parent: NodeJS.ProcessEnv, playwrightPath?: () => string): NodeJS.ProcessEnv {
   const env = laneEnv(lane, parent);
+  swapTestHome(env);
   if (!existsSync(CONNECTION_GUARD)) throw new Error(`Run tests from the repository root: ${CONNECTION_GUARD} is missing.`);
   const preload = `--require ${JSON.stringify(CONNECTION_GUARD)}`;
   if (!env.NODE_OPTIONS?.includes(preload)) env.NODE_OPTIONS = [env.NODE_OPTIONS, preload].filter(Boolean).join(" ");

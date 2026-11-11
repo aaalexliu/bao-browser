@@ -1,4 +1,11 @@
 // @ts-check
+const os = require("os");
+const { swapTestHome } = require("./playwright-cache.js");
+
+// A test child can load this file after HOME was swapped. Pin before Playwright reads it.
+if (!process.env.PLAYWRIGHT_BROWSERS_PATH && process.env.HOME && process.env.HOME !== os.userInfo().homedir) {
+  swapTestHome(process.env);
+}
 const { chromium } = require("playwright");
 
 // Deny in Chrome, and never open real capture devices. Fake UI would auto-accept.
@@ -26,6 +33,7 @@ function launchOptions(options) {
 
 /** @param {import("playwright").LaunchOptions} [options] */
 function launchTestBrowser(options = {}) {
+  swapTestHome(process.env);
   return chromium.launch({ headless: true, ...launchOptions(options) });
 }
 
@@ -34,6 +42,7 @@ function launchTestBrowser(options = {}) {
  * @param {Parameters<typeof chromium.launchPersistentContext>[1]} [options]
  */
 function launchTestContext(userDataDir, options = {}) {
+  swapTestHome(process.env);
   return chromium.launchPersistentContext(userDataDir, {
     headless: true,
     ...launchOptions(options),
