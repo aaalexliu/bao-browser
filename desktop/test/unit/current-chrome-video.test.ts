@@ -123,11 +123,11 @@ test("tab video omits frames painted during an owner wait", { skip: !ffmpeg, tim
     }
     await run.recordTab(f.cdp, targetId);
     await wait(400);
-    await run.ownerWaiting(true);
-    await run.ownerWaiting(true);
+    run.ownerWaiting(true);
+    run.ownerWaiting(true);
     await evaluate(f.cdp, targetId, "document.documentElement.style.background='#00ff00';document.body.style.background='#00ff00'");
     await wait(800);
-    await run.ownerWaiting(false);
+    run.ownerWaiting(false);
     await evaluate(f.cdp, targetId, "document.documentElement.style.background='blue';document.body.style.background='blue'");
     await wait(400);
     await run.endVideoCapture();
@@ -154,12 +154,12 @@ test("a capture started during an owner wait omits the wait and resumes after it
       assert.ok(Date.now() < deadline, "fixture page loaded");
       await wait(20);
     }
-    await run.ownerWaiting(true);
+    run.ownerWaiting(true);
     await evaluate(f.cdp, targetId, "document.documentElement.style.background='#00ff00';document.body.style.background='#00ff00'");
     await run.recordTab(f.cdp, targetId);
-    await run.ownerWaiting(true);
+    run.ownerWaiting(true);
     await wait(800);
-    await run.ownerWaiting(false);
+    run.ownerWaiting(false);
     await evaluate(f.cdp, targetId, "document.documentElement.style.background='blue';document.body.style.background='blue'");
     await wait(400);
     await run.endVideoCapture();
