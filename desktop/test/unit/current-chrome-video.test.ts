@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -11,7 +12,7 @@ import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { shareConnection } from "../../src/cdp-live/shared-connection";
 import { connectCdp, type CdpSocket } from "../../src/cdp-live/socket";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
-import { AgentBrowserRun } from "../../src/engines/agent-browser-record";
+import { abandonVideoOnHostStop, AgentBrowserRun } from "../../src/engines/agent-browser-record";
 import * as cdpVideo from "../../src/engines/cdp-video";
 import { launchOwnedChromeEndpoint, pinTestBrowser } from "../../src/launch";
 import { Library } from "../../src/v1/store";
@@ -220,4 +221,125 @@ test("Running Chrome records the background task without changing the owner tab,
       } finally { await proxy.end(); }
     }
   } finally { probe.close(); await f.close(); }
+});
+
+test("a stop that cuts off an in-progress encode leaves no frames directory and no ffmpeg child", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-video-cutoff-"));
+  const home = path.join(root, "home");
+  const pidFile = path.join(root, "encoder.pid");
+  const encoder = path.join(root, "encoder");
+  const previous = process.env.FFMPEG;
+  let pid = 0;
+  await writeFile(encoder, `#!${process.execPath}
+const fs = require("node:fs");
+fs.writeFileSync(process.argv.at(-1), Buffer.alloc(100));
+fs.writeFileSync(${JSON.stringify(pidFile)}, String(process.pid));
+setInterval(() => {}, 1000);
+`, { mode: 0o700 });
+  process.env.FFMPEG = encoder;
+  const frames = new Map<string, (params: Record<string, unknown>) => void>();
+  const cdp = {
+    on(method: string, _session: string, handler: (params: Record<string, unknown>) => void) { frames.set(method, handler); },
+    async send(method: string) {
+      if (method === "Target.attachToTarget") return { sessionId: "page" };
+      if (method === "Target.getTargets") return { targetInfos: [] };
+      if (method === "Page.startScreencast") {
+        frames.get("Page.screencastFrame")?.({ data: Buffer.from([0xff, 0xd8, 0xff, 0xd9]).toString("base64"), sessionId: "frame" });
+      }
+      return {};
+    },
+  } as unknown as CdpSocket;
+  const run = new AgentBrowserRun(home);
+  const notes: string[] = [];
+  const write = process.stderr.write;
+  process.stderr.write = ((chunk: string | Uint8Array) => {
+    notes.push(String(chunk));
+    return true;
+  }) as typeof process.stderr.write;
+  try {
+    await run.recordTab(cdp, "tab");
+    await run.endVideoCapture();
+    const videos = path.join(home, "videos");
+    assert.equal((await readdir(videos)).filter((name) => name.includes(".frames-")).length, 1);
+    const encoding = run.encodeVideo();
+    const started = Date.now() + 5000;
+    while (!existsSync(pidFile)) {
+      assert.ok(Date.now() < started, "encoder started");
+      await wait(20);
+    }
+    pid = Number(await readFile(pidFile, "utf8"));
+    assert.ok(pid > 0);
+    assert.equal(existsSync(path.join(videos, `${run.id}.mp4`)), true);
+    assert.doesNotThrow(() => process.kill(pid, 0));
+    abandonVideoOnHostStop();
+    const gone = Date.now() + 2000;
+    while (Date.now() < gone) {
+      try { process.kill(pid, 0); }
+      catch { break; }
+      await wait(20);
+    }
+    assert.throws(() => process.kill(pid, 0));
+    assert.deepEqual((await readdir(videos)).filter((name) => name.includes(".frames-")), []);
+    assert.equal(existsSync(path.join(videos, `${run.id}.mp4`)), false);
+    const saved = new Library(home).listRuns()[0]!;
+    assert.equal(saved.video, undefined);
+    assert.equal(saved.videoStartedAt, undefined);
+    assert.equal(saved.videoTruncated, undefined);
+    assert.equal(saved.videoUnavailable, "Bao stopped before the video finished");
+    await encoding;
+    assert.equal(notes.some((line) => line.includes("frames retained")), false);
+    assert.equal(notes.some((line) => line.includes("Bao stopped before the video finished")), true);
+  } finally {
+    process.stderr.write = write;
+    abandonVideoOnHostStop();
+    if (pid) { try { process.kill(pid, "SIGKILL"); } catch { /* already dead */ } }
+    if (previous === undefined) delete process.env.FFMPEG; else process.env.FFMPEG = previous;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a failed encode warns with the encoder error and the kept frames path", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-video-encode-fail-"));
+  const home = path.join(root, "home");
+  const encoder = path.join(root, "encoder");
+  const previous = process.env.FFMPEG;
+  await writeFile(encoder, `#!${process.execPath}
+process.exit(1);
+`, { mode: 0o700 });
+  process.env.FFMPEG = encoder;
+  const frames = new Map<string, (params: Record<string, unknown>) => void>();
+  const cdp = {
+    on(method: string, _session: string, handler: (params: Record<string, unknown>) => void) { frames.set(method, handler); },
+    async send(method: string) {
+      if (method === "Target.attachToTarget") return { sessionId: "page" };
+      if (method === "Target.getTargets") return { targetInfos: [] };
+      if (method === "Page.startScreencast") {
+        frames.get("Page.screencastFrame")?.({ data: Buffer.from([0xff, 0xd8, 0xff, 0xd9]).toString("base64"), sessionId: "frame" });
+      }
+      return {};
+    },
+  } as unknown as CdpSocket;
+  const notes: string[] = [];
+  const write = process.stderr.write;
+  process.stderr.write = ((chunk: string | Uint8Array) => {
+    notes.push(String(chunk));
+    return true;
+  }) as typeof process.stderr.write;
+  const run = new AgentBrowserRun(home);
+  try {
+    await run.recordTab(cdp, "tab");
+    await run.endVideoCapture();
+    await run.encodeVideo();
+    const videos = path.join(home, "videos");
+    const kept = (await readdir(videos)).filter((name) => name.includes(".frames-"));
+    assert.equal(kept.length, 1);
+    const saved = new Library(home).listRuns()[0]!;
+    assert.equal(saved.video, undefined);
+    assert.equal(notes.some((line) => line.includes("tab video encoding") && !line.includes("frames retained")), false);
+    assert.equal(notes.some((line) => line.includes("CDP video encoding failed") && line.includes(kept[0]!)), true);
+  } finally {
+    process.stderr.write = write;
+    if (previous === undefined) delete process.env.FFMPEG; else process.env.FFMPEG = previous;
+    await rm(root, { recursive: true, force: true });
+  }
 });

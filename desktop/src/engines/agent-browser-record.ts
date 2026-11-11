@@ -14,6 +14,13 @@ import type { BrowserPick } from "./browser-pick";
 import type { SignInImport } from "./bao-profile";
 import { startCdpVideo, type CdpVideo } from "./cdp-video";
 
+const hostStopRuns = new Set<AgentBrowserRun>();
+
+/** A host stop is exiting before this process can finish an in-progress tab video. */
+export function abandonVideoOnHostStop(): void {
+  for (const run of [...hostStopRuns]) run.abandonOnHostStop();
+}
+
 type Viewport = { width: number; height: number };
 
 /** What the proxy learned around a command: Chrome's page metadata and a box measured for a read. */
@@ -84,6 +91,9 @@ export class AgentBrowserRun {
   } | {
     kind: "encoding"; capture: CdpVideo; startedAt: number;
   } | undefined;
+  private encoding: { capture: CdpVideo; startedAt: number } | undefined;
+  private videoReady = false;
+  private videoAbandoned = false;
 
   constructor(private readonly home: string) {
     this.shots = path.join(home, "shots", "runs", this.run.id);
@@ -230,11 +240,12 @@ export class AgentBrowserRun {
         const startedAt = Date.now();
         const capture = await startCdpVideo(cdp, sessionId, path.join(this.home, "videos", `${this.id}.mp4`), { noBlur: true });
         this.video = { kind: "recording", capture, cdp, targetId, sessionId, startedAt };
+        hostStopRuns.add(this);
       }
     } catch {
       if (this.video?.kind === "recording") this.video.capture.pause();
       if (sessionId) await cdp.send("Target.detachFromTarget", { sessionId }, undefined, 2000).catch(() => undefined);
-      await this.stopVideo();
+      await this.endVideoCapture();
       this.warn("tab video");
     }
   }
@@ -262,15 +273,39 @@ export class AgentBrowserRun {
     const video = this.video;
     this.video = { kind: "unavailable" };
     if (video?.kind !== "encoding") return;
+    this.encoding = video;
     try {
       const result = await video.capture.stop();
-      if (result.wrote) {
+      if (result.wrote && !this.videoAbandoned) {
+        this.videoReady = true;
+        hostStopRuns.delete(this);
+        this.encoding = undefined;
         this.run.video = `${this.id}.mp4`;
         this.run.videoStartedAt = video.startedAt;
         this.run.videoTruncated = result.truncated;
+        delete this.run.videoUnavailable;
         this.persist();
       }
-    } catch { this.warn("tab video encoding"); }
+    } catch (error) {
+      if (this.videoAbandoned) return;
+      this.warn(error instanceof Error && error.message ? error.message : "tab video encoding");
+    }
+  }
+
+  abandonOnHostStop(): void {
+    if (this.videoReady || this.videoAbandoned) return;
+    this.videoAbandoned = true;
+    const active = this.encoding ?? (this.video && this.video.kind !== "unavailable" ? this.video : undefined);
+    active?.capture.abandonEncode();
+    delete this.run.video;
+    delete this.run.videoStartedAt;
+    delete this.run.videoTruncated;
+    this.run.videoUnavailable = "Bao stopped before the video finished";
+    this.video = { kind: "unavailable" };
+    this.encoding = undefined;
+    hostStopRuns.delete(this);
+    this.persist();
+    this.warn("Bao stopped before the video finished");
   }
 
   async stopVideo(): Promise<void> {

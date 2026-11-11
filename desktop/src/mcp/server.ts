@@ -3,6 +3,7 @@ import { describeWorkflow, getRun, hasHeldRuns, peekResume, runWorkflow, searchW
 import { frameRpc, takeRpcChunk } from "./frame";
 import { Library } from "../v1/store";
 import { AGENT_BROWSER_COMMANDS, AgentBrowserProxy, otherTaskClosed, type AgentBrowserCommandResult } from "../engines/agent-browser-proxy";
+import { abandonVideoOnHostStop } from "../engines/agent-browser-record";
 import { BROWSER_CHOICES, BROWSER_CHOICE_DESCRIPTION, DEFAULT_BROWSER, PROFILE_DESCRIPTION, browserChoice, type BrowserChoice } from "../browser-choice";
 import { supportsViewer, UI_EXTENSION, VIEWER_MIME, VIEWER_RESOURCE, VIEWER_URI, viewerResource } from "./viewer";
 import { callViewerTool, isViewerTool, LIST_RUNS_TOOL, VIEWER_TOOLS } from "./viewer-tools";
@@ -188,7 +189,11 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
       });
   };
   const stop = (): void => {
-    setTimeout(() => process.exit(0), 15_000).unref();
+    setTimeout(() => {
+      try { abandonVideoOnHostStop(); }
+      catch (error) { process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`); }
+      process.exit(0);
+    }, 15_000).unref();
     end();
   };
   const versionPoll = setInterval(() => {
