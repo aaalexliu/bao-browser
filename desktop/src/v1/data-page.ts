@@ -175,7 +175,7 @@ export function installDataPage(): void {
   };
 
   const proposeElement = (start: Element): Record<string, unknown> => {
-    const viewH = window.innerHeight || 800;
+    const viewH = Math.max(window.innerHeight, 800);
     let node: Element | null = start instanceof HTMLElement ? start : start.parentElement;
     let best: { row: Element; css: string; xpath: string; count: number } | undefined;
     let depth = 0;
