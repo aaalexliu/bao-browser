@@ -175,6 +175,7 @@ export function installDataPage(): void {
   };
 
   const proposeElement = (start: Element): Record<string, unknown> => {
+    const viewH = Math.max(window.innerHeight, 800);
     let node: Element | null = start instanceof HTMLElement ? start : start.parentElement;
     let best: { row: Element; css: string; xpath: string; count: number } | undefined;
     let depth = 0;
@@ -184,7 +185,7 @@ export function installDataPage(): void {
       try { count = document.querySelectorAll(built.css).length; } catch { count = 0; }
       const rect = node.getBoundingClientRect();
       const generic = !stableClasses(node).length && /^(a|span|div|p|li|ul|ol)$/i.test(node.tagName);
-      if (!generic && count >= 2 && count <= 80 && rect.height > 12 && (!best || count >= best.count)) {
+      if (!generic && count >= 2 && count <= 80 && rect.height > 12 && rect.height < viewH * 0.85) {
         best = { row: node, css: built.css, xpath: built.xpath, count };
       }
       node = node.parentElement;
