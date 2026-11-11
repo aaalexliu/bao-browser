@@ -3,10 +3,12 @@
 // practice login through for_each.
 
 import assert from "node:assert/strict";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import type { Page } from "playwright";
 import { startApp } from "../../src/app/server";
 import { launchOwnedChrome, pinTestBrowser } from "../../src/launch";
 import type { PageProposal } from "../../src/v1/data-steps";
@@ -62,6 +64,52 @@ async function until(label: string, fn: () => Promise<boolean>): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 300));
   }
   throw new Error(`timeout ${label} ${last}`);
+}
+
+async function chooseTheme(page: Page, theme: "light" | "dark"): Promise<void> {
+  await page.locator("#rail button[data-place=settings]").click();
+  const details = page.locator("#settings-advanced");
+  await details.waitFor();
+  if ((await details.getAttribute("open")) === null) {
+    await page.locator("#settings-advanced > summary").click();
+  }
+  await page.locator("#theme").selectOption(theme);
+  await page.waitForFunction((next) => document.documentElement.dataset.theme === next, theme);
+}
+
+async function openRunOutputs(page: Page, runId: string): Promise<void> {
+  await page.locator("#rail button[data-place=runs]").click();
+  await page.locator(`button[data-open-run="${runId}"]`).click();
+  const evidence = page.locator("#run-evidence");
+  await evidence.waitFor();
+  if ((await evidence.getAttribute("open")) === null) {
+    await page.getByText("Detailed evidence", { exact: true }).click();
+  }
+  await page.locator("#run-outputs").waitFor();
+}
+
+function outputCard(page: Page): Promise<string> {
+  return page.locator("#run-outputs .output-scroll").evaluate((el) => getComputedStyle(el).backgroundColor);
+}
+
+function pngHash(file: string): string {
+  return createHash("sha256").update(readFileSync(file)).digest("hex");
+}
+
+async function shotOutputs(page: Page, file: string): Promise<void> {
+  let last = "";
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      const outputs = page.locator("#run-outputs");
+      await outputs.waitFor();
+      await outputs.screenshot({ path: file, animations: "disabled" });
+      return;
+    } catch (err) {
+      last = err instanceof Error ? err.message : String(err);
+      if (!/not attached|not stable|detached/i.test(last)) throw err;
+    }
+  }
+  throw new Error(`outputs screenshot detached: ${last}`);
 }
 
 test("books.toscrape: record a category list, replay another category, CSV matches the site", { timeout: scaledMs(240_000) }, async () => {
@@ -133,20 +181,24 @@ test("books.toscrape: record a category list, replay another category, CSV match
     const ui = await launchOwnedChrome({ userDataDir: uiProfile, headless: true });
     try {
       const uiPage = ui.pages()[0] || await ui.newPage();
-      await uiPage.addInitScript(() => {
-        localStorage.setItem("bao-theme", "light");
-      });
+      await uiPage.setViewportSize({ width: 1200, height: 900 });
       await uiPage.goto(`http://127.0.0.1:${app.port}/`);
-      await uiPage.click(`button[data-open-run="${run.runId}"]`);
-      await uiPage.getByText("Detailed evidence", { exact: true }).click();
-      await uiPage.waitForSelector("#run-outputs");
-      await uiPage.locator("#run-outputs").screenshot({ path: path.join(ARTIFACTS, "scrape-outputs-light.png") });
-      await uiPage.evaluate(() => localStorage.setItem("bao-theme", "dark"));
-      await uiPage.reload();
-      await uiPage.click(`button[data-open-run="${run.runId}"]`);
-      await uiPage.getByText("Detailed evidence", { exact: true }).click();
-      await uiPage.waitForSelector("#run-outputs");
-      await uiPage.locator("#run-outputs").screenshot({ path: path.join(ARTIFACTS, "scrape-outputs-dark.png") });
+      const lightShot = path.join(ARTIFACTS, "scrape-outputs-light.png");
+      const darkShot = path.join(ARTIFACTS, "scrape-outputs-dark.png");
+      await chooseTheme(uiPage, "light");
+      await openRunOutputs(uiPage, run.runId);
+      assert.equal(await uiPage.locator("html").getAttribute("data-theme"), "light");
+      assert.match(await outputCard(uiPage), /^rgba?\(255,\s*255,\s*255/);
+      await shotOutputs(uiPage, lightShot);
+      await chooseTheme(uiPage, "dark");
+      await openRunOutputs(uiPage, run.runId);
+      assert.equal(await uiPage.locator("html").getAttribute("data-theme"), "dark");
+      const darkCard = await outputCard(uiPage);
+      const darkChannels = darkCard.match(/\d+/g)?.map(Number) ?? [];
+      const darkOpaque = darkChannels.length < 4 || (darkChannels[3] ?? 1) >= 1;
+      assert.ok(darkChannels.length >= 3 && darkOpaque && darkChannels.slice(0, 3).every((channel) => channel < 80), darkCard);
+      await shotOutputs(uiPage, darkShot);
+      assert.notEqual(pngHash(lightShot), pngHash(darkShot));
     } finally {
       await ui.close();
     }
