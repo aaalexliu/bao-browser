@@ -3,6 +3,7 @@
 
 import { importErrorView } from "./import-error";
 import type { inspectRunView } from "../mcp/run-view";
+import type { BrowserPick } from "../engines/browser-pick";
 import { shellPlaces, shellScreen, shellScreens, type Screen } from "./shell-navigation";
 import type { ImportLoginError } from "../v1/import-login-error";
 import { ownerWaitTimeout } from "../cdp-live/owner-wait";
@@ -83,6 +84,7 @@ export interface RunSummary {
   id: string;
   kind?: "replay" | "capture";
   pageEngine?: "old" | "agent-browser";
+  browser?: BrowserPick;
   allowCommit?: boolean;
   workflowId: string;
   task?: string;
@@ -2045,10 +2047,18 @@ export function runReceipt(view: ReturnType<typeof inspectRunView>, name: string
   const kind = runListKind(run);
   const at = view.run.at === null ? "Time unknown" : formatWhen(view.run.at);
   const calls = view.run.modelCalls;
+  const browser = run.browser;
+  const browserLabel = browser && ({
+    bao: "Bao profile",
+    copy: "Chrome copy",
+    current: "Running Chrome",
+    extension: "Running Chrome through the Bao extension",
+  } satisfies Record<BrowserPick["route"], string>)[browser.route];
   const spoken = plainAgentReason(run);
   const ask = spoken ? undefined : view.handoff?.ask || run.envelope?.ask;
   return `<section id="run-receipt" aria-label="Run receipt"><p class="receipt-kicker"><span class="run-state ${esc(kind)}">${esc(statusLabel(kind))}</span> · ${esc(at)}</p><h2>${esc(name)}</h2>
     <p class="receipt-meta">${view.run.stepCount} step${view.run.stepCount === 1 ? "" : "s"}${calls === null ? "" : ` · ${calls} model call${calls === 1 ? "" : "s"}`}</p>
+    ${browser ? `<p class="receipt-browser"><strong>Browser:</strong> ${esc(browserLabel)}<br><strong>Why:</strong> ${esc(browser.why)}.</p>` : ""}
     ${spoken ? `<p class="receipt-reason">${esc(spoken)}</p>` : ask ? runWaiting(run) ? `<aside class="receipt-handoff"><h3>Needs you</h3><p>${esc(ownerStopText(ask))}</p>${view.handoff?.deadline ? `<p>Deadline: ${esc(view.handoff.deadline)}</p>` : ""}</aside>` : `<h3>${esc(statusLabel(kind))}</h3><p class="receipt-reason">${esc(ownerStopText(ask))}</p>` : ""}
     ${spoken || (isAgentBrowserSession(run) && ask && runWaiting(run)) ? "" : view.reason || run.failure?.reason ? `<p class="receipt-reason">${esc(ownerStopText(view.reason || run.failure?.reason || ""))}</p>` : ""}
     ${pendingHealCount([run]) ? `<p>A target change is ready to review.</p><button type="button" data-screen="heals">Review heals</button>` : ""}
