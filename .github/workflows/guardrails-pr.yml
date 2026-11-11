@@ -48,7 +48,7 @@ jobs:
               npm run baselines:check
               npm run arch:check
               npm run test:guardrails
-              node --test test/essential-manifest.test.mjs
+              node scripts/run-node-test.mjs test/essential-manifest.test.mjs
               ;;
           esac
 

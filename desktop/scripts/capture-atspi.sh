@@ -49,4 +49,4 @@ wait "$CALC_PID" || true
 CALC_PID=""
 cd "$ROOT"
 export BAO_CALC=1 BAO_OS_HELPER="$BIN" BAO_SCREEN=1400x900 BAO_WRITE_EXAMPLES=1
-node --test desktop/dist/desktop/test/live/calc.test.js
+node scripts/run-node-test.mjs desktop/dist/desktop/test/live/calc.test.js

@@ -15,7 +15,7 @@
     "baselines:check": "node scripts/check-baselines.mjs",
     "check:static": "npm run baselines:check && npm run typecheck && npm run lint && npm run arch:check",
     "hooks:enable": "git config core.hooksPath .githooks",
-    "test:guardrails": "node --test test/guardrails.test.mjs",
+    "test:guardrails": "node scripts/run-node-test.mjs test/guardrails.test.mjs",
     "icons": "node assets/gen-icons.mjs",
     "promo": "node assets/gen-promo.mjs",
     "typecheck": "npm run typecheck:desktop && npm run typecheck:extension && npm --prefix web run typecheck",

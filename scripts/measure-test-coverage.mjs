@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { laneChildEnv } from "../desktop/dist/desktop/test/runtime.js";
+import { runnerTestArgs } from "../desktop/test/runner-flags.mjs";
 
 // Run only in the opt-in workflow. Each file owns its descendants' V8 data.
 const dest = path.resolve(process.argv[2]);
@@ -15,7 +16,7 @@ async function worker() {
     mkdirSync(dir, { recursive: true });
     const start = performance.now();
     const env = { ...laneChildEnv("hermetic", process.env), NODE_V8_COVERAGE: dir };
-    const args = ["--test", "--test-concurrency=1", "--test-reporter=tap", "--test-force-exit",
+    const args = ["--test", "--test-concurrency=1", "--test-reporter=tap", ...runnerTestArgs(),
       path.join("desktop/dist/desktop/test/unit", file.replace(/\.ts$/, ".js"))];
     const code = await new Promise((resolve, reject) => {
       const child = spawn(process.execPath, args, { env, stdio: ["ignore", "pipe", "pipe"] });
@@ -35,4 +36,4 @@ async function worker() {
 }
 await Promise.all([worker(), worker()]);
 writeFileSync(path.join(dest, "results.json"), JSON.stringify(results, null, 2));
-if (results.some((result) => result.code !== 0)) process.exitCode = 1;
+process.exit(results.some((result) => result.code !== 0) ? 1 : 0);

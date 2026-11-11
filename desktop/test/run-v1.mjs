@@ -1,11 +1,9 @@
 import { execFileSync } from "node:child_process";
 import { rmSync } from "node:fs";
-import { createRequire } from "node:module";
 import path from "node:path";
 import { compiledTestPlan, laneChildEnv, playwrightVersionError } from "../dist/desktop/test/runtime.js";
+import { runnerTestArgs } from "./runner-flags.mjs";
 import { runWithFileRetry } from "./retry-run.mjs";
-
-const { scaledMs } = createRequire(import.meta.url)("./time-scale.cjs");
 
 const versionError = playwrightVersionError();
 if (versionError) {
@@ -32,7 +30,7 @@ const files = plan.run.map((name) => path.join(distDir, name));
 const env = laneChildEnv("hermetic", process.env);
 const result = await runWithFileRetry({
   execPath: process.execPath,
-  args: ["--test", isolationArg(), "--test-concurrency=2", `--test-timeout=${scaledMs(120_000)}`, ...process.argv.slice(2)],
+  args: ["--test", isolationArg(), "--test-concurrency=2", ...runnerTestArgs(), ...process.argv.slice(2)],
   files,
   env,
 });

@@ -50,7 +50,7 @@ test("owner wait classifies only URL/title and bounds every call below the MCP t
 /** A proxy on a throwaway source profile, headless Chrome, a fake native agent-browser, and the local Experian fixture. */
 async function ownerProxy(t: TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), "bao-owner-proxy-"));
-  const fixture = await startExperianFixture({ loopbackHttp: true });
+  const fixture = await startExperianFixture(t, { loopbackHttp: true });
   const sourceRoot = path.join(root, "source");
   await mkdir(path.join(sourceRoot, "Default"), { recursive: true });
   await writeFile(path.join(sourceRoot, "Local State"), "{}");

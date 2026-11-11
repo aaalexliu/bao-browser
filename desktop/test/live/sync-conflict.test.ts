@@ -1,7 +1,7 @@
 import { testWorkflow } from "../support/workflow";
 import { stepTitle, type WorkflowV2 } from "../../src/v1/schema";
 // Two Macs edit one workflow against a local `vercel dev`. No deploy.
-// Run: node --test desktop/dist/desktop/test/live/sync-conflict.test.js
+// Run: node --test --test-timeout=120000 --test-force-exit desktop/dist/desktop/test/live/sync-conflict.test.js
 
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";

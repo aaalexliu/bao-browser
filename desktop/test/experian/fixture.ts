@@ -1,6 +1,8 @@
 // Adapted from the Experian scout's local stand-in. Never contacts Experian.
 import { createServer as createSecureServer } from "node:https";
 import { createServer, type RequestListener } from "node:http";
+import type { TestContext } from "node:test";
+import { holdServer } from "../helpers/hold";
 import { selfSignedCert } from "../instacart/cert";
 
 export const EXPERIAN_FIXTURE_HOSTS = ["www.experian.com", "usa.experian.com", "credit.test", "www.instacart.com"];
@@ -12,7 +14,7 @@ const buttons = traps.map((label) => label === "Unfreeze"
   ? `<form action="/member/freeze"><button type="submit">${label}</button></form>`
   : `<button type="button" onclick="fetch('/write', {method:'POST'})">${label}</button>`).join("");
 
-export async function startExperianFixture(options: { loopbackHttp?: boolean } = {}) {
+export async function startExperianFixture(t: TestContext, options: { loopbackHttp?: boolean } = {}) {
   const certificate = selfSignedCert(EXPERIAN_FIXTURE_HOSTS);
   const requests: { host: string; path: string }[] = [];
   const handler: RequestListener = (req, res) => {
@@ -102,6 +104,7 @@ export async function startExperianFixture(options: { loopbackHttp?: boolean } =
   };
   const server = options.loopbackHttp ? createServer(handler) : createSecureServer({ key: certificate.key, cert: certificate.cert }, handler);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  holdServer(t, server);
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("missing fixture port");
   return {
