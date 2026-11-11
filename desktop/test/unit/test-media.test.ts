@@ -29,7 +29,7 @@ after(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-async function assertMediaFlags(browser: Browser): Promise<void> {
+async function assertMediaFlags(browser: Browser, legacyScreenshot = false): Promise<void> {
   const session = await browser.newBrowserCDPSession();
   try {
     // Unlike Browser.getBrowserCommandLine, this does not need --enable-automation.
@@ -39,6 +39,7 @@ async function assertMediaFlags(browser: Browser): Promise<void> {
     const command = execFileSync("ps", ["-p", String(main.id), "-o", "command="], { encoding: "utf8" });
     for (const flag of TEST_MEDIA_ARGS) assert.ok(command.split(/\s+/).includes(flag), `missing ${flag}`);
     assert.equal(command.includes("--use-fake-ui-for-media-stream"), false);
+    if (legacyScreenshot) assert.equal(command.includes("CDPScreenshotNewSurface"), false);
     console.log(`media launch ${new Date().toISOString()} ${JSON.stringify(processInfo)} flags=${TEST_MEDIA_ARGS.join(" ")}`);
   } finally {
     await session.detach();
@@ -70,10 +71,10 @@ async function assertDeniedRequests(page: Page): Promise<void> {
   console.log(`media denied ${new Date().toISOString()} ${page.url()} ${JSON.stringify(result)}`);
 }
 
-async function assertContextMedia(context: BrowserContext): Promise<void> {
+async function assertContextMedia(context: BrowserContext, legacyScreenshot = false): Promise<void> {
   const browser = context.browser();
   assert.ok(browser);
-  await assertMediaFlags(browser);
+  await assertMediaFlags(browser, legacyScreenshot);
   const page = context.pages()[0] ?? await context.newPage();
   await page.goto(origin);
   await assertDeniedRequests(page);
@@ -85,7 +86,7 @@ async function assertContextMedia(context: BrowserContext): Promise<void> {
 test("idle throwaway Chrome baseline does not use page media APIs", { timeout: 60_000 }, async () => {
   const browser = await launchTestBrowser({ headless, executablePath: pinTestBrowser() });
   try {
-    await assertMediaFlags(browser);
+    await assertMediaFlags(browser, true);
     console.log(`idle media baseline start ${new Date().toISOString()}`);
     await new Promise((resolve) => setTimeout(resolve, 2000));
     console.log(`idle media baseline end ${new Date().toISOString()}`);
@@ -96,7 +97,7 @@ test("throwaway Playwright browser rejects media in implicit and explicit contex
   // Headless shell has no media support; use full Chromium to exercise denial.
   const browser = await launchTestBrowser({ headless, executablePath: pinTestBrowser(), args: ["--lang=en-US"] });
   try {
-    await assertMediaFlags(browser);
+    await assertMediaFlags(browser, true);
     const page = await browser.newPage();
     await page.goto(origin);
     await assertDeniedRequests(page);
@@ -112,7 +113,7 @@ for (const kind of ["extension", "owned", "video", "account"] as const) {
     const context = kind === "extension" ? await launchTestContext(profile, { headless, executablePath: pinTestBrowser() })
       : kind === "account" ? await launchAccountChrome({ userDataDir: profile, headless })
       : await launchOwnedChrome({ userDataDir: profile, headless, videoDir: kind === "video" ? path.join(root, "clips") : undefined });
-    try { await assertContextMedia(context); }
+    try { await assertContextMedia(context, kind === "extension"); }
     finally { await context.close(); }
   });
 }
@@ -148,7 +149,7 @@ test("manually spawned fixture Chrome rejects media", { timeout: 60_000 }, async
 test("public CreepJS and sannysoft media probes still load with denial", { skip: process.env.BAO_MEDIA_PUBLIC !== "1", timeout: 150_000 }, async () => {
   const browser = await launchTestBrowser({ headless, executablePath: pinTestBrowser() });
   try {
-    await assertMediaFlags(browser);
+    await assertMediaFlags(browser, true);
     const page = await browser.newPage();
     for (const [url, wait, title] of [
       ["https://abrahamjuliot.github.io/creepjs/", 40_000, /CreepJS/],
