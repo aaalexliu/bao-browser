@@ -224,6 +224,35 @@ test("picking one card proposes the list and reads every row", async () => {
   }
 });
 
+test("picking a card taller than the viewport still reads the list", async () => {
+  const browser = await chromium.launch({ args: ["--no-sandbox"] });
+  try {
+    const page = await browser.newPage({ viewport: { width: 756, height: 413 } });
+    await page.setContent(`<!doctype html><style>.product_pod { height: 500px; }</style>
+    <div class="page_inner"><div class="row"><h1>Catalogue</h1></div><div class="row"><ol class="products">
+      <li class="card"><article class="product_pod"><h3><a title="Alpha Book">Alpha</a></h3><p class="price_color">£10.00</p></article></li>
+      <li class="card"><article class="product_pod"><h3><a title="Beta Book">Beta</a></h3><p class="price_color">£20.00</p></article></li>
+      <li class="card"><article class="product_pod"><h3><a title="Gamma Book">Gamma</a></h3><p class="price_color">£30.00</p></article></li>
+    </ol></div></div>`);
+    await page.evaluate(installDataPage);
+    const proposal = await page.evaluate(() => {
+      const host = window as unknown as { __baoPropose: (arg: { selector: string }) => PageProposal };
+      return host.__baoPropose({ selector: "article.product_pod" });
+    });
+    assert.equal(proposal.mode, "list");
+    assert.equal(proposal.count, 3);
+    const spec = specFromProposal(proposal, { as: "books" });
+    const read = await page.evaluate((payload) => {
+      const host = window as unknown as { __baoReadList: (spec: unknown) => { rows: Record<string, string>[] } };
+      return host.__baoReadList(payload);
+    }, spec);
+    assert.deepEqual(read.rows.map((row) => row.title), ["Alpha Book", "Beta Book", "Gamma Book"]);
+    assert.deepEqual(read.rows.map((row) => row.price_color), ["£10.00", "£20.00", "£30.00"]);
+  } finally {
+    await browser.close();
+  }
+});
+
 function workflow(): WorkflowV2 {
   return testWorkflow({
     schema: "bao.workflow/v4",
