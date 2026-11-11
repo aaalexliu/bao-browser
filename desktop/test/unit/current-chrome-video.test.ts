@@ -378,6 +378,75 @@ require("node:fs").writeFileSync(process.argv.at(-1), Buffer.alloc(2000));
   }
 });
 
+test("a host stop during completion still claims the saved video", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-video-claim-gap-"));
+  const home = path.join(root, "home");
+  const encoder = path.join(root, "encoder");
+  const previous = process.env.FFMPEG;
+  await writeFile(encoder, `#!${process.execPath}
+require("node:fs").writeFileSync(process.argv.at(-1), Buffer.alloc(2000));
+`, { mode: 0o700 });
+  process.env.FFMPEG = encoder;
+  const fsPromises = require("node:fs/promises") as typeof import("node:fs/promises");
+  const originalStat = fsPromises.stat;
+  let releaseStat = (): void => undefined;
+  const held = new Promise<void>((resolve) => { releaseStat = resolve; });
+  let entered: (() => void) | undefined;
+  const enteredStat = new Promise<void>((resolve, reject) => {
+    entered = resolve;
+    setTimeout(() => reject(new Error("completion did not stat the saved video")), 5000);
+  });
+  let destination = "";
+  const mocked = t.mock.method(fsPromises, "stat", async (...args: Parameters<typeof originalStat>) => {
+    if (destination && String(args[0]) === destination) {
+      entered?.();
+      entered = undefined;
+      await held;
+    }
+    return originalStat(...args);
+  });
+  const frames = new Map<string, (params: Record<string, unknown>) => void>();
+  const cdp = {
+    on(method: string, _session: string, handler: (params: Record<string, unknown>) => void) { frames.set(method, handler); },
+    async send(method: string) {
+      if (method === "Target.attachToTarget") return { sessionId: "page" };
+      if (method === "Target.getTargets") return { targetInfos: [] };
+      if (method === "Page.startScreencast") {
+        frames.get("Page.screencastFrame")?.({ data: Buffer.from([0xff, 0xd8, 0xff, 0xd9]).toString("base64"), sessionId: "frame" });
+      }
+      return {};
+    },
+  } as unknown as CdpSocket;
+  const run = new AgentBrowserRun(home);
+  let encoding = Promise.resolve();
+  try {
+    await run.recordTab(cdp, "tab");
+    destination = path.join(home, "videos", `${run.id}.mp4`);
+    await run.endVideoCapture();
+    encoding = run.encodeVideo();
+    await enteredStat;
+    assert.equal(existsSync(`${destination}.result.json`), false);
+    assert.equal(existsSync(`${destination}.handoff.json`), false);
+    assert.ok((await originalStat(destination)).size >= 1000);
+    abandonVideoOnHostStop();
+    const claimed = new Library(home).listRuns()[0]!;
+    assert.equal(claimed.video, `${run.id}.mp4`);
+    assert.equal(claimed.videoUnavailable, undefined);
+    assert.ok((await originalStat(destination)).size >= 1000);
+    releaseStat();
+    await encoding;
+    const saved = new Library(home).listRuns()[0]!;
+    assert.equal(saved.video, `${run.id}.mp4`);
+    assert.equal(saved.videoUnavailable, undefined);
+  } finally {
+    releaseStat();
+    mocked.mock.restore();
+    await encoding.catch(() => undefined);
+    if (previous === undefined) delete process.env.FFMPEG; else process.env.FFMPEG = previous;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("a failed encode warns with the encoder error and the kept frames path", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-video-encode-fail-"));
   const home = path.join(root, "home");

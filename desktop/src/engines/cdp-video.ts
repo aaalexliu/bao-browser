@@ -1,5 +1,5 @@
 import { execFile, spawn } from "node:child_process";
-import { readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { CdpSocket } from "../cdp-live/socket";
@@ -104,9 +104,14 @@ export async function startCdpVideo(cdp: CdpSocket, sessionId: string, destinati
   const fileReady = (): boolean => {
     try { return statSync(destination).size >= 1000; } catch { return false; }
   };
+  const publishSpec = (spec: VideoHandoffSpec): void => {
+    const temporary = `${paths.spec}.tmp`;
+    writeFileSync(temporary, JSON.stringify(spec), { mode: 0o600 });
+    renameSync(temporary, paths.spec);
+  };
   const writeOwner = (owner: VideoEncodeOwner): void => {
     const spec = JSON.parse(readFileSync(paths.spec, "utf8")) as VideoHandoffSpec;
-    writeFileSync(paths.spec, JSON.stringify({ ...spec, ...owner, truncated }), { mode: 0o600 });
+    publishSpec({ ...spec, ...owner, truncated });
   };
   const readyFrames = (): { file: string; at: number }[] => frames.filter((frame) => {
     try { return statSync(frame.file).size > 0; } catch { return false; }
@@ -139,7 +144,7 @@ export async function startCdpVideo(cdp: CdpSocket, sessionId: string, destinati
       destination, framesDir: dir, ffmpeg, ffmpegArgs: args, deadline: Date.now() + encodeBudget(duration),
       parentPid: process.pid, truncated, ...owner,
     };
-    writeFileSync(paths.spec, JSON.stringify(spec), { mode: 0o600 });
+    publishSpec(spec);
     // Detached so a process-group signal and process.exit leave the encode running.
     encoder = spawn(process.execPath, [path.join(__dirname, "video-handoff.js"), paths.spec], { detached: true, stdio: "ignore" });
     encoder.unref();
@@ -228,6 +233,7 @@ export async function startCdpVideo(cdp: CdpSocket, sessionId: string, destinati
           });
           if (releasedEncode) return { wrote: false, frames: frames.length, truncated };
           const result = readResult();
+          if (result?.wrote) encoded = true;
           clearHandoff();
           if (!result?.wrote) {
             if (result?.signal === "SIGKILL") throw new Error("CDP video encoding timed out");
@@ -262,7 +268,7 @@ export async function startCdpVideo(cdp: CdpSocket, sessionId: string, destinati
         encoded = true;
         return { wrote: true, frames: frames.length, truncated };
       } catch (error) {
-        if (!releasedEncode) {
+        if (!releasedEncode && !encoded) {
           await rm(destination, { force: true });
           clearHandoff();
         }
