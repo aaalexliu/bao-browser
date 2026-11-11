@@ -42,6 +42,14 @@ async function fixture(ui = false) {
       res.end(`<!doctype html><title>Preferences</title><h1>Preferences</h1><input type="checkbox" style="display:block;margin:24px 0 0 24px;width:16px;height:16px">`);
       return;
     }
+    if (url.pathname === "/ancestor") {
+      res.end(`<!doctype html><title>Sign in</title><form data-testid="login-form" style="padding:24px"><label>Email <input></label><label>Password <input type="password"></label><label>Remember me <input type="checkbox"></label><button id="go" style="width:36px;height:20px"></button></form>`);
+      return;
+    }
+    if (url.pathname === "/hidden-neighbor") {
+      res.end(`<!doctype html><title>Account room</title><h1>Account room</h1><div style="height:400px"></div><button id="continue" style="visibility:hidden">Continue</button> <button id="unnamed" style="width:36px;height:20px"></button>`);
+      return;
+    }
     if (url.pathname === "/stores") {
       const content = url.searchParams.has("interactive")
         ? '<button data-testid="store-button" onclick="document.querySelector(\'#selected\').textContent=\'Selected B\'"><span id="store-b">Store B</span></button>'
@@ -209,6 +217,68 @@ test("an unnamed recorded click names its nearby visible control without citing 
     assert.equal(locatorValue(stepTarget(saved.steps[0]), "css"), "#unnamed");
     assert.equal((stepLocators(saved.steps[0]) ?? []).some((locator) => locator.kind === "anchor"), false);
     assert.equal(await page.locator("#result").innerText(), "Done");
+  } finally {
+    await context.close();
+    await f.close();
+  }
+});
+
+test("an unnamed click inside a named container keeps the plain caption", { timeout: 30_000 }, async () => {
+  const f = await fixture();
+  const profile = path.join(f.root, "ancestor-profile");
+  const context = await launchOwnedChrome({ userDataDir: profile, headless: true });
+  try {
+    const page = context.pages()[0]!;
+    const endpoint = await readDevToolsActivePort(path.join(profile, "DevToolsActivePort"));
+    const session = await context.newCDPSession(page);
+    const { targetInfo } = await session.send("Target.getTargetInfo");
+    await session.detach();
+    const workflow = new AgentBrowserWorkflow(f.home, "run-ancestor", async () => ({
+      ...endpoint, targetId: targetInfo.targetId, targetIds: [targetInfo.targetId],
+    }));
+    const success = { stdout: "", stderr: "", exitCode: 0 };
+    await workflow.record("open", [f.url + "ancestor"], "open", async () => {
+      await page.goto(f.url + "ancestor");
+      return success;
+    }, () => false);
+    await workflow.record("click", ["#go"], "click", async () => {
+      await page.locator("#go").click();
+      return success;
+    }, () => false);
+    assert.match(workflow.finish(), /Saved workflow:/);
+    const step = f.library.list().workflows[0]?.steps[0];
+    assert.equal(step?.caption.text, "Click the button");
+    assert.equal(locatorValue(stepTarget(step), "css"), "#go");
+  } finally {
+    await context.close();
+    await f.close();
+  }
+});
+
+test("an unnamed click beside hidden text keeps the plain caption", { timeout: 30_000 }, async () => {
+  const f = await fixture();
+  const profile = path.join(f.root, "hidden-neighbor-profile");
+  const context = await launchOwnedChrome({ userDataDir: profile, headless: true });
+  try {
+    const page = context.pages()[0]!;
+    const endpoint = await readDevToolsActivePort(path.join(profile, "DevToolsActivePort"));
+    const session = await context.newCDPSession(page);
+    const { targetInfo } = await session.send("Target.getTargetInfo");
+    await session.detach();
+    const workflow = new AgentBrowserWorkflow(f.home, "run-hidden-neighbor", async () => ({
+      ...endpoint, targetId: targetInfo.targetId, targetIds: [targetInfo.targetId],
+    }));
+    const success = { stdout: "", stderr: "", exitCode: 0 };
+    await workflow.record("open", [f.url + "hidden-neighbor"], "open", async () => {
+      await page.goto(f.url + "hidden-neighbor");
+      return success;
+    }, () => false);
+    await workflow.record("click", ["#unnamed"], "click", async () => {
+      await page.locator("#unnamed").click();
+      return success;
+    }, () => false);
+    assert.match(workflow.finish(), /Saved workflow:/);
+    assert.equal(f.library.list().workflows[0]?.steps[0]?.caption.text, "Click the button");
   } finally {
     await context.close();
     await f.close();
