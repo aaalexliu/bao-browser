@@ -4,7 +4,7 @@
 
 `npm run test:v1` compiles and runs `desktop/test/unit` only. It does not open public demo sites or spend model tokens. Chrome can still contact Google for account and update checks; those calls do not decide the result.
 
-Install the locked dependencies with `npm ci`, then run `npx playwright install chromium`. Repeat both after changing checkouts or when a reused worktree has stale `node_modules`. Installing Chromium alone uses the installed Playwright version, which may not match `package-lock.json` or CI.
+Install the locked dependencies with `npm ci`, which also installs `web/`, then run `npx playwright install chromium`. Repeat both after changing checkouts or when a reused worktree has stale `node_modules` or `web/node_modules`. Installing Chromium alone uses the installed Playwright version, which may not match `package-lock.json` or CI.
 
 Both desktop runners stop before starting tests if the installed Playwright version differs from `package-lock.json`. The error names both versions and tells you to run `npm ci`.
 

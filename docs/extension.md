@@ -6,7 +6,7 @@ The extension is not in the Chrome Web Store. Load the unpacked build.
 
 ## Install on a Mac
 
-1. `npm install`
+1. `npm ci` (also installs `web/`, which the desktop build imports)
 2. `npm run build:desktop`
 3. `npm run build:extension`
 

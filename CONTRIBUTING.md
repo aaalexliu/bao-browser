@@ -15,9 +15,10 @@ installer; its safety tests stay in `desktop/test/unit/install-scripts.test.ts`.
 
 ## Local checks
 
-Install lockfile dependencies with `npm ci` only if `node_modules` is missing
-and `npm --prefix web ci` only if `web/node_modules` is missing; never reinstall
-dependencies that already exist.
+Install lockfile dependencies with one root `npm ci` only if `node_modules`
+or `web/node_modules` is missing. That command installs both trees. Never
+reinstall dependencies that already exist. `npm ci --ignore-scripts` skips
+the web install.
 Use the Node version in `.nvmrc`. Run `npm run check:static` and the focused
 tests for your change. [Testing](docs/TESTING.md) describes safe browser and
 Library isolation. Never run a full local suite; use focused test files locally

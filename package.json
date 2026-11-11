@@ -7,6 +7,7 @@
     "node": ">=24"
   },
   "scripts": {
+    "postinstall": "npm ci --prefix web",
     "lint": "eslint desktop/src desktop/test extension/src web/src shared --max-warnings 0",
     "lint:prune": "npm run lint -- --prune-suppressions",
     "arch:check": "depcruise desktop/src extension/src web/src shared --config .dependency-cruiser.cjs --ignore-known && depcruise desktop/src extension/src web/src shared --config .dependency-cruiser.runtime.cjs",

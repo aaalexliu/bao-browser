@@ -46,14 +46,7 @@ jobs:
           key: packages-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.nvmrc', 'package.json', 'package-lock.json', 'web/package.json', 'web/package-lock.json') }}
       - name: Install packages on a cache miss
         if: steps.packages.outputs.cache-hit != 'true'
-        shell: bash
-        run: |
-          npm ci & root=$!
-          npm --prefix web ci & web=$!
-          status=0
-          wait "$root" || status=1
-          wait "$web" || status=1
-          exit "$status"
+        run: npm ci
       - name: Read Playwright version
         id: playwright
         run: |
@@ -123,7 +116,7 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
       - name: Install root packages
-        run: npm ci
+        run: npm ci --ignore-scripts
       - name: Read Playwright version
         id: playwright
         run: |

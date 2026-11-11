@@ -425,11 +425,10 @@ Bao keeps a workflow as [schema v4](workflow-schema.md) JSON on the Mac that rec
 
 ## Run it locally
 
-From the repo root, with Node 24 or newer:
+From the repo root, with Node 24 or newer. `npm ci` installs `web/` as well:
 
 ```bash
-npm install
-npm --prefix web install
+npm ci
 npm --prefix web run dev
 ```
 

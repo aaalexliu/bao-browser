@@ -31,9 +31,10 @@ last measured times.
 
 ## Run focused local checks
 
+`npm ci` installs the root lockfile and `web/`.
+
 ```sh
 npm ci
-npm --prefix web ci
 npx playwright install chromium
 npm run check:static
 npm run build:desktop

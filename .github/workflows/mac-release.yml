@@ -35,10 +35,8 @@ jobs:
             package-lock.json
             web/package-lock.json
       - name: Install packages
-        # The desktop TypeScript build also compiles web/src, which needs web's packages.
-        run: |
-          npm ci
-          npm --prefix web ci
+        # postinstall installs web/, which the desktop TypeScript build imports.
+        run: npm ci
       - name: Check the tag and pick the download URL
         id: release
         env:
