@@ -137,7 +137,7 @@ interface SessionData {
   ownerPage?: OwnerPage;
   /** When Bao first stopped for the current or latest owner handoff. */
   ownerSince?: number;
-  /** When Bao stopped for the owner, or the latest wait_for_owner call returned; the wait limit counts from here. */
+  /** When Bao stopped for the owner, or the latest wait_for_owner call returned. A wait that is still on counts its limit from here. */
   ownerTouched?: number;
   /** Why a Bao-profile session could not move to the owner's running Chrome. Only an explicit wait_for_owner tries again. */
   moveError?: string;
