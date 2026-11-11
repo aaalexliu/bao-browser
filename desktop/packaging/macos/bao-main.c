@@ -5,6 +5,7 @@
  * Node is Resources/node/bin/node when the build bundles one, else the one
  * already on this Mac. See bao-launch.h. */
 
+#include <CommonCrypto/CommonDigest.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <mach-o/dyld.h>
@@ -34,6 +35,14 @@ static const char kAlreadyBody[] = "Switch to the Bao window.";
 static const char kBrowserBody[] = "This copy of Bao is missing its browser. Install Bao again.";
 static const char kSplitTitle[] = "Two libraries";
 static const char kHomeTitle[] = "Bao needs a home directory";
+
+static void notify_paths(const char *home, char *sock, size_t sock_n) {
+  unsigned char digest[CC_SHA256_DIGEST_LENGTH];
+  CC_SHA256(home, (CC_LONG)strlen(home), digest);
+  char hash[17];
+  for (int i = 0; i < 8; i++) snprintf(hash + i * 2, 3, "%02x", digest[i]);
+  snprintf(sock, sock_n, "/tmp/bao-%s/notify.sock", hash);
+}
 
 static void dirname_inplace(char *path) {
   char *slash = strrchr(path, '/');
@@ -211,8 +220,8 @@ int main(int argc, char *argv[]) {
   const char *port = getenv("BAO_PORT");
   if (!port || !port[0]) port = "4787";
   mkdir(bao_home, 0700);
-  char notify_sock[4096];
-  snprintf(notify_sock, sizeof notify_sock, "%s/notify.sock", bao_home);
+  char notify_sock[104];
+  notify_paths(bao_home, notify_sock, sizeof notify_sock);
 
   int other = -1;
   int inst = bao_instance_acquire(bao_home, &other);
@@ -251,7 +260,7 @@ int main(int argc, char *argv[]) {
   }
 
   if (bao_notify_prepare(notify_sock) == 0) setenv("BAO_NOTIFY_SOCK", notify_sock, 1);
-  else fprintf(stderr, "bao notify socket was not created\n");
+  else fprintf(stderr, "bao notify socket was not created: %s\n", notify_sock);
 
   /* The capture browser stays hidden unless this is set. The documented test types into it. */
   if (!getenv("BAO_HEADED")) setenv("BAO_HEADED", "1", 0);

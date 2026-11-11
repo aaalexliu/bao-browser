@@ -1,6 +1,7 @@
 // Unix socket the native host dials. The token stays in a 0600 file the extension cannot read.
 
 import { randomBytes } from "node:crypto";
+import { prepareSocketPath } from "../unix-socket";
 import { chmodSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
 import path from "node:path";
@@ -56,7 +57,7 @@ export async function startExtensionLink(opts: {
 }): Promise<ExtensionLink> {
   const dir = path.join(opts.home, "extension-host");
   mkdirSync(dir, { recursive: true, mode: 0o700 });
-  const socketPath = path.join(dir, "bridge.sock");
+  const socketPath = prepareSocketPath(opts.home, "bridge.sock");
   const tokenPath = path.join(dir, "token");
   let token = "";
   try {

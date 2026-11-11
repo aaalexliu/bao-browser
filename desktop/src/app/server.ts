@@ -261,7 +261,7 @@ export async function startApp(opts: {
   loginPlatform?: NodeJS.Platform;
   /** Install the native host and accept a connection from the Chrome extension. */
   extensionHost?: boolean;
-  /** Chrome config home for the host manifest. The socket still lives under home. */
+  /** Chrome config home for the host manifest. The socket root is keyed by home. */
   extensionConfigHome?: string;
   extensionHostDirs?: string[];
   /** Resolver notices for this launch. Each shows in the window once per library. */

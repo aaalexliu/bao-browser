@@ -5,6 +5,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { unlinkSync, writeFileSync } from "node:fs";
 import { resolveHome } from "../home";
+import { assertSocketPath } from "../unix-socket";
 import { createConnection, createServer } from "node:net";
 import path from "node:path";
 import { frameRpc, takeRpcChunk } from "./frame";
@@ -18,7 +19,11 @@ interface Rpc {
   error?: { message?: string };
 }
 
-const sock = process.env.BAO_MCP_SOCK || "/tmp/bao-mcp.sock";
+function socketPath(): string {
+  const sock = process.env.BAO_MCP_SOCK || "/tmp/bao-mcp.sock";
+  assertSocketPath(sock);
+  return sock;
+}
 
 async function main(): Promise<void> {
   const [cmd, ...rest] = process.argv.slice(2);
@@ -37,6 +42,7 @@ async function main(): Promise<void> {
 async function serve(): Promise<void> {
   const home = resolveHome();
   process.env.BAO_HOME = home;
+  const sock = socketPath();
   try { unlinkSync(sock); } catch { /* first start */ }
   const cli = path.join(process.cwd(), "desktop/dist/desktop/src/app/cli.js");
   const child = spawn(process.execPath, [cli, "mcp"], {
@@ -84,6 +90,7 @@ async function serve(): Promise<void> {
 }
 
 function call(rest: string[]): Promise<void> {
+  const sock = socketPath();
   const name = rest[0] || "";
   const args = rest[1] ? JSON.parse(rest[1]) as Record<string, unknown> : {};
   return new Promise((resolve, reject) => {

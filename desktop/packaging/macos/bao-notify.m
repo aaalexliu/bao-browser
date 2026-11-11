@@ -377,8 +377,25 @@ static void *accept_loop(void *unused) {
     return NULL;
 }
 
+static int ensure_socket_dir(const char *path) {
+    char dir[sizeof sock_path];
+    size_t length = strlen(path);
+    if (length >= sizeof dir) return -1;
+    memcpy(dir, path, length + 1);
+    char *slash = strrchr(dir, '/');
+    if (!slash || slash == dir) return -1;
+    *slash = 0;
+    if (mkdir(dir, 0700) != 0 && errno != EEXIST) return -1;
+    return chmod(dir, 0700) == 0 ? 0 : -1;
+}
+
 int bao_notify_prepare(const char *path) {
-    if (!path || !path[0] || strlen(path) >= sizeof sock_path) return -1;
+    if (!path || !path[0]) return -1;
+    if (strlen(path) >= sizeof sock_path) {
+        fprintf(stderr, "Unix socket path is %zu bytes (maximum %zu): %s\n", strlen(path), sizeof sock_path - 1, path);
+        return -1;
+    }
+    if (ensure_socket_dir(path) != 0) return -1;
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) return -1;
     int flags = fcntl(fd, F_GETFD);
@@ -420,5 +437,8 @@ void bao_notify_stop(void) {
         close(listen_fd);
         listen_fd = -1;
     }
-    if (sock_path[0]) unlink(sock_path);
+    if (sock_path[0]) {
+        unlink(sock_path);
+        sock_path[0] = 0;
+    }
 }

@@ -14,6 +14,7 @@ import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { CdpSocket } from "../../src/cdp-live/socket";
 import { OWNER_WAIT_LIMIT_MS, ownerWall, ownerCanResume, ownerWaitInstruction, ownerWaitTimeout } from "../../src/cdp-live/owner-wait";
 import { Library } from "../../src/v1/store";
+import { socketRoot } from "../../src/unix-socket";
 import { startExperianFixture } from "../experian/fixture";
 import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
 import { LIST_TARGETS } from "../support/fake-agent-browser";
@@ -495,7 +496,7 @@ test("a cleanup failure while a newer open ends a wait names no ended run and st
   const remove = fsp.rm;
   const traced = traceStderr(t);
   t.mock.method(fsp, "rm", async (file: Parameters<typeof rm>[0], options: Parameters<typeof rm>[1]) => {
-    if (fail && path.basename(String(file)).startsWith("bao-proxy-")) { failed.push(String(file)); throw new Error("fixture rm failed"); }
+    if (fail && isProxyStateDir(file)) { failed.push(String(file)); throw new Error("fixture rm failed"); }
     return remove(file, options);
   });
   const h = await ownerProxy(t);
@@ -522,6 +523,7 @@ test("a cleanup failure while a newer open ends a wait names no ended run and st
     fail = false;
     for (const dir of failed) await remove(dir, { recursive: true, force: true });
     await h.cleanup("copy");
+    await rm(socketRoot(home), { recursive: true, force: true });
   }
 });
 
@@ -531,7 +533,7 @@ test("a cleanup failure while a newer open ends a wait past its limit still star
   const remove = fsp.rm;
   const traced = traceStderr(t);
   t.mock.method(fsp, "rm", async (file: Parameters<typeof rm>[0], options: Parameters<typeof rm>[1]) => {
-    if (fail && path.basename(String(file)).startsWith("bao-proxy-")) { failed.push(String(file)); throw new Error("fixture rm failed"); }
+    if (fail && isProxyStateDir(file)) { failed.push(String(file)); throw new Error("fixture rm failed"); }
     return remove(file, options);
   });
   let offset = 0;
@@ -559,8 +561,14 @@ test("a cleanup failure while a newer open ends a wait past its limit still star
     fail = false;
     for (const dir of failed) await remove(dir, { recursive: true, force: true });
     await h.cleanup("copy");
+    await rm(socketRoot(home), { recursive: true, force: true });
   }
 });
+
+function isProxyStateDir(file: unknown): boolean {
+  const name = String(file);
+  return path.basename(name).startsWith("proxy-") && path.basename(path.dirname(name)).startsWith("bao-");
+}
 
 test("a same-chat open during an owner wait continues that task and keeps the wait", { timeout: 60_000 }, async (t) => {
   const h = await ownerProxy(t);

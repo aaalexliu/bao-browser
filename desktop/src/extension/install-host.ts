@@ -58,7 +58,7 @@ export function installNativeHost(opts: {
   const nodePath = opts.nodePath || process.execPath;
   const hostScript = appHostScript(__dirname) || appHostScript(path.dirname(opts.hostScript)) || opts.hostScript;
   const extensionId = opts.extensionId || EXTENSION_ID;
-  const dir = path.dirname(opts.socketPath);
+  const dir = path.dirname(opts.tokenPath);
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   const wrapper = path.join(dir, "bao-native-host.sh");
   const body = `#!/bin/sh\nexec ${shellQuote(nodePath)} ${shellQuote(hostScript)} --socket ${shellQuote(opts.socketPath)} --token ${shellQuote(opts.tokenPath)} --extension-id ${shellQuote(extensionId)}\n`;
