@@ -917,15 +917,26 @@ async function releaseProfileProcesses(owner: OwnedChromeProcess, browserCloseSe
     await delay(50);
   }
   const killedPids: number[] = [];
-  for (const pid of remaining()) {
-    try {
-      process.kill(pid, "SIGKILL");
+  const killed = new Set<number>();
+  // A fixed wait rejects a close whose child has not exited yet.
+  const killRemaining = (): void => {
+    for (const pid of remaining()) {
+      if (killed.has(pid)) continue;
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+        continue;
+      }
+      killed.add(pid);
       killedPids.push(pid);
-    } catch {}
+    }
+  };
+  killRemaining();
+  while (remaining().length) {
+    killRemaining();
+    await delay(50);
   }
-  const orphansExitAt = Date.now() + 1500;
-  while (remaining().length && Date.now() < orphansExitAt) await delay(50);
-  if (remaining().length) throw new Error(`bao shutdown processes still shutting down profile=${userDataDir}`);
   return { childExit: child.exitCode, signal: child.signalCode, killedPids };
 }
 
