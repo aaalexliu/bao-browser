@@ -281,6 +281,36 @@ test("picking a title in a row of repeated cells reads the story rows", async ()
   }
 });
 
+test("picking one card in a grid of rows reads every card", async () => {
+  const titles = Array.from({ length: 12 }, (_, index) => `Card ${index + 1}`);
+  const markup = Array.from({ length: 4 }, (_, row) => {
+    const cards = titles.slice(row * 3, row * 3 + 3).map((title) =>
+      `<div class="col-md-4"><div class="card"><h5 class="card-title">${title}</h5></div></div>`,
+    ).join("");
+    return `<div class="row">${cards}</div>`;
+  }).join("");
+  const browser = await chromium.launch({ args: ["--no-sandbox"] });
+  try {
+    const page = await browser.newPage({ viewport: { width: 756, height: 413 } });
+    await page.setContent(`<!doctype html><style>.card { height: 500px; }</style><div class="container">${markup}</div>`);
+    await page.evaluate(installDataPage);
+    const proposal = await page.evaluate(() => {
+      const host = window as unknown as { __baoPropose: (arg: { selector: string }) => PageProposal };
+      return host.__baoPropose({ selector: "div.card" });
+    });
+    assert.equal(proposal.mode, "list");
+    assert.equal(proposal.count, 12);
+    const spec = specFromProposal(proposal, { as: "cards" });
+    const read = await page.evaluate((payload) => {
+      const host = window as unknown as { __baoReadList: (spec: unknown) => { rows: Record<string, string>[] } };
+      return host.__baoReadList(payload);
+    }, spec);
+    assert.deepEqual(read.rows.map((row) => row.card_title), titles);
+  } finally {
+    await browser.close();
+  }
+});
+
 function workflow(): WorkflowV2 {
   return testWorkflow({
     schema: "bao.workflow/v4",
