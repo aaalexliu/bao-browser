@@ -43,8 +43,9 @@ export interface RemoteRunners {
 
 type Slot =
   | { phase: "idle" }
-  | { phase: "running"; jobId: string; workflowId: string; workflowName: string; local?: true }
-  | { phase: "waiting"; jobId: string; workflowId: string; workflowName: string; resume: string };
+  | { phase: "running"; jobId: string; workflowId: string; workflowName: string; local?: true; suspended?: { resume: string; jobId: string; workflowId: string; workflowName: string }; holding?: string }
+  | { phase: "waiting"; jobId: string; workflowId: string; workflowName: string; resume: string }
+  | { phase: "parked"; resume: string; jobId: string; workflowId: string; workflowName: string };
 
 type AssignedJob = {
   id: string;
@@ -59,7 +60,7 @@ type SlotEvent =
   | { type: "kill" }
   | { type: "expired"; resume: string }
   | { type: "continue-held"; resume: string; completion: "observed" | "owner" }
-  | { type: "run-finished"; jobId: string; result: Record<string, unknown>; waiting: { resume: string } | null; local?: true }
+  | { type: "run-finished"; jobId: string; result: Record<string, unknown>; hold: { kind: "confirm"; resume: string; deadline: number | null } | { kind: "park"; resume: string } | null; local?: true; release?: string }
   | { type: "settled"; jobId: string; reason: string | null };
 
 type SlotEffect =
@@ -67,7 +68,9 @@ type SlotEffect =
   | { type: "send-ready" }
   | { type: "start-run"; job: AssignedJob }
   | { type: "continue-held"; resume: string; jobId: string; completion: "observed" | "owner" }
-  | { type: "abort-run" }
+  | { type: "abort-run"; keepPage?: true }
+  | { type: "arm-deadline"; resume: string; deadline: number }
+  | { type: "clear-context" }
   | { type: "release-held"; resume: string; expired: boolean }
   | { type: "forget-result"; jobId: string };
 
@@ -92,13 +95,13 @@ export function createRemoteAgent(opts: {
   let socket: LiteSocket | null = null;
   let chain: Promise<void> = Promise.resolve();
   let generation = 0;
-  let heldResume: string | undefined;
+  let released: Promise<void> = Promise.resolve();
   let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
   let confirmTimer: ReturnType<typeof setTimeout> | undefined;
   const locallyMoved = new Map<string, Record<string, unknown>>();
 
   function view(): RemoteView {
-    if (slot.phase === "idle") return { phase: "idle" };
+    if (slot.phase === "idle" || slot.phase === "parked") return { phase: "idle" };
     return { phase: slot.phase, workflowId: slot.workflowId, workflowName: slot.workflowName, jobId: slot.jobId,
       ...(slot.phase === "waiting" ? { resumeToken: slot.resume, ...heldConfirmStep(slot.resume) } : {}),
     };
@@ -115,15 +118,17 @@ export function createRemoteAgent(opts: {
   async function stopLoop(): Promise<void> {
     stopped = true;
     generation += 1;
+    if (slot.phase === "running") opts.stop();
     socket?.close();
     wake?.();
     clearTimeout(deadlineTimer);
     clearTimeout(confirmTimer);
-    if (heldResume) {
-      locallyMoved.delete(heldResume);
-      await runWorkflow(opts.library, { resume: heldResume, cancel: true });
+    await released;
+    const resume = heldToken(slot);
+    if (resume) {
+      locallyMoved.delete(resume);
+      await runWorkflow(opts.library, { resume, cancel: true });
     }
-    heldResume = undefined;
     await releaseContext();
   }
 
@@ -219,7 +224,7 @@ export function createRemoteAgent(opts: {
         // The browser run is not on this chain, so a timeout abort does not wait for it.
         enqueue(() => onFrame(message));
       };
-      if (slot.phase === "idle") client.send(JSON.stringify({ type: "ready" }));
+      if (slot.phase === "idle" || slot.phase === "parked") client.send(JSON.stringify({ type: "ready" }));
     });
   }
 
@@ -257,25 +262,35 @@ export function createRemoteAgent(opts: {
         forgetResult(opts.library.root, effect.jobId);
         continue;
       }
+      if (effect.type === "arm-deadline") {
+        armDeadline(effect.resume, effect.deadline);
+        continue;
+      }
+      if (effect.type === "clear-context") {
+        const open = context;
+        context = undefined;
+        void open?.close().catch(() => undefined);
+        continue;
+      }
       if (effect.type === "release-held") {
         locallyMoved.delete(effect.resume);
         clearTimeout(deadlineTimer);
         const open = context;
-        heldResume = undefined;
         context = undefined;
-        void runWorkflow(opts.library, { resume: effect.resume, cancel: !effect.expired }, undefined, { prompts: opts.prompts })
-          .finally(() => open?.close().catch(() => undefined)).catch(() => undefined);
+        released = runWorkflow(opts.library, { resume: effect.resume, cancel: !effect.expired }, undefined, { prompts: opts.prompts })
+          .finally(() => open?.close().catch(() => undefined))
+          .then(() => undefined, () => undefined);
         continue;
       }
       if (effect.type === "abort-run") {
-        if (heldResume) locallyMoved.delete(heldResume);
         generation += 1;
         opts.stop();
         clearTimeout(deadlineTimer);
-        if (heldResume) void runWorkflow(opts.library, { resume: heldResume, cancel: true }).catch(() => undefined);
-        heldResume = undefined;
-        const open = context;
-        setTimeout(() => { void open?.close().catch(() => undefined); }, 400);
+        if (!effect.keepPage) {
+          const open = context;
+          context = undefined;
+          setTimeout(() => { void open?.close().catch(() => undefined); }, 400);
+        }
         continue;
       }
       if (effect.type === "continue-held") {
@@ -302,13 +317,13 @@ export function createRemoteAgent(opts: {
           enqueue(() => {
             if (gen !== generation) return;
             clearTimeout(deadlineTimer);
-            if (heldResume) void runWorkflow(opts.library, { resume: heldResume, cancel: true }).catch(() => undefined);
-            heldResume = undefined;
+            const release = slot.phase === "running" ? slot.holding : undefined;
             transition({
               type: "run-finished",
               jobId: job.id,
               result: { outcome: "failed", workflowId: job.workflowId, reason: err instanceof Error ? err.message : String(err) },
-              waiting: null,
+              hold: null,
+              ...(release ? { release } : {}),
             }, job);
           });
         });
@@ -341,17 +356,20 @@ export function createRemoteAgent(opts: {
       if (localToken) locallyMoved.set(localToken, result);
       const resume = typeof result.resume === "string" ? result.resume : "";
       const info = resumeInfo(resume);
-      const waiting = resume && info?.kind === "confirm" ? { resume } : null;
+      const kind = info?.kind;
+      const deadline = typeof info?.deadline === "number" ? info.deadline : null;
+      const hold: Extract<SlotEvent, { type: "run-finished" }>["hold"] =
+        resume && kind === "confirm" ? { kind: "confirm", resume, deadline }
+        : resume && (kind === "signin" || kind === "wall") ? { kind: "park", resume }
+        : null;
       clearTimeout(deadlineTimer);
-      heldResume = waiting?.resume;
-      if (heldResume && typeof info?.deadline === "number") armDeadline(heldResume, info.deadline);
-      transition({ type: "run-finished", jobId, result, waiting, local: localToken ? true : undefined }, request);
+      transition({ type: "run-finished", jobId, result, hold, local: localToken ? true : undefined }, request);
     });
   }
 
   function armDeadline(token: string, deadline: number): void {
     deadlineTimer = setTimeout(() => enqueue(() => {
-      if (heldResume !== token || slot.phase !== "waiting") return;
+      if (slot.phase !== "waiting" || slot.resume !== token) return;
       if (Date.now() < deadline) {
         armDeadline(token, deadline);
         return;
@@ -380,7 +398,8 @@ export function createRemoteAgent(opts: {
           locallyMoved.delete(token);
           return moved;
         }
-        opts.clearStop();
+        await released;
+        if (!stopped) opts.clearStop();
         if (opts.runners?.resume) return opts.runners.resume(token);
         if (!["signin", "confirm", "wall"].includes(resumeInfo(token)?.kind || "")) {
           return { outcome: "failed", reason: "This run is not held for a human interaction. Use run_workflow to start a new run." };
@@ -399,10 +418,10 @@ export function createRemoteAgent(opts: {
     }
   }
 
-  function readRun(job: AssignedJob): Record<string, unknown> {
+  async function readRun(job: AssignedJob): Promise<Record<string, unknown>> {
     const id = stringArg(job.args.run_id);
     try {
-      const stored = opts.library.readRun(id);
+      const stored = await Promise.resolve(opts.library.readRun(id));
       const outputs = stored.outputs ?? [];
       return { outcome: "ok", runId: stored.id, status: stored.status, outputs };
     } catch {
@@ -412,7 +431,8 @@ export function createRemoteAgent(opts: {
 
   async function run(job: AssignedJob): Promise<Record<string, unknown>> {
     const id = job.workflowId || stringArg(job.args.id);
-    opts.clearStop();
+    await released;
+    if (!stopped) opts.clearStop();
     await releaseContext();
     let workflow: WorkflowV2;
     try {
@@ -513,6 +533,22 @@ export function createRemoteAgent(opts: {
   }
 }
 
+function heldToken(slot: Slot): string | undefined {
+  if (slot.phase === "waiting" || slot.phase === "parked") return slot.resume;
+  if (slot.phase === "running") return slot.suspended?.resume ?? slot.holding;
+  return undefined;
+}
+
+function parkedFrom(suspended: { resume: string; jobId: string; workflowId: string; workflowName: string }): Extract<Slot, { phase: "parked" }> {
+  return {
+    phase: "parked",
+    resume: suspended.resume,
+    jobId: suspended.jobId,
+    workflowId: suspended.workflowId,
+    workflowName: suspended.workflowName,
+  };
+}
+
 function apply(slot: Slot, event: SlotEvent): { slot: Slot; effects: SlotEffect[] } {
   if (event.type === "job") {
     if (event.saved) {
@@ -520,7 +556,7 @@ function apply(slot: Slot, event: SlotEvent): { slot: Slot; effects: SlotEffect[
         slot,
         effects: [
           { type: "send-result", jobId: event.job.id, result: event.saved },
-          ...(slot.phase === "idle" ? [{ type: "send-ready" } as const] : []),
+          ...(slot.phase === "idle" || slot.phase === "parked" ? [{ type: "send-ready" } as const] : []),
         ],
       };
     }
@@ -531,12 +567,31 @@ function apply(slot: Slot, event: SlotEvent): { slot: Slot; effects: SlotEffect[
         effects: [{ type: "send-result", jobId: event.job.id, result: { outcome: "needs_human", reason: "This workflow is waiting for its requested interaction." } }],
       };
     }
+    if (slot.phase === "parked") {
+      const same = event.job.tool === "resume_workflow" && event.job.args.resume === slot.resume;
+      const replaces = event.job.tool === "run_workflow";
+      return {
+        slot: {
+          phase: "running",
+          jobId: event.job.id,
+          workflowId: same ? slot.workflowId : event.job.workflowId || "",
+          workflowName: same ? slot.workflowName : event.job.workflowName,
+          ...(same ? { holding: slot.resume } : {}),
+          ...(replaces || same ? {} : { suspended: { resume: slot.resume, jobId: slot.jobId, workflowId: slot.workflowId, workflowName: slot.workflowName } }),
+        },
+        effects: [
+          ...(replaces ? [{ type: "release-held" as const, resume: slot.resume, expired: false }] : []),
+          { type: "start-run", job: event.job },
+        ],
+      };
+    }
     return {
       slot: {
         phase: "running",
         jobId: event.job.id,
         workflowId: slot.phase === "waiting" ? slot.workflowId : event.job.workflowId || "",
         workflowName: slot.phase === "waiting" ? slot.workflowName : event.job.workflowName,
+        ...(slot.phase === "waiting" ? { holding: slot.resume } : {}),
       },
       effects: [{ type: "start-run", job: event.job }],
     };
@@ -544,7 +599,7 @@ function apply(slot: Slot, event: SlotEvent): { slot: Slot; effects: SlotEffect[
   if (event.type === "continue-held") {
     if (slot.phase !== "waiting" || slot.resume !== event.resume) return { slot, effects: [] };
     return {
-      slot: { phase: "running", jobId: slot.jobId, workflowId: slot.workflowId, workflowName: slot.workflowName, local: true },
+      slot: { phase: "running", jobId: slot.jobId, workflowId: slot.workflowId, workflowName: slot.workflowName, local: true, holding: slot.resume },
       effects: [{ type: "continue-held", resume: slot.resume, jobId: slot.jobId, completion: event.completion }],
     };
   }
@@ -554,6 +609,21 @@ function apply(slot: Slot, event: SlotEvent): { slot: Slot; effects: SlotEffect[
   }
   if (event.type === "kill") {
     if (slot.phase === "idle") return { slot, effects: [] };
+    if (slot.phase === "parked") {
+      return { slot: { phase: "idle" }, effects: [{ type: "release-held", resume: slot.resume, expired: false }, { type: "send-ready" }] };
+    }
+    if (slot.phase === "running" && (slot.suspended || slot.holding)) {
+      const resume = slot.suspended?.resume ?? slot.holding;
+      return {
+        slot: { phase: "idle" },
+        effects: [
+          { type: "abort-run", keepPage: true },
+          ...(resume ? [{ type: "release-held" as const, resume, expired: false }] : []),
+          ...(slot.local ? [] : [{ type: "send-result" as const, jobId: slot.jobId, result: { outcome: "cancelled", workflowId: slot.workflowId } }]),
+          { type: "send-ready" },
+        ],
+      };
+    }
     return {
       slot: { phase: "idle" },
       effects: [
@@ -565,22 +635,59 @@ function apply(slot: Slot, event: SlotEvent): { slot: Slot; effects: SlotEffect[
   }
   if (event.type === "run-finished") {
     if (slot.phase !== "running" || slot.jobId !== event.jobId) return { slot, effects: [] };
-    if (event.waiting) {
+    const resultEffect: SlotEffect[] = event.local ? [] : [{ type: "send-result", jobId: event.jobId, result: event.result }];
+    if (event.hold?.kind === "confirm") {
+      const stale = slot.suspended && slot.suspended.resume !== event.hold.resume
+        ? [{ type: "release-held" as const, resume: slot.suspended.resume, expired: false }]
+        : [];
       return {
-        slot: { ...slot, phase: "waiting", resume: event.waiting.resume },
-        effects: event.local ? [] : [{ type: "send-result", jobId: event.jobId, result: event.result }],
+        slot: {
+          phase: "waiting",
+          jobId: slot.jobId,
+          workflowId: slot.workflowId,
+          workflowName: slot.workflowName,
+          resume: event.hold.resume,
+        },
+        effects: [
+          ...stale,
+          ...(typeof event.hold.deadline === "number" ? [{ type: "arm-deadline" as const, resume: event.hold.resume, deadline: event.hold.deadline }] : []),
+          ...resultEffect,
+        ],
       };
     }
+    if (event.hold) {
+      const stale = slot.suspended && slot.suspended.resume !== event.hold.resume
+        ? [{ type: "release-held" as const, resume: slot.suspended.resume, expired: false }]
+        : [];
+      return {
+        slot: {
+          phase: "parked",
+          resume: event.hold.resume,
+          jobId: slot.jobId,
+          workflowId: slot.workflowId,
+          workflowName: slot.workflowName,
+        },
+        effects: [...stale, ...resultEffect, { type: "send-ready" }],
+      };
+    }
+    if (slot.suspended) {
+      return { slot: parkedFrom(slot.suspended), effects: [...resultEffect, { type: "send-ready" }] };
+    }
+    const dropped = event.release ? [{ type: "release-held" as const, resume: event.release, expired: false }] : [];
     return {
       slot: { phase: "idle" },
-      effects: [
-        ...(!event.local ? [{ type: "send-result", jobId: event.jobId, result: event.result } as const] : []),
-        { type: "send-ready" },
-      ],
+      effects: [...resultEffect, ...dropped, { type: "send-ready" }, ...(dropped.length ? [] : [{ type: "clear-context" as const }])],
     };
   }
   const effects: SlotEffect[] = [{ type: "forget-result", jobId: event.jobId }];
   if (event.reason === "timed out" && slot.phase === "running" && !slot.local && slot.jobId === event.jobId) {
+    if (slot.suspended) return { slot: parkedFrom(slot.suspended), effects: [...effects, { type: "send-ready" }] };
+    if (slot.holding) {
+      return {
+        slot: { phase: "idle" },
+        effects: [...effects, { type: "abort-run", keepPage: true }, { type: "release-held", resume: slot.holding, expired: false }, { type: "send-ready" }],
+      };
+    }
     return { slot: { phase: "idle" }, effects: [...effects, { type: "abort-run" }, { type: "send-ready" }] };
   }
   return { slot, effects };

@@ -259,16 +259,8 @@ export async function runWorkflow(
   if (request.resume && !peeked) return emptyOutcome("", "failed", "resume token");
   const live = request.resume ? liveRuns.get(request.resume) : undefined;
   if (live) {
-    if (live.continuing) return live.continuing;
-    live.continuing = Promise.resolve(live.observing)
-      .catch(() => undefined)
-      .then(() => {
-        if (liveRuns.get(live.token) !== live) return emptyOutcome(live.workflow.id, "failed", "the run's browser is gone");
-        if (live.deadline !== null && Date.now() >= live.deadline) return stopLive(library, live, "timed-out", TIMED_OUT, control);
-        return continueLive(library, live, request.inputs ?? {}, control);
-      })
-      .finally(() => { live.continuing = undefined; });
-    return live.continuing;
+    if (live.phase === "continuing") return live.work;
+    return beginContinue(library, live, request.inputs ?? {}, control);
   }
   if (peeked && (peeked.kind === "signin" || peeked.kind === "confirm" || peeked.kind === "wall")) {
     dropResume(library, request.resume || "");
@@ -347,12 +339,12 @@ function workflowFallback(browser: WorkflowBrowser, workflow: { steps: WorkflowS
 export async function withHeldPage(token: string, run: (page: Page) => Promise<void>): Promise<void> {
   const live = liveRuns.get(token);
   if (!live) throw new Error("resume token");
-  await run(live.page);
+  await run(live.phase === "continuing" ? live.open.page : live.page);
 }
 
 export function heldConfirmStep(token: string): { stepId: string; stepLabel: string; stepNumber: number; stepCount: number; canDetectCompletion: boolean } | undefined {
   const live = liveRuns.get(token);
-  if (!live || live.kind !== "confirm" || live.continuing) return undefined;
+  if (!live || live.phase !== "open" || live.kind !== "confirm") return undefined;
   const index = live.workflow.steps.findIndex((step) => step.id === live.stepId);
   return {
     stepId: live.stepId,
@@ -365,7 +357,7 @@ export function heldConfirmStep(token: string): { stepId: string; stepLabel: str
 
 export async function heldConfirmReady(token: string): Promise<boolean> {
   const live = liveRuns.get(token);
-  if (!live || live.kind !== "confirm" || live.continuing || !live.confirmPending) return false;
+  if (!live || live.phase !== "open" || live.kind !== "confirm" || !live.confirmPending) return false;
   if (live.observing) return live.observing;
   const stepId = live.stepId;
   const matched = live.workflow.steps.find((step) => step.id === stepId);
@@ -373,7 +365,7 @@ export async function heldConfirmReady(token: string): Promise<boolean> {
   if (!post) return false;
   live.observing = (async () => {
     const tree = await (live.observer ??= new BrowserDriver(live.page)).tree();
-    return liveRuns.get(token) === live && live.stepId === stepId && !live.continuing && checkHolds(post, tree, live.inputs);
+    return liveRuns.get(token) === live && live.phase === "open" && live.stepId === stepId && checkHolds(post, tree, live.inputs);
   })().finally(() => { live.observing = undefined; });
   return live.observing;
 }
@@ -529,7 +521,7 @@ export function getRun(library: Library, runId: string): Omit<WorkflowOutcome, "
   }, stored.inputs);
 }
 
-interface LiveRun {
+interface HoldBody {
   token: string;
   browser: WorkflowBrowser;
   /** The Chrome profile folder the agent named. A resume file keeps it. */
@@ -549,12 +541,60 @@ interface LiveRun {
   ask: string;
   prompts?: PersonPrompts;
   observer?: BrowserDriver;
-  observing?: Promise<boolean>;
-  confirmPending?: boolean;
-  continuing?: Promise<WorkflowOutcome>;
 }
 
+type OpenHold = HoldBody & {
+  phase: "open";
+  confirmPending?: boolean;
+  observing?: Promise<boolean>;
+};
+
+type ContinuingHold = {
+  phase: "continuing";
+  work: Promise<WorkflowOutcome>;
+  open: OpenHold;
+};
+
+type LiveRun = OpenHold | ContinuingHold;
+
 const liveRuns = new Map<string, LiveRun>();
+
+function ownsHold(open: OpenHold): boolean {
+  const current = liveRuns.get(open.token);
+  return current === open || (current?.phase === "continuing" && current.open === open);
+}
+
+function publishHold(open: OpenHold): void {
+  if (ownsHold(open)) liveRuns.set(open.token, open);
+}
+
+function forgetHold(open: OpenHold): boolean {
+  if (!ownsHold(open)) return false;
+  liveRuns.delete(open.token);
+  return true;
+}
+
+function beginContinue(
+  library: Library,
+  open: OpenHold,
+  extra: ReplayArgs,
+  control: RunControl | undefined,
+): Promise<WorkflowOutcome> {
+  let wrapper!: ContinuingHold;
+  const work = Promise.resolve(open.observing)
+    .catch(() => undefined)
+    .then(() => {
+      if (liveRuns.get(open.token) !== wrapper) return emptyOutcome(open.workflow.id, "failed", "the run's browser is gone");
+      if (open.deadline !== null && Date.now() >= open.deadline) return releaseHold(library, open, "timed-out", TIMED_OUT, control);
+      return continueLive(library, open, extra, control);
+    });
+  wrapper = { phase: "continuing", work, open };
+  liveRuns.set(open.token, wrapper);
+  return work.catch((error) => {
+    if (liveRuns.get(open.token) === wrapper) liveRuns.set(open.token, open);
+    throw error;
+  });
+}
 
 export function hasHeldRuns(): boolean {
   return liveRuns.size > 0;
@@ -646,7 +686,8 @@ async function replayInBrowser(
     lines.push(...workflowFallback(browser, workflow, outcome, run.pausedKind, run.status === "paused"));
     if (run.status === "paused" && run.pausedKind && run.ask && outcome.resume) {
       hold = true;
-      const live: LiveRun = {
+      const live: OpenHold = {
+        phase: "open",
         token: outcome.resume,
         browser,
         profile,
@@ -679,7 +720,7 @@ async function replayInBrowser(
   }
 }
 
-async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs, control?: RunControl): Promise<WorkflowOutcome> {
+async function continueLive(library: Library, live: OpenHold, extra: ReplayArgs, control?: RunControl): Promise<WorkflowOutcome> {
   const browser = live.browser.choice === "owned" ? undefined : live.browser.choice;
   live.inputs = { ...live.inputs, ...extra };
   live.prompts = control?.prompts ?? live.prompts;
@@ -708,9 +749,10 @@ async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs, 
     if (live.browser.kind === "current") await live.browser.show().catch(() => undefined);
     const outcome = rememberRun(library, live.workflow, run, live.inputs, live.secrets, browser, live.token, live.profile);
     saveWorkflowRun(library, live.workflow, run, live.inputs, outcome);
+    publishHold(live);
     return withBrowser(outcome, live.browser, workflowFallback(live.browser, live.workflow, outcome, run.pausedKind, true));
   }
-  liveRuns.delete(live.token);
+  if (!forgetHold(live)) return emptyOutcome(live.workflow.id, "failed", "the run's browser is gone");
   dropResume(library, live.token);
   clearLivePrompt(live);
   await releaseBrowser(library, live);
@@ -727,7 +769,7 @@ function withBrowser(outcome: WorkflowOutcome, browser: WorkflowBrowser, fallbac
   return browser.pick ? { ...outcome, browser: [shortPickLine(browser.pick), ...fallback] } : outcome;
 }
 
-async function observeConfirm(live: LiveRun): Promise<void> {
+async function observeConfirm(live: OpenHold): Promise<void> {
   live.confirmPending = false;
   if (live.kind !== "confirm") return;
   const matched = live.workflow.steps.find((step) => step.id === live.stepId);
@@ -752,16 +794,23 @@ async function cancelWorkflow(library: Library, token: string, control?: RunCont
     result.ask = peeked.ask;
     return result;
   }
-  return stopLive(library, live, "stopped", "nothing applied", control);
+  if (live.phase === "continuing") {
+    const finished = await live.work.catch(() => undefined);
+    const after = liveRuns.get(token);
+    if (after?.phase === "open") return releaseHold(library, after, "stopped", "nothing applied", control);
+    if (after?.phase === "continuing") return cancelWorkflow(library, token, control);
+    return finished ?? emptyOutcome("", "failed", "resume token");
+  }
+  return releaseHold(library, live, "stopped", "nothing applied", control);
 }
 
-function clearLivePrompt(live: LiveRun): void {
+function clearLivePrompt(live: OpenHold): void {
   if (live.kind === "confirm") live.prompts?.clearConfirm?.(live.runId);
   else live.prompts?.clearLoginWait?.(live.runId);
 }
 
-async function stopLive(library: Library, live: LiveRun, status: "timed-out" | "stopped", reason: string, control?: RunControl): Promise<WorkflowOutcome> {
-  liveRuns.delete(live.token);
+async function releaseHold(library: Library, live: OpenHold, status: "timed-out" | "stopped", reason: string, control?: RunControl): Promise<WorkflowOutcome> {
+  if (!forgetHold(live)) return emptyOutcome(live.workflow.id, "failed", "the run's browser is gone");
   dropResume(library, live.token);
   live.prompts = control?.prompts ?? live.prompts;
   clearLivePrompt(live);
