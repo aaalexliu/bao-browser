@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { OwnerPage } from "../cdp-live/owner-wait";
 import { commandSentence } from "../v1/caption";
-import { AGENT_CLOSED_ASK, AGENT_STEP_FAILED } from "../v1/stop-copy";
+import { AGENT_CLOSED_ASK, AGENT_STEP_FAILED, AGENT_WAIT_ENDED } from "../v1/stop-copy";
 import { RUN_SCHEMA_ID, stepTitle, type StepCaption } from "../v1/schema";
 import { Library, type StoredRun } from "../v1/store";
 import { shotFile, shotFormat, type ShotBox } from "../v1/shots";
@@ -75,6 +75,8 @@ export class AgentBrowserRun {
   private snapshot: string | undefined;
   private lastSnapshot = "";
   private readonly landmarks = new Map<string, Set<string>>();
+  /** Index of the step current when this owner wait began. Earlier waits stay as they finished. */
+  private ownerWaitAt: number | undefined;
 
   constructor(private readonly home: string) {
     this.shots = path.join(home, "shots", "runs", this.run.id);
@@ -141,7 +143,7 @@ export class AgentBrowserRun {
       step.reason = AGENT_STEP_FAILED;
     } else if (step.native.command === "wait_for_owner" && this.run.envelope?.reason === "session_closed") {
       step.status = "failed";
-      step.reason = "The session ended before you finished.";
+      step.reason = AGENT_WAIT_ENDED;
     }
     const summary = describeStep({
       command: step.native.command, args: step.native.args, results, error: step.native.error,
@@ -216,8 +218,14 @@ export class AgentBrowserRun {
 
   ownerWaiting(waiting: boolean): void {
     this.run.status = waiting ? "needs_human" : "recording";
-    if (waiting) this.run.envelope = { status: "needs_human", run_id: this.run.id, reason: "owner_signin", ask: "Bao is waiting for you to sign in or clear the check in its browser window. The agent will continue here." };
-    else delete this.run.envelope;
+    if (waiting) {
+      const last = this.run.steps.at(-1);
+      this.ownerWaitAt ??= last?.status === "pending" ? this.run.steps.length - 1 : this.run.steps.length;
+      this.run.envelope = { status: "needs_human", run_id: this.run.id, reason: "owner_signin", ask: "Bao is waiting for you to sign in or clear the check in its browser window. The agent will continue here." };
+    } else {
+      this.ownerWaitAt = undefined;
+      delete this.run.envelope;
+    }
     this.persist();
   }
 
@@ -225,6 +233,7 @@ export class AgentBrowserRun {
     if (this.run.status !== "recording" && this.run.status !== "needs_human"
       && (typeof result !== "object" || this.run.envelope)) return;
     if (result === "session_closed" || this.run.status === "needs_human") {
+      this.cutOffOwnerWait();
       this.run.envelope = { status: "failed", run_id: this.run.id, reason: "session_closed", ask: AGENT_CLOSED_ASK };
       this.run.status = "failed";
     } else if (result) {
@@ -236,6 +245,19 @@ export class AgentBrowserRun {
     } else this.run.status = this.run.steps.some((step) => step.status === "failed") ? "failed"
       : this.run.steps.some((step) => step.status === "pending") ? "paused" : "passed";
     this.persist();
+  }
+
+  private cutOffOwnerWait(): void {
+    if (this.ownerWaitAt === undefined) return;
+    for (let i = this.run.steps.length - 1; i >= this.ownerWaitAt; i--) {
+      const step = this.run.steps[i]!;
+      if (step.native.command !== "wait_for_owner") continue;
+      if (step.status !== "failed") {
+        step.status = "failed";
+        step.reason = AGENT_WAIT_ENDED;
+      }
+      return;
+    }
   }
 
   private async picture(step: RecordedAgentBrowserCommand, bytes: Buffer, which: "requested" | "before" | "after"): Promise<string> {

@@ -606,7 +606,7 @@ export function runViewer(
   const envelopeWait = failed ? ownerCheck || failed : undefined;
   const nativeRecording = agentBrowser && workflow.recordedOnly;
   const headline = failed && nativeRecording
-    ? `Step ${stopped} ${failed.label || failed.id} failed${failed.reason ? `: ${failed.reason}` : "."}`
+    ? `Step ${stopped} ${failed.label || failed.id} failed${failed.reason ? `: ${agentRunText(failed.reason)}` : "."}`
     : wallLine
     ? wallLine
     : failed
