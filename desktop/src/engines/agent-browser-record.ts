@@ -81,6 +81,8 @@ export class AgentBrowserRun {
   private ownerWaitAt: number | undefined;
   private video: { kind: "unavailable" } | {
     kind: "recording"; capture: CdpVideo; cdp: CdpSocket; targetId: string; sessionId: string; startedAt: number;
+  } | {
+    kind: "encoding"; capture: CdpVideo; startedAt: number;
   } | undefined;
 
   constructor(private readonly home: string) {
@@ -214,7 +216,8 @@ export class AgentBrowserRun {
   }
 
   async recordTab(cdp: CdpSocket, targetId: string): Promise<void> {
-    if (this.video?.kind === "unavailable" || this.video?.targetId === targetId) return;
+    if (this.video && this.video.kind !== "recording") return;
+    if (this.video?.targetId === targetId) return;
     let sessionId: string | undefined;
     try {
       ({ sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true }, undefined, 5000));
@@ -236,14 +239,29 @@ export class AgentBrowserRun {
     }
   }
 
-  async stopVideo(): Promise<void> {
+  async endVideoCapture(): Promise<void> {
+    const video = this.video;
+    if (video?.kind === "encoding") return;
+    if (video?.kind !== "recording") {
+      this.video = { kind: "unavailable" };
+      return;
+    }
+    this.video = { kind: "encoding", capture: video.capture, startedAt: video.startedAt };
+    try {
+      try {
+        const { targetInfos } = await video.cdp.send<{ targetInfos: { targetId: string }[] }>("Target.getTargets", {}, undefined, 2000);
+        if (!targetInfos.some((target) => target.targetId === video.targetId)) video.capture.pause();
+      } catch { video.capture.pause(); }
+      await video.capture.endCapture();
+    } finally {
+      await video.cdp.send("Target.detachFromTarget", { sessionId: video.sessionId }, undefined, 2000).catch(() => undefined);
+    }
+  }
+
+  async encodeVideo(): Promise<void> {
     const video = this.video;
     this.video = { kind: "unavailable" };
-    if (video?.kind !== "recording") return;
-    try {
-      const { targetInfos } = await video.cdp.send<{ targetInfos: { targetId: string }[] }>("Target.getTargets", {}, undefined, 2000);
-      if (!targetInfos.some((target) => target.targetId === video.targetId)) video.capture.pause();
-    } catch { video.capture.pause(); }
+    if (video?.kind !== "encoding") return;
     try {
       const result = await video.capture.stop();
       if (result.wrote) {
@@ -253,9 +271,11 @@ export class AgentBrowserRun {
         this.persist();
       }
     } catch { this.warn("tab video encoding"); }
-    finally {
-      await video.cdp.send("Target.detachFromTarget", { sessionId: video.sessionId }, undefined, 2000).catch(() => undefined);
-    }
+  }
+
+  async stopVideo(): Promise<void> {
+    await this.endVideoCapture();
+    await this.encodeVideo();
   }
 
   signInImported(report: SignInImport): void {
@@ -270,7 +290,12 @@ export class AgentBrowserRun {
   }
 
   ownerWaiting(waiting: boolean): void {
+    const wasWaiting = this.run.status === "needs_human";
     this.run.status = waiting ? "needs_human" : "recording";
+    if (this.video?.kind === "recording") {
+      if (waiting && !wasWaiting) this.video.capture.pause();
+      else if (!waiting && wasWaiting) this.video.capture.resume();
+    }
     if (waiting) {
       const last = this.run.steps.at(-1);
       this.ownerWaitAt ??= last?.status === "pending" ? this.run.steps.length - 1 : this.run.steps.length;

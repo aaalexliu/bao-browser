@@ -60,6 +60,16 @@ function sample(file: string, end = false): Buffer {
   return result.stdout;
 }
 
+function frames(file: string): Buffer[] {
+  const result = spawnSync(ffmpeg!, ["-hide_banner", "-loglevel", "error", "-i", file,
+    "-vf", "scale=1:1", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"]);
+  assert.equal(result.status, 0, result.stderr.toString());
+  assert.equal(result.stdout.length % 3, 0);
+  const pixels: Buffer[] = [];
+  for (let i = 0; i < result.stdout.length; i += 3) pixels.push(result.stdout.subarray(i, i + 3));
+  return pixels;
+}
+
 for (const end of ["tab closes", "CDP disconnects"] as const) test(`tab video follows the agent target and survives when ${end}`, { skip: !ffmpeg, timeout: 30_000 }, async () => {
   const f = await fixture();
   const run = new AgentBrowserRun(path.join(f.root, "home"));
@@ -94,6 +104,38 @@ for (const end of ["tab closes", "CDP disconnects"] as const) test(`tab video fo
     const last = sample(file, true);
     assert.ok(first[0]! > 180 && first[2]! < 50, `first target is red: ${first.toJSON().data}`);
     assert.ok(last[2]! > 180 && last[0]! < 50, `last target is blue: ${last.toJSON().data}`);
+  } finally { await run.stopVideo(); await f.close(); }
+});
+
+test("tab video omits frames painted during an owner wait", { skip: !ffmpeg, timeout: 30_000 }, async () => {
+  const f = await fixture();
+  const run = new AgentBrowserRun(path.join(f.root, "home"));
+  try {
+    const url = `${f.base}/red`;
+    const { targetId } = await f.cdp.send<{ targetId: string }>("Target.createTarget", { url });
+    const deadline = Date.now() + 5000;
+    while (!await evaluate(f.cdp, targetId, `document.readyState === 'complete' && location.href === ${JSON.stringify(url)}`)) {
+      assert.ok(Date.now() < deadline, "fixture page loaded");
+      await wait(20);
+    }
+    await run.recordTab(f.cdp, targetId);
+    await wait(400);
+    await run.ownerWaiting(true);
+    await run.ownerWaiting(true);
+    await evaluate(f.cdp, targetId, "document.documentElement.style.background='#00ff00';document.body.style.background='#00ff00'");
+    await wait(800);
+    await run.ownerWaiting(false);
+    await evaluate(f.cdp, targetId, "document.documentElement.style.background='blue';document.body.style.background='blue'");
+    await wait(400);
+    await run.stopVideo();
+    run.finish();
+    const file = path.join(f.root, "home", "videos", `${run.id}.mp4`);
+    assert.ok((await stat(file)).size > 1000);
+    const pixels = frames(file);
+    assert.ok(pixels.some((pixel) => pixel[0]! > 180 && pixel[2]! < 50), "recording before the wait is red");
+    assert.ok(pixels.some((pixel) => pixel[2]! > 180 && pixel[0]! < 50), "recording resumes after the wait");
+    const duringWait = pixels.filter((pixel) => pixel[1]! > 180 && pixel[0]! < 80 && pixel[2]! < 80);
+    assert.equal(duringWait.length, 0, "owner wait painted green and must not appear");
   } finally { await run.stopVideo(); await f.close(); }
 });
 
