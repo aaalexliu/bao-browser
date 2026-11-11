@@ -71,17 +71,6 @@ async function main(): Promise<void> {
     for (const line of notices) console.error(line);
     const port = Number(flag(rest, "--port") || process.env.BAO_PORT || 4787);
     const app = await startApp({ home, port, libraryNotices: notices, extensionHost: true });
-    let closing = false;
-    const close = () => {
-      if (closing) return;
-      closing = true;
-      void app.close().then(() => process.exit(0), (error: unknown) => {
-        console.error(error);
-        process.exit(1);
-      });
-    };
-    process.on("SIGTERM", close);
-    process.on("SIGINT", close);
     console.log(`bao ${app.port} home ${home}`);
     await new Promise(() => {});
     return;

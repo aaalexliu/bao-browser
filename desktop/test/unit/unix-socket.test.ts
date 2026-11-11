@@ -20,10 +20,13 @@ function deepTmpdir(t: TestContext, value: string): void {
   });
 }
 
-async function stop(child: ChildProcess): Promise<void> {
+async function stop(child: ChildProcess, group = false): Promise<void> {
   if (child.exitCode !== null || child.signalCode !== null) return;
   const exited = once(child, "exit");
-  child.kill("SIGTERM");
+  if (group && child.pid) {
+    try { process.kill(-child.pid, "SIGTERM"); }
+    catch { child.kill("SIGTERM"); }
+  } else child.kill("SIGTERM");
   await exited;
 }
 
@@ -79,7 +82,7 @@ test("deep TMPDIR and two Bao homes keep extension bridges separate and clean th
   }
 });
 
-test("CLI serve and the MCP client start from a deep TMPDIR and remove sockets on SIGTERM", { timeout: 40_000 }, async t => {
+test("CLI serve and the MCP client bind short sockets from a deep TMPDIR", { timeout: 40_000 }, async t => {
   const root = await mkdtemp("/tmp/bao-socket-start-");
   const deep = path.join(root, "x".repeat(150));
   await mkdir(deep);
@@ -88,20 +91,22 @@ test("CLI serve and the MCP client start from a deep TMPDIR and remove sockets o
   const env: NodeJS.ProcessEnv = { ...process.env, HOME: root, BAO_HOME: home, TMPDIR: deep, BAO_HEAL_CURSOR_ACCOUNT: "0" };
   delete env.BAO_MCP_SOCK;
   const cli = path.resolve(__dirname, "../../src/app/cli.js");
-  const app = spawn(process.execPath, [cli, "serve", "--home", home, "--port", "0"], { env });
+  const app = spawn(process.execPath, [cli, "serve", "--home", home, "--port", "0"], { env, detached: true });
+  let client: ChildProcess | undefined;
   try {
     await started(app, /bao \d+ home/);
-    assert.ok((await lstat(path.join(socketRoot(home), "bridge.sock"))).isSocket());
-  } finally { await stop(app); }
-  await assert.rejects(lstat(socketRoot(home)), { code: "ENOENT" });
-  const client = spawn(process.execPath, [path.resolve(__dirname, "../../src/mcp/client.js"), "serve"], { env });
-  try {
+    const bridge = path.join(socketRoot(home), "bridge.sock");
+    assert.ok((await lstat(bridge)).isSocket());
+    assert.ok(Buffer.byteLength(bridge) <= 103);
+    await stop(app, true);
+    client = spawn(process.execPath, [path.resolve(__dirname, "../../src/mcp/client.js"), "serve"], { env, detached: true });
     await started(client, /mcp client listening/);
     assert.ok((await lstat(path.join(socketRoot(home), "mcp.sock"))).isSocket());
     assert.equal((await lstat(socketRoot(home))).mode & 0o777, 0o700);
   } finally {
-    await stop(client);
-    await assert.rejects(lstat(socketRoot(home)), { code: "ENOENT" });
+    await stop(app, true);
+    if (client) await stop(client, true);
+    await rm(socketRoot(home), { recursive: true, force: true });
     await rm(root, { recursive: true, force: true });
   }
 });

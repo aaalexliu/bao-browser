@@ -7,7 +7,6 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <sys/stat.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -405,7 +404,6 @@ int bao_notify_prepare(const char *path) {
     }
     listen_fd = fd;
     snprintf(sock_path, sizeof sock_path, "%s", path);
-    atexit(bao_notify_stop);
     return 0;
 }
 

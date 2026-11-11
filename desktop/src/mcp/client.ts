@@ -5,8 +5,8 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { unlinkSync, writeFileSync } from "node:fs";
 import { resolveHome } from "../home";
-import { assertSocketPath, prepareSocketPath, removeSocketRoot, socketRoot } from "../unix-socket";
-import { createConnection, createServer, type Socket } from "node:net";
+import { assertSocketPath, prepareSocketPath, socketRoot } from "../unix-socket";
+import { createConnection, createServer } from "node:net";
 import path from "node:path";
 import { frameRpc, takeRpcChunk } from "./frame";
 
@@ -56,10 +56,7 @@ async function serve(): Promise<void> {
   readFrames(child, (msg) => {
     if (msg.id != null) pending.get(msg.id)?.(msg);
   });
-  const clients = new Set<Socket>();
   const server = createServer((socket) => {
-    clients.add(socket);
-    socket.on("close", () => clients.delete(socket));
     let buf = "";
     socket.on("data", (chunk) => {
       buf += chunk.toString();
@@ -83,25 +80,8 @@ async function serve(): Promise<void> {
       }).catch((err) => socket.write(JSON.stringify({ isError: true, error: String(err) }) + "\n"));
     });
   });
-  let closing = false;
-  const close = () => {
-    if (closing) return;
-    closing = true;
-    for (const client of clients) client.destroy();
-    server.close(() => {
-      try { unlinkSync(sock); } catch { /* already gone */ }
-      removeSocketRoot(home);
-    });
-    child.stdin.end();
-    if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
-  };
-  process.once("SIGTERM", close);
-  process.once("SIGINT", close);
-  child.once("exit", close);
-  child.once("error", close);
   writeFrame(child, { jsonrpc: "2.0", id: nextId++, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "live-model", version: "0" } } as unknown as Rpc["params"] });
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", (error) => { close(); reject(error); });
+  await new Promise<void>((resolve) => {
     server.listen(sock, () => {
       process.stdout.write(`mcp client listening ${sock}\n`);
       resolve();
