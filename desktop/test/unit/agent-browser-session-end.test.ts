@@ -7,7 +7,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
-import { closeRetainedChrome, launchOwnedChromeEndpoint, pinTestBrowser, pidsForDataDir } from "../../src/launch";
+import { AgentBrowserWorkflow } from "../../src/engines/agent-browser-workflow";
+import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
+import { closeRetainedChrome, launchOwnedChrome, launchOwnedChromeEndpoint, pinTestBrowser, pidsForDataDir } from "../../src/launch";
 import * as cdpSocket from "../../src/cdp-live/socket";
 import { Library } from "../../src/v1/store";
 import { loadState, saveState } from "../../src/v1/sync";
@@ -164,6 +166,46 @@ function client(env: NodeJS.ProcessEnv, agent: boolean, group: boolean) {
     },
   };
 }
+
+test("a failed finish does not save a replayable task or repeat the agent's reason", { timeout: 60_000 }, async (t) => {
+  pinTestBrowser();
+  const root = await mkdtemp(path.join(tmpdir(), "bao-failed-save-"));
+  const home = path.join(root, "home");
+  const profile = path.join(root, "profile");
+  await mkdir(home, { recursive: true });
+  const server = createServer((_req, res) => {
+    res.end("<!doctype html><title>Grocery</title><button data-testid=\"chosen\">Add blueberries</button>");
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("fixture server has no port");
+  const url = `http://127.0.0.1:${address.port}/`;
+  const context = await launchOwnedChrome({ userDataDir: profile, headless: true });
+  t.after(async () => {
+    await context.close();
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const page = context.pages()[0] ?? await context.newPage();
+  const endpoint = await readDevToolsActivePort(path.join(profile, "DevToolsActivePort"));
+  const session = await context.newCDPSession(page);
+  const info = await session.send("Target.getTargetInfo") as { targetInfo: { targetId: string } };
+  await session.detach();
+  const workflow = new AgentBrowserWorkflow(home, "run-failed-save", async () => ({
+    ...endpoint, targetId: info.targetInfo.targetId, targetIds: [info.targetInfo.targetId],
+  }));
+  const success = { stdout: "", stderr: "", exitCode: 0 };
+  await workflow.record("open", [url], "open", async () => {
+    await page.goto(url);
+    return success;
+  }, () => false);
+  await workflow.record("click", ['[data-testid="chosen"]'], "click", async () => {
+    await page.locator('[data-testid="chosen"]').click();
+    return success;
+  }, () => false);
+  assert.equal(workflow.finish(true), "Not saved as a workflow: the task failed.");
+  assert.equal(new Library(home).list().workflows.length, 0);
+});
 
 if (process.env.BAO_SESSION_END_FAILURE_PROBE) {
   test("kept-copy failure probe", { timeout: 60_000 }, async (t) => {
@@ -450,6 +492,18 @@ for (const outcome of ["failed-task", "failed-command", "owner-wait"] as const) 
     }
     assert.equal(pidsForDataDir(copy).length, 0, c.diagnostics());
     assert.equal(f.library.list().workflows.length, 0, "failed tasks cannot save a replayable workflow");
+    if (outcome === "failed-task") {
+      const texts = result.content!.map((block) => block.text);
+      const workflow = texts.find((text) => text.startsWith("Not saved as a workflow:"));
+      assert.equal(texts.filter((text) => text.includes("The requested item was unavailable")).length, 1, texts.join("\n"));
+      assert.equal(workflow, "Not saved as a workflow: command-1 (open): open options cannot be replayed.");
+      assert.equal(workflow.includes("The requested item was unavailable"), false);
+      assert.equal(workflow.endsWith(".."), false);
+      const receipt = result.structuredContent as { reason?: string; workflow?: string; summary?: string };
+      assert.equal(receipt.reason, "The requested item was unavailable.");
+      assert.equal(receipt.workflow, workflow);
+      assert.match(receipt.summary ?? "", /^Failed: The requested item was unavailable\. /);
+    }
   });
 }
 
