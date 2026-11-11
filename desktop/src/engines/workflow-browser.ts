@@ -227,17 +227,23 @@ async function openPlanned(options: WorkflowBrowserOptions, plan: BrowserPlan): 
       const context = browser.contexts()[0];
       if (!context) throw new Error("Chrome opened without a profile context");
       const page = context.pages()[0] || await context.newPage();
+      let retained = false;
       let closing: Promise<void> | undefined;
-      const close = () => closing ??= (async () => { try { await browser.close(); } finally { await chrome.close(); } })();
-      void chrome.closed.then(close).catch(() => undefined);
-      browser.on("disconnected", () => { void close().catch(() => undefined); });
+      const close = (): Promise<void> => closing ??= (async () => { try { await browser.close(); } finally { await chrome.close(); } })();
+      const closeIfRunning = (): void => { if (!retained) void close().catch(() => undefined); };
+      void chrome.closed.then(closeIfRunning).catch(() => undefined);
+      browser.on("disconnected", closeIfRunning);
       const pick: BrowserPick = plan.route === "bao" ? baoPick(plan, baoAgentProfileDir(options.home))
         : { route: "copy", why, chrome: resolveNormalChrome(), userDataDir: path.dirname(chrome.target.portFile), profile: plan.profile };
       const missed = "missed" in plan ? plan.missed : undefined;
       return { kind: "owned", choice: plan.route, context, page, pick, ...missed ? { missed } : {},
         profile: plan.route === "bao" ? baoAgentProfileDir(options.home) : path.dirname(chrome.target.portFile), persistent: plan.route === "bao",
         importLogin: "importLogin" in chrome ? chrome.importLogin : undefined, signIn: "signIn" in chrome ? chrome.signIn : undefined,
-        keepOpen: async () => { if (!closing && !page.isClosed()) await chrome.keepOpen(); }, close };
+        keepOpen: async () => {
+          if (closing || retained || page.isClosed()) return;
+          await chrome.keepOpen();
+          if (!closing) retained = true;
+        }, close };
     } catch (error) { await browser.close(); throw error; }
   } catch (error) { await chrome.close(); throw error; }
 }
