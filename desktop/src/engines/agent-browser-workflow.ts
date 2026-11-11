@@ -77,15 +77,19 @@ function durableTarget(node: DomDump, page: PageDump): AgentBrowserReplayTarget 
   const { handle: _handle, bbox: _bbox, value: _value, checked: _checked, enabled: _enabled, hidden: _hidden, overlay: _overlay, inDialog: _dialog, ...identity } = node;
   if (identity.cssPath?.includes(":nth-of-type(")) delete identity.cssPath;
   if (identity.xpath && /\[\d+\]/.test(identity.xpath)) delete identity.xpath;
-  const boxes = page.nodes.map((node) => node.bbox || { x: 0, y: 0, w: 0, h: 0 });
-  const targetIndex = page.nodes.findIndex((candidate) => candidate.handle === node.handle);
-  const locators = buildLocators(identity, page.nodes, boxes, targetIndex).filter((locator) => {
-    const hit = matchLocator(locator, page.nodes, boxes);
+  const locators = buildLocators(identity, page.nodes).filter((locator) => {
+    const hit = matchLocator(locator, page.nodes);
     return hit !== undefined && page.nodes[hit.index]?.handle === node.handle;
   });
+  if (!locators.length) return undefined;
+  const boxes = page.nodes.map((item) => item.bbox || { x: 0, y: 0, w: 0, h: 0 });
+  const targetIndex = page.nodes.findIndex((candidate) => candidate.handle === node.handle);
+  const anchor = buildLocators(identity, page.nodes, boxes, targetIndex).find((locator) => locator.kind === "anchor");
+  const anchored = anchor && matchLocator(anchor, page.nodes, boxes);
+  if (anchor && anchored && page.nodes[anchored.index]?.handle === node.handle) locators.push(anchor);
   const priority = ["testid", "css", "xpath", "role", "text", "anchor"];
   locators.sort((left, right) => priority.indexOf(left.kind) - priority.indexOf(right.kind));
-  return locators.length ? { url: page.url, identity, locators } : undefined;
+  return { url: page.url, identity, locators };
 }
 
 export class AgentBrowserWorkflow {
@@ -253,6 +257,10 @@ export class AgentBrowserWorkflow {
         if (workflow.steps.length !== this.events.length) throw new Error("an action could not be converted");
         workflow.driver = "playwright";
         workflow.replayed = false;
+        for (const step of workflow.steps) {
+          if (!("target" in step) || !step.target?.locators) continue;
+          step.target.locators = step.target.locators.filter((locator) => locator.kind !== "anchor");
+        }
         this.persist();
         if (this.reason) throw new Error(this.reason);
         new Library(this.home).save(workflow);
@@ -268,8 +276,7 @@ export class AgentBrowserWorkflow {
     const { event, before } = this.pending;
     event.afterUrl = after.page.url;
     if (event.op !== "type") event.afterText = smallestChange(before.leaves, after.leaves)?.after;
-    const boxes = after.page.nodes.map((node) => node.bbox || { x: 0, y: 0, w: 0, h: 0 });
-    const hit = event.locators?.map((locator) => matchLocator(locator, after.page.nodes, boxes)).find((item) => item !== undefined);
+    const hit = event.locators?.map((locator) => matchLocator(locator, after.page.nodes)).find((item) => item !== undefined);
     const node = hit && after.page.nodes[hit.index];
     event.subtreeAfter = node?.text;
     event.valueAfter = node?.value;

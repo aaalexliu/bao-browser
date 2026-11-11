@@ -207,6 +207,7 @@ test("an unnamed recorded click names its nearby visible control without citing 
     assert.equal(saved.steps[0]!.caption.text, 'Click the button after "Continue"');
     assert.equal(saved.steps[0]!.caption.citation, undefined);
     assert.equal(locatorValue(stepTarget(saved.steps[0]), "css"), "#unnamed");
+    assert.equal((stepLocators(saved.steps[0]) ?? []).some((locator) => locator.kind === "anchor"), false);
     assert.equal(await page.locator("#result").innerText(), "Done");
   } finally {
     await context.close();
@@ -214,7 +215,7 @@ test("an unnamed recorded click names its nearby visible control without citing 
   }
 });
 
-test("an unnamed checkbox records a check step with the state the click left", { timeout: 30_000 }, async () => {
+test("an unnamed checkbox with only a nearby anchor is not saved", { timeout: 30_000 }, async () => {
   const f = await fixture();
   const profile = path.join(f.root, "checkbox-profile");
   const context = await launchOwnedChrome({ userDataDir: profile, headless: true });
@@ -233,20 +234,13 @@ test("an unnamed checkbox records a check step with the state the click left", {
       await page.goto(f.url + "checkbox");
       return success;
     }, () => false);
-    assert.equal(await box.isChecked(), false);
     await workflow.record("click", ["input[type=checkbox]"], "click", async () => {
       await box.click();
       return success;
     }, () => false);
-    const observed = await box.isChecked();
-    assert.equal(observed, true);
-    assert.match(workflow.finish(), /Saved workflow:/);
-    const step = f.library.list().workflows[0]?.steps[0];
-    assert.ok(step);
-    assert.equal(step.action, "check");
-    if (step.action !== "check") return;
-    assert.equal(step.checked, observed);
-    assert.deepEqual((stepLocators(step) ?? []).map((locator) => locator.kind), ["anchor"]);
+    assert.equal(await box.isChecked(), true);
+    assert.match(workflow.finish(), /an action had no durable target/);
+    assert.equal(f.library.list().workflows.length, 0);
   } finally {
     await context.close();
     await f.close();
