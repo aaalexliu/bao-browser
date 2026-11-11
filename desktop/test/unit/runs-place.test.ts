@@ -10,6 +10,60 @@ import { testChromium } from "../../src/test-browser";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import type { inspectRunView } from "../../src/mcp/run-view";
 import { makeAsk } from "../../src/v1/human-ask";
+import { ROUTE_LABELS, type BrowserPick } from "../../src/engines/browser-pick";
+
+test("Runs receipts name the saved browser and reason without guessing for older runs", { timeout: 60_000 }, async () => {
+  const home = await mkdtemp(path.join(tmpdir(), "bao-runs-browser-"));
+  const previousHome = process.env.HOME;
+  process.env.HOME = home;
+  const app = await startApp({ home, extensionHost: false, chromeProfilesRoot: path.join(home, "profiles") });
+  const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
+  const page = await browser.newPage();
+  const profile = { root: path.join(home, "profiles"), directory: "Default", name: "Fixture", email: "", why: "the only profile" as const };
+  const picks: { label: string; pick: BrowserPick }[] = [
+    { label: "Bao profile", pick: { route: "bao", why: "fallback when running Chrome could not be used", chrome: "fixture", userDataDir: path.join(home, "bao") } },
+    { label: "Chrome copy", pick: { route: "copy", why: "named by the agent", chrome: "fixture", userDataDir: path.join(home, "copy"), profile } },
+    { label: "Running Chrome", pick: { route: "current", why: "this site ties its sign-in to your Chrome", chrome: "fixture", userDataDir: profile.root, profile } },
+    { label: "Running Chrome through the Bao extension", pick: { route: "extension", why: "the default" } },
+  ];
+  try {
+    for (const kind of ["replay", "capture"] as const) {
+      for (const { pick } of picks) app.library.saveRun({
+        id: `${kind}-${pick.route}`, kind, workflowId: "deleted-workflow", browser: pick,
+        status: "passed", at: Date.now(), steps: [], heals: [],
+      });
+    }
+    app.library.saveRun({ id: "legacy", workflowId: "deleted-workflow", status: "passed", at: Date.now(), steps: [], heals: [] });
+    const stored = JSON.stringify(app.library.listRuns());
+    for (const theme of ["light", "dark"]) {
+      await page.goto(`http://127.0.0.1:${app.port}/`);
+      await page.evaluate((value) => localStorage.setItem("bao-theme", value), theme);
+      await page.reload();
+      for (const kind of ["replay", "capture"]) {
+        for (const { label, pick } of picks) {
+          const id = `${kind}-${pick.route}`;
+          await page.locator(`[data-open-run="${id}"]`).first().click();
+          const expected = `Browser: ${label}\nWhy: ${pick.why}.`;
+          await page.waitForFunction((text) => document.querySelector<HTMLElement>(".receipt-browser")?.innerText === text, expected);
+          assert.equal(await page.locator(".receipt-browser").innerText(), expected);
+          if (pick.route === "copy") assert.equal((await page.locator(".receipt-browser").innerText()).split("\n")[0], `Browser: ${ROUTE_LABELS[pick.route]}`);
+          await page.reload();
+          await page.locator(`[data-open-run="${id}"]`).first().click();
+          await page.waitForFunction((text) => document.querySelector<HTMLElement>(".receipt-browser")?.innerText === text, expected);
+          assert.equal(await page.locator(".receipt-browser").innerText(), expected);
+        }
+      }
+      await page.locator('[data-open-run="legacy"]').first().click();
+      await page.locator(".receipt-browser").waitFor({ state: "hidden" });
+      assert.equal(await page.locator(".receipt-browser").count(), 0);
+    }
+    assert.equal(JSON.stringify(app.library.listRuns()), stored, "viewing receipts does not change stored browser choices");
+  } finally {
+    await browser.close(); await app.close();
+    if (previousHome === undefined) delete process.env.HOME; else process.env.HOME = previousHome;
+    await rm(home, { recursive: true, force: true });
+  }
+});
 
 test("Runs shows stored step reasons after workflow edits or deletion in both themes", { timeout: 30_000 }, async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-runs-evidence-"));

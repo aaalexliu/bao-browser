@@ -3,6 +3,9 @@ import { resolveNormalChrome } from "../launch";
 import type { SignInImport } from "./bao-profile";
 import { BOUND_REASON, boundSite } from "./bound-sign-in";
 import { listChromeProfiles, type ChromeProfileChoice } from "./chrome-profile-copy";
+import { ROUTE_LABELS } from "./route-labels";
+
+export { ROUTE_LABELS };
 
 export type ProfileWhy = "named by the agent" | "the only profile" | "picked in Bao Settings";
 export const RUNNING_CHROME_FALLBACK = "fallback when running Chrome could not be used";
@@ -18,13 +21,6 @@ export interface ChosenProfile extends ChromeProfileChoice {
   root: string;
   why: ProfileWhy;
 }
-
-export const ROUTE_LABELS = {
-  bao: "Bao profile",
-  copy: "Chrome copy",
-  current: "Running Chrome over remote debugging",
-  extension: "Running Chrome through the Bao extension",
-} as const;
 
 /** What a session runs on and why. Every open result and the saved run record carry it; later results carry shortPickLine. */
 export type BrowserPick = { why: RouteWhy } & (
