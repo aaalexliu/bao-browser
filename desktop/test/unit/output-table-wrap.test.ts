@@ -48,7 +48,8 @@ test("short output columns stay whole and long text does not", () => {
   assert.match(html, /<td class="output-whole">1280<\/td>/);
   assert.match(html, /<th>title<\/th>/);
   assert.match(html, /<td>Forever and Forever:/);
-  assert.match(html, /<th>link<\/th>/);
+  assert.match(html, /<th class="output-url">link<\/th>/);
+  assert.match(html, /<td class="output-url">https:\/\/books\.toscrape\.com\/catalogue\/forever_1\/index\.html<\/td>/);
   assert.match(html, /<td>abcdefghijklmnopq<\/td>/);
   assert.doesNotMatch(html, /class="output-whole"[^<]*>Forever/);
   assert.doesNotMatch(html, /class="output-whole"[^<]*>https:/);
@@ -167,12 +168,15 @@ test("the running output table keeps ratings and prices whole in a narrow window
         assert.equal(titleCell?.overflowWrap, "break-word", `${theme} ${width}`);
         assert.equal(titleCell?.split.length, 0, `${theme} ${width} ${titleCell?.split.join(",")}`);
         if (width < 1280) {
-          const titleLines = await page.locator("#run-outputs td", { hasText: "Forever and Forever" }).evaluate((cell) => {
+          const lines = (text: string) => page.locator("#run-outputs td", { hasText: text }).evaluate((cell) => {
             const range = document.createRange();
             range.selectNodeContents(cell);
             return range.getClientRects().length;
           });
+          const titleLines = await lines("Forever and Forever");
           assert.ok(titleLines > 1, `${theme} ${width} title lines ${titleLines}`);
+          const linkLines = await lines("books.toscrape.com");
+          assert.ok(linkLines > 1, `${theme} ${width} link lines ${linkLines}`);
         }
       }
     }

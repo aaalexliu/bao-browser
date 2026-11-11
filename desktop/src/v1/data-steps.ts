@@ -617,8 +617,9 @@ function columnStaysWhole(column: OutputColumn, rows: Record<string, string>[]):
   return rows.every((row) => (row[column.name] ?? "").length <= WHOLE_VALUE_MAX);
 }
 
-function outputCell(tag: "th" | "td", whole: boolean, value: string): string {
-  return `<${tag}${whole ? ` class="output-whole"` : ""}>${escapeHtml(value)}</${tag}>`;
+function outputCell(tag: "th" | "td", kind: "whole" | "url" | "", value: string): string {
+  const name = kind === "whole" ? "output-whole" : kind === "url" ? "output-url" : "";
+  return `<${tag}${name ? ` class="${name}"` : ""}>${escapeHtml(value)}</${tag}>`;
 }
 
 export function outputsHtml(runId: string, outputs: OutputValue[] | undefined): string {
@@ -627,10 +628,10 @@ export function outputsHtml(runId: string, outputs: OutputValue[] | undefined): 
   const blocks = tables.map((table) => {
     const columns = table.columns.map((column) => ({
       name: column.name,
-      whole: columnStaysWhole(column, table.rows),
+      kind: (column.type === "url" ? "url" : columnStaysWhole(column, table.rows) ? "whole" : "") as "whole" | "url" | "",
     }));
-    const head = columns.map((column) => outputCell("th", column.whole, column.name)).join("");
-    const body = table.rows.map((row) => `<tr>${columns.map((column) => outputCell("td", column.whole, row[column.name] ?? "")).join("")}</tr>`).join("");
+    const head = columns.map((column) => outputCell("th", column.kind, column.name)).join("");
+    const body = table.rows.map((row) => `<tr>${columns.map((column) => outputCell("td", column.kind, row[column.name] ?? "")).join("")}</tr>`).join("");
     const csv = `/api/runs/${encodeURIComponent(runId)}/outputs.csv?name=${encodeURIComponent(table.name)}`;
     const json = `/api/runs/${encodeURIComponent(runId)}/outputs.json`;
     return `<section class="output-block" data-output="${escapeHtml(table.name)}" data-rows="${table.rows.length}">
