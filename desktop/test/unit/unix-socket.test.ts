@@ -148,7 +148,7 @@ test("a long BAO_MCP_SOCK override exits with the byte-length error", { timeout:
   const exited = once(client, "exit");
   const timer = setTimeout(() => client.kill("SIGTERM"), 10_000);
   try {
-    const [code] = await exited;
+    const [code] = await exited as [number | null];
     assert.equal(code, 1);
     assert.equal(errors.trim(), `Unix socket path is ${Buffer.byteLength(mcpSock)} bytes (maximum 103): ${mcpSock}`);
   } finally {
