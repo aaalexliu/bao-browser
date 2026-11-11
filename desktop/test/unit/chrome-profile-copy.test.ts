@@ -750,7 +750,7 @@ test("copied Chrome restores two tabs through delayed product startup while sour
   }
 });
 
-test("keepOpen joins a copied-profile close instead of retaining a directory being removed", { timeout: 30_000 }, async (t) => {
+test("keepOpen joins a copied-profile close instead of retaining a directory being removed", { timeout: scaledMs(30_000) }, async (t) => {
   const f = await fixture();
   const launches = require("../../src/launch") as typeof import("../../src/launch");
   const launch = launches.launchOwnedChromeEndpoint;
