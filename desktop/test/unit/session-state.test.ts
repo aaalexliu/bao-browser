@@ -30,9 +30,13 @@ test("replay cannot take the browser while a recording or live teach holds it", 
 
   const teaching = moveSession({ phase: "idle" }, { type: "start-teach", since: 11 });
   assert.equal(teaching.ok, true);
+  assert.equal(teaching.session.phase, "teachStarting");
   const teachRefused = moveSession(teaching.session, { type: "take-browser" });
   assert.equal(teachRefused.ok, false);
   assert.equal(teachRefused.session, teaching.session);
+  const live = moveSession(teaching.session, { type: "teach-ready" });
+  assert.equal(live.ok, true);
+  assert.equal(moveSession(live.session, { type: "take-browser" }).ok, false);
 
   const resting: CaptureSession[] = [
     { phase: "idle" },
@@ -47,14 +51,16 @@ test("replay cannot take the browser while a recording or live teach holds it", 
 });
 
 test("a new capture cannot start over teach", () => {
-  const review = moveSession(
-    moveSession({ phase: "idle" }, { type: "start-teach", since: 4 }).session,
-    { type: "finish-teach" },
-  );
+  const starting = moveSession({ phase: "idle" }, { type: "start-teach", since: 4 });
+  assert.equal(starting.session.phase, "teachStarting");
+  assert.equal(moveSession(starting.session, { type: "finish-teach" }).ok, false);
+  const review = moveSession(moveSession(starting.session, { type: "teach-ready" }).session, { type: "finish-teach" });
   assert.equal(review.session.phase, "teachReview");
   assert.equal(moveSession(review.session, { type: "start-recording", since: 5 }).ok, false);
+  assert.equal(moveSession({ phase: "teachStarting", since: 3 }, { type: "start-recording", since: 8 }).ok, false);
   assert.equal(moveSession({ phase: "teachLive", since: 7 }, { type: "start-recording", since: 8 }).ok, false);
   assert.equal(moveSession({ phase: "saveSheet", pending }, { type: "start-teach", since: 9 }).ok, false);
+  assert.equal(moveSession({ phase: "teachStarting", since: 3 }, { type: "open-save", pending }).ok, false);
   assert.equal(moveSession({ phase: "teachLive", since: 7 }, { type: "open-save", pending }).ok, false);
   assert.equal(moveSession(review.session, { type: "open-save", pending }).ok, false);
   assert.equal(moveSession(recording(), { type: "open-save", pending }).session.phase, "saveSheet");
@@ -75,10 +81,14 @@ test("a capture can start over an open save sheet", () => {
   if (kept.session.phase === "recording") assert.equal(kept.session.pending, undefined);
 });
 
-test("teach becomes live with its clock in one step", () => {
-  const live = moveSession({ phase: "idle" }, { type: "start-teach", since: 20 });
+test("teach claims its seat, then becomes live with the same clock", () => {
+  const starting = moveSession({ phase: "idle" }, { type: "start-teach", since: 20 });
+  assert.equal(starting.ok, true);
+  assert.deepEqual(starting.session, { phase: "teachStarting", since: 20 });
+  const live = moveSession(starting.session, { type: "teach-ready" });
   assert.equal(live.ok, true);
   assert.deepEqual(live.session, { phase: "teachLive", since: 20 });
+  if (live.session.phase !== "teachLive") return;
   const review = moveSession({ ...live.session, extract: { mode: "list", count: 1, locators: [], columns: [] } }, { type: "finish-teach" });
   assert.deepEqual(review.session, { phase: "teachReview" });
 });
@@ -170,7 +180,7 @@ async function claimedTeach(label: string): Promise<{
   let launching = false;
   while (Date.now() - start < 15_000) {
     const state = await (await fetch(`${base}/api/state`)).json() as { recording: boolean; teach: { phase: string } };
-    if (state.recording && state.teach.phase !== "live" && hits === 0) {
+    if (!state.recording && state.teach.phase !== "live" && hits > 0) {
       launching = true;
       break;
     }
@@ -248,13 +258,19 @@ test("a replay during a teach launch is refused and the teach comes up as teach"
         recording: boolean;
         teach: { phase: string };
       };
-      if (state.recording && state.teach.phase !== "live" && hits === 0) {
+      if (!state.recording && state.teach.phase !== "live" && hits > 0) {
         launching = true;
         break;
       }
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
-    assert.equal(launching, true, "teach published live before the capture page existed");
+    assert.equal(launching, true, "teach launch was not observed");
+    const during = await (await fetch(`${base}/api/state`)).json() as {
+      recording: boolean;
+      teach: { phase: string };
+    };
+    assert.equal(during.recording, false);
+    assert.notEqual(during.teach.phase, "live");
     const replay = await fetch(`${base}/api/replay`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -289,6 +305,42 @@ test("a replay during a teach launch is refused and the teach comes up as teach"
     await app.close();
     await new Promise<void>((resolve, reject) => hung.close((err) => err ? reject(err) : resolve()));
     rmSync(path.dirname(dirs.home), { recursive: true, force: true });
+  }
+});
+
+test("a check during a slow opening navigation is refused", { timeout: 120_000 }, async () => {
+  assert.ok(process.env.BAO_TEST_BROWSER, "Run with laneChildEnv so Chromium is pinned");
+  process.env.BAO_DRIVE = "1";
+  const launch = await claimedTeach("teach-check-launch");
+  try {
+    const check = await fetch(`${launch.base}/api/teach/check`, { method: "POST" });
+    assert.equal(check.status, 409);
+    const drive = await fetch(`${launch.base}/api/sessions/drive`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ goto: "about:blank" }),
+    });
+    assert.equal(drive.status, 409);
+    const during = await (await fetch(`${launch.base}/api/state`)).json() as {
+      recording: boolean;
+      teach: { phase: string };
+      liveTrail: { op: string }[];
+    };
+    assert.equal(during.recording, false);
+    assert.notEqual(during.teach.phase, "live");
+    assert.equal(during.liveTrail.some((event) => event.op === "verify"), false);
+    launch.release();
+    const started = await launch.teach;
+    assert.equal(started.status, 200, await started.text());
+    const after = await (await fetch(`${launch.base}/api/state`)).json() as {
+      teach: { phase: string };
+      liveTrail: { op: string }[];
+    };
+    assert.equal(after.teach.phase, "live");
+    assert.equal(after.liveTrail.some((event) => event.op === "verify"), false);
+  } finally {
+    delete process.env.BAO_DRIVE;
+    await launch.close();
   }
 });
 

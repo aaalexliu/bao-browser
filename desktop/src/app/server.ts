@@ -129,12 +129,14 @@ export type CaptureSession =
   | { phase: "idle" }
   | { phase: "recording"; since: number; extract?: PageProposal; pending?: PendingCapture }
   | { phase: "saveSheet"; pending: PendingCapture }
+  | { phase: "teachStarting"; since: number }
   | { phase: "teachLive"; since: number; extract?: PageProposal }
   | { phase: "teachReview" };
 
 export type SessionEvent =
   | { type: "start-recording"; since: number }
   | { type: "start-teach"; since: number }
+  | { type: "teach-ready" }
   | { type: "abort-start" }
   | { type: "open-save"; pending: PendingCapture }
   | { type: "commit-save" }
@@ -176,13 +178,16 @@ export function moveSession(session: CaptureSession, event: SessionEvent): Sessi
       return { ok: true, session: { phase: "recording", since: event.since } };
     case "start-teach":
       if (session.phase !== "idle") return { ok: false, reason: "busy", session };
-      return { ok: true, session: { phase: "teachLive", since: event.since } };
+      return { ok: true, session: { phase: "teachStarting", since: event.since } };
+    case "teach-ready":
+      if (session.phase !== "teachStarting") return { ok: false, reason: "busy", session };
+      return { ok: true, session: { phase: "teachLive", since: session.since } };
     case "abort-start":
       if (session.phase === "recording") return { ok: true, session: recordingReleased(session) };
-      if (session.phase === "teachLive") return { ok: true, session: idleSession };
+      if (session.phase === "teachStarting" || session.phase === "teachLive") return { ok: true, session: idleSession };
       return { ok: true, session };
     case "open-save":
-      if (session.phase === "teachLive" || session.phase === "teachReview") return { ok: false, reason: "busy", session };
+      if (session.phase === "teachStarting" || session.phase === "teachLive" || session.phase === "teachReview") return { ok: false, reason: "busy", session };
       return { ok: true, session: { phase: "saveSheet", pending: event.pending } };
     case "commit-save":
     case "discard-save":
@@ -193,7 +198,7 @@ export function moveSession(session: CaptureSession, event: SessionEvent): Sessi
       if (session.phase !== "teachLive" && session.phase !== "teachReview") return { ok: false, reason: "busy", session };
       return { ok: true, session: { phase: "teachReview" } };
     case "end-teach":
-      if (session.phase !== "teachLive" && session.phase !== "teachReview") return { ok: false, reason: "busy", session };
+      if (session.phase !== "teachStarting" && session.phase !== "teachLive" && session.phase !== "teachReview") return { ok: false, reason: "busy", session };
       return { ok: true, session: idleSession };
     case "set-extract":
       if (session.phase !== "recording" && session.phase !== "teachLive") return { ok: true, session };
@@ -204,7 +209,7 @@ export function moveSession(session: CaptureSession, event: SessionEvent): Sessi
       if (session.phase === "recording") return { ok: true, session: recordingReleased(session) };
       return { ok: true, session: idleSession };
     case "take-browser":
-      if (session.phase === "recording" || session.phase === "teachLive") return { ok: false, reason: "busy", session };
+      if (session.phase === "recording" || session.phase === "teachStarting" || session.phase === "teachLive") return { ok: false, reason: "busy", session };
       return { ok: true, session };
     default: {
       const unexpected: never = event;
@@ -332,12 +337,16 @@ export async function startApp(opts: {
     return result;
   }
   function sessionMode(): "capture" | "teach" {
-    return captureSession.phase === "teachLive" || captureSession.phase === "teachReview" ? "teach" : "capture";
+    const phase = captureSession.phase;
+    return phase === "teachStarting" || phase === "teachLive" || phase === "teachReview" ? "teach" : "capture";
   }
   function teachPhase(): "idle" | "live" | "review" {
     if (captureSession.phase === "teachReview") return "review";
-    if (captureSession.phase === "teachLive" && page && !page.isClosed()) return "live";
+    if (captureSession.phase === "teachLive") return "live";
     return "idle";
+  }
+  function sessionRecording(): boolean {
+    return captureSession.phase === "recording" || captureSession.phase === "teachLive";
   }
   function pendingSave(): PendingCapture | null {
     if (captureSession.phase === "saveSheet") return captureSession.pending;
@@ -586,11 +595,12 @@ export async function startApp(opts: {
         const listing = library.list();
         const capturedEvents = new Map(capture.events.map((event) => [event.id, event]));
         const proposal = extractProposal();
+        const recording = sessionRecording();
         return json(res, {
-          recording: capture.recording,
+          recording,
           replaying: seatView.replaying,
           capture: {
-            recording: capture.recording,
+            recording,
             paused: capture.paused,
             steps: capture.steps.map(captureStepLabel),
             url: page && !page.isClosed() ? page.url() : captureOpenUrl,
@@ -625,7 +635,7 @@ export async function startApp(opts: {
           runExecuting: seatView.runExecuting,
           activeAsk: currentAsk(),
           capturePaused: capture.paused,
-          recordingSince: capture.recording ? recordingSince() : 0,
+          recordingSince: recording ? recordingSince() : 0,
           liveTrail: capture.events.slice(-40).map((event) => ({ id: event.id, ts: event.ts, op: event.op, kind: event.kind })),
           teach: teachState(),
           guide: guideLive,
@@ -1101,7 +1111,7 @@ export async function startApp(opts: {
         return json(res, { open: true, ...(await drivePageView(page)) });
       }
       if (process.env.BAO_DRIVE === "1" && req.method === "POST" && url.pathname === "/api/sessions/drive") {
-        if (!page) return json(res, { error: "no session" }, 409);
+        if (captureSession.phase === "teachStarting" || !page) return json(res, { error: "no session" }, 409);
         const body = await readBody(req) as {
           fill?: { selector: string; value: string; keys?: boolean };
           click?: string;
@@ -1526,7 +1536,7 @@ export async function startApp(opts: {
         return json(res, teachState());
       }
       if (req.method === "POST" && url.pathname === "/api/teach/stop") {
-        if (captureSession.phase !== "teachLive") return json(res, { error: "not teaching" }, 409);
+        if (captureSession.phase !== "teachStarting" && captureSession.phase !== "teachLive") return json(res, { error: "not teaching" }, 409);
         const finished = await enqueue(async () => {
           if (captureSession.phase !== "teachLive") return null;
           return finishTeach();
@@ -1535,11 +1545,11 @@ export async function startApp(opts: {
         return json(res, finished);
       }
       if (req.method === "POST" && url.pathname === "/api/teach/discard") {
-        if (captureSession.phase !== "teachLive" && captureSession.phase !== "teachReview") {
+        if (captureSession.phase !== "teachStarting" && captureSession.phase !== "teachLive" && captureSession.phase !== "teachReview") {
           return json(res, { error: "not teaching" }, 409);
         }
         await enqueue(async () => {
-          if (captureSession.phase !== "teachLive" && captureSession.phase !== "teachReview") return;
+          if (captureSession.phase !== "teachStarting" && captureSession.phase !== "teachLive" && captureSession.phase !== "teachReview") return;
           teachDecisions = [];
           cardSeen.clear();
           narrationCache.clear();
@@ -2058,6 +2068,8 @@ export async function startApp(opts: {
       const started = await beginSession(startUrl, "teach");
       if (started === "busy") return "busy";
       if (page && !page.isClosed()) teachBaseline = await page.evaluate(visibleStatusLines).catch(() => []);
+      const ready = move({ type: "teach-ready" });
+      if (!ready.ok) return "busy";
       return "ok";
     } catch (err) {
       move({ type: "abort-start" });
@@ -2093,7 +2105,7 @@ export async function startApp(opts: {
   }
 
   async function saveSession(): Promise<WorkflowV2> {
-    if (captureSession.phase === "teachLive" || captureSession.phase === "teachReview") throw new Error("busy");
+    if (captureSession.phase === "teachStarting" || captureSession.phase === "teachLive" || captureSession.phase === "teachReview") throw new Error("busy");
     await settleShots();
     const raw = capture.stop();
     move({ type: "set-extract" });
