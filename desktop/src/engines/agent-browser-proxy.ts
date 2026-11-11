@@ -1398,7 +1398,8 @@ export class AgentBrowserProxy {
   private armIdle(session: Session): void {
     clearTimeout(session.idleTimer);
     if (this.session !== session || session.removing || this.disconnected) return;
-    if (session.ownerWait) {
+    // A closed wait still names its page, but the session expires on the idle timer.
+    if (session.ownerWait && !session.abort.signal.aborted) {
       session.idleTimer = setTimeout(() => {
         void this.endOwnerWait(session).catch((error: unknown) => process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`));
       }, Math.max(0, (session.ownerTouched ?? Date.now()) + OWNER_WAIT_LIMIT_MS - Date.now()));
