@@ -54,14 +54,21 @@ async function withConsent<T>(helper: CurrentChromeDeps["helper"], pid: number, 
   signal.throwIfAborted();
   let finished = false;
   let pollError: unknown;
+  // One press per sheet. A sheet that stays up is waiting on the owner, not on another press.
+  let pressedSheet = false;
   const pending = operation(signal).finally(() => { finished = true; });
   void pending.catch(() => undefined);
   try {
     while (!finished) {
       signal.throwIfAborted();
       try {
-        const hit = await helper.exec(["debug-allow", "--pid", String(pid), "--press"], 5000);
-        if (hit.pressed) await logAx(axLog, { what: "AXPress", role: "AXButton", name: "Allow", window: "Allow remote debugging?", at: new Date().toISOString(), via: "BaoOSHelper" });
+        const args = ["debug-allow", "--pid", String(pid)];
+        if (!pressedSheet) args.push("--press");
+        const hit = await helper.exec(args, 5000);
+        if (hit.pressed) {
+          pressedSheet = true;
+          await logAx(axLog, { what: "AXPress", role: "AXButton", name: "Allow", window: "Allow remote debugging?", at: new Date().toISOString(), via: "BaoOSHelper" });
+        } else if (!hit.found) pressedSheet = false;
         pollError = undefined;
       } catch (error) { pollError = error; }
       if (!finished) await new Promise((resolve) => setTimeout(resolve, 250));
