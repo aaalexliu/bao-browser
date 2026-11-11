@@ -111,7 +111,7 @@ For cookie import, Bao copies the selected Chrome source's cookie database into 
 
 IndexedDB transfer still has no passing real-browser proof. The initial site's import uses the existing disk-copy helper; later site imports into an open browser transfer cookies and localStorage only. A cookie or storage record alone does not prove the site accepts a login.
 
-Keep-window-open also applies to this profile. The next Bao-profile session closes that kept window before reopening the same saved profile. It also reclaims a window whose owning MCP process has exited or whose explicit close is still finishing. Another active session must close before a second session can use it. Completed app copy runs keep their windows open but mark their leases retained, so the next copy session can reclaim them. App Bao runs use their own profile and do not hold an agent-profile lease.
+Keep-window-open also applies to this profile. The next Bao-profile session closes that kept window before reopening the same saved profile. It also reclaims a window whose owning MCP process has exited. A second session cannot use the profile while a close is still finishing, or while another session is still open. Completed app copy runs keep their windows open but mark their leases retained, so the next copy session can reclaim them. App Bao runs use their own profile and do not hold an agent-profile lease.
 
 ### Use the owner's running Chrome
 

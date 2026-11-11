@@ -282,7 +282,10 @@ test("Bao reclaims dead owners and slow closes but refuses a live owner", { time
   let chrome: Awaited<ReturnType<typeof openBaoChromeForProxy>> | undefined;
   try {
     chrome = await openBaoChromeForProxy(options);
-    assert.equal((JSON.parse(await readFile(marker, "utf8")) as { pid: number }).pid, process.pid);
+    const claimed = JSON.parse(await readFile(marker, "utf8")) as { state: string; pid: number; token: string };
+    assert.equal(claimed.state, "claimed");
+    assert.equal(claimed.pid, process.pid);
+    assert.ok(claimed.token);
     await assert.rejects(openBaoChromeForProxy(options), /already open/);
     const dead = spawnSync(process.execPath, ["-e", "process.stdout.write(String(process.pid))"], { encoding: "utf8" });
     assert.equal(dead.status, 0);
@@ -302,7 +305,7 @@ test("Bao reclaims dead owners and slow closes but refuses a live owner", { time
     assert.equal((JSON.parse(await readFile(marker, "utf8")) as { pid: number }).pid, process.pid);
     slowClose = true;
     await chrome.close();
-    assert.equal((JSON.parse(await readFile(marker, "utf8")) as { retained: boolean }).retained, true);
+    assert.equal((JSON.parse(await readFile(marker, "utf8")) as { state: string }).state, "retained");
     slowClose = false;
     chrome = await openBaoChromeForProxy(options);
     assert.notDeepEqual(launches.pidsForDataDir(profile), []);
@@ -316,6 +319,77 @@ test("Bao reclaims dead owners and slow closes but refuses a live owner", { time
       for (const browser of browsers) await browser.close();
       await rm(root, { recursive: true, force: true });
     }
+  }
+});
+
+test("a releasing Bao lease refuses reclaim and keepOpen until shutdown finishes", { timeout: 30_000 }, async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-profile-releasing-"));
+  const home = path.join(root, "home");
+  const marker = path.join(baoAgentProfileDir(home), "bao-kept-window");
+  const options = { home, unread: "synthetic unavailable source" };
+  const launch = launches.launchOwnedChromeEndpoint;
+  let entered!: () => void;
+  const closing = new Promise<void>((resolve) => { entered = resolve; });
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  t.mock.method(launches, "launchOwnedChromeEndpoint", async (options: Parameters<typeof launch>[0]) => {
+    const browser = await launch({ ...options, headless: true });
+    return { ...browser, close: async () => { entered(); await gate; await browser.close(); } };
+  });
+  let chrome: Awaited<ReturnType<typeof openBaoChromeForProxy>> | undefined;
+  let close: Promise<void> | undefined;
+  try {
+    chrome = await openBaoChromeForProxy(options);
+    const claimed = JSON.parse(await readFile(marker, "utf8")) as { state: string; pid: number; token: string };
+    await chrome.keepOpen();
+    assert.deepEqual(JSON.parse(await readFile(marker, "utf8")), { ...claimed, state: "retained" });
+    close = chrome.close();
+    await closing;
+    const releasing = await readFile(marker, "utf8");
+    assert.deepEqual(JSON.parse(releasing), { ...claimed, state: "releasing" });
+    await assert.rejects(openBaoChromeForProxy(options), /already open/);
+    await chrome.keepOpen();
+    assert.equal(await readFile(marker, "utf8"), releasing);
+    release();
+    await close;
+    await assert.rejects(readFile(marker), /ENOENT/);
+    await access(baoAgentProfileDir(home));
+    await chrome.keepOpen();
+    await assert.rejects(readFile(marker), /ENOENT/);
+    chrome = await openBaoChromeForProxy(options);
+    assert.equal(chrome.isClosed(), false);
+  } finally {
+    release();
+    await close;
+    await chrome?.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a failed Bao shutdown restores a retained lease so the next open can reclaim", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-profile-unlink-"));
+  const home = path.join(root, "home");
+  const marker = path.join(baoAgentProfileDir(home), "bao-kept-window");
+  const nodeFs = require("node:fs") as typeof import("node:fs");
+  const unlink = nodeFs.unlinkSync;
+  let failUnlink = true;
+  t.mock.method(nodeFs, "unlinkSync", (file: Parameters<typeof unlink>[0]) => {
+    if (failUnlink && file === marker) throw Object.assign(new Error("synthetic unlink failure"), { code: "EPERM" });
+    unlink(file);
+  });
+  t.mock.method(launches, "launchOwnedChromeEndpoint", async () => { throw new Error("synthetic launch failure"); });
+  try {
+    await assert.rejects(openBaoChromeForProxy({ home, unread: "synthetic unavailable source" }), /synthetic unlink failure/);
+    const restored = JSON.parse(await readFile(marker, "utf8")) as { state: string; pid: number; token: string };
+    assert.equal(restored.state, "retained");
+    assert.equal(restored.pid, process.pid);
+    assert.equal(typeof restored.token, "string");
+    failUnlink = false;
+    await assert.rejects(openBaoChromeForProxy({ home, unread: "synthetic unavailable source" }), /synthetic launch failure/);
+    await assert.rejects(readFile(marker), /ENOENT/);
+  } finally {
+    t.mock.restoreAll();
+    await rm(root, { recursive: true, force: true });
   }
 });
 

@@ -12,6 +12,7 @@ import { cookieMatchesHost, findCookieDb, summarizeDb, summarySql, withCookieDb,
 import { setCookiesOneAtATime } from "../login-import/set-cookies";
 import { copyIndexedDb, matchingIndexedDbOrigins, readLocalStorage, setLocalStorageItems, type StorageItem } from "../login-import/storage";
 import { boundCookie, boundSessionSites, boundSite, deleteCookieRows, listedBoundSite } from "./bound-sign-in";
+import type { ProfileLease } from "./chrome-profile-copy";
 
 interface LoginCookie extends DecryptedCookie { updated: bigint; signature: string }
 
@@ -226,40 +227,55 @@ export async function openBaoChromeForProxy(options: ({ sourceRoot: string; dire
   await mkdir(profile, { recursive: true });
   const token = randomUUID();
   const busy = () => new Error("The Bao profile is already open. Close that session before starting another.");
-  const claim = () => writeFileSync(keptWindow, JSON.stringify({ pid: process.pid, token }), { flag: "wx", mode: 0o600 });
+  const lease = (state: ProfileLease["state"]): ProfileLease => ({ state, pid: process.pid, token });
+  const claim = () => writeFileSync(keptWindow, JSON.stringify(lease("claimed")), { flag: "wx", mode: 0o600 });
   let reclaim = false;
   try { claim(); }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
     const marker = readFileSync(keptWindow, "utf8");
-    const lease = JSON.parse(marker) as { pid: number; retained?: boolean };
+    const lease = JSON.parse(marker) as { pid: number; state?: ProfileLease["state"]; retained?: boolean };
     let ownerAlive = true;
     if (Number.isSafeInteger(lease.pid) && lease.pid > 1) {
       try { process.kill(lease.pid, 0); }
       catch (error) { ownerAlive = (error as NodeJS.ErrnoException).code !== "ESRCH"; }
     }
-    if (ownerAlive && !lease.retained) throw busy();
+    const state = lease.state ?? (lease.retained ? "retained" : "claimed");
+    if (ownerAlive && state !== "retained") throw busy();
     if (readFileSync(keptWindow, "utf8") !== marker) throw busy();
     unlinkSync(keptWindow);
     try { claim(); }
     catch (error) { if ((error as NodeJS.ErrnoException).code === "EEXIST") throw busy(); throw error; }
     reclaim = true;
   }
-  const ownsProfile = () => {
-    try { return (JSON.parse(readFileSync(keptWindow, "utf8")) as { token?: string }).token === token; }
-    catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return false; throw error; }
+  const ownedLease = (): ProfileLease | undefined => {
+    try {
+      const current = JSON.parse(readFileSync(keptWindow, "utf8")) as ProfileLease;
+      return current.token === token ? current : undefined;
+    } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined; throw error; }
   };
-  const retain = () => {
-    if (ownsProfile()) writeFileSync(keptWindow, JSON.stringify({ pid: process.pid, token, retained: true }), { mode: 0o600 });
+  const ownsProfile = () => Boolean(ownedLease());
+  const writeLease = (state: ProfileLease["state"]) => {
+    if (ownsProfile()) writeFileSync(keptWindow, JSON.stringify(lease(state)), { mode: 0o600 });
   };
   let chrome: Awaited<ReturnType<typeof launchOwnedChromeEndpoint>> | undefined;
   let launchAttempted = false;
   const close = async () => {
     if (!ownsProfile()) return;
-    retain();
-    await chrome?.close();
-    // An unreadable process list keeps the marker, so the next session reclaims whatever is left.
-    if (ownsProfile() && listedPids(profile)?.length === 0) unlinkSync(keptWindow);
+    writeLease("releasing");
+    try { await chrome?.close(); }
+    finally {
+      // An unreadable process list keeps the marker, so the next session reclaims whatever is left.
+      if (ownsProfile()) {
+        try {
+          if (listedPids(profile)?.length === 0) unlinkSync(keptWindow);
+          else writeLease("retained");
+        } catch (error) {
+          if (ownsProfile()) writeLease("retained");
+          throw error;
+        }
+      }
+    }
   };
   try {
     if (reclaim) await closeRetainedChrome(profile);
@@ -334,8 +350,9 @@ export async function openBaoChromeForProxy(options: ({ sourceRoot: string; dire
       target: { kind: "bao" as const, portFile: browser.portFile },
       closed: browser.closed, isClosed: browser.isClosed, close,
       async keepOpen() {
-        if (!ownsProfile()) return;
-        retain();
+        const current = ownedLease();
+        if (!current || current.state === "releasing") return;
+        writeLease("retained");
         browser.keepOpen();
       },
       /** The import for the site the session opened with. */

@@ -802,8 +802,8 @@ for (const [signal, repeat] of [["SIGINT", false], ["SIGTERM", false], ["SIGHUP"
       if (keepOpen) {
         await delay(250);
         assert.ok(pidsForDataDir(copy).length > 0, "terminal signals must not reach a kept Chrome");
-        const lease = JSON.parse(await readFile(path.join(copy, "lease.json"), "utf8")) as { retained?: boolean };
-        assert.equal(lease.retained, true);
+        const lease = JSON.parse(await readFile(path.join(copy, "lease.json"), "utf8")) as { state?: string };
+        assert.equal(lease.state, "retained");
       } else {
         await until(() => pidsForDataDir(copy).length === 0);
         await assert.rejects(access(copy), /ENOENT/);
@@ -871,7 +871,7 @@ test("close near the stop deadline closes a retained window before a queued cata
     const stopped = c.stop();
     await until(async () => {
       const contents = await readFile(path.join(copy, "lease.json"), "utf8");
-      try { return (JSON.parse(contents) as { retained?: unknown }).retained === true; }
+      try { return (JSON.parse(contents) as { state?: unknown }).state === "retained"; }
       catch (error) {
         // keepOpen rewrites the lease while this assertion polls it.
         if (error instanceof SyntaxError) return false;
@@ -912,8 +912,8 @@ test("keep-open finishes the run and the next session reclaims only that home's 
   f.library.updateSettings({ keepAgentBrowserOpen: true });
   await c.close();
   assert.ok(pidsForDataDir(copy).length);
-  const lease = JSON.parse(await readFile(path.join(copy, "lease.json"), "utf8")) as { retained?: boolean };
-  assert.equal(lease.retained, true);
+  const lease = JSON.parse(await readFile(path.join(copy, "lease.json"), "utf8")) as { state?: string };
+  assert.equal(lease.state, "retained");
   assert.equal(f.library.listRuns()[0]!.status, "passed");
   const next = f.start();
   await next.request("initialize");
