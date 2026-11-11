@@ -320,9 +320,7 @@ export class AgentBrowserRun {
     this.persist();
   }
 
-  /** The run status follows the owner wait. A page that is not a wall does not stick in needs_human. */
-  syncOwnerWait(wait: "off" | "pending" | { targetId: string }, human = wait !== "off"): void {
-    const waiting = wait !== "off" && human;
+  ownerWaiting(waiting: boolean): void {
     const wasWaiting = this.run.status === "needs_human";
     this.run.status = waiting ? "needs_human" : "recording";
     if (this.video?.kind === "recording") {
@@ -338,10 +336,6 @@ export class AgentBrowserRun {
       delete this.run.envelope;
     }
     this.persist();
-  }
-
-  ownerWaiting(waiting: boolean): void {
-    this.syncOwnerWait(waiting ? "pending" : "off");
   }
 
   finish(result?: "session_closed" | AgentBrowserTaskOutcome): void {

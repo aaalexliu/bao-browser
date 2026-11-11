@@ -183,16 +183,15 @@ type OwnerWait = "off" | "pending" | { targetId: string; page: OwnerPage; reopen
 type CloseQueue = { n: number };
 
 /**
- * One agent-browser session seat. A live session cannot also be closing, retained, or ended.
+ * One agent-browser session seat. A live session cannot also be closing or ended.
  * `disconnected` is an ended reason that can still hold the session a later close must reach.
  */
 type ProxySeat =
-  | { phase: "starting"; promise: Promise<Session>; abort: AbortController; closes: CloseQueue }
+  | { phase: "starting"; promise: Promise<Session>; abort: AbortController; closes: CloseQueue; priorEnded?: "current-ended" }
   | { phase: "live"; session: Session; ownerWait: OwnerWait; closes: CloseQueue }
   | { phase: "closing"; session: Session; ownerWait: OwnerWait; completion: Promise<void>; keep: boolean; started: boolean; resolve: () => void; reject: (error: unknown) => void; closes: CloseQueue }
-  | { phase: "retained"; session: Session; closes: CloseQueue }
   | { phase: "ended"; reason: "closed" | "current-ended"; closes: CloseQueue }
-  | { phase: "ended"; reason: "disconnected"; closes: CloseQueue; session?: Session; starting?: Promise<Session>; closeRequested?: boolean; completion?: Promise<void> };
+  | { phase: "ended"; reason: "disconnected"; closes: CloseQueue; session?: Session; ownerWait?: OwnerWait; starting?: Promise<Session>; closeRequested?: boolean; completion?: Promise<void> };
 
 /**
  * macOS does not let a Chrome that Bao launched in the background make itself the front app, so Target.activateTarget only
@@ -291,13 +290,12 @@ export class AgentBrowserProxy {
     extensionRoute?: () => boolean;
   }) {}
 
-  /** The live, closing, retained, or disconnected session. Ended without a leftover has none. */
+  /** The live, closing, or disconnected session. Ended without a leftover has none. */
   private get session(): Session | undefined {
     const seat = this.seat;
     switch (seat.phase) {
       case "live":
       case "closing":
-      case "retained":
         return seat.session;
       case "ended":
         return seat.reason === "disconnected" ? seat.session : undefined;
@@ -317,10 +315,6 @@ export class AgentBrowserProxy {
     return this.seat.phase === "ended" && this.seat.reason === "disconnected";
   }
 
-  private isRetained(): boolean {
-    return this.seat.phase === "retained";
-  }
-
   private isCurrentEnded(): boolean {
     return this.seat.phase === "ended" && this.seat.reason === "current-ended";
   }
@@ -334,15 +328,15 @@ export class AgentBrowserProxy {
   private waitOf(session: Session): OwnerWait {
     const seat = this.seat;
     if ((seat.phase === "live" || seat.phase === "closing") && seat.session === session) return seat.ownerWait;
+    if (seat.phase === "ended" && seat.reason === "disconnected" && seat.session === session) return seat.ownerWait ?? "off";
     return "off";
   }
 
   private setWait(session: Session, wait: OwnerWait): void {
     const seat = this.seat;
-    if (seat.phase === "live" && seat.session === session) seat.ownerWait = wait;
-    else if (seat.phase === "closing" && seat.session === session) seat.ownerWait = wait;
-    const human = wait === "pending" || (typeof wait === "object" && ownerWall(wait.page) !== null);
-    session.recording.syncOwnerWait(wait === "off" || wait === "pending" ? wait : { targetId: wait.targetId }, human);
+    if ((seat.phase === "live" || seat.phase === "closing") && seat.session === session) seat.ownerWait = wait;
+    else if (seat.phase === "ended" && seat.reason === "disconnected" && seat.session === session) seat.ownerWait = wait;
+    session.recording.ownerWaiting(wait !== "off");
   }
 
   private closingOf(session: Session): boolean {
@@ -361,9 +355,9 @@ export class AgentBrowserProxy {
       seat.closeRequested = true;
       return;
     }
-    if ((seat.phase !== "live" && seat.phase !== "retained") || seat.session !== session) return;
+    if (seat.phase !== "live" || seat.session !== session) return;
     this.seat = {
-      phase: "closing", session, ownerWait: seat.phase === "live" ? seat.ownerWait : "off",
+      phase: "closing", session, ownerWait: seat.ownerWait,
       completion: Promise.resolve(), keep: false, started: false, resolve() {}, reject() {}, closes: seat.closes,
     };
   }
@@ -391,15 +385,9 @@ export class AgentBrowserProxy {
     this.seat = { phase: "ended", reason, closes: seat.closes };
   }
 
-  /** Drops a retained window without closing it, so a later open can start and the profile lease can reclaim Chrome. */
-  private releaseRetained(): void {
-    if (this.seat.phase !== "retained") return;
-    this.seat = { phase: "ended", reason: "closed", closes: this.seat.closes };
-  }
-
   private clearStart(): void {
     const seat = this.seat;
-    if (seat.phase === "starting") this.seat = { phase: "ended", reason: "closed", closes: seat.closes };
+    if (seat.phase === "starting") this.seat = { phase: "ended", reason: seat.priorEnded ?? "closed", closes: seat.closes };
     else if (seat.phase === "ended" && seat.reason === "disconnected") {
       const { starting: _starting, ...rest } = seat;
       this.seat = rest;
@@ -441,7 +429,6 @@ export class AgentBrowserProxy {
     this.imports = [];
     this.moved = undefined as Moved | undefined;
     this.workflowOutcome = undefined;
-    if (command === "open" && this.seat.phase === "retained") this.releaseRetained();
     const claimed = typeof runId === "string" ? runId.trim() : undefined;
     if (runId !== undefined && (typeof runId !== "string" || !claimed)) {
       this.refusal = {};
@@ -700,12 +687,13 @@ export class AgentBrowserProxy {
     if (seat.phase === "starting") seat.abort.abort();
     else this.session?.abort.abort();
     if (seat.phase === "ended" && seat.reason === "disconnected") return;
-    const session = seat.phase === "live" || seat.phase === "closing" || seat.phase === "retained" ? seat.session : undefined;
+    const session = seat.phase === "live" || seat.phase === "closing" ? seat.session : undefined;
+    const ownerWait = seat.phase === "live" || seat.phase === "closing" ? seat.ownerWait : undefined;
     const starting = seat.phase === "starting" ? seat.promise : undefined;
     const completion = seat.phase === "closing" && seat.started ? seat.completion : undefined;
     this.seat = {
       phase: "ended", reason: "disconnected", closes: seat.closes,
-      ...(session ? { session } : {}),
+      ...(session ? { session, ownerWait } : {}),
       ...(starting ? { starting } : {}),
       ...(completion ? { completion } : {}),
     };
@@ -731,15 +719,6 @@ export class AgentBrowserProxy {
     this.notOpened = undefined;
     this.refusal = undefined;
     this.shown = undefined;
-    if (this.isRetained()) {
-      const kept = this.session;
-      if (!kept || runId !== kept.recording.id) {
-        this.refusal = runId === undefined ? {} : { runId };
-        if (runId === undefined) throw new Error(runIdNeeded("finish_task"));
-        return undefined;
-      }
-      return undefined;
-    }
     const session = this.session;
     if (runId !== undefined && this.endedByNewer.has(runId)) {
       this.refusal = { runId };
@@ -760,7 +739,7 @@ export class AgentBrowserProxy {
     try {
       await this.remove(session, this.options.keepOpen?.() === true);
       session.recording.finish(outcome);
-      if (!this.isRetained()) this.drop(session);
+      this.drop(session);
       return session.recording.id;
     } finally {
       this.endedRuns.delete(session.recording.id);
@@ -864,8 +843,9 @@ export class AgentBrowserProxy {
     let fail!: (error: unknown) => void;
     const promise = new Promise<Session>((resolve, reject) => { settle = resolve; fail = reject; });
     promise.catch(() => undefined);
+    const priorEnded = seat.phase === "ended" && seat.reason === "current-ended" ? "current-ended" as const : undefined;
     if (seat.phase === "ended" && seat.reason === "disconnected") this.seat = { ...seat, starting: promise };
-    else this.seat = { phase: "starting", promise, abort, closes: seat.closes };
+    else this.seat = { phase: "starting", promise, abort, closes: seat.closes, ...(priorEnded ? { priorEnded } : {}) };
     let missed: string | undefined;
     let browser: Opened | undefined;
     try {
@@ -1315,16 +1295,18 @@ export class AgentBrowserProxy {
   }
 
   private stillWaiting(session: Session): AgentBrowserCommandResult[] {
-    if (this.waitOf(session) === "off") {
-      session.ownerSince ??= Date.now();
-      session.ownerTouched = Date.now();
-      this.setWait(session, "pending");
-    }
+    const wait = this.waitOf(session);
+    const wall = wait !== "off" && wait !== "pending" && ownerWall(wait.page) !== null;
+    if (!wall) session.recording.ownerWaiting(false);
     return this.ownerResult("waiting", session);
   }
 
   private async waitForOwner(session: Session, deadline: number): Promise<AgentBrowserCommandResult[]> {
     if (session.abort.signal.aborted) return this.ownerClosed(session);
+    if (this.waitOf(session) === "off") {
+      session.ownerSince = session.ownerTouched = Date.now();
+      this.setWait(session, "pending");
+    } else session.recording.ownerWaiting(true);
     let cdp: CdpSocket | undefined;
     const onAbort = () => { if (session.kind === "copy") cdp?.close(); };
     session.abort.signal.addEventListener("abort", onAbort, { once: true });
@@ -1634,7 +1616,7 @@ export class AgentBrowserProxy {
       await this.afterCleanup(session);
       return;
     }
-    if (session.kind === "copy" && this.waitOf(session) !== "off") this.afterWall = true;
+    this.afterWall = session.kind === "copy" && this.waitOf(session) !== "off";
     const endedCurrent = session.kind === "current" && !this.closingOf(session) && !this.gone();
     if (endedCurrent) this.endedRuns.set(session.recording.id, CURRENT_CHROME_ENDED);
     let resolveCleanup!: () => void;
@@ -1663,8 +1645,8 @@ export class AgentBrowserProxy {
   private armCleanup(session: Session): void {
     const seat = this.seat;
     if (seat.phase === "ended" && seat.reason === "disconnected") return;
-    if ((seat.phase !== "live" && seat.phase !== "closing" && seat.phase !== "retained") || seat.session !== session) return;
-    const ownerWait = seat.phase === "live" || seat.phase === "closing" ? seat.ownerWait : "off";
+    if ((seat.phase !== "live" && seat.phase !== "closing") || seat.session !== session) return;
+    const ownerWait = seat.ownerWait;
     const keep = seat.phase === "closing" ? seat.keep : true;
     const completion = this.cleanups.get(session) ?? Promise.resolve();
     this.seat = { phase: "closing", session, ownerWait, completion, keep, started: true, resolve() {}, reject() {}, closes: seat.closes };
@@ -1711,11 +1693,6 @@ export class AgentBrowserProxy {
       await session.chrome.close();
     }
     if (this.session !== session) return;
-    if (session.chrome.isClosed()) {
-      this.drop(session, endedCurrent ? "current-ended" : "closed");
-      return;
-    }
-    if (session.kind !== "copy" || this.closingOf(session) || this.seat.closes.n > 0 || this.gone()) return;
-    this.seat = { phase: "retained", session, closes: this.seat.closes };
+    if (session.chrome.isClosed()) this.drop(session, endedCurrent ? "current-ended" : "closed");
   }
 }

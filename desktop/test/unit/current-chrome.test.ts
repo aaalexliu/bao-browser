@@ -931,13 +931,21 @@ test("a first wait after finish_task waits on the new run only with the new run'
   const [stale] = await f.proxy.execute("wait_for_owner", ["40"], undefined, false, undefined, {}, runX);
   assert.equal((JSON.parse(stale!.stdout) as { outcome: string }).outcome, "closed", "the finished run's id starts no wait");
   assert.equal(f.library.listRuns().find((run) => run.id === runY)!.status, "recording");
-  const [waiting] = await f.proxy.execute("wait_for_owner", ["40"], undefined, false, undefined, {}, runY);
+  const pending = f.proxy.execute("wait_for_owner", ["250"], undefined, false, undefined, {}, runY);
+  const until = Date.now() + 2_000;
+  let during = f.library.readRun(runY).status;
+  while (during !== "needs_human" && Date.now() < until) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    during = f.library.readRun(runY).status;
+  }
+  const [waiting] = await pending;
   const reply = JSON.parse(waiting!.stdout) as { outcome: string; instruction: string };
   assert.equal(reply.outcome, "waiting", "a check Bao did not recognize still waits on the open session");
+  assert.equal(during, "needs_human", "Running Chrome shows the run as needing the owner while the agent waits");
   assert.equal(reply.instruction.includes(`run_id="${runY}"`), true);
   assert.equal(reply.instruction.includes(`run_id="${runX}"`), false);
   assert.equal(f.proxy.hasSession(), true);
-  assert.equal(f.library.listRuns().find((run) => run.id === runY)!.status, "needs_human");
+  assert.equal(f.library.readRun(runY).status, "recording", "a page that is not a wall leaves needs_human when the wait ends");
 });
 
 test("a wait for a Chrome-ended run does not tell that chat to reconnect onto a newer session", async (t) => {

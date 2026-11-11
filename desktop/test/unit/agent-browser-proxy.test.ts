@@ -178,8 +178,9 @@ for (const failure of ["connect", "metadata", "poll"]) test(`owner wait keeps it
     assert.equal((JSON.parse(result[0]!.stdout) as { outcome: string }).outcome, "waiting");
     assert.match((JSON.parse(result[0]!.stdout) as { instruction: string }).instruction, /wait_for_owner/);
     const saved = new Library(path.join(f.root, "home")).listRuns()[0]!;
-    assert.equal(saved.status, "needs_human");
-    assert.equal(saved.envelope?.reason, "owner_signin");
+    const readWall = failure === "poll";
+    assert.equal(saved.status, readWall ? "needs_human" : "recording");
+    assert.equal(saved.envelope?.reason, readWall ? "owner_signin" : undefined);
     const step = (saved.steps as RecordedAgentBrowserCommand[]).at(-1)!;
     assert.equal(step.status, "passed");
     assert.equal(step.afterShot, undefined);
@@ -191,7 +192,7 @@ for (const failure of ["connect", "metadata", "poll"]) test(`owner wait keeps it
     }
     assert.deepEqual(await f.calls(), calls);
     await f.proxy.close();
-    assert.equal(new Library(path.join(f.root, "home")).readRun(saved.id).status, "failed");
+    assert.equal(new Library(path.join(f.root, "home")).readRun(saved.id).status, readWall ? "failed" : "passed");
   } finally { await f.close(); }
 });
 
@@ -996,32 +997,50 @@ test("after the newer task finishes, a command that names the ended run stays cl
   } finally { await f.close(); }
 });
 
-test("a wait_for_owner on a normal page does not stick in needs_human, so finish_task keeps the caller's outcome", async (t) => {
+test("a wait_for_owner on a normal page shows needs_human while it waits, then recording, so finish_task keeps the caller's outcome", async (t) => {
   const f = await fixture(t);
   try {
     await f.proxy.execute("open", ["http://127.0.0.1/"], "copy");
     const runId = f.proxy.activeRunId!;
-    const [waiting] = await f.proxy.execute("wait_for_owner", ["40"], undefined, false, undefined, {}, runId);
-    assert.equal((JSON.parse(waiting!.stdout) as { outcome: string }).outcome, "waiting");
     const library = new Library(path.join(f.root, "home"));
-    assert.equal(library.readRun(runId).status, "recording");
+    const pending = f.proxy.execute("wait_for_owner", ["250"], undefined, false, undefined, {}, runId);
+    const deadline = Date.now() + 2_000;
+    let during = library.readRun(runId).status;
+    while (during !== "needs_human" && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      during = library.readRun(runId).status;
+    }
+    const [waiting] = await pending;
+    assert.equal((JSON.parse(waiting!.stdout) as { outcome: string }).outcome, "waiting");
+    assert.equal(during, "needs_human", "the app shows the run as needing the owner while the agent waits");
+    assert.equal(library.readRun(runId).status, "recording", "a page that is not a wall leaves needs_human when the wait ends");
     assert.equal(await f.proxy.finishTask({ outcome: "passed", reason: "The page was already open." }, runId), runId);
     assert.equal(library.readRun(runId).status, "passed");
     assert.equal(library.readRun(runId).envelope?.reason, "The page was already open.");
   } finally { await f.close(); }
 });
 
-test("a later open replaces a retained session instead of returning closed", async (t) => {
+test("finish_task with keep-open drops the session and a later close leaves the window open", async (t) => {
   const f = await fixture(t, true);
   try {
     await f.proxy.execute("open", ["http://127.0.0.1/"], "copy");
     const kept = f.proxy.activeRunId!;
     assert.equal(await f.proxy.finishTask({ outcome: "passed", reason: "Keep the window." }, kept), kept);
-    assert.equal(f.proxy.hasSession(), true);
+    assert.equal(f.proxy.hasSession(), false);
     assert.equal(f.closeCount(), 0);
+    await assert.rejects(f.proxy.execute("snapshot", [], undefined, false, undefined, {}, kept), /start agent-browser with open/);
+    const [waited] = await f.proxy.execute("wait_for_owner", ["40"], undefined, false, undefined, {}, kept);
+    const reply = JSON.parse(waited!.stdout) as { outcome: string; instruction: string };
+    assert.equal(reply.outcome, "closed");
+    assert.equal(reply.instruction.includes("The owner closed the Bao window"), false);
+    assert.equal(await f.proxy.finishTask({ outcome: "passed", reason: "again" }), undefined);
+    const [closed] = await f.proxy.execute("close", [], undefined, false, undefined, {}, kept);
+    assert.equal(closed!.stdout, "");
+    assert.equal(closed!.exitCode, 0);
+    assert.equal(f.closeCount(), 0, "a close with the kept run id leaves the window open");
     const [opened] = await f.proxy.execute("open", ["http://127.0.0.1/next"], "copy");
     assert.equal(opened!.exitCode, 0);
     assert.notEqual(f.proxy.activeRunId, kept);
-    assert.equal(f.closeCount(), 0, "replacing a retained session does not close the kept window");
+    assert.equal(f.closeCount(), 0, "a later open does not close the kept window");
   } finally { await f.close(); }
 });

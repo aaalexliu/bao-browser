@@ -543,7 +543,7 @@ for (const outcome of ["failed-task", "failed-command", "owner-wait"] as const) 
       assert.deepEqual(reply.browser, [COPY_DEFAULT]);
       assert.deepEqual(waiting.content!.map((block) => block.text), [reply.summary, `Run ${f.library.listRuns()[0]!.id} · waiting`, reply.instruction, COPY_DEFAULT],
         "text clients get words, the run id, and the browser Bao used, not the reply's JSON");
-      assert.equal(f.library.listRuns()[0]!.status, "needs_human", "waiting does not complete a task");
+      assert.equal(f.library.listRuns()[0]!.status, "recording", "a page that is not a wall does not stay needs_human after the wait");
     }
     const copy = await f.copy();
     const invalid = await c.request("tools/call", { name: "finish_task", arguments: { run_id: c.run, outcome: "failed", reason: " " } });
@@ -554,9 +554,9 @@ for (const outcome of ["failed-task", "failed-command", "owner-wait"] as const) 
     } });
     assert.equal(result.isError, false);
     const run = f.library.listRuns()[0]!;
-    assert.equal(run.status, outcome === "failed-command" ? "passed" : "failed");
+    assert.equal(run.status, outcome === "failed-task" ? "failed" : "passed");
     assert.ok(run.envelope?.reason, "every completion has a reason");
-    if (outcome !== "owner-wait") assert.equal(run.envelope?.reason, "The requested item was unavailable.");
+    assert.equal(run.envelope?.reason, "The requested item was unavailable.");
     if (outcome === "failed-command") {
       const steps = f.library.readRun(run.id).steps as unknown as { status: string }[];
       assert.ok(steps.some(step => step.status === "failed"), "recovered command errors remain in the receipt");

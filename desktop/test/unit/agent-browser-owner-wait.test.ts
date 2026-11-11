@@ -468,7 +468,7 @@ test("a wait_for_owner, close, or finish_task that names a run a newer open ende
   });
 });
 
-test("a wait_for_owner on a page that is not a wall does not stick in needs_human, and a later command still needs the open's run id", { timeout: scaledMs(60_000) }, async (t) => {
+test("a wait_for_owner on a check Bao did not recognize shows needs_human while it waits, then recording, and a later command still needs the open's run id", { timeout: scaledMs(60_000) }, async (t) => {
   const h = await ownerProxy(t);
   const { fixture, proxy } = h;
   try {
@@ -476,12 +476,21 @@ test("a wait_for_owner on a page that is not a wall does not stick in needs_huma
     const run = proxy.activeRunId!;
     assert.equal((await proxy.execute("snapshot", [], undefined, false, undefined, {}, run))[0]!.stdout, "snapshot native output\n", "a snapshot that names the open run acts on it");
     await assert.rejects(proxy.execute("click", ["@e1"]), /run_id is required on click while a browser session is open/);
-    assert.equal(outcome(await proxy.execute("wait_for_owner", ["40"], undefined, false, undefined, {}, run)), "waiting");
+    const library = new Library(h.home);
+    const pending = proxy.execute("wait_for_owner", ["250"], undefined, false, undefined, {}, run);
+    const deadline = Date.now() + 2_000;
+    let during = library.readRun(run).status;
+    while (during !== "needs_human" && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      during = library.readRun(run).status;
+    }
+    assert.equal(outcome(await pending), "waiting");
+    assert.equal(during, "needs_human", "the app shows the run as needing the owner while the agent waits");
     assert.equal(proxy.activeRunId, run);
     assert.equal(proxy.ownerPage?.url, fixture.url("/"));
-    assert.equal(new Library(h.home).readRun(run).status, "recording", "a page that is not a wall does not stick in needs_human");
+    assert.equal(library.readRun(run).status, "recording", "a page that is not a wall leaves needs_human when the wait ends");
     assert.equal(await proxy.finishTask({ outcome: "passed", reason: "The page was already open." }, run), run);
-    assert.equal(new Library(h.home).readRun(run).envelope?.reason, "The page was already open.");
+    assert.equal(library.readRun(run).envelope?.reason, "The page was already open.");
   } finally { await h.cleanup("copy"); }
 });
 
