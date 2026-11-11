@@ -840,3 +840,115 @@ test("a retried resume of a killed token does not return the running replay", { 
   assert.match(String(result.reason), /not held|browser is gone/, "a retried resume returned the running replay");
   assert.equal(hasHeldRuns(), false);
 });
+
+test("a get_run while parked shows its own label and leaves the parked workflow", { timeout: 90_000 }, async () => {
+  process.env.BAO_HEADED = "0";
+  process.env.BAO_CHROME_NO_SANDBOX = "1";
+  const home = mkdtempSync(path.join(tmpdir(), "bao-remote-label-"));
+  const library = new Library(home);
+  const site = createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    res.end("<body><button id=\"signin\">Sign in</button><p id=\"status\">Signed out</p></body>");
+  });
+  const directory = new MemoryDirectory();
+  directory.addDevice("dev-label", "user-label");
+  const relay = createRelay({ store: new MemoryJobStore(), directory, enabled: () => true });
+  const server = await listenRelay(relay, { principal: () => ({ userId: "user-label" }) });
+  let stopped = false;
+  let releaseResume = () => {};
+  let resumeGate = Promise.resolve({} as Record<string, unknown>);
+  const remote = createRemoteAgent({
+    library, prompts: { shouldStop: () => stopped },
+    stop() { stopped = true; }, clearStop() { stopped = false; },
+    runners: { resume: () => resumeGate },
+  });
+  const read = library.readRun.bind(library);
+  let releaseRead = () => {};
+  let readGate = Promise.resolve();
+  library.readRun = ((id: string) => readGate.then(() => read(id))) as unknown as typeof library.readRun;
+  let token = "";
+  async function post(route: string, body: unknown, auth?: string): Promise<Record<string, unknown>> {
+    const res = await fetch(`${server.origin}${route}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(auth ? { authorization: `Bearer ${auth}` } : {}) },
+      body: JSON.stringify(body),
+    });
+    const json = await res.json() as Record<string, unknown>;
+    assert.equal(res.status, 200, JSON.stringify(json));
+    return json;
+  }
+  try {
+    await new Promise<void>((resolve) => site.listen(0, "127.0.0.1", resolve));
+    const address = site.address();
+    assert.ok(address && typeof address === "object");
+    library.save(testWorkflow({
+      schema: "bao.workflow/v4", id: "label-park", name: "Label park", createdAt: 1,
+      startUrl: `http://127.0.0.1:${address.port}/`, inputs: [], steps: [{
+        id: "signin", index: 0, timeoutMs: 5000, caption: { text: "Sign in" }, action: "handoff", reason: "sign-in",
+        check: { kind: "text", match: "Signed in", timeoutMs: 5000 },
+      }],
+    }));
+    library.updateSettings({ remoteMcp: true });
+    const issued = await post("/api/agent/pair", {});
+    const paired = await post("/api/agent/pair/claim", { code: issued.code, name: "Label Mac", deviceId: "dev-label" });
+    const agent = await directory.mintAgent("user-label", "dev-label");
+    assert.ok(agent);
+    saveRelay(home, { server: server.origin, token: String(paired.token), deviceId: String(paired.deviceId), tokenId: String(paired.tokenId) });
+    async function tool(name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+      const body = await post("/mcp", { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }, agent!.token);
+      const content = body.result as { content?: { type: string; text?: string }[] };
+      const text = content.content?.find((item) => item.type === "text")?.text;
+      assert.ok(text, JSON.stringify(body));
+      return JSON.parse(text) as Record<string, unknown>;
+    }
+    remote.start();
+    let online = false;
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      if ((await tool("search_workflows", { query: "Label park" })).outcome === "ok") { online = true; break; }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.ok(online, "remote worker did not connect");
+    const parked = await tool("run_workflow", { id: "label-park" });
+    assert.equal(parked.outcome, "needs_human", JSON.stringify(parked));
+    token = String(parked.resume || parked.resume_token || "");
+    const runId = String(parked.runId || parked.run_id || "");
+    assert.ok(token);
+    assert.ok(runId);
+    await waitFor(() => remote.view().phase === "idle");
+    readGate = new Promise((resolve) => { releaseRead = resolve; });
+    const looked = tool("get_run", { run_id: runId });
+    await waitFor(() => remote.view().phase === "running");
+    assert.equal(remote.view().workflowId, runId, "a get_run while parked showed the parked workflow");
+    assert.notEqual(remote.view().workflowName, "Label park", "a get_run while parked showed the parked workflow");
+    releaseRead();
+    const seen = await looked;
+    assert.equal(seen.outcome, "ok", JSON.stringify(seen));
+    await waitFor(() => remote.view().phase === "idle");
+    await withHeldPage(token, async (page) => { assert.equal(page.isClosed(), false); });
+    resumeGate = new Promise((resolve) => { releaseResume = () => resolve({ outcome: "needs_human", resume: token }); });
+    const resumed = tool("resume_workflow", { resume: token });
+    await waitFor(() => remote.view().phase === "running");
+    assert.equal(remote.view().workflowId, "label-park", "the parked workflow was replaced by the get_run label");
+    assert.equal(remote.view().workflowName, "Label park", "the parked workflow was replaced by the get_run label");
+    releaseResume();
+    const again = await resumed;
+    assert.equal(again.outcome, "needs_human", JSON.stringify(again));
+    await waitFor(() => remote.view().phase === "idle");
+    readGate = new Promise((resolve) => { releaseRead = resolve; });
+    const killed = tool("get_run", { run_id: runId });
+    await waitFor(() => remote.view().phase === "running" && remote.view().workflowId === runId);
+    remote.kill();
+    const cancelled = await killed;
+    assert.equal(cancelled.outcome, "cancelled", JSON.stringify(cancelled));
+    assert.equal(cancelled.workflowId, runId, "kill reported the parked workflow as cancelled");
+    assert.notEqual(cancelled.workflowId, "label-park");
+    token = "";
+  } finally {
+    releaseRead();
+    releaseResume();
+    if (token) await runWorkflow(library, { resume: token, cancel: true }).catch(() => undefined);
+    await remote.stop();
+    await server.close();
+    await new Promise<void>((resolve) => site.close(() => resolve()));
+  }
+});
