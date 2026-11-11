@@ -12,6 +12,7 @@ import type { Identity } from "../v1/schema";
 import { frameRpc, takeRpcChunk, type RpcFraming } from "../mcp/frame";
 import { launchOwnedChrome, pinTestBrowser } from "../launch";
 import { pageApi, type PageRequest } from "./page";
+import { baoVersion } from "../app/bundle";
 import { resolveHome } from "../home";
 
 export { frameRpc, takeRpcChunk, type RpcFraming };
@@ -285,7 +286,7 @@ export async function liveMcpMain(): Promise<void> {
         result: {
           protocolVersion,
           capabilities: { tools: {} },
-          serverInfo: { name: "bao", version: "0.1.0" },
+          serverInfo: { name: "bao", version: baoVersion(__filename) },
         },
       });
     }
