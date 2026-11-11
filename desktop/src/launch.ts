@@ -546,6 +546,40 @@ export async function navigateOwned(page: Page, url: string, opts?: { waitUntil?
   throw new Error(`Navigation to ${url} did not leave the startup page (${last})`);
 }
 
+type PlaywrightOwned =
+  | { phase: "running" }
+  | { phase: "closing"; completion: Promise<void> }
+  | { phase: "settled"; completion: Promise<void> };
+
+function bindPlaywrightOwned(
+  browser: Browser,
+  context: BrowserContext,
+  owner: OwnedChromeProcess,
+  ownedPids: Set<number>,
+  userDataDir: string,
+): void {
+  let state: PlaywrightOwned = { phase: "running" };
+  const close = (): Promise<void> => {
+    if (state.phase !== "running") return state.completion;
+    const openPages = context.pages().filter((page) => !page.isClosed()).length;
+    const completion = Promise.resolve().then(async () => {
+      try {
+        if (ownedChromeRunning(owner)) for (const pid of listedPids(userDataDir) ?? []) ownedPids.add(pid);
+        const browserCloseSent = await requestBrowserClose(browser);
+        const released = await releaseProfileProcesses(owner, browserCloseSent, ownedPids);
+        await browser.close().catch(() => undefined);
+        console.error(formatShutdown({ browserClose: browserCloseSent ? "sent" : "failed", openPages, ...released, profile: userDataDir }));
+      } finally {
+        state = { phase: "settled", completion };
+      }
+    });
+    state = { phase: "closing", completion };
+    return completion;
+  };
+  browser.on("disconnected", () => { void close().catch(() => undefined); });
+  context.close = close;
+}
+
 /**
  * Account browser: the user's Chrome, our profile, then a CDP attach.
  * Headless and headed both go through launchOwnedChrome. noDefaults skips
@@ -574,16 +608,7 @@ export async function launchAccountChrome(opts: {
     const verdict = assessOwnedCommand(readOwnedCommand(pid, owner.userDataDir, process.platform), owner.userDataDir);
     if (!verdict.ok) throw new Error(verdict.reason);
     await parkOnBlank(context);
-    let closing: Promise<void> | undefined;
-    browser.on("disconnected", () => { if (!closing) void stop().catch(() => undefined); });
-    context.close = () => closing ??= (async () => {
-      const openPages = context.pages().filter((page) => !page.isClosed()).length;
-      if (ownedChromeRunning(owner)) for (const pid of listedPids(opts.userDataDir) ?? []) ownedPids.add(pid);
-      const browserCloseSent = await requestBrowserClose(browser);
-      const released = await releaseProfileProcesses(owner, browserCloseSent, ownedPids);
-      await browser.close().catch(() => undefined);
-      console.error(formatShutdown({ browserClose: browserCloseSent ? "sent" : "failed", openPages, ...released, profile: opts.userDataDir }));
-    })();
+    bindPlaywrightOwned(browser, context, owner, ownedPids, opts.userDataDir);
     return context;
   } catch (err) {
     await stop().catch(() => undefined);
@@ -819,25 +844,7 @@ async function launchNormalChrome(opts: OwnedChromeProcessOptions & { deviceScal
     } else {
       await parkOnBlank(context);
     }
-    let closing: Promise<void> | undefined;
-    browser.on("disconnected", () => {
-      if (!closing) void stop().catch(() => undefined);
-    });
-    context.close = () => closing ??= (async () => {
-      const open = context.pages().filter((page) => !page.isClosed());
-      if (ownedChromeRunning(owner)) for (const pid of listedPids(opts.userDataDir) ?? []) ownedPids.add(pid);
-      const browserClose: ShutdownTrace["browserClose"] = await requestBrowserClose(browser) ? "sent" : "failed";
-      const released = await releaseProfileProcesses(owner, browserClose === "sent", ownedPids);
-      await browser.close().catch(() => undefined);
-      console.error(formatShutdown({
-        browserClose,
-        openPages: open.length,
-        childExit: released.childExit,
-        signal: released.signal,
-        killedPids: released.killedPids,
-        profile: opts.userDataDir,
-      }));
-    })();
+    bindPlaywrightOwned(browser, context, owner, ownedPids, opts.userDataDir);
     return context;
   } catch (err) {
     await stop().catch(() => undefined);
