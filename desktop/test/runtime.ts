@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdtempSync, mkdirSync, readdirSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pinTestBrowser } from "../src/launch";
@@ -66,6 +66,14 @@ export function laneChildEnv(lane: TestLane, parent: NodeJS.ProcessEnv, playwrig
   env.BAO_CHROME_USER_DATA = chromeRoot;
   env.BAO_AGENT_BROWSER_PROFILE_ROOT = chromeRoot;
   return env;
+}
+
+export function playwrightVersionError(
+  installed = (require("playwright/package.json") as { version: string }).version,
+  locked = (JSON.parse(readFileSync("package-lock.json", "utf8")) as { packages: { "node_modules/playwright": { version: string } } }).packages["node_modules/playwright"].version,
+): string | undefined {
+  if (installed !== locked) return `Playwright version mismatch: installed ${installed}, package-lock.json ${locked}. Run: npm ci`;
+  return undefined;
 }
 
 export function compiledTestPlan(sourceDir: string, distDir: string): CompiledPlan {
