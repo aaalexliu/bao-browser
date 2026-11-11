@@ -127,7 +127,7 @@ export interface PendingCapture {
 /** One capture and teach session. A save sheet cannot stay open during teach. */
 export type CaptureSession =
   | { phase: "idle" }
-  | { phase: "recording"; since: number; extract?: PageProposal }
+  | { phase: "recording"; since: number; extract?: PageProposal; pending?: PendingCapture }
   | { phase: "saveSheet"; pending: PendingCapture }
   | { phase: "teachLive"; since: number; extract?: PageProposal }
   | { phase: "teachReview" };
@@ -158,24 +158,37 @@ function dropExtract(session: Extract<CaptureSession, { phase: "recording" | "te
   return next;
 }
 
+function recordingReleased(session: Extract<CaptureSession, { phase: "recording" }>): CaptureSession {
+  return session.pending ? { phase: "saveSheet", pending: session.pending } : idleSession;
+}
+
+function dropHeldSheet(session: Extract<CaptureSession, { phase: "recording" }>): CaptureSession {
+  const next = { ...session };
+  delete next.pending;
+  return next;
+}
+
 export function moveSession(session: CaptureSession, event: SessionEvent): SessionMove {
   switch (event.type) {
     case "start-recording":
+      if (session.phase === "saveSheet") return { ok: true, session: { phase: "recording", since: event.since, pending: session.pending } };
       if (session.phase !== "idle") return { ok: false, reason: "busy", session };
       return { ok: true, session: { phase: "recording", since: event.since } };
     case "start-teach":
       if (session.phase !== "idle") return { ok: false, reason: "busy", session };
       return { ok: true, session: { phase: "teachLive", since: event.since } };
     case "abort-start":
-      if (session.phase === "recording" || session.phase === "teachLive") return { ok: true, session: idleSession };
+      if (session.phase === "recording") return { ok: true, session: recordingReleased(session) };
+      if (session.phase === "teachLive") return { ok: true, session: idleSession };
       return { ok: true, session };
     case "open-save":
       if (session.phase === "teachLive" || session.phase === "teachReview") return { ok: false, reason: "busy", session };
       return { ok: true, session: { phase: "saveSheet", pending: event.pending } };
     case "commit-save":
     case "discard-save":
-      if (session.phase !== "saveSheet") return { ok: false, reason: "busy", session };
-      return { ok: true, session: idleSession };
+      if (session.phase === "saveSheet") return { ok: true, session: idleSession };
+      if (session.phase === "recording" && session.pending) return { ok: true, session: dropHeldSheet(session) };
+      return { ok: false, reason: "busy", session };
     case "finish-teach":
       if (session.phase !== "teachLive" && session.phase !== "teachReview") return { ok: false, reason: "busy", session };
       return { ok: true, session: { phase: "teachReview" } };
@@ -188,6 +201,7 @@ export function moveSession(session: CaptureSession, event: SessionEvent): Sessi
       return { ok: true, session: { ...session, extract: event.proposal } };
     case "discard":
       if (session.phase === "saveSheet") return { ok: true, session };
+      if (session.phase === "recording") return { ok: true, session: recordingReleased(session) };
       return { ok: true, session: idleSession };
     case "take-browser":
       if (session.phase === "recording" || session.phase === "teachLive") return { ok: false, reason: "busy", session };
@@ -326,7 +340,9 @@ export async function startApp(opts: {
     return "idle";
   }
   function pendingSave(): PendingCapture | null {
-    return captureSession.phase === "saveSheet" ? captureSession.pending : null;
+    if (captureSession.phase === "saveSheet") return captureSession.pending;
+    if (captureSession.phase === "recording" && captureSession.pending) return captureSession.pending;
+    return null;
   }
   function recordingSince(): number {
     return captureSession.phase === "recording" || captureSession.phase === "teachLive" ? captureSession.since : 0;
@@ -1891,22 +1907,27 @@ export async function startApp(opts: {
 
   async function beginSession(startUrl: string, kind: "capture" | "teach" = "capture"): Promise<"ok" | "busy"> {
     startUrl = resolveCaptureUrl(startUrl, boundPort);
-    if (captureSession.phase !== "idle") return "busy";
-    if (context) await stopBrowser();
-    await releaseSharedProfile({ keepReplays: false });
-    if (captureSession.phase !== "idle") return "busy";
-    captureVia = "playwright";
-    gestureById.clear();
-    captureShots.clear();
-    captureViews.clear();
-    capturePosterPath = "";
-    capturePageTitle = "";
-    posterTried = false;
-    if (kind === "capture") {
-      capture.start();
-      move({ type: "start-recording", since: Date.now() });
+    if (kind === "teach") {
+      const claimed = move({ type: "start-teach", since: Date.now() });
+      if (!claimed.ok) return "busy";
+    } else if (captureSession.phase !== "idle" && captureSession.phase !== "saveSheet") {
+      return "busy";
     }
     try {
+      if (context) await stopBrowser();
+      await releaseSharedProfile({ keepReplays: false });
+      if (kind === "capture") {
+        const claimed = move({ type: "start-recording", since: Date.now() });
+        if (!claimed.ok) return "busy";
+      }
+      captureVia = "playwright";
+      gestureById.clear();
+      captureShots.clear();
+      captureViews.clear();
+      capturePosterPath = "";
+      capturePageTitle = "";
+      posterTried = false;
+      capture.start();
       profile = baoProfile;
       mkdirSync(profile, { recursive: true });
       context = await launchOwnedChrome({ userDataDir: profile, headless: productHeadless(), boundSites: lastingBoundSites() });
@@ -1951,12 +1972,6 @@ export async function startApp(opts: {
         "Page.setInterceptFileChooserDialog",
         { enabled: true },
       );
-      // Live means the capture page exists. Publishing it earlier lets a
-      // drive land in the gap while Chrome is still launching.
-      if (kind === "teach") {
-        capture.start();
-        move({ type: "start-teach", since: Date.now() });
-      }
     } catch (err) {
       capture.discard();
       move({ type: "abort-start" });
@@ -2061,92 +2076,83 @@ export async function startApp(opts: {
   }
 
   async function saveSession(): Promise<WorkflowV2> {
+    if (captureSession.phase === "teachLive" || captureSession.phase === "teachReview") throw new Error("busy");
     await settleShots();
     const raw = capture.stop();
     move({ type: "set-extract" });
-    try {
-      const id = `wf-${Date.now()}`;
-      const opened = captureOpenUrl || (page && !page.isClosed() ? page.url() : "");
-      captureOpenUrl = "";
-      const clean = raw.map(storedFileEvent);
-      const startUrl = captureStartUrl(clean, opened);
-      const built = explain(clean, { id, name: "Untitled workflow", startUrl, secrets: [] });
-      const floor = workflowFloorTitle({
-        startUrl,
-        events: clean,
-        steps: built.workflow.steps,
-        pageTitle: capturePageTitle,
-      });
-      const drafted = await inferSavedWorkflow(built.workflow, {
-        floorTitle: floor,
-        startUrl,
-        events: clean,
-        steps: built.workflow.steps,
-        pageTitle: capturePageTitle,
-        groups: built.groups,
-      }, await saveCompleter());
-      if (captureVia === "extension") drafted.driver = "extension";
-      const gestures = captureVia === "extension"
-        ? gestureQueue(drafted.steps, built.groups, gestureById)
-        : undefined;
-      const previous = pendingSave();
-      if (previous) await rm(path.join(opts.home, "shots", "pending", previous.workflow.id), { recursive: true, force: true }).catch(() => undefined);
-      const shotDir = path.join(opts.home, "shots", "pending", drafted.id);
-      mkdirSync(shotDir, { recursive: true });
-      const shots = new Map<string, string>();
-      for (let i = 0; i < drafted.steps.length; i++) {
-        const group = built.groups[i] || [];
-        const event = group.find((item) => item.op !== "note") || group[0];
-        const step = drafted.steps[i];
-        const src = event ? captureShots.get(event.id) : undefined;
-        if (src && step && existsSync(src)) {
-          const dest = path.join(shotDir, workflowShotName(step.id));
-          copyFileSync(src, dest);
-          shots.set(step.id, dest);
-        }
-        const view = event ? captureViews.get(event.id) : undefined;
-        if (view && step && existsSync(view)) copyFileSync(view, path.join(shotDir, viewportShotName(step.id)));
+    const id = `wf-${Date.now()}`;
+    const opened = captureOpenUrl || (page && !page.isClosed() ? page.url() : "");
+    captureOpenUrl = "";
+    const clean = raw.map(storedFileEvent);
+    const startUrl = captureStartUrl(clean, opened);
+    const built = explain(clean, { id, name: "Untitled workflow", startUrl, secrets: [] });
+    const floor = workflowFloorTitle({
+      startUrl,
+      events: clean,
+      steps: built.workflow.steps,
+      pageTitle: capturePageTitle,
+    });
+    const drafted = await inferSavedWorkflow(built.workflow, {
+      floorTitle: floor,
+      startUrl,
+      events: clean,
+      steps: built.workflow.steps,
+      pageTitle: capturePageTitle,
+      groups: built.groups,
+    }, await saveCompleter());
+    if (captureVia === "extension") drafted.driver = "extension";
+    const gestures = captureVia === "extension"
+      ? gestureQueue(drafted.steps, built.groups, gestureById)
+      : undefined;
+    const previous = pendingSave();
+    if (previous) await rm(path.join(opts.home, "shots", "pending", previous.workflow.id), { recursive: true, force: true }).catch(() => undefined);
+    const shotDir = path.join(opts.home, "shots", "pending", drafted.id);
+    mkdirSync(shotDir, { recursive: true });
+    const shots = new Map<string, string>();
+    for (let i = 0; i < drafted.steps.length; i++) {
+      const group = built.groups[i] || [];
+      const event = group.find((item) => item.op !== "note") || group[0];
+      const step = drafted.steps[i];
+      const src = event ? captureShots.get(event.id) : undefined;
+      if (src && step && existsSync(src)) {
+        const dest = path.join(shotDir, workflowShotName(step.id));
+        copyFileSync(src, dest);
+        shots.set(step.id, dest);
       }
-      let poster = "";
-      if (capturePosterPath && existsSync(capturePosterPath)) {
-        const bytes = readFileSync(capturePosterPath);
-        if (selectCardPoster([{ name: "poster.png", bytes }])) {
-          poster = path.join(shotDir, "poster.png");
-          copyFileSync(capturePosterPath, poster);
-        }
-      }
-      const openedSave = move({
-        type: "open-save",
-        pending: {
-          workflow: drafted,
-          events: ensureTrailTimes(clean).events,
-          shots,
-          poster,
-          floor,
-          gestures,
-        },
-      });
-      if (!openedSave.ok) throw new Error("busy");
-      capture.discard();
-      captureShots.clear();
-      captureViews.clear();
-      capturePosterPath = "";
-      capturePageTitle = "";
-      posterTried = false;
-      captureVia = "playwright";
-      gestureById.clear();
-      await stopBrowser();
-      publishCapture();
-      return drafted;
-    } catch (err) {
-      if (captureSession.phase === "recording" || captureSession.phase === "teachLive") {
-        capture.discard();
-        move({ type: "abort-start" });
-        await stopBrowser();
-        publishCapture();
-      }
-      throw err;
+      const view = event ? captureViews.get(event.id) : undefined;
+      if (view && step && existsSync(view)) copyFileSync(view, path.join(shotDir, viewportShotName(step.id)));
     }
+    let poster = "";
+    if (capturePosterPath && existsSync(capturePosterPath)) {
+      const bytes = readFileSync(capturePosterPath);
+      if (selectCardPoster([{ name: "poster.png", bytes }])) {
+        poster = path.join(shotDir, "poster.png");
+        copyFileSync(capturePosterPath, poster);
+      }
+    }
+    const openedSave = move({
+      type: "open-save",
+      pending: {
+        workflow: drafted,
+        events: ensureTrailTimes(clean).events,
+        shots,
+        poster,
+        floor,
+        gestures,
+      },
+    });
+    if (!openedSave.ok) throw new Error("busy");
+    capture.discard();
+    captureShots.clear();
+    captureViews.clear();
+    capturePosterPath = "";
+    capturePageTitle = "";
+    posterTried = false;
+    captureVia = "playwright";
+    gestureById.clear();
+    await stopBrowser();
+    publishCapture();
+    return drafted;
   }
 
   async function commitSave(edits: { name?: string; summary?: string; intent?: string }): Promise<WorkflowV2> {
@@ -2183,7 +2189,7 @@ export async function startApp(opts: {
 
   async function discardPending(): Promise<void> {
     const pending = pendingSave();
-    if (captureSession.phase === "saveSheet") move({ type: "discard-save" });
+    move({ type: "discard-save" });
     if (!pending) return;
     await rm(path.join(opts.home, "shots", "pending", pending.workflow.id), { recursive: true, force: true }).catch(() => undefined);
   }
@@ -2215,12 +2221,12 @@ export async function startApp(opts: {
   });
   extensionLink?.onRecord((kind, url) => {
     if (kind === "start") {
-      if (captureSession.phase !== "idle") return;
+      const started = move({ type: "start-recording", since: Date.now() });
+      if (!started.ok) return;
       captureVia = "extension";
       gestureById.clear();
       captureOpenUrl = url;
       capture.start();
-      move({ type: "start-recording", since: Date.now() });
       publishCapture();
       return;
     }
