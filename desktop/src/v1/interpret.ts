@@ -577,10 +577,14 @@ function observed(
   const timeoutMs = raw.timeoutMs ?? 4000;
   if (raw.kind === "settled") return { check: { kind: "settled", timeoutMs } };
   if (raw.kind === "state" && raw.state) {
-    return { check: { kind: "state", state: raw.state, locators: locatorsFromIdentity(raw.identity) ?? [], timeoutMs } };
+    const locators = locatorsFromIdentity(raw.identity);
+    if (!locators?.length) return {};
+    return { check: { kind: "state", state: raw.state, locators, timeoutMs } };
   }
   if ((raw.kind === "element" || raw.kind === "absent") && raw.identity) {
-    return { check: { kind: raw.kind, locators: locatorsFromIdentity(raw.identity) ?? [], timeoutMs } };
+    const locators = locatorsFromIdentity(raw.identity);
+    if (!locators?.length) return {};
+    return { check: { kind: raw.kind, locators, timeoutMs } };
   }
   if (raw.match && (raw.kind === "text" || raw.kind === "url" || raw.kind === "value")) {
     return { check: { kind: raw.kind, match: raw.match, timeoutMs } };

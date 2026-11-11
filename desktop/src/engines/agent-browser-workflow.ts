@@ -268,7 +268,8 @@ export class AgentBrowserWorkflow {
     const { event, before } = this.pending;
     event.afterUrl = after.page.url;
     if (event.op !== "type") event.afterText = smallestChange(before.leaves, after.leaves)?.after;
-    const hit = event.locators?.map((locator) => matchLocator(locator, after.page.nodes)).find((item) => item !== undefined);
+    const boxes = after.page.nodes.map((node) => node.bbox || { x: 0, y: 0, w: 0, h: 0 });
+    const hit = event.locators?.map((locator) => matchLocator(locator, after.page.nodes, boxes)).find((item) => item !== undefined);
     const node = hit && after.page.nodes[hit.index];
     event.subtreeAfter = node?.text;
     event.valueAfter = node?.value;

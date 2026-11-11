@@ -38,6 +38,10 @@ async function fixture(ui = false) {
       res.end(`<!doctype html><title>Account room</title><h1>Account room</h1><button id="continue">Continue</button> <button id="unnamed" style="width:36px;height:20px" onclick="document.querySelector('#result').textContent='Done'"></button><p id="result">Ready</p>`);
       return;
     }
+    if (url.pathname === "/checkbox") {
+      res.end(`<!doctype html><title>Preferences</title><h1>Preferences</h1><input type="checkbox" style="display:block;margin:24px 0 0 24px;width:16px;height:16px">`);
+      return;
+    }
     if (url.pathname === "/stores") {
       const content = url.searchParams.has("interactive")
         ? '<button data-testid="store-button" onclick="document.querySelector(\'#selected\').textContent=\'Selected B\'"><span id="store-b">Store B</span></button>'
@@ -204,6 +208,45 @@ test("an unnamed recorded click names its nearby visible control without citing 
     assert.equal(saved.steps[0]!.caption.citation, undefined);
     assert.equal(locatorValue(stepTarget(saved.steps[0]), "css"), "#unnamed");
     assert.equal(await page.locator("#result").innerText(), "Done");
+  } finally {
+    await context.close();
+    await f.close();
+  }
+});
+
+test("an unnamed checkbox records a check step with the state the click left", { timeout: 30_000 }, async () => {
+  const f = await fixture();
+  const profile = path.join(f.root, "checkbox-profile");
+  const context = await launchOwnedChrome({ userDataDir: profile, headless: true });
+  try {
+    const page = context.pages()[0]!;
+    const endpoint = await readDevToolsActivePort(path.join(profile, "DevToolsActivePort"));
+    const session = await context.newCDPSession(page);
+    const { targetInfo } = await session.send("Target.getTargetInfo");
+    await session.detach();
+    const workflow = new AgentBrowserWorkflow(f.home, "run-checkbox", async () => ({
+      ...endpoint, targetId: targetInfo.targetId, targetIds: [targetInfo.targetId],
+    }));
+    const success = { stdout: "", stderr: "", exitCode: 0 };
+    const box = page.locator('input[type="checkbox"]');
+    await workflow.record("open", [f.url + "checkbox"], "open", async () => {
+      await page.goto(f.url + "checkbox");
+      return success;
+    }, () => false);
+    assert.equal(await box.isChecked(), false);
+    await workflow.record("click", ["input[type=checkbox]"], "click", async () => {
+      await box.click();
+      return success;
+    }, () => false);
+    const observed = await box.isChecked();
+    assert.equal(observed, true);
+    assert.match(workflow.finish(), /Saved workflow:/);
+    const step = f.library.list().workflows[0]?.steps[0];
+    assert.ok(step);
+    assert.equal(step.action, "check");
+    if (step.action !== "check") return;
+    assert.equal(step.checked, observed);
+    assert.deepEqual((stepLocators(step) ?? []).map((locator) => locator.kind), ["anchor"]);
   } finally {
     await context.close();
     await f.close();
