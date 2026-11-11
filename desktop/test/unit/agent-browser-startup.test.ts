@@ -159,7 +159,7 @@ async function main() {
       const { sessionId } = await send('Target.attachToTarget', { targetId: bound(), flatten: true });
       await send('Emulation.setDeviceMetricsOverride', { width: 800, height: 600, deviceScaleFactor: 1, mobile: false }, sessionId);
       await send('Page.navigate', { url }, sessionId);
-      const deadline = Date.now() + scaledMs(10000);
+      const deadline = Date.now() + ${scaledMs(10000)};
       while (Date.now() < deadline) {
         const { result } = await send('Runtime.evaluate', { expression: 'document.querySelector("[data-testid=go]") ? location.href : ""', returnByValue: true }, sessionId);
         if (result.value) return;
@@ -175,7 +175,7 @@ async function main() {
       if (!result.value || result.value.w <= 0 || result.value.h <= 0) throw new Error('button has no box');
       await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: result.value.x, y: result.value.y, button: 'left', clickCount: 1 }, sessionId);
       await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: result.value.x, y: result.value.y, button: 'left', clickCount: 1 }, sessionId);
-      const deadline = Date.now() + scaledMs(2000);
+      const deadline = Date.now() + ${scaledMs(2000)};
       let text = '';
       while (Date.now() < deadline) {
         text = (await send('Runtime.evaluate', { expression: 'document.querySelector("[data-testid=go]").textContent', returnByValue: true }, sessionId)).result.value;

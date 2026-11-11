@@ -9,13 +9,12 @@ import { createServer, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 import type { TestContext } from "node:test";
-import { scaledMs } from "../runtime";
 import { startApp } from "../../src/app/server";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { connectCdp, type CdpSocket } from "../../src/cdp-live/socket";
 import { extensionOrigin } from "../../src/extension/protocol";
 import { launchOwnedChromeEndpoint } from "../../src/launch";
-import { applyHermeticApp } from "../runtime";
+import { applyHermeticApp, scaledMs } from "../runtime";
 
 export interface StripTab { id: number; index: number; active: boolean; groupId: number; title: string; url: string }
 export interface StripGroup { id: number; title: string; color: string; collapsed: boolean }
