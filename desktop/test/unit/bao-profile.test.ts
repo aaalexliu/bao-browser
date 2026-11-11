@@ -366,6 +366,33 @@ test("a releasing Bao lease refuses reclaim and keepOpen until shutdown finishes
   }
 });
 
+test("a failed Bao shutdown restores a retained lease so the next open can reclaim", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-profile-unlink-"));
+  const home = path.join(root, "home");
+  const marker = path.join(baoAgentProfileDir(home), "bao-kept-window");
+  const nodeFs = require("node:fs") as typeof import("node:fs");
+  const unlink = nodeFs.unlinkSync;
+  let failUnlink = true;
+  t.mock.method(nodeFs, "unlinkSync", (file: Parameters<typeof unlink>[0]) => {
+    if (failUnlink && file === marker) throw Object.assign(new Error("synthetic unlink failure"), { code: "EPERM" });
+    unlink(file);
+  });
+  t.mock.method(launches, "launchOwnedChromeEndpoint", async () => { throw new Error("synthetic launch failure"); });
+  try {
+    await assert.rejects(openBaoChromeForProxy({ home, unread: "synthetic unavailable source" }), /synthetic unlink failure/);
+    const restored = JSON.parse(await readFile(marker, "utf8")) as { state: string; pid: number; token: string };
+    assert.equal(restored.state, "retained");
+    assert.equal(restored.pid, process.pid);
+    assert.equal(typeof restored.token, "string");
+    failUnlink = false;
+    await assert.rejects(openBaoChromeForProxy({ home, unread: "synthetic unavailable source" }), /synthetic launch failure/);
+    await assert.rejects(readFile(marker), /ENOENT/);
+  } finally {
+    t.mock.restoreAll();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("a losing concurrent Bao open cannot alter the opening owner's profile or lease", { timeout: 60_000 }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-concurrent-profile-"));
   const home = path.join(root, "home");

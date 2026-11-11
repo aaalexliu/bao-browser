@@ -231,6 +231,115 @@ test("copy reclaim owns a releasing lease that the old handle cannot alter", asy
   }
 });
 
+test("a failed copy reclaim restores a retained lease and the next copy removes it", async (t) => {
+  const f = await fixture();
+  const launches = require("../../src/launch") as typeof import("../../src/launch");
+  let copy: Awaited<ReturnType<typeof copyChromeProfile>> | undefined;
+  let privateRoot = "";
+  try {
+    const previous = await copyChromeProfile({ ...f, directory: "Default" });
+    await previous.keepOpen();
+    privateRoot = path.dirname(previous.userDataDir);
+    const leaseFile = path.join(previous.userDataDir, "lease.json");
+    const retained = JSON.parse(await readFile(leaseFile, "utf8")) as { token: string };
+    t.mock.method(launches, "closeRetainedChrome", async () => undefined);
+    t.mock.method(launches, "pidsForDataDir", () => { throw new Error("synthetic process list failure"); });
+    await assert.rejects(copyChromeProfile({ ...f, directory: "Default" }), /synthetic process list failure/);
+    const restored = JSON.parse(await readFile(leaseFile, "utf8")) as { state: string; pid: number; token: string };
+    assert.equal(restored.state, "retained");
+    assert.equal(restored.pid, process.pid);
+    assert.notEqual(restored.token, retained.token);
+    await previous.keepOpen();
+    await previous.close();
+    assert.deepEqual(JSON.parse(await readFile(leaseFile, "utf8")), restored);
+    t.mock.restoreAll();
+    copy = await copyChromeProfile({ ...f, directory: "Default" });
+    await assert.rejects(stat(previous.userDataDir), /ENOENT/);
+  } finally {
+    t.mock.restoreAll();
+    await copy?.close();
+    if (privateRoot) await rm(privateRoot, { recursive: true, force: true });
+    await f.close();
+  }
+});
+
+test("a failed profile removal restores a retained lease without recreating a removed directory", async (t) => {
+  const f = await fixture();
+  const fs = require("node:fs/promises") as typeof import("node:fs/promises");
+  const remove = fs.rm;
+  let copy: Awaited<ReturnType<typeof copyChromeProfile>> | undefined;
+  let privateRoot = "";
+  try {
+    const kept = await copyChromeProfile({ ...f, directory: "Default" });
+    await kept.keepOpen();
+    privateRoot = path.dirname(kept.userDataDir);
+    const leaseFile = path.join(kept.userDataDir, "lease.json");
+    t.mock.method(fs, "rm", async (target: Parameters<typeof remove>[0], options?: Parameters<typeof remove>[1]) => {
+      if (target === kept.userDataDir) throw new Error("synthetic profile removal failure");
+      return remove(target, options);
+    });
+    await assert.rejects(copyChromeProfile({ ...f, directory: "Default" }), /synthetic profile removal failure/);
+    const restored = JSON.parse(await readFile(leaseFile, "utf8")) as { state: string; pid: number };
+    assert.equal(restored.state, "retained");
+    assert.equal(restored.pid, process.pid);
+    assert.equal((await stat(kept.userDataDir)).isDirectory(), true);
+    t.mock.restoreAll();
+    copy = await copyChromeProfile({ ...f, directory: "Default" });
+    await assert.rejects(stat(kept.userDataDir), /ENOENT/);
+
+    const removed = copy.userDataDir;
+    await copy.keepOpen();
+    t.mock.method(fs, "rm", async (target: Parameters<typeof remove>[0], options?: Parameters<typeof remove>[1]) => {
+      if (target === removed) {
+        await remove(target, { ...options, recursive: true, force: true });
+        throw new Error("synthetic profile removal failure");
+      }
+      return remove(target, options);
+    });
+    await assert.rejects(copyChromeProfile({ ...f, directory: "Default" }), /synthetic profile removal failure/);
+    await assert.rejects(stat(removed), /ENOENT/);
+    t.mock.restoreAll();
+    const next = await copyChromeProfile({ ...f, directory: "Default" });
+    await assert.rejects(stat(removed), /ENOENT/);
+    copy = next;
+  } finally {
+    t.mock.restoreAll();
+    await copy?.close();
+    if (privateRoot) await rm(privateRoot, { recursive: true, force: true });
+    await f.close();
+  }
+});
+
+test("a failed copy close restores its retained lease and the next copy removes the profile", async (t) => {
+  const f = await fixture();
+  const fs = require("node:fs/promises") as typeof import("node:fs/promises");
+  const remove = fs.rm;
+  let copy: Awaited<ReturnType<typeof copyChromeProfile>> | undefined;
+  let privateRoot = "";
+  try {
+    copy = await copyChromeProfile({ ...f, directory: "Default" });
+    privateRoot = path.dirname(copy.userDataDir);
+    const leaseFile = path.join(copy.userDataDir, "lease.json");
+    const claimed = JSON.parse(await readFile(leaseFile, "utf8")) as { state: string; pid: number; token: string };
+    t.mock.method(fs, "rm", async (target: Parameters<typeof remove>[0], options?: Parameters<typeof remove>[1]) => {
+      if (target === copy?.userDataDir) throw new Error("synthetic profile removal failure");
+      return remove(target, options);
+    });
+    await assert.rejects(copy.close(), /synthetic profile removal failure/);
+    assert.deepEqual(JSON.parse(await readFile(leaseFile, "utf8")), { ...claimed, state: "retained" });
+    t.mock.restoreAll();
+    const next = await copyChromeProfile({ ...f, directory: "Default" });
+    await assert.rejects(stat(copy.userDataDir), /ENOENT/);
+    await next.close();
+    copy = undefined;
+  } finally {
+    t.mock.restoreAll();
+    await copy?.close();
+    if (privateRoot) await rm(privateRoot, { recursive: true, force: true });
+    await f.close();
+  }
+});
+
 test("copy reclaims retained leases from the previous disk format", async () => {
   const f = await fixture();
   let copy: Awaited<ReturnType<typeof copyChromeProfile>> | undefined;

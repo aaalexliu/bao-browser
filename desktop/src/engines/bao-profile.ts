@@ -267,8 +267,13 @@ export async function openBaoChromeForProxy(options: ({ sourceRoot: string; dire
     finally {
       // An unreadable process list keeps the marker, so the next session reclaims whatever is left.
       if (ownsProfile()) {
-        if (listedPids(profile)?.length === 0) unlinkSync(keptWindow);
-        else writeLease("retained");
+        try {
+          if (listedPids(profile)?.length === 0) unlinkSync(keptWindow);
+          else writeLease("retained");
+        } catch (error) {
+          if (ownsProfile()) writeLease("retained");
+          throw error;
+        }
       }
     }
   };

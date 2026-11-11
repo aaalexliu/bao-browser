@@ -106,20 +106,26 @@ export async function copyChromeProfile(options: {
     try { process.kill(lease.pid, 0); active = true; } catch (error) { active = (error as NodeJS.ErrnoException).code !== "ESRCH"; }
     const state = lease.state ?? (lease.retained === true ? "retained" : "claimed");
     if (active && state !== "retained") throw new Error("a Chrome profile copy is still open; end that run before refreshing it");
+    const leasePath = path.join(dir, "lease.json");
     const releasing: CopiedProfileLease = { magic: MAGIC, namespace, state: "releasing", pid: process.pid, token: randomUUID() };
-    writeFileSync(path.join(dir, "lease.json"), JSON.stringify(releasing), { mode: 0o600 });
-    try { await closeRetainedChrome(dir); }
-    catch (error) {
-      const retained: CopiedProfileLease = { ...releasing, state: "retained" };
-      writeFileSync(path.join(dir, "lease.json"), JSON.stringify(retained), { mode: 0o600 });
+    const retained: CopiedProfileLease = { ...releasing, state: "retained" };
+    writeFileSync(leasePath, JSON.stringify(releasing), { mode: 0o600 });
+    try {
+      await closeRetainedChrome(dir);
+      if (pidsForDataDir(dir).length) {
+        writeFileSync(leasePath, JSON.stringify(retained), { mode: 0o600 });
+        continue;
+      }
+      await rm(dir, { recursive: true, force: true });
+    } catch (error) {
+      try {
+        const current = JSON.parse(readFileSync(leasePath, "utf8")) as { token?: string };
+        if (current.token === releasing.token) writeFileSync(leasePath, JSON.stringify(retained), { mode: 0o600 });
+      } catch (restoreError) {
+        if ((restoreError as NodeJS.ErrnoException).code !== "ENOENT") throw restoreError;
+      }
       throw error;
     }
-    if (pidsForDataDir(dir).length) {
-      const retained: CopiedProfileLease = { ...releasing, state: "retained" };
-      writeFileSync(path.join(dir, "lease.json"), JSON.stringify(retained), { mode: 0o600 });
-      continue;
-    }
-    await rm(dir, { recursive: true, force: true });
   }
   const userDataDir = path.join(root, `run-${randomUUID()}`);
   await mkdir(userDataDir, { mode: 0o700 });
@@ -155,7 +161,11 @@ export async function copyChromeProfile(options: {
       console.error(`bao profile copy browser still shutting down profile=${userDataDir}`);
       return;
     }
-    await rm(userDataDir, { recursive: true, force: true });
+    try { await rm(userDataDir, { recursive: true, force: true }); }
+    catch (error) {
+      if (readLease()) writeLease("retained");
+      throw error;
+    }
   };
   try {
     await cp(source, path.join(userDataDir, choice.directory), {
