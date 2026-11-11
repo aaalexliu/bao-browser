@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { OwnerPage } from "../cdp-live/owner-wait";
+import type { CdpSocket } from "../cdp-live/socket";
 import { commandSentence } from "../v1/caption";
 import { AGENT_CLOSED_ASK, AGENT_STEP_FAILED, AGENT_WAIT_ENDED } from "../v1/stop-copy";
 import { RUN_SCHEMA_ID, stepTitle, type StepCaption } from "../v1/schema";
@@ -11,6 +12,7 @@ import { describeStep, landmarkKeys, ownerReply, TASK_TAB_CLOSED, type OwnerWait
 import type { AgentBrowserCommandResult } from "./agent-browser-proxy";
 import type { BrowserPick } from "./browser-pick";
 import type { SignInImport } from "./bao-profile";
+import { startCdpVideo, type CdpVideo } from "./cdp-video";
 
 type Viewport = { width: number; height: number };
 
@@ -77,6 +79,9 @@ export class AgentBrowserRun {
   private readonly landmarks = new Map<string, Set<string>>();
   /** Index of the step current when this owner wait began. Earlier waits stay as they finished. */
   private ownerWaitAt: number | undefined;
+  private video: { kind: "unavailable" } | {
+    kind: "recording"; capture: CdpVideo; cdp: CdpSocket; targetId: string; sessionId: string; startedAt: number;
+  } | undefined;
 
   constructor(private readonly home: string) {
     this.shots = path.join(home, "shots", "runs", this.run.id);
@@ -206,6 +211,51 @@ export class AgentBrowserRun {
     this.run.routes = [...this.run.routes ?? [], { fromStep, browser: pick }];
     this.run.browser = pick;
     this.persist();
+  }
+
+  async recordTab(cdp: CdpSocket, targetId: string): Promise<void> {
+    if (this.video?.kind === "unavailable" || this.video?.targetId === targetId) return;
+    let sessionId: string | undefined;
+    try {
+      ({ sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true }, undefined, 5000));
+      if (this.video?.kind === "recording") {
+        const previous = this.video;
+        await previous.capture.switchSession(sessionId);
+        this.video = { ...previous, targetId, sessionId };
+        await cdp.send("Target.detachFromTarget", { sessionId: previous.sessionId }, undefined, 2000).catch(() => undefined);
+      } else {
+        const startedAt = Date.now();
+        const capture = await startCdpVideo(cdp, sessionId, path.join(this.home, "videos", `${this.id}.mp4`), { noBlur: true });
+        this.video = { kind: "recording", capture, cdp, targetId, sessionId, startedAt };
+      }
+    } catch {
+      if (this.video?.kind === "recording") this.video.capture.pause();
+      if (sessionId) await cdp.send("Target.detachFromTarget", { sessionId }, undefined, 2000).catch(() => undefined);
+      await this.stopVideo();
+      this.warn("tab video");
+    }
+  }
+
+  async stopVideo(): Promise<void> {
+    const video = this.video;
+    this.video = { kind: "unavailable" };
+    if (video?.kind !== "recording") return;
+    try {
+      const { targetInfos } = await video.cdp.send<{ targetInfos: { targetId: string }[] }>("Target.getTargets", {}, undefined, 2000);
+      if (!targetInfos.some((target) => target.targetId === video.targetId)) video.capture.pause();
+    } catch { video.capture.pause(); }
+    try {
+      const result = await video.capture.stop();
+      if (result.wrote) {
+        this.run.video = `${this.id}.mp4`;
+        this.run.videoStartedAt = video.startedAt;
+        this.run.videoTruncated = result.truncated;
+        this.persist();
+      }
+    } catch { this.warn("tab video encoding"); }
+    finally {
+      await video.cdp.send("Target.detachFromTarget", { sessionId: video.sessionId }, undefined, 2000).catch(() => undefined);
+    }
   }
 
   signInImported(report: SignInImport): void {

@@ -723,8 +723,10 @@ export class AgentBrowserProxy {
           return { ...endpoint, targetId: active.targetId, targetIds: active.targetIds };
         }, abort.signal),
       };
+      if (session.kind === "current" && !session.relay) await recording.recordTab(session.chrome.cdp, session.targetId);
       return session;
     } catch (error) {
+      await recording.stopVideo();
       await this.discard(browser);
       throw error;
     }
@@ -1064,6 +1066,7 @@ export class AgentBrowserProxy {
       // Native tab titles can be URL-derived labels. Read the real title from Chrome, not that label.
       cdp = await this.connectSession(session, { timeoutMs: CDP_PROGRESS_CEILING_MS, signal });
       const { targetInfo } = await cdp.sendUntilProgress<{ targetInfo: { url: string; title: string } }>("Target.getTargetInfo", { targetId: active.targetId }, undefined, { signal });
+      if (session.kind === "current" && !session.relay) await session.recording.recordTab(cdp, active.targetId);
       session.page = { url: targetInfo.url, title: targetInfo.title };
       if (!ownerWall(session.page) && httpPage(session.page.url)) session.beforeWall = session.page;
       return { targetId: active.targetId, targetIds: tabs.flatMap((tab) => tab.targetId ? [tab.targetId] : []), page: session.page };
@@ -1463,6 +1466,7 @@ export class AgentBrowserProxy {
       await (session.removing ??= (async () => {
         session.abort.abort();
         await session.commandDone;
+        await session.recording.stopVideo();
         session.recording.finish(session.outcome);
         if (session.ownerWait) session.workflow.unavailable("the owner wait did not finish");
         try {
