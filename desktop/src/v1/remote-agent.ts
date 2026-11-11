@@ -43,9 +43,9 @@ export interface RemoteRunners {
 
 type Slot =
   | { phase: "idle" }
-  | { phase: "running"; jobId: string; workflowId: string; workflowName: string; local?: true; suspended?: { kind: "signin" | "wall"; resume: string }; holding?: string }
-  | { phase: "waiting"; jobId: string; workflowId: string; workflowName: string; resume: string; deadline: number | null }
-  | { phase: "parked"; kind: "signin" | "wall"; resume: string; jobId: string; workflowId: string; workflowName: string };
+  | { phase: "running"; jobId: string; workflowId: string; workflowName: string; local?: true; suspended?: { resume: string }; holding?: string }
+  | { phase: "waiting"; jobId: string; workflowId: string; workflowName: string; resume: string }
+  | { phase: "parked"; resume: string; jobId: string; workflowId: string; workflowName: string };
 
 type AssignedJob = {
   id: string;
@@ -118,6 +118,7 @@ export function createRemoteAgent(opts: {
   async function stopLoop(): Promise<void> {
     stopped = true;
     generation += 1;
+    if (slot.phase === "running") opts.stop();
     socket?.close();
     wake?.();
     clearTimeout(deadlineTimer);
@@ -538,10 +539,9 @@ function heldToken(slot: Slot): string | undefined {
   return undefined;
 }
 
-function parkedFrom(slot: Extract<Slot, { phase: "running" }>, suspended: { kind: "signin" | "wall"; resume: string }): Extract<Slot, { phase: "parked" }> {
+function parkedFrom(slot: Extract<Slot, { phase: "running" }>, suspended: { resume: string }): Extract<Slot, { phase: "parked" }> {
   return {
     phase: "parked",
-    kind: suspended.kind,
     resume: suspended.resume,
     jobId: slot.jobId,
     workflowId: slot.workflowId,
@@ -577,7 +577,7 @@ function apply(slot: Slot, event: SlotEvent): { slot: Slot; effects: SlotEffect[
           workflowId: same || !replaces ? slot.workflowId : event.job.workflowId || "",
           workflowName: same || !replaces ? slot.workflowName : event.job.workflowName,
           ...(same ? { holding: slot.resume } : {}),
-          ...(replaces || same ? {} : { suspended: { kind: slot.kind, resume: slot.resume } }),
+          ...(replaces || same ? {} : { suspended: { resume: slot.resume } }),
         },
         effects: [
           ...(replaces ? [{ type: "release-held" as const, resume: slot.resume, expired: false }] : []),
@@ -647,7 +647,6 @@ function apply(slot: Slot, event: SlotEvent): { slot: Slot; effects: SlotEffect[
           workflowId: slot.workflowId,
           workflowName: slot.workflowName,
           resume: event.hold.resume,
-          deadline: event.hold.deadline,
         },
         effects: [
           ...stale,
@@ -663,7 +662,6 @@ function apply(slot: Slot, event: SlotEvent): { slot: Slot; effects: SlotEffect[
       return {
         slot: {
           phase: "parked",
-          kind: event.hold.kind,
           resume: event.hold.resume,
           jobId: slot.jobId,
           workflowId: slot.workflowId,

@@ -583,3 +583,115 @@ test("a later run drops a parked sign-in page and resume together", { timeout: 6
     await new Promise<void>((resolve) => site.close(() => resolve()));
   }
 });
+
+test("stop during a resumed held run stops the replay and returns", { timeout: 90_000 }, async () => {
+  process.env.BAO_HEADED = "0";
+  process.env.BAO_CHROME_NO_SANDBOX = "1";
+  const unmetCheckMs = 30_000;
+  const home = mkdtempSync(path.join(tmpdir(), "bao-remote-stop-"));
+  const library = new Library(home);
+  let acted = 0;
+  const site = createServer((req, res) => {
+    if (req.method === "POST" && req.url === "/acted") {
+      acted += 1;
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    res.end("<body><button id=\"linger\" onclick=\"fetch('/acted',{method:'POST'}).then(()=>document.getElementById('status').textContent='Clicked')\">Linger</button><p id=\"status\"></p></body>");
+  });
+  const directory = new MemoryDirectory();
+  directory.addDevice("dev-stop", "user-stop");
+  const relay = createRelay({ store: new MemoryJobStore(), directory, enabled: () => true });
+  const server = await listenRelay(relay, { principal: () => ({ userId: "user-stop" }) });
+  let stopped = false;
+  const remote = createRemoteAgent({
+    library, prompts: { shouldStop: () => stopped },
+    stop() { stopped = true; }, clearStop() { stopped = false; },
+  });
+  async function post(route: string, body: unknown, auth?: string): Promise<Record<string, unknown>> {
+    const res = await fetch(`${server.origin}${route}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(auth ? { authorization: `Bearer ${auth}` } : {}) },
+      body: JSON.stringify(body),
+    });
+    const json = await res.json() as Record<string, unknown>;
+    assert.equal(res.status, 200, JSON.stringify(json));
+    return json;
+  }
+  try {
+    await new Promise<void>((resolve) => site.listen(0, "127.0.0.1", resolve));
+    const address = site.address();
+    assert.ok(address && typeof address === "object");
+    library.save(testWorkflow({
+      schema: "bao.workflow/v4", id: "stop-held", name: "Stop held", createdAt: 1,
+      startUrl: `http://127.0.0.1:${address.port}/`, inputs: [], steps: [
+        {
+          id: "confirm",
+          index: 0,
+          timeoutMs: 5000,
+          caption: { text: "Confirm on the site" },
+          action: "handoff",
+          reason: "owner-press",
+        },
+        {
+          id: "linger",
+          index: 1,
+          timeoutMs: 1000,
+          caption: { text: "Linger", citation: { text: "Linger", source: "name" } },
+          heal: "never",
+          action: "click",
+          target: {
+            locators: [
+              { kind: "role", role: "button", name: "Linger" },
+              { kind: "text", value: "Linger" },
+              { kind: "css", value: "#linger" },
+              { kind: "xpath", value: "//*[@id=\"linger\"]" },
+            ],
+            hint: { role: "button", surface: "dom", id: "linger" },
+          },
+          check: { kind: "text", match: "Never happens", timeoutMs: unmetCheckMs },
+        },
+      ],
+    }));
+    library.updateSettings({ remoteMcp: true });
+    const issued = await post("/api/agent/pair", {});
+    const paired = await post("/api/agent/pair/claim", { code: issued.code, name: "Stop Mac", deviceId: "dev-stop" });
+    const agent = await directory.mintAgent("user-stop", "dev-stop");
+    assert.ok(agent);
+    saveRelay(home, { server: server.origin, token: String(paired.token), deviceId: String(paired.deviceId), tokenId: String(paired.tokenId) });
+    async function tool(name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+      const body = await post("/mcp", { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }, agent!.token);
+      const result = body.result as { content?: { type: string; text?: string }[] };
+      const text = result.content?.find((item) => item.type === "text")?.text;
+      assert.ok(text, JSON.stringify(body));
+      return JSON.parse(text) as Record<string, unknown>;
+    }
+    remote.start();
+    let online = false;
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      if ((await tool("search_workflows", { query: "Stop held" })).outcome === "ok") { online = true; break; }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.ok(online, "remote worker did not connect");
+    const held = await tool("run_workflow", { id: "stop-held" });
+    assert.equal(held.outcome, "needs_human", JSON.stringify(held));
+    const token = String(held.resume || held.resume_token || "");
+    assert.ok(token);
+    await waitFor(() => remote.view().phase === "waiting" && remote.view().stepId === "confirm");
+    remote.continue(token, "confirm");
+    await waitFor(() => acted === 1);
+    const started = Date.now();
+    await remote.stop();
+    assert.ok(Date.now() - started < unmetCheckMs / 3, "stop waited for the resumed replay to finish its unmet check");
+    assert.equal(acted, 1, "the stopped replay repeated the remaining step");
+    assert.equal(hasHeldRuns(), false, "shutdown left the held replay in the catalog");
+    const stored = library.readRun(String(held.runId || held.run_id));
+    assert.equal((stored.failure as { reason?: string } | undefined)?.reason, "cancelled", "the resumed replay finished its unmet check instead of stopping");
+  } finally {
+    await remote.stop();
+    await server.close();
+    await new Promise<void>((resolve) => site.close(() => resolve()));
+  }
+});
