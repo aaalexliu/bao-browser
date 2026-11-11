@@ -41,8 +41,10 @@ static void notify_paths(const char *home, char *root, size_t root_n, char *sock
   CC_SHA256(home, (CC_LONG)strlen(home), digest);
   char hash[17];
   for (int i = 0; i < 8; i++) snprintf(hash + i * 2, 3, "%02x", digest[i]);
-  snprintf(root, root_n, "/tmp/bao-%s", hash);
-  snprintf(sock, sock_n, "%s/notify.sock", root);
+  char built[64];
+  snprintf(built, sizeof built, "/tmp/bao-%s", hash);
+  if (root && root_n) snprintf(root, root_n, "%s", built);
+  snprintf(sock, sock_n, "%s/notify.sock", built);
 }
 
 static void dirname_inplace(char *path) {
@@ -221,9 +223,8 @@ int main(int argc, char *argv[]) {
   const char *port = getenv("BAO_PORT");
   if (!port || !port[0]) port = "4787";
   mkdir(bao_home, 0700);
-  char socket_root[64];
   char notify_sock[104];
-  notify_paths(bao_home, socket_root, sizeof socket_root, notify_sock, sizeof notify_sock);
+  notify_paths(bao_home, NULL, 0, notify_sock, sizeof notify_sock);
 
   int other = -1;
   int inst = bao_instance_acquire(bao_home, &other);
@@ -261,12 +262,8 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  if ((mkdir(socket_root, 0700) == 0 || errno == EEXIST) && chmod(socket_root, 0700) == 0 &&
-      bao_notify_prepare(notify_sock) == 0) setenv("BAO_NOTIFY_SOCK", notify_sock, 1);
-  else {
-    fprintf(stderr, "bao notify socket was not created: %s\n", notify_sock);
-    rmdir(socket_root);
-  }
+  if (bao_notify_prepare(notify_sock) == 0) setenv("BAO_NOTIFY_SOCK", notify_sock, 1);
+  else fprintf(stderr, "bao notify socket was not created: %s\n", notify_sock);
 
   /* The capture browser stays hidden unless this is set. The documented test types into it. */
   if (!getenv("BAO_HEADED")) setenv("BAO_HEADED", "1", 0);

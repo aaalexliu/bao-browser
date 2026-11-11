@@ -14,7 +14,7 @@ import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { CdpSocket } from "../../src/cdp-live/socket";
 import { OWNER_WAIT_LIMIT_MS, ownerWall, ownerCanResume, ownerWaitInstruction, ownerWaitTimeout } from "../../src/cdp-live/owner-wait";
 import { Library } from "../../src/v1/store";
-import { removeSocketRoot } from "../../src/unix-socket";
+import { socketRoot } from "../../src/unix-socket";
 import { startExperianFixture } from "../experian/fixture";
 import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
 import { LIST_TARGETS } from "../support/fake-agent-browser";
@@ -522,8 +522,8 @@ test("a cleanup failure while a newer open ends a wait names no ended run and st
   } finally {
     fail = false;
     for (const dir of failed) await remove(dir, { recursive: true, force: true });
-    removeSocketRoot(home);
     await h.cleanup("copy");
+    await rm(socketRoot(home), { recursive: true, force: true });
   }
 });
 
@@ -560,8 +560,8 @@ test("a cleanup failure while a newer open ends a wait past its limit still star
   } finally {
     fail = false;
     for (const dir of failed) await remove(dir, { recursive: true, force: true });
-    removeSocketRoot(home);
     await h.cleanup("copy");
+    await rm(socketRoot(home), { recursive: true, force: true });
   }
 });
 

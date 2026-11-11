@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { spawn, execFileSync, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
+import { mkdtempSync } from "node:fs";
 import { lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createConnection } from "node:net";
 import path from "node:path";
 import test, { type TestContext } from "node:test";
 import { startExtensionLink, hostScriptPath } from "../../src/extension/link";
-import { assertSocketPath, prepareSocketPath, removeSocketRoot, socketRoot } from "../../src/unix-socket";
+import { assertSocketPath, createSocketSession, prepareSocketPath, socketRoot } from "../../src/unix-socket";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import * as launches from "../../src/launch";
 
@@ -52,7 +53,7 @@ test("Unix socket length errors include the path and its byte length", () => {
   }
 });
 
-test("deep TMPDIR and two Bao homes keep extension bridges separate and clean their roots", { timeout: 20_000 }, async t => {
+test("deep TMPDIR and two Bao homes keep extension bridges separate", { timeout: 20_000 }, async t => {
   const root = await mkdtemp("/tmp/bao-sockets-test-");
   const deep = path.join(root, "x".repeat(150));
   await mkdir(deep);
@@ -73,11 +74,32 @@ test("deep TMPDIR and two Bao homes keep extension bridges separate and clean th
     }
     assert.notEqual(links[0]!.socketPath, links[1]!.socketPath);
     await links[0]!.close();
-    await assert.rejects(lstat(socketRoot(homes[0]!)), { code: "ENOENT" });
+    await assert.rejects(lstat(links[0]!.socketPath), { code: "ENOENT" });
+    assert.equal((await lstat(socketRoot(homes[0]!))).isDirectory(), true);
     assert.ok((await lstat(links[1]!.socketPath)).isSocket());
   } finally {
     for (const link of links) await link.close();
-    for (const home of homes) await assert.rejects(lstat(socketRoot(home)), { code: "ENOENT" });
+    for (const home of homes) await rm(socketRoot(home), { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a finished owner leaves the shared root a peer has already prepared", async () => {
+  const root = await mkdtemp("/tmp/bao-socket-race-");
+  const home = path.join(root, "home");
+  const link = await startExtensionLink({ home, configHome: home, hostScript: hostScriptPath() });
+  const prefix = prepareSocketPath(home, "proxy-");
+  try {
+    await link.close();
+    const dir = mkdtempSync(prefix);
+    assert.equal(path.dirname(dir), socketRoot(home));
+    await rm(dir, { recursive: true, force: true });
+    const session = createSocketSession(home);
+    assert.equal(path.dirname(session), socketRoot(home));
+    await rm(session, { recursive: true, force: true });
+  } finally {
+    await link.close();
+    await rm(socketRoot(home), { recursive: true, force: true });
     await rm(root, { recursive: true, force: true });
   }
 });
@@ -137,11 +159,14 @@ test("the pinned agent-browser starts its session socket with deep TMPDIR", { sk
     assertSocketPath(socketPath);
     assert.equal((await lstat(path.dirname(socketPath))).mode & 0o777, 0o700);
     console.log(`native socket ${Buffer.byteLength(socketPath)} bytes with TMPDIR ${Buffer.byteLength(deep)} bytes`);
+    proxy.disconnect();
+    await proxy.close();
+    assert.equal((await readdir(socketRoot(home))).some(name => name.startsWith("proxy-")), false);
   } finally {
     proxy.disconnect();
     await proxy.close();
     await new Promise<void>(resolve => server.close(() => resolve()));
-    await assert.rejects(lstat(socketRoot(home)), { code: "ENOENT" });
+    await rm(socketRoot(home), { recursive: true, force: true });
     await rm(root, { recursive: true, force: true });
   }
 });
@@ -164,12 +189,13 @@ int main(int argc, char **argv) {
   char root[64], sock[104];
   notify_paths(argv[1], root, sizeof root, sock, sizeof sock);
   if (strcmp(sock, argv[2]) != 0 || strlen(sock) > 103) return 2;
+  rmdir(root);
   if (bao_notify_prepare(sock) != 0) return 3;
   struct stat st;
   if (stat(sock, &st) != 0 || !S_ISSOCK(st.st_mode)) return 4;
   puts(sock);
   bao_notify_stop();
-  if (stat(sock, &st) == 0 || stat(root, &st) == 0) return 5;
+  if (stat(sock, &st) == 0 || stat(root, &st) != 0) return 5;
   char too_long[105]; memset(too_long, 'x', 104); too_long[104] = 0;
   if (bao_notify_prepare(too_long) != -1) return 6;
   puts("ok native notification socket");
@@ -183,9 +209,9 @@ int main(int argc, char **argv) {
       fixture, path.join(macos, "bao-launch.c"), path.join(macos, "bao-run-node.c"), path.join(macos, "bao-notify.m"), "-o", binary], { timeout: 40_000 });
     const output = execFileSync(binary, [home, socketPath], { env: { ...process.env, HOME: root, TMPDIR: deep }, encoding: "utf8", timeout: 5000 });
     assert.equal(output, `${socketPath}\nok native notification socket\n`);
-    await assert.rejects(lstat(socketRoot(home)), { code: "ENOENT" });
+    assert.equal((await lstat(socketRoot(home))).isDirectory(), true);
   } finally {
-    removeSocketRoot(home);
+    await rm(socketRoot(home), { recursive: true, force: true });
     await rm(root, { recursive: true, force: true });
   }
 });

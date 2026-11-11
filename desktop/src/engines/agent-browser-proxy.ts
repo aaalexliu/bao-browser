@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { readFile, rm, writeFile } from "node:fs/promises";
-import { createSocketSession, removeSocketRoot } from "../unix-socket";
+import { createSocketSession } from "../unix-socket";
 import path from "node:path";
 import { readDevToolsActivePort } from "../cdp-live/endpoint";
 import { CDP_PROGRESS_CEILING_MS, connectCdp, type CdpSocket } from "../cdp-live/socket";
@@ -753,7 +753,6 @@ export class AgentBrowserProxy {
       };
     } catch (error) {
       await rm(stateDir, { recursive: true, force: true });
-      removeSocketRoot(this.options.home);
       throw error;
     }
   }
@@ -867,7 +866,6 @@ export class AgentBrowserProxy {
       finally {
         if (wired) {
           await rm(wired.stateDir, { recursive: true, force: true });
-          removeSocketRoot(this.options.home);
         }
         await this.discard(next);
       }
@@ -887,7 +885,6 @@ export class AgentBrowserProxy {
       old.background.close();
       await old.chrome.close().catch((error: unknown) => process.stderr.write(`Bao could not close its own window: ${error instanceof Error ? error.message : String(error)}\n`));
       await rm(old.stateDir, { recursive: true, force: true });
-      removeSocketRoot(this.options.home);
     }
     await this.detectOwnerWall(session);
     return opened;
@@ -1493,7 +1490,6 @@ export class AgentBrowserProxy {
             else await session.chrome.close();
           }
           await rm(session.stateDir, { recursive: true, force: true });
-          removeSocketRoot(this.options.home);
         } finally {
           this.workflowOutcome = session.workflow.finish(session.outcome?.outcome === "failed");
         }

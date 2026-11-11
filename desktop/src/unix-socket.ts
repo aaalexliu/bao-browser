@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { chmodSync, mkdirSync, mkdtempSync, rmdirSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync } from "node:fs";
 import path from "node:path";
 
 export function socketRoot(home: string): string {
@@ -25,12 +25,4 @@ export function createSocketSession(home: string): string {
   const dir = mkdtempSync(prepareSocketPath(home, "proxy-"));
   assertSocketPath(path.join(dir, "bao.sock"));
   return dir;
-}
-
-export function removeSocketRoot(home: string): void {
-  try {
-    rmdirSync(socketRoot(home));
-  } catch (error) {
-    if (!["ENOENT", "ENOTEMPTY", "EEXIST"].includes((error as NodeJS.ErrnoException).code || "")) throw error;
-  }
 }
