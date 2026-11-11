@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -10,6 +10,7 @@ import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { connectCdp } from "../../src/cdp-live/socket";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import * as launches from "../../src/launch";
+import { Library } from "../../src/v1/store";
 import { LIST_TARGETS } from "../support/fake-agent-browser";
 
 launches.pinTestBrowser();
@@ -76,6 +77,139 @@ test("a copy that restores 20 tabs opens a timer-heavy page in its own tab, keep
     await proxy.close();
     for (const image of held) image.end();
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+// The 20-tab case can pass when the real daemon starts under 5 s. `activePage` leaves its first tab read without a timer, so removing only the daemonStarted clear does not fail it. With both first-call guards removed, the 30 s progress ceiling bounds that read, and a 6 s sleep still passes. A first-call limit under 6 s, like the old 5 s tab read, fails it.
+const SLOW_NATIVE_MS = 6_000;
+
+test("a copy capture still saves as a workflow when the first native call sleeps past 5 seconds", { timeout: 60_000 }, async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-slow-native-"));
+  const sourceRoot = path.join(root, "source");
+  const home = path.join(root, "home");
+  const calls = path.join(root, "calls.jsonl");
+  await mkdir(path.join(sourceRoot, "Default"), { recursive: true });
+  await writeFile(path.join(sourceRoot, "Local State"), JSON.stringify({ profile: { info_cache: { Default: { name: "Synthetic" } } } }));
+  await writeFile(path.join(sourceRoot, "Default", "Preferences"), "{}");
+  const server = createServer((_request, response) => {
+    response.setHeader("Content-Type", "text/html");
+    response.end(`<!doctype html><title>App</title><button data-testid="go" onclick="this.textContent='Done'">Go</button>`);
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const launch = launches.launchOwnedChromeEndpoint;
+  let copyDir = "";
+  t.mock.method(launches, "launchOwnedChromeEndpoint", (options: Parameters<typeof launch>[0]) => {
+    copyDir = options.userDataDir;
+    assert.equal(options.headless, false, "product pass-through stays visible");
+    return launch({ ...options, headless: true });
+  });
+  t.mock.method(chromium, "connectOverCDP", () => { throw new Error("pass-through must not attach Playwright"); });
+  const executable = path.join(root, "native");
+  await writeFile(executable, `#!${process.execPath}
+const fs = require('node:fs');
+const args = process.argv.slice(2);
+const endpoint = args[args.indexOf('--cdp') + 1];
+const command = args[args.indexOf('--idle-timeout') + 2];
+const commandArgs = args.slice(args.indexOf('--idle-timeout') + 3);
+const marker = ${JSON.stringify(path.join(root, "first-call"))};
+let first = false;
+try { fs.writeFileSync(marker, String(Date.now()), { flag: 'wx' }); first = true; } catch {}
+const started = Date.now();
+if (first) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ${SLOW_NATIVE_MS});
+const sleptMs = first ? Date.now() - started : 0;
+const bound = () => JSON.parse(fs.readFileSync('bao.target', 'utf8')).targetId;
+const withCdp = (body) => new Promise((resolve, reject) => {
+  const socket = new WebSocket(endpoint);
+  let id = 0;
+  const pending = new Map();
+  const send = (method, params, sessionId) => new Promise((resolve, reject) => {
+    const messageId = ++id;
+    pending.set(messageId, { resolve, reject });
+    socket.send(JSON.stringify({ id: messageId, method, params, ...(sessionId ? { sessionId } : {}) }));
+  });
+  socket.onerror = () => reject(new Error('CDP connection failed'));
+  socket.onmessage = (event) => {
+    const message = JSON.parse(String(event.data));
+    const waiter = pending.get(message.id);
+    if (!waiter) return;
+    pending.delete(message.id);
+    if (message.error) waiter.reject(new Error(JSON.stringify(message.error)));
+    else waiter.resolve(message.result);
+  };
+  socket.onopen = () => {
+    Promise.resolve(body(send)).then((value) => { socket.close(); resolve(value); }, (error) => { socket.close(); reject(error); });
+  };
+});
+const pause = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+async function main() {
+  if (command === 'tab' && commandArgs[0] === 'list' && commandArgs.includes('--json')) {
+    const targetId = bound();
+    const tabs = await withCdp(async (send) => {
+      const { targetInfos } = await send('Target.getTargets', {});
+      return targetInfos.filter((target) => target.type === 'page').map((target) => ({ targetId: target.targetId, url: target.url, active: target.targetId === targetId }));
+    });
+    if (!tabs.some((tab) => tab.active)) throw new Error('bound tab missing from tab list');
+    console.log(JSON.stringify({ data: { tabs } }));
+  } else if (command === 'open') {
+    const url = commandArgs[0];
+    await withCdp(async (send) => {
+      const { sessionId } = await send('Target.attachToTarget', { targetId: bound(), flatten: true });
+      await send('Emulation.setDeviceMetricsOverride', { width: 800, height: 600, deviceScaleFactor: 1, mobile: false }, sessionId);
+      await send('Page.navigate', { url }, sessionId);
+      const deadline = Date.now() + 10000;
+      while (Date.now() < deadline) {
+        const { result } = await send('Runtime.evaluate', { expression: 'document.querySelector("[data-testid=go]") ? location.href : ""', returnByValue: true }, sessionId);
+        if (result.value) return;
+        pause(50);
+      }
+      throw new Error('page did not show the button');
+    });
+    console.log('Opened');
+  } else if (command === 'click') {
+    await withCdp(async (send) => {
+      const { sessionId } = await send('Target.attachToTarget', { targetId: bound(), flatten: true });
+      const { result } = await send('Runtime.evaluate', { expression: '(() => { const el = document.querySelector("[data-testid=go]"); if (!el) return null; const box = el.getBoundingClientRect(); return { x: box.x + box.width / 2, y: box.y + box.height / 2, w: box.width, h: box.height }; })()', returnByValue: true }, sessionId);
+      if (!result.value || result.value.w <= 0 || result.value.h <= 0) throw new Error('button has no box');
+      await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: result.value.x, y: result.value.y, button: 'left', clickCount: 1 }, sessionId);
+      await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: result.value.x, y: result.value.y, button: 'left', clickCount: 1 }, sessionId);
+      const deadline = Date.now() + 2000;
+      let text = '';
+      while (Date.now() < deadline) {
+        text = (await send('Runtime.evaluate', { expression: 'document.querySelector("[data-testid=go]").textContent', returnByValue: true }, sessionId)).result.value;
+        if (text === 'Done') break;
+        pause(20);
+      }
+      if (text !== 'Done') throw new Error('click did not land');
+      pause(150);
+    });
+    console.log('Clicked');
+  } else if (command === 'get') process.exitCode = 1;
+  else console.log('native ' + command);
+  fs.appendFileSync(${JSON.stringify(calls)}, JSON.stringify({ command, args: commandArgs, first, sleptMs, ms: Date.now() - started }) + '\\n');
+}
+main().catch((error) => { console.error(error); process.exitCode = 1; });
+`, { mode: 0o700 });
+  const proxy = new AgentBrowserProxy({ sourceRoot, home, executable });
+  try {
+    const opened = await proxy.execute("open", [`${base}/app`], "copy");
+    assert.equal(opened[0]!.exitCode, 0, opened[0]!.stdout + opened[0]!.stderr);
+    const clicked = await proxy.execute("click", ['[data-testid="go"]'], undefined, false, undefined, {}, proxy.activeRunId);
+    assert.equal(clicked[0]!.exitCode, 0, clicked[0]!.stdout + clicked[0]!.stderr);
+    await proxy.finishTask({ outcome: "passed", reason: "Clicked Go." }, proxy.activeRunId);
+    const recorded = (await readFile(calls, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as { command: string; args: string[]; first: boolean; sleptMs: number });
+    const first = recorded.find((call) => call.first);
+    assert.ok(first, "the fake native executable ran");
+    assert.deepEqual([first.command, first.args[0], first.args.includes("--json")], ["tab", "list", true], "the first native call is the workflow recorder's tab read");
+    assert.ok(first.sleptMs >= 5_000, `first native call slept ${first.sleptMs} ms`);
+    assert.match(proxy.lastWorkflowOutcome ?? "", /^Saved workflow:/);
+    assert.equal(new Library(home).list().workflows.length, 1);
+  } finally {
+    proxy.disconnect();
+    await proxy.close();
+    if (copyDir) await rm(path.dirname(copyDir), { recursive: true, force: true });
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     await rm(root, { recursive: true, force: true });
   }
 });
