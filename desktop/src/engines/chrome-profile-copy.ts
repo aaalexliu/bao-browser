@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { chmod, cp, lstat, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { readFileSync, writeFileSync } from "node:fs";
+import { lstatSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import path from "node:path";
 import type { BrowserContext, Page } from "playwright";
@@ -61,6 +61,23 @@ export type ProfileLease =
 
 type CopiedProfileLease = ProfileLease & { magic: typeof MAGIC; namespace: string };
 
+/** A removal that dies after unlinking the lease still leaves the copy. Write retained back so the next run retries it. */
+function restoreRetainedLease(dir: string, leasePath: string, retained: CopiedProfileLease, ownedToken: string): void {
+  try {
+    if (!lstatSync(dir).isDirectory()) return;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+  try {
+    const current = JSON.parse(readFileSync(leasePath, "utf8")) as { token?: string };
+    if (current.token !== ownedToken) return;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  writeFileSync(leasePath, JSON.stringify(retained), { mode: 0o600 });
+}
+
 export interface CopiedProfile {
   userDataDir: string;
   profileDirectory: string;
@@ -118,12 +135,7 @@ export async function copyChromeProfile(options: {
       }
       await rm(dir, { recursive: true, force: true });
     } catch (error) {
-      try {
-        const current = JSON.parse(readFileSync(leasePath, "utf8")) as { token?: string };
-        if (current.token === releasing.token) writeFileSync(leasePath, JSON.stringify(retained), { mode: 0o600 });
-      } catch (restoreError) {
-        if ((restoreError as NodeJS.ErrnoException).code !== "ENOENT") throw restoreError;
-      }
+      restoreRetainedLease(dir, leasePath, retained, releasing.token);
       throw error;
     }
   }
@@ -163,7 +175,7 @@ export async function copyChromeProfile(options: {
     }
     try { await rm(userDataDir, { recursive: true, force: true }); }
     catch (error) {
-      if (readLease()) writeLease("retained");
+      restoreRetainedLease(userDataDir, leaseFile, { magic: MAGIC, namespace, state: "retained", pid: process.pid, token }, token);
       throw error;
     }
   };
