@@ -92,7 +92,6 @@ export class AgentBrowserRun {
     kind: "encoding"; capture: CdpVideo; startedAt: number;
   } | undefined;
   private encoding: { capture: CdpVideo; startedAt: number } | undefined;
-  private videoReady = false;
   private videoAbandoned = false;
 
   constructor(private readonly home: string) {
@@ -277,9 +276,6 @@ export class AgentBrowserRun {
     try {
       const result = await video.capture.stop();
       if (result.wrote && !this.videoAbandoned) {
-        this.videoReady = true;
-        hostStopRuns.delete(this);
-        this.encoding = undefined;
         this.run.video = `${this.id}.mp4`;
         this.run.videoStartedAt = video.startedAt;
         this.run.videoTruncated = result.truncated;
@@ -287,13 +283,17 @@ export class AgentBrowserRun {
         this.persist();
       }
     } catch (error) {
-      if (this.videoAbandoned) return;
-      this.warn(error instanceof Error && error.message ? error.message : "tab video encoding");
+      if (!this.videoAbandoned) this.warn(error instanceof Error && error.message ? error.message : "tab video encoding");
+    } finally {
+      if (!this.videoAbandoned) {
+        hostStopRuns.delete(this);
+        this.encoding = undefined;
+      }
     }
   }
 
   abandonOnHostStop(): void {
-    if (this.videoReady || this.videoAbandoned) return;
+    if (this.videoAbandoned) return;
     this.videoAbandoned = true;
     const active = this.encoding ?? (this.video && this.video.kind !== "unavailable" ? this.video : undefined);
     active?.capture.abandonEncode();
@@ -306,11 +306,6 @@ export class AgentBrowserRun {
     hostStopRuns.delete(this);
     this.persist();
     this.warn("Bao stopped before the video finished");
-  }
-
-  async stopVideo(): Promise<void> {
-    await this.endVideoCapture();
-    await this.encodeVideo();
   }
 
   signInImported(report: SignInImport): void {

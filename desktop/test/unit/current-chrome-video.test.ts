@@ -93,8 +93,10 @@ for (const end of ["tab closes", "CDP disconnects"] as const) test(`tab video fo
     await wait(400);
     if (end === "tab closes") await f.cdp.send("Target.closeTarget", { targetId: blue });
     else f.cdp.close();
-    await run.stopVideo();
-    await run.stopVideo();
+    await run.endVideoCapture();
+    await run.encodeVideo();
+    await run.endVideoCapture();
+    await run.encodeVideo();
     run.finish();
     const receipt = new Library(path.join(f.root, "home")).listRuns()[0]!;
     assert.equal(receipt.video, `${run.id}.mp4`);
@@ -105,7 +107,7 @@ for (const end of ["tab closes", "CDP disconnects"] as const) test(`tab video fo
     const last = sample(file, true);
     assert.ok(first[0]! > 180 && first[2]! < 50, `first target is red: ${first.toJSON().data}`);
     assert.ok(last[2]! > 180 && last[0]! < 50, `last target is blue: ${last.toJSON().data}`);
-  } finally { await run.stopVideo(); await f.close(); }
+  } finally { await run.endVideoCapture(); await run.encodeVideo(); await f.close(); }
 });
 
 test("tab video omits frames painted during an owner wait", { skip: !ffmpeg, timeout: 30_000 }, async () => {
@@ -128,7 +130,8 @@ test("tab video omits frames painted during an owner wait", { skip: !ffmpeg, tim
     await run.ownerWaiting(false);
     await evaluate(f.cdp, targetId, "document.documentElement.style.background='blue';document.body.style.background='blue'");
     await wait(400);
-    await run.stopVideo();
+    await run.endVideoCapture();
+    await run.encodeVideo();
     run.finish();
     const file = path.join(f.root, "home", "videos", `${run.id}.mp4`);
     assert.ok((await stat(file)).size > 1000);
@@ -137,7 +140,7 @@ test("tab video omits frames painted during an owner wait", { skip: !ffmpeg, tim
     assert.ok(pixels.some((pixel) => pixel[2]! > 180 && pixel[0]! < 50), "recording resumes after the wait");
     const duringWait = pixels.filter((pixel) => pixel[1]! > 180 && pixel[0]! < 80 && pixel[2]! < 80);
     assert.equal(duringWait.length, 0, "owner wait painted green and must not appear");
-  } finally { await run.stopVideo(); await f.close(); }
+  } finally { await run.endVideoCapture(); await run.encodeVideo(); await f.close(); }
 });
 
 test("unavailable tab recording does not fail commands or their receipt", { timeout: 30_000 }, async (t) => {
@@ -158,7 +161,8 @@ test("unavailable tab recording does not fail commands or their receipt", { time
         return Buffer.from(data, "base64");
       } finally { await f.cdp.send("Target.detachFromTarget", { sessionId }); }
     });
-    await run.stopVideo();
+    await run.endVideoCapture();
+    await run.encodeVideo();
     run.finish();
     const receipt = new Library(home).listRuns()[0]!;
     assert.equal(receipt.status, "passed");
@@ -339,6 +343,86 @@ process.exit(1);
     assert.equal(notes.some((line) => line.includes("CDP video encoding failed") && line.includes(kept[0]!)), true);
   } finally {
     process.stderr.write = write;
+    if (previous === undefined) delete process.env.FFMPEG; else process.env.FFMPEG = previous;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a later host stop leaves a failed encode's frames and record unchanged", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-video-settled-"));
+  const failing = path.join(root, "failing");
+  const hanging = path.join(root, "hanging");
+  const pidFile = path.join(root, "encoder.pid");
+  const previous = process.env.FFMPEG;
+  let pid = 0;
+  await writeFile(failing, `#!${process.execPath}
+process.exit(1);
+`, { mode: 0o700 });
+  await writeFile(hanging, `#!${process.execPath}
+const fs = require("node:fs");
+fs.writeFileSync(process.argv.at(-1), Buffer.alloc(100));
+fs.writeFileSync(${JSON.stringify(pidFile)}, String(process.pid));
+setInterval(() => {}, 1000);
+`, { mode: 0o700 });
+  const socket = (): CdpSocket => {
+    const frames = new Map<string, (params: Record<string, unknown>) => void>();
+    return {
+      on(method: string, _session: string, handler: (params: Record<string, unknown>) => void) { frames.set(method, handler); },
+      async send(method: string) {
+        if (method === "Target.attachToTarget") return { sessionId: "page" };
+        if (method === "Target.getTargets") return { targetInfos: [] };
+        if (method === "Page.startScreencast") {
+          frames.get("Page.screencastFrame")?.({ data: Buffer.from([0xff, 0xd8, 0xff, 0xd9]).toString("base64"), sessionId: "frame" });
+        }
+        return {};
+      },
+    } as unknown as CdpSocket;
+  };
+  const homeA = path.join(root, "a");
+  const homeB = path.join(root, "b");
+  try {
+    process.env.FFMPEG = failing;
+    const settled = new AgentBrowserRun(homeA);
+    await settled.recordTab(socket(), "tab");
+    await settled.endVideoCapture();
+    await settled.encodeVideo();
+    const kept = (await readdir(path.join(homeA, "videos"))).filter((name) => name.includes(".frames-"));
+    assert.equal(kept.length, 1);
+    const record = await readFile(path.join(homeA, "runs", `${settled.id}.json`), "utf8");
+    const before = JSON.parse(record) as { video?: string; videoUnavailable?: string };
+    assert.equal(before.video, undefined);
+    assert.equal(before.videoUnavailable, undefined);
+
+    process.env.FFMPEG = hanging;
+    const live = new AgentBrowserRun(homeB);
+    await live.recordTab(socket(), "tab");
+    await live.endVideoCapture();
+    const encoding = live.encodeVideo();
+    const started = Date.now() + 5000;
+    while (!existsSync(pidFile)) {
+      assert.ok(Date.now() < started, "encoder started");
+      await wait(20);
+    }
+    pid = Number(await readFile(pidFile, "utf8"));
+    assert.doesNotThrow(() => process.kill(pid, 0));
+    abandonVideoOnHostStop();
+    const gone = Date.now() + 2000;
+    while (Date.now() < gone) {
+      try { process.kill(pid, 0); }
+      catch { break; }
+      await wait(20);
+    }
+    assert.throws(() => process.kill(pid, 0));
+    assert.equal(await readFile(path.join(homeA, "runs", `${settled.id}.json`), "utf8"), record);
+    assert.equal((await readdir(path.join(homeA, "videos"))).includes(kept[0]!), true);
+    const stopped = new Library(homeB).listRuns()[0]!;
+    assert.equal(stopped.video, undefined);
+    assert.equal(stopped.videoUnavailable, "Bao stopped before the video finished");
+    assert.deepEqual((await readdir(path.join(homeB, "videos"))).filter((name) => name.includes(".frames-")), []);
+    await encoding;
+  } finally {
+    abandonVideoOnHostStop();
+    if (pid) { try { process.kill(pid, "SIGKILL"); } catch { /* already dead */ } }
     if (previous === undefined) delete process.env.FFMPEG; else process.env.FFMPEG = previous;
     await rm(root, { recursive: true, force: true });
   }
