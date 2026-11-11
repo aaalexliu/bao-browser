@@ -421,7 +421,7 @@ export function createRemoteAgent(opts: {
   async function readRun(job: AssignedJob): Promise<Record<string, unknown>> {
     const id = stringArg(job.args.run_id);
     try {
-      const stored = await opts.library.readRun(id);
+      const stored = await Promise.resolve(opts.library.readRun(id));
       const outputs = stored.outputs ?? [];
       return { outcome: "ok", runId: stored.id, status: stored.status, outputs };
     } catch {
