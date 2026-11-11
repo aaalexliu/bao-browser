@@ -311,12 +311,17 @@ test("serveHold publishes only after the hold lock is free", async (t) => {
   assert.equal(existsSync(path.join(dir, "hold.json")), false);
   assert.equal(existsSync(path.join(dir, "starting.json")), true);
   await rm(lock);
+  const holdFile = path.join(dir, "hold.json");
+  const startingFile = path.join(dir, "starting.json");
   const deadline = Date.now() + 2_000;
-  while (!existsSync(path.join(dir, "hold.json"))) {
-    if (Date.now() >= deadline) throw new Error("the hold did not publish after the lock was released");
+  while (!existsSync(holdFile) || existsSync(startingFile)) {
+    if (Date.now() >= deadline) {
+      throw new Error(`the hold did not finish publishing after the lock was released (hold.json ${existsSync(holdFile)}, starting.json ${existsSync(startingFile)})`);
+    }
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
-  assert.equal(existsSync(path.join(dir, "starting.json")), false);
+  assert.equal(existsSync(holdFile), true);
+  assert.equal(existsSync(startingFile), false);
   const saved = JSON.parse(await readFile(path.join(dir, "hold.json"), "utf8")) as { holderPid: number; port: number; browserPath: string };
   assert.equal(saved.holderPid, process.pid);
   assert.equal(saved.port, 9);
