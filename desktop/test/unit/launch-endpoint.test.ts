@@ -72,7 +72,7 @@ for (const signal of ["SIGHUP", "SIGINT", "SIGTERM"] as const) {
   });
 }
 
-test("startup keeps its original error when graceful cleanup times out", { timeout: scaledMs(15_000) }, async (t) => {
+test("startup keeps its original error when cleanup cannot signal the browser", { timeout: scaledMs(15_000) }, async (t) => {
   const userDataDir = await mkdtemp(path.join(tmpdir(), "bao-startup-error-"));
   const startupError = new Error("discovery rejected during startup");
   const connect = sockets.connectCdp;
@@ -81,6 +81,7 @@ test("startup keeps its original error when graceful cleanup times out", { timeo
   const killMock = t.mock.method(process, "kill", (pid: number, signal?: NodeJS.Signals | number) => {
     if (signal === "SIGTERM" || signal === "SIGKILL") {
       signals.push(signal);
+      if (signal === "SIGKILL") throw Object.assign(new Error("cleanup signal denied"), { code: "EPERM" });
       return true;
     }
     return kill(pid, signal);
@@ -103,7 +104,7 @@ test("startup keeps its original error when graceful cleanup times out", { timeo
     await assert.rejects(launchOwnedChromeEndpoint({ userDataDir, headless: true }), (error) => error === startupError);
     assert.ok(signals.includes("SIGTERM"));
     assert.ok(signals.includes("SIGKILL"), "cleanup must escalate when graceful shutdown stalls");
-    assert.ok(pidsForDataDir(userDataDir).length > 0, "the mocked signals must leave Chrome alive");
+    assert.ok(pidsForDataDir(userDataDir).length > 0, "a denied SIGKILL must leave Chrome alive");
   } finally {
     killMock.mock.restore();
     childKillMock.mock.restore();

@@ -385,8 +385,8 @@ test("owned shutdown waits for exact-profile orphan processes to exit", { timeou
   t.mock.method(process, "kill", (pid: number, signal?: NodeJS.Signals | number) => {
     if (pid === orphan.pid && signal === "SIGKILL") {
       signaled = true;
-      // Model a signal that the OS accepts before the process has exited.
-      signalTimer = setTimeout(() => kill(pid, signal), 500);
+      // The OS accepts the signal before the process exits. Two seconds, so shutdown has to wait out that exit.
+      signalTimer = setTimeout(() => kill(pid, signal), 2_000);
       return true;
     }
     return kill(pid, signal);
