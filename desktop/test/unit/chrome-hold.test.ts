@@ -3,6 +3,7 @@
 
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { closeSync, constants, existsSync, openSync, writeSync } from "node:fs";
 import { chmod, lstat, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { createConnection, createServer, type AddressInfo, type Socket } from "node:net";
 import { tmpdir } from "node:os";
@@ -279,32 +280,116 @@ function published(root: string, port: number, browserPath: string, holderPid: n
   };
 }
 
-test("a reader between the hold publish and the starting-record removal finds the hold", async (t) => {
-  const browserPath = "/devtools/browser/publish-gap";
-  const endpoint = await versionEndpoint(t, browserPath);
-  const scratch = await mkdtemp(path.join(tmpdir(), "bao-chrome-hold-gap-"));
+test("serveHold publishes only after the hold lock is free", async (t) => {
+  const browserPath = "/devtools/browser/locked-publish";
+  const scratch = await mkdtemp(path.join(tmpdir(), "bao-chrome-hold-lock-"));
   const root = await realpath(scratch);
   const dir = await privateHoldDir(root);
+  const lock = path.join(dir, "lock");
+  let release: () => void = () => undefined;
+  const closed = new Promise<void>((resolve) => { release = resolve; });
+  t.after(() => release());
+  t.after(async () => {
+    await rm(lock, { force: true });
+    await rm(dir, { recursive: true, force: true });
+    await rm(scratch, { recursive: true, force: true });
+  });
+  await writeFile(path.join(dir, "starting.json"), JSON.stringify({ holderPid: process.pid, startedAt: Date.now() }));
+  await writeFile(lock, `${process.pid}\n`);
+  const serving = serveHold({
+    pid: process.pid,
+    executable: "/bin/test-chrome",
+    root,
+    endpoint: { port: 9, browserPath },
+    closed,
+    isClosed: () => false,
+    detach() {},
+  } as CurrentChrome);
+  const failed = serving.then(() => undefined, (error: unknown) => error);
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  assert.equal(await Promise.race([failed, Promise.resolve("waiting")]), "waiting");
+  assert.equal(existsSync(path.join(dir, "hold.json")), false);
+  assert.equal(existsSync(path.join(dir, "starting.json")), true);
+  await rm(lock);
+  const deadline = Date.now() + 2_000;
+  while (!existsSync(path.join(dir, "hold.json"))) {
+    if (Date.now() >= deadline) throw new Error("the hold did not publish after the lock was released");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  assert.equal(existsSync(path.join(dir, "starting.json")), false);
+  const saved = JSON.parse(await readFile(path.join(dir, "hold.json"), "utf8")) as { holderPid: number; port: number; browserPath: string };
+  assert.equal(saved.holderPid, process.pid);
+  assert.equal(saved.port, 9);
+  assert.equal(saved.browserPath, browserPath);
+  release();
+  await serving;
+});
+
+test("a session that misses the hold reads it again before reporting it stopped", { timeout: 15_000 }, async (t) => {
+  const browserPath = "/devtools/browser/reread";
+  const endpoint = await versionEndpoint(t, browserPath);
+  const scratch = await mkdtemp(path.join(tmpdir(), "bao-chrome-hold-reread-"));
+  const root = await realpath(scratch);
+  const dir = await privateHoldDir(root);
+  const starting = path.join(dir, "starting.json");
+  const axLog = path.join(scratch, "ax.jsonl");
+  let writer: number | undefined;
+  t.after(() => { if (writer !== undefined) closeSync(writer); });
   t.after(async () => {
     await rm(dir, { recursive: true, force: true });
     await rm(scratch, { recursive: true, force: true });
   });
-  const planted = published(root, endpoint.port, browserPath, process.pid);
-  await writeFile(path.join(dir, "hold.json"), JSON.stringify(planted));
-  await writeFile(path.join(dir, "starting.json"), JSON.stringify({ holderPid: process.pid, startedAt: Date.now() }));
-  const axLog = path.join(scratch, "ax.jsonl");
-  const [first, second] = await Promise.all([
-    joinOrStartHold({ root, axLog }),
-    joinOrStartHold({ root, axLog }),
-  ]);
-  assert.equal(first.endpoint.port, endpoint.port);
-  assert.equal(second.endpoint.port, endpoint.port);
-  assert.equal(endpoint.upgrades(), 2, "two sessions joined the published hold and neither started another connection");
-  const saved = JSON.parse(await readFile(path.join(dir, "hold.json"), "utf8")) as { holderPid: number; port: number };
+  await new Promise<void>((resolve, reject) => {
+    const made = spawn("mkfifo", [starting]);
+    made.once("error", reject);
+    made.once("exit", (code) => code === 0 ? resolve() : reject(new Error(`mkfifo exited ${code}`)));
+  });
+  const script = `
+    const { joinOrStartHold } = require(${JSON.stringify(path.resolve(__dirname, "../../src/cdp-live/chrome-hold.js"))});
+    joinOrStartHold({ root: ${JSON.stringify(root)}, axLog: ${JSON.stringify(axLog)} }).then((chrome) => {
+      process.stdout.write(JSON.stringify({ port: chrome.endpoint.port }) + "\\n");
+      chrome.detach();
+    }).catch((error) => {
+      process.stderr.write(error && error.stack ? error.stack : String(error));
+      process.exit(1);
+    });
+  `;
+  let errText = "";
+  let out = "";
+  const child = spawn(process.execPath, ["-e", script], { stdio: ["ignore", "pipe", "pipe"] });
+  child.stdout?.on("data", (chunk: Buffer) => { out += chunk.toString("utf8"); });
+  child.stderr?.on("data", (chunk: Buffer) => { errText += chunk.toString("utf8"); });
+  t.after(() => { if (child.pid && pidAlive(child.pid)) child.kill("SIGKILL"); });
+  const deadline = Date.now() + 8_000;
+  let fedStart = false;
+  while (!out.includes("port")) {
+    if (Date.now() >= deadline) throw new Error(`the session did not join the hold it missed: ${errText}`);
+    if (writer === undefined) {
+      try {
+        writer = openSync(starting, constants.O_WRONLY | constants.O_NONBLOCK);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENXIO") throw error;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        continue;
+      }
+    }
+    if (!fedStart && existsSync(path.join(dir, "lock"))) {
+      writeSync(writer, JSON.stringify({ holderPid: process.pid, startedAt: Date.now() }));
+      closeSync(writer);
+      writer = undefined;
+      fedStart = true;
+      continue;
+    }
+    await writeFile(path.join(dir, "hold.json"), JSON.stringify(published(root, endpoint.port, browserPath, process.pid)));
+    closeSync(writer);
+    writer = undefined;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  const joined = JSON.parse(out) as { port: number };
+  assert.equal(joined.port, endpoint.port);
+  assert.equal(endpoint.upgrades(), 1, "the session joined the hold it missed on the first read");
+  const saved = JSON.parse(await readFile(path.join(dir, "hold.json"), "utf8")) as { holderPid: number };
   assert.equal(saved.holderPid, process.pid);
-  assert.equal(saved.port, endpoint.port);
-  first.detach();
-  second.detach();
 });
 
 test("teardown leaves a successor hold, and a waiting session joins the published one", { timeout: 20_000 }, async (t) => {

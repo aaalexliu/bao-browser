@@ -131,7 +131,7 @@ test("current Chrome enables debugging with the helper and approves the connecti
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
 
-test("a sheet that stays up is pressed once", async () => {
+test("a sheet that stays up is pressed again after a second, not on every poll", async () => {
   const f = await fixture(true);
   try {
     const polls: string[][] = [];
@@ -141,7 +141,7 @@ test("a sheet that stays up is pressed once", async () => {
       return { ok: true };
     };
     f.deps.connect = async () => {
-      await new Promise((resolve) => setTimeout(resolve, 400));
+      await new Promise((resolve) => setTimeout(resolve, 1_600));
       return {
         get isOpen() { return true; },
         disconnected: new Promise<void>(() => undefined),
@@ -152,8 +152,8 @@ test("a sheet that stays up is pressed once", async () => {
     };
     const chrome = await currentChrome.openCurrentChrome(f.options, f.deps);
     const allowPolls = polls.filter((call) => call[0] === "debug-allow");
-    assert.equal(allowPolls.filter((call) => call.includes("--press")).length, 1);
-    assert.ok(allowPolls.length > 1, "later polls see the sheet and do not press it");
+    assert.equal(allowPolls.filter((call) => call.includes("--press")).length, 2);
+    assert.ok(allowPolls.length > 2, "polls between the two presses see the sheet and do not press it");
     chrome.detach();
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
