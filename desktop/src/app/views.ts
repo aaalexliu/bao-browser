@@ -2049,6 +2049,7 @@ export function runReceipt(view: ReturnType<typeof inspectRunView>, name: string
   const at = view.run.at === null ? "Time unknown" : formatWhen(view.run.at);
   const calls = view.run.modelCalls;
   const browser = run.browser;
+  // Receipt keeps the shorter "Running Chrome". MCP lines keep the longer remote-debugging name in ROUTE_LABELS.
   const browserLabel = browser && { ...ROUTE_LABELS, current: "Running Chrome" }[browser.route];
   const spoken = plainAgentReason(run);
   const ask = spoken ? undefined : view.handoff?.ask || run.envelope?.ask;
