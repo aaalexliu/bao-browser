@@ -90,6 +90,8 @@ export interface StoredRun {
   video?: string;
   videoStartedAt?: number;
   videoTruncated?: boolean;
+  /** A host stop ended the process before the tab video finished. The file is not claimed. */
+  videoUnavailable?: string;
   repairs?: unknown[];
   receipts?: unknown[];
   promotion?: unknown;

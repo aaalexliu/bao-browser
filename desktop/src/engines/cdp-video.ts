@@ -1,4 +1,5 @@
 import { execFile, spawn } from "node:child_process";
+import { rmSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { CdpSocket } from "../cdp-live/socket";
@@ -28,6 +29,7 @@ export interface CdpVideo {
   endCapture(): Promise<void>;
   switchSession(sessionId: string): Promise<void>;
   stop(): Promise<{ wrote: boolean; frames: number; truncated: boolean }>;
+  abandonEncode(): void;
 }
 
 /** Records only the run's page. No OS screenshot or Screen Recording permission is used. */
@@ -51,6 +53,19 @@ export async function startCdpVideo(cdp: CdpSocket, sessionId: string, destinati
   let endedAt = 0;
   let ending: Promise<void> | undefined;
   let finalFrame: (() => void) | undefined;
+  let encoder: ReturnType<typeof spawn> | undefined;
+  let encodeTimer: ReturnType<typeof setTimeout> | undefined;
+  let encoded = false;
+  const abandonEncode = (): void => {
+    if (encoded) return;
+    encoded = true;
+    if (encodeTimer) clearTimeout(encodeTimer);
+    if (encoder && encoder.exitCode === null && encoder.signalCode === null) {
+      try { encoder.kill("SIGKILL"); } catch { /* already gone */ }
+    }
+    rmSync(destination, { force: true });
+    rmSync(dir, { recursive: true, force: true });
+  };
   const startCapture = () => cdp.send("Page.startScreencast", { format: "jpeg", quality: 85, maxWidth: 1920, maxHeight: 1080, everyNthFrame: 1 }, sessionId);
   const endCapture = (): Promise<void> => {
     ending ??= (async () => {
@@ -114,18 +129,19 @@ export async function startCdpVideo(cdp: CdpSocket, sessionId: string, destinati
           "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-fps_mode", "vfr", "-c:v", "libvpx-vp9", "-deadline", "realtime", "-cpu-used", "5",
         ];
         await new Promise<void>((resolve, reject) => {
-          const child = spawn(ffmpeg, ["-y", "-hide_banner", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", manifest, ...encoding, destination],
+          encoder = spawn(ffmpeg, ["-y", "-hide_banner", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", manifest, ...encoding, destination],
             { stdio: "ignore", env: { PATH: "/usr/bin:/bin" } });
-          const timer = setTimeout(() => { child.kill("SIGKILL"); }, mp4 ? 120_000 + duration * 2 : 120_000);
-          child.once("error", () => { clearTimeout(timer); reject(new Error("CDP video encoder did not start")); });
-          child.once("exit", (code, signal) => {
-            clearTimeout(timer);
+          encodeTimer = setTimeout(() => { encoder?.kill("SIGKILL"); }, mp4 ? 120_000 + duration * 2 : 120_000);
+          encoder.once("error", () => { clearTimeout(encodeTimer); reject(new Error("CDP video encoder did not start")); });
+          encoder.once("exit", (code, signal) => {
+            clearTimeout(encodeTimer);
             if (code === 0) resolve();
             else reject(new Error(signal === "SIGKILL" ? "CDP video encoding timed out" : "CDP video encoding failed"));
           });
         });
         if ((await stat(destination)).size < 1000) throw new Error("CDP video output was empty");
         keepFrames = false;
+        encoded = true;
         return { wrote: true, frames: frames.length, truncated };
       } catch (error) {
         await rm(destination, { force: true });
@@ -201,5 +217,6 @@ export async function startCdpVideo(cdp: CdpSocket, sessionId: string, destinati
       await startCapture();
     },
     stop,
+    abandonEncode,
   };
 }

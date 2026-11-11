@@ -526,7 +526,7 @@ export class AgentBrowserProxy {
     } catch (error) {
       if (error instanceof TaskTabClosed) {
         const agentClosedTab = command === "tab" && args[0] === "close" && results.some((result) => result.exitCode === 0);
-        results.splice(0, results.length, ...this.endTaskTab(session));
+        results.splice(0, results.length, ...await this.endTaskTab(session));
         step ??= recording.begin(command as string, args);
         this.latest = { runId: recording.id, step, steps: recording.steps };
         if (!agentClosedTab) failure = new Error("Bao's task tab was closed");
@@ -723,6 +723,7 @@ export class AgentBrowserProxy {
           return { ...endpoint, targetId: active.targetId, targetIds: active.targetIds };
         }, abort.signal),
       };
+      if (session.kind === "current" && !session.relay) await recording.recordTab(session.chrome.cdp, session.targetId);
       return session;
     } catch (error) {
       await this.discard(browser);
@@ -1026,7 +1027,7 @@ export class AgentBrowserProxy {
   }
 
   /** Ends this session because Bao's task tab was closed. The caller returns the closed result; cleanup runs after the command. */
-  private endTaskTab(session: Session): AgentBrowserCommandResult[] {
+  private async endTaskTab(session: Session): Promise<AgentBrowserCommandResult[]> {
     this.taskTabEnded = true;
     this.endedRuns.set(session.recording.id, TASK_TAB_CLOSED);
     session.closing = true;
@@ -1034,6 +1035,7 @@ export class AgentBrowserProxy {
     session.workflow.unavailable("Bao's task tab was closed before the task finished");
     if (session.ownerWait) {
       session.ownerWait = undefined;
+      await session.recording.endVideoCapture();
       session.recording.ownerWaiting(false);
     }
     session.abort.abort();
@@ -1064,6 +1066,7 @@ export class AgentBrowserProxy {
       // Native tab titles can be URL-derived labels. Read the real title from Chrome, not that label.
       cdp = await this.connectSession(session, { timeoutMs: CDP_PROGRESS_CEILING_MS, signal });
       const { targetInfo } = await cdp.sendUntilProgress<{ targetInfo: { url: string; title: string } }>("Target.getTargetInfo", { targetId: active.targetId }, undefined, { signal });
+      if (session.kind === "current" && !session.relay) await session.recording.recordTab(cdp, active.targetId);
       session.page = { url: targetInfo.url, title: targetInfo.title };
       if (!ownerWall(session.page) && httpPage(session.page.url)) session.beforeWall = session.page;
       return { targetId: active.targetId, targetIds: tabs.flatMap((tab) => tab.targetId ? [tab.targetId] : []), page: session.page };
@@ -1178,7 +1181,7 @@ export class AgentBrowserProxy {
           if (session.abort.signal.aborted || !cdp.isOpen) return this.ownerClosed(session);
           const { targetInfos } = await cdp.send<{ targetInfos: { targetId: string; url: string; title: string }[] }>("Target.getTargets", {}, undefined, 2000);
           const page = targetInfos.find((tab) => tab.targetId === waiting.targetId);
-          if (!page && cdp.isOpen && this.noTaskTabLeft(session, targetInfos)) return this.endTaskTab(session);
+          if (!page && cdp.isOpen && this.noTaskTabLeft(session, targetInfos)) return await this.endTaskTab(session);
           if (!page || session.abort.signal.aborted || !cdp.isOpen) return this.ownerClosed(session);
           if (ownerWall(page) && (waiting.page.url !== page.url || waiting.page.title !== page.title)) {
             waiting.page = { url: page.url, title: page.title };
@@ -1395,6 +1398,7 @@ export class AgentBrowserProxy {
     this.endedByNewer.add(session.recording.id);
     if (session.ownerWait) {
       this.staleWait = this.waitEndedLine(session, "a new open starts a new task");
+      await session.recording.endVideoCapture();
       session.recording.ownerWaiting(false);
     }
     session.outcome = { outcome: "failed", reason: NEWER_TASK_REASON };
@@ -1463,6 +1467,7 @@ export class AgentBrowserProxy {
       await (session.removing ??= (async () => {
         session.abort.abort();
         await session.commandDone;
+        await session.recording.endVideoCapture();
         session.recording.finish(session.outcome);
         if (session.ownerWait) session.workflow.unavailable("the owner wait did not finish");
         try {
@@ -1489,6 +1494,7 @@ export class AgentBrowserProxy {
           }
           await rm(session.stateDir, { recursive: true, force: true });
         } finally {
+          await session.recording.encodeVideo();
           this.workflowOutcome = session.workflow.finish(session.outcome?.outcome === "failed");
         }
       })());

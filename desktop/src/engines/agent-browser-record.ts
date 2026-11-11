@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { OwnerPage } from "../cdp-live/owner-wait";
+import type { CdpSocket } from "../cdp-live/socket";
 import { commandSentence } from "../v1/caption";
 import { AGENT_CLOSED_ASK, AGENT_STEP_FAILED, AGENT_WAIT_ENDED } from "../v1/stop-copy";
 import { RUN_SCHEMA_ID, stepTitle, type StepCaption } from "../v1/schema";
@@ -11,6 +12,14 @@ import { describeStep, landmarkKeys, ownerReply, TASK_TAB_CLOSED, type OwnerWait
 import type { AgentBrowserCommandResult } from "./agent-browser-proxy";
 import type { BrowserPick } from "./browser-pick";
 import type { SignInImport } from "./bao-profile";
+import { startCdpVideo, type CdpVideo } from "./cdp-video";
+
+const hostStopRuns = new Set<AgentBrowserRun>();
+
+/** A host stop is exiting before this process can finish an in-progress tab video. */
+export function abandonVideoOnHostStop(): void {
+  for (const run of [...hostStopRuns]) run.abandonOnHostStop();
+}
 
 type Viewport = { width: number; height: number };
 
@@ -77,6 +86,13 @@ export class AgentBrowserRun {
   private readonly landmarks = new Map<string, Set<string>>();
   /** Index of the step current when this owner wait began. Earlier waits stay as they finished. */
   private ownerWaitAt: number | undefined;
+  private video: { kind: "unavailable" } | {
+    kind: "recording"; capture: CdpVideo; cdp: CdpSocket; targetId: string; sessionId: string; startedAt: number;
+  } | {
+    kind: "encoding"; capture: CdpVideo; startedAt: number;
+  } | undefined;
+  private encoding: { capture: CdpVideo; startedAt: number } | undefined;
+  private videoAbandoned = false;
 
   constructor(private readonly home: string) {
     this.shots = path.join(home, "shots", "runs", this.run.id);
@@ -208,6 +224,91 @@ export class AgentBrowserRun {
     this.persist();
   }
 
+  async recordTab(cdp: CdpSocket, targetId: string): Promise<void> {
+    if (this.video && this.video.kind !== "recording") return;
+    if (this.video?.targetId === targetId) return;
+    let sessionId: string | undefined;
+    try {
+      ({ sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true }, undefined, 5000));
+      if (this.video?.kind === "recording") {
+        const previous = this.video;
+        await previous.capture.switchSession(sessionId);
+        this.video = { ...previous, targetId, sessionId };
+        await cdp.send("Target.detachFromTarget", { sessionId: previous.sessionId }, undefined, 2000).catch(() => undefined);
+      } else {
+        const startedAt = Date.now();
+        const capture = await startCdpVideo(cdp, sessionId, path.join(this.home, "videos", `${this.id}.mp4`), { noBlur: true });
+        if (this.run.status === "needs_human") capture.pause();
+        this.video = { kind: "recording", capture, cdp, targetId, sessionId, startedAt };
+        hostStopRuns.add(this);
+      }
+    } catch {
+      if (this.video?.kind === "recording") this.video.capture.pause();
+      if (sessionId) await cdp.send("Target.detachFromTarget", { sessionId }, undefined, 2000).catch(() => undefined);
+      await this.endVideoCapture();
+      this.warn("tab video");
+    }
+  }
+
+  async endVideoCapture(): Promise<void> {
+    const video = this.video;
+    if (video?.kind === "encoding") return;
+    if (video?.kind !== "recording") {
+      this.video = { kind: "unavailable" };
+      return;
+    }
+    this.video = { kind: "encoding", capture: video.capture, startedAt: video.startedAt };
+    try {
+      try {
+        const { targetInfos } = await video.cdp.send<{ targetInfos: { targetId: string }[] }>("Target.getTargets", {}, undefined, 2000);
+        if (!targetInfos.some((target) => target.targetId === video.targetId)) video.capture.pause();
+      } catch { video.capture.pause(); }
+      await video.capture.endCapture();
+    } finally {
+      await video.cdp.send("Target.detachFromTarget", { sessionId: video.sessionId }, undefined, 2000).catch(() => undefined);
+    }
+  }
+
+  async encodeVideo(): Promise<void> {
+    const video = this.video;
+    this.video = { kind: "unavailable" };
+    if (video?.kind !== "encoding") return;
+    this.encoding = video;
+    try {
+      const result = await video.capture.stop();
+      if (result.wrote && !this.videoAbandoned) {
+        this.run.video = `${this.id}.mp4`;
+        this.run.videoStartedAt = video.startedAt;
+        this.run.videoTruncated = result.truncated;
+        delete this.run.videoUnavailable;
+        this.persist();
+      }
+    } catch (error) {
+      if (!this.videoAbandoned) this.warn(error instanceof Error && error.message ? error.message : "tab video encoding");
+    } finally {
+      if (!this.videoAbandoned) {
+        hostStopRuns.delete(this);
+        this.encoding = undefined;
+      }
+    }
+  }
+
+  abandonOnHostStop(): void {
+    if (this.videoAbandoned) return;
+    this.videoAbandoned = true;
+    const active = this.encoding ?? (this.video && this.video.kind !== "unavailable" ? this.video : undefined);
+    active?.capture.abandonEncode();
+    delete this.run.video;
+    delete this.run.videoStartedAt;
+    delete this.run.videoTruncated;
+    this.run.videoUnavailable = "Bao stopped before the video finished";
+    this.video = { kind: "unavailable" };
+    this.encoding = undefined;
+    hostStopRuns.delete(this);
+    this.persist();
+    this.warn("Bao stopped before the video finished");
+  }
+
   signInImported(report: SignInImport): void {
     this.run.signInImports = [...this.run.signInImports ?? [], report];
     this.persist();
@@ -220,7 +321,12 @@ export class AgentBrowserRun {
   }
 
   ownerWaiting(waiting: boolean): void {
+    const wasWaiting = this.run.status === "needs_human";
     this.run.status = waiting ? "needs_human" : "recording";
+    if (this.video?.kind === "recording") {
+      if (waiting && !wasWaiting) this.video.capture.pause();
+      else if (!waiting && wasWaiting) this.video.capture.resume();
+    }
     if (waiting) {
       const last = this.run.steps.at(-1);
       this.ownerWaitAt ??= last?.status === "pending" ? this.run.steps.length - 1 : this.run.steps.length;
