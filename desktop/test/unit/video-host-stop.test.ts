@@ -183,7 +183,12 @@ setTimeout(() => {
       const file = path.join(home, "videos", `${id}.mp4`);
       assert.ok((await stat(file)).size >= 1000);
       playable(file);
-      assert.equal((await readdir(path.join(home, "videos"))).some((name) => name.includes(".frames-")), false);
+      const videos = path.join(home, "videos");
+      const cleaned = Date.now() + 5000;
+      while ((await readdir(videos)).some((name) => name.includes(".frames-"))) {
+        assert.ok(Date.now() < cleaned, `${signal} removed the frames after saving the video`);
+        await wait(50);
+      }
     } finally {
       if (session.child.exitCode === null) session.child.kill("SIGKILL");
       await chrome.close();

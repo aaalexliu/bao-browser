@@ -320,7 +320,11 @@ setTimeout(() => {
     assert.equal(typeof saved.videoStartedAt, "number");
     assert.equal(saved.videoUnavailable, undefined);
     assert.ok((await stat(path.join(videos, `${run.id}.mp4`))).size >= 1000);
-    assert.deepEqual((await readdir(videos)).filter((name) => name.includes(".frames-")), []);
+    const cleaned = Date.now() + 5000;
+    while ((await readdir(videos)).some((name) => name.includes(".frames-"))) {
+      assert.ok(Date.now() < cleaned, "frames directory removed after the video was saved");
+      await wait(20);
+    }
     assert.equal(notes.some((line) => line.includes("frames retained")), false);
     assert.equal(notes.some((line) => line.includes("Bao stopped before the video finished")), false);
   } finally {
@@ -427,13 +431,17 @@ require("node:fs").writeFileSync(process.argv.at(-1), Buffer.alloc(2000));
     await run.endVideoCapture();
     encoding = run.encodeVideo();
     await enteredStat;
-    assert.equal(existsSync(`${destination}.result.json`), false);
-    assert.equal(existsSync(`${destination}.handoff.json`), false);
     assert.ok((await originalStat(destination)).size >= 1000);
     abandonVideoOnHostStop();
     const claimed = new Library(home).listRuns()[0]!;
     assert.equal(claimed.video, `${run.id}.mp4`);
     assert.equal(claimed.videoUnavailable, undefined);
+    const videos = path.dirname(destination);
+    const cleaned = Date.now() + 5000;
+    while ((await readdir(videos)).some((name) => name.includes(".frames-"))) {
+      assert.ok(Date.now() < cleaned, "handoff removed the frames without deleting the video");
+      await wait(20);
+    }
     assert.ok((await originalStat(destination)).size >= 1000);
     releaseStat();
     await encoding;
@@ -568,7 +576,12 @@ setTimeout(() => {
     assert.equal(stopped.video, `${live.id}.mp4`);
     assert.equal(stopped.videoUnavailable, undefined);
     assert.ok((await stat(path.join(homeB, "videos", `${live.id}.mp4`))).size >= 1000);
-    assert.deepEqual((await readdir(path.join(homeB, "videos"))).filter((name) => name.includes(".frames-")), []);
+    const liveVideos = path.join(homeB, "videos");
+    const cleaned = Date.now() + 5000;
+    while ((await readdir(liveVideos)).some((name) => name.includes(".frames-"))) {
+      assert.ok(Date.now() < cleaned, "frames directory removed after the video was saved");
+      await wait(20);
+    }
   } finally {
     abandonVideoOnHostStop();
     if (pid) { try { process.kill(pid, "SIGKILL"); } catch { /* already dead */ } }

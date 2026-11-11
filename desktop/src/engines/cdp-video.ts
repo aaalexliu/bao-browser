@@ -161,8 +161,26 @@ export async function startCdpVideo(cdp: CdpSocket, sessionId: string, destinati
     rmSync(destination, { force: true });
     rmSync(dir, { recursive: true, force: true });
   };
+  const handFinishedCleanup = (owner: VideoEncodeOwner): void => {
+    const supervisorAlive = !!encoder && encoder.exitCode === null && encoder.signalCode === null;
+    if (supervisorAlive) {
+      try {
+        writeOwner(owner);
+        writeFileSync(paths.released, "", { mode: 0o600 });
+        releasedEncode = true;
+        if (encodeTimer) clearTimeout(encodeTimer);
+        releaseWaiter?.();
+        return;
+      } catch { /* spec already removed */ }
+    }
+    rmSync(dir, { recursive: true, force: true });
+    clearHandoff();
+  };
   const releaseEncode = (owner: VideoEncodeOwner): { kind: "finished"; truncated: boolean } | { kind: "released" } | { kind: "none" } => {
-    if (encoded || (fileReady() && readResult()?.wrote === true)) return { kind: "finished", truncated };
+    if (encoded || (fileReady() && readResult()?.wrote === true)) {
+      handFinishedCleanup(owner);
+      return { kind: "finished", truncated };
+    }
     if (releasedEncode) return { kind: "released" };
     if (encoder && (encoder.exitCode !== null || encoder.signalCode !== null)) return { kind: "none" };
     if (!mp4 || !startSupervisor(owner)) return { kind: "none" };
@@ -234,7 +252,6 @@ export async function startCdpVideo(cdp: CdpSocket, sessionId: string, destinati
           if (releasedEncode) return { wrote: false, frames: frames.length, truncated };
           const result = readResult();
           if (result?.wrote) encoded = true;
-          clearHandoff();
           if (!result?.wrote) {
             if (result?.signal === "SIGKILL") throw new Error("CDP video encoding timed out");
             if (result?.code === 0) throw new Error("CDP video output was empty");
@@ -277,7 +294,10 @@ export async function startCdpVideo(cdp: CdpSocket, sessionId: string, destinati
         throw error;
       } finally {
         if (encodeTimer) clearTimeout(encodeTimer);
-        if (!keepFrames && !releasedEncode) await rm(dir, { recursive: true, force: true });
+        if (!keepFrames && !releasedEncode) {
+          await rm(dir, { recursive: true, force: true });
+          clearHandoff();
+        }
       }
     })();
     return stopping;
