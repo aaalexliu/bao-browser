@@ -258,7 +258,7 @@ test("Running Chrome records the background task without changing the owner tab,
   } finally { probe.close(); await f.close(); }
 });
 
-test("a stop that cuts off an in-progress encode leaves no frames directory and no ffmpeg child", async () => {
+test("a stop that cuts off an in-progress encode leaves the encoder running and attaches the video", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-video-cutoff-"));
   const home = path.join(root, "home");
   const pidFile = path.join(root, "encoder.pid");
@@ -267,9 +267,11 @@ test("a stop that cuts off an in-progress encode leaves no frames directory and 
   let pid = 0;
   await writeFile(encoder, `#!${process.execPath}
 const fs = require("node:fs");
-fs.writeFileSync(process.argv.at(-1), Buffer.alloc(100));
 fs.writeFileSync(${JSON.stringify(pidFile)}, String(process.pid));
-setInterval(() => {}, 1000);
+setTimeout(() => {
+  fs.writeFileSync(process.argv.at(-1), Buffer.alloc(2000));
+  process.exit(0);
+}, 400);
 `, { mode: 0o700 });
   process.env.FFMPEG = encoder;
   const frames = new Map<string, (params: Record<string, unknown>) => void>();
@@ -304,31 +306,74 @@ setInterval(() => {}, 1000);
     }
     pid = Number(await readFile(pidFile, "utf8"));
     assert.ok(pid > 0);
-    assert.equal(existsSync(path.join(videos, `${run.id}.mp4`)), true);
     assert.doesNotThrow(() => process.kill(pid, 0));
     abandonVideoOnHostStop();
-    const gone = Date.now() + scaledMs(2000);
-    while (Date.now() < gone) {
-      try { process.kill(pid, 0); }
-      catch { break; }
-      await wait(20);
-    }
-    assert.throws(() => process.kill(pid, 0));
-    assert.deepEqual((await readdir(videos)).filter((name) => name.includes(".frames-")), []);
-    assert.equal(existsSync(path.join(videos, `${run.id}.mp4`)), false);
-    const saved = new Library(home).listRuns()[0]!;
-    assert.equal(saved.video, undefined);
-    assert.equal(saved.videoStartedAt, undefined);
-    assert.equal(saved.videoTruncated, undefined);
-    assert.equal(saved.videoUnavailable, "Bao stopped before the video finished");
+    assert.doesNotThrow(() => process.kill(pid, 0));
     await encoding;
+    const savedAt = Date.now() + 5000;
+    let saved = new Library(home).listRuns()[0]!;
+    while (!saved.video && Date.now() < savedAt) {
+      await wait(20);
+      saved = new Library(home).listRuns()[0]!;
+    }
+    assert.equal(saved.video, `${run.id}.mp4`);
+    assert.equal(typeof saved.videoStartedAt, "number");
+    assert.equal(saved.videoUnavailable, undefined);
+    assert.ok((await stat(path.join(videos, `${run.id}.mp4`))).size >= 1000);
+    assert.deepEqual((await readdir(videos)).filter((name) => name.includes(".frames-")), []);
     assert.equal(notes.some((line) => line.includes("frames retained")), false);
-    assert.equal(notes.some((line) => line.includes("Bao stopped before the video finished")), true);
+    assert.equal(notes.some((line) => line.includes("Bao stopped before the video finished")), false);
   } finally {
     process.stderr.write = write;
     abandonVideoOnHostStop();
     if (pid) { try { process.kill(pid, "SIGKILL"); } catch { /* already dead */ } }
     if (previous === undefined) delete process.env.FFMPEG; else process.env.FFMPEG = previous;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a later host stop keeps a video the capture limit already saved", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-video-limit-claim-"));
+  const home = path.join(root, "home");
+  const encoder = path.join(root, "encoder");
+  const previous = process.env.FFMPEG;
+  const previousLimit = process.env.BAO_CDP_VIDEO_MAX_BYTES;
+  await writeFile(encoder, `#!${process.execPath}
+require("node:fs").writeFileSync(process.argv.at(-1), Buffer.alloc(2000));
+`, { mode: 0o700 });
+  process.env.FFMPEG = encoder;
+  process.env.BAO_CDP_VIDEO_MAX_BYTES = "4";
+  const frames = new Map<string, (params: Record<string, unknown>) => void>();
+  const emit = () => frames.get("Page.screencastFrame")?.({ data: Buffer.from([0xff, 0xd8, 0xff, 0xd9]).toString("base64"), sessionId: "frame" });
+  const cdp = {
+    on(method: string, _session: string, handler: (params: Record<string, unknown>) => void) { frames.set(method, handler); },
+    async send(method: string) {
+      if (method === "Target.attachToTarget") return { sessionId: "page" };
+      if (method === "Target.getTargets") return { targetInfos: [] };
+      if (method === "Page.startScreencast") emit();
+      return {};
+    },
+  } as unknown as CdpSocket;
+  const run = new AgentBrowserRun(home);
+  try {
+    await run.recordTab(cdp, "tab");
+    await wait(200);
+    emit();
+    const resultFile = path.join(home, "videos", `${run.id}.mp4.result.json`);
+    const ready = Date.now() + 5000;
+    while (!existsSync(resultFile)) {
+      assert.ok(Date.now() < ready, "capture limit finished the encode");
+      await wait(20);
+    }
+    abandonVideoOnHostStop();
+    const saved = new Library(home).listRuns()[0]!;
+    assert.equal(saved.video, `${run.id}.mp4`);
+    assert.equal(saved.videoTruncated, true);
+    assert.equal(saved.videoUnavailable, undefined);
+    assert.ok((await stat(path.join(home, "videos", `${run.id}.mp4`))).size >= 1000);
+  } finally {
+    if (previous === undefined) delete process.env.FFMPEG; else process.env.FFMPEG = previous;
+    if (previousLimit === undefined) delete process.env.BAO_CDP_VIDEO_MAX_BYTES; else process.env.BAO_CDP_VIDEO_MAX_BYTES = previousLimit;
     await rm(root, { recursive: true, force: true });
   }
 });
@@ -391,9 +436,11 @@ process.exit(1);
 `, { mode: 0o700 });
   await writeFile(hanging, `#!${process.execPath}
 const fs = require("node:fs");
-fs.writeFileSync(process.argv.at(-1), Buffer.alloc(100));
 fs.writeFileSync(${JSON.stringify(pidFile)}, String(process.pid));
-setInterval(() => {}, 1000);
+setTimeout(() => {
+  fs.writeFileSync(process.argv.at(-1), Buffer.alloc(2000));
+  process.exit(0);
+}, 400);
 `, { mode: 0o700 });
   const socket = (): CdpSocket => {
     const frames = new Map<string, (params: Record<string, unknown>) => void>();
@@ -437,20 +484,20 @@ setInterval(() => {}, 1000);
     pid = Number(await readFile(pidFile, "utf8"));
     assert.doesNotThrow(() => process.kill(pid, 0));
     abandonVideoOnHostStop();
-    const gone = Date.now() + scaledMs(2000);
-    while (Date.now() < gone) {
-      try { process.kill(pid, 0); }
-      catch { break; }
-      await wait(20);
-    }
-    assert.throws(() => process.kill(pid, 0));
+    assert.doesNotThrow(() => process.kill(pid, 0));
     assert.equal(await readFile(path.join(homeA, "runs", `${settled.id}.json`), "utf8"), record);
     assert.equal((await readdir(path.join(homeA, "videos"))).includes(kept[0]!), true);
-    const stopped = new Library(homeB).listRuns()[0]!;
-    assert.equal(stopped.video, undefined);
-    assert.equal(stopped.videoUnavailable, "Bao stopped before the video finished");
-    assert.deepEqual((await readdir(path.join(homeB, "videos"))).filter((name) => name.includes(".frames-")), []);
     await encoding;
+    const savedAt = Date.now() + 5000;
+    let stopped = new Library(homeB).listRuns()[0]!;
+    while (!stopped.video && Date.now() < savedAt) {
+      await wait(20);
+      stopped = new Library(homeB).listRuns()[0]!;
+    }
+    assert.equal(stopped.video, `${live.id}.mp4`);
+    assert.equal(stopped.videoUnavailable, undefined);
+    assert.ok((await stat(path.join(homeB, "videos", `${live.id}.mp4`))).size >= 1000);
+    assert.deepEqual((await readdir(path.join(homeB, "videos"))).filter((name) => name.includes(".frames-")), []);
   } finally {
     abandonVideoOnHostStop();
     if (pid) { try { process.kill(pid, "SIGKILL"); } catch { /* already dead */ } }

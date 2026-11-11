@@ -13,6 +13,7 @@ import type { AgentBrowserCommandResult } from "./agent-browser-proxy";
 import type { BrowserPick } from "./browser-pick";
 import type { SignInImport } from "./bao-profile";
 import { startCdpVideo, type CdpVideo } from "./cdp-video";
+import { HOST_STOP_VIDEO_UNAVAILABLE } from "./video-handoff";
 
 const hostStopRuns = new Set<AgentBrowserRun>();
 
@@ -297,16 +298,30 @@ export class AgentBrowserRun {
     if (this.videoAbandoned) return;
     this.videoAbandoned = true;
     const active = this.encoding ?? (this.video && this.video.kind !== "unavailable" ? this.video : undefined);
+    const outcome = active?.capture.releaseEncode({
+      runFile: path.join(this.home, "runs", `${this.id}.json`),
+      videoName: `${this.id}.mp4`,
+      startedAt: active.startedAt,
+    }) ?? { kind: "none" as const };
+    this.video = { kind: "unavailable" };
+    this.encoding = undefined;
+    hostStopRuns.delete(this);
+    if (outcome.kind === "released") return;
+    if (outcome.kind === "finished") {
+      this.run.video = `${this.id}.mp4`;
+      this.run.videoStartedAt = active!.startedAt;
+      this.run.videoTruncated = outcome.truncated;
+      delete this.run.videoUnavailable;
+      this.persist();
+      return;
+    }
     active?.capture.abandonEncode();
     delete this.run.video;
     delete this.run.videoStartedAt;
     delete this.run.videoTruncated;
-    this.run.videoUnavailable = "Bao stopped before the video finished";
-    this.video = { kind: "unavailable" };
-    this.encoding = undefined;
-    hostStopRuns.delete(this);
+    this.run.videoUnavailable = HOST_STOP_VIDEO_UNAVAILABLE;
     this.persist();
-    this.warn("Bao stopped before the video finished");
+    this.warn(HOST_STOP_VIDEO_UNAVAILABLE);
   }
 
   signInImported(report: SignInImport): void {
