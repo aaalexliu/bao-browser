@@ -301,7 +301,7 @@ export class AgentBrowserProxy {
         return seat.session;
       case "ended":
         return seat.reason === "disconnected" ? seat.session : undefined;
-      default:
+      case "starting":
         return undefined;
     }
   }
@@ -341,7 +341,8 @@ export class AgentBrowserProxy {
     const seat = this.seat;
     if (seat.phase === "live" && seat.session === session) seat.ownerWait = wait;
     else if (seat.phase === "closing" && seat.session === session) seat.ownerWait = wait;
-    session.recording.syncOwnerWait(wait);
+    const human = wait === "pending" || (typeof wait === "object" && ownerWall(wait.page) !== null);
+    session.recording.syncOwnerWait(wait === "off" || wait === "pending" ? wait : { targetId: wait.targetId }, human);
   }
 
   private closingOf(session: Session): boolean {
@@ -608,11 +609,6 @@ export class AgentBrowserProxy {
         const opened = stop && await this.moveAway(session, this.wallWords(session), stop.reopen, true);
         if (opened) {
           results.push(...this.waitOf(session) !== "off" ? this.ownerResult("halted", session) : [opened]);
-          return results;
-        }
-        if (stop && read && !ownerWall(read.page)) {
-          this.setWait(session, "off");
-          results.push(...this.ownerResult("ready", session));
           return results;
         }
         if (stop && read && (this.waitOf(session) === "off" || this.waitOf(session) === "pending")) {
@@ -1341,10 +1337,6 @@ export class AgentBrowserProxy {
           if (this.waitOf(session) === "off" || this.waitOf(session) === "pending") {
             const active = await this.activePage(session);
             if (!active) return this.ownerClosed(session);
-            if (!ownerWall(active.page)) {
-              this.setWait(session, "off");
-              return this.ownerResult("ready", session);
-            }
             if (this.waitOf(session) === "off") session.ownerSince = session.ownerTouched = Date.now();
             this.setWait(session, this.stopped(session, active));
             session.ownerPage = active.page;
@@ -1363,6 +1355,7 @@ export class AgentBrowserProxy {
           if (ownerWall(page) && (waiting.page.url !== page.url || waiting.page.title !== page.title)) {
             waiting.page = { url: page.url, title: page.title };
             session.ownerPage = session.page = waiting.page;
+            this.setWait(session, waiting);
             await this.ownerBanner(session, waiting.targetId, true, { raise: false });
           }
           const ready = ownerCanResume(waiting.page, page);

@@ -256,9 +256,10 @@ test("an owner wait follows a later wall in its card, instruction, banner, and r
     assert.equal(outcome(await proxy.execute("wait_for_owner", ["2000"], undefined, false, undefined, {}, runId)), "ready");
     assert.equal(await page.locator("#bao-owner-wait").count(), 0);
     assert.equal(proxy.activeRunId, runId);
-    assert.equal(outcome(await proxy.execute("wait_for_owner", ["50"], undefined, false, undefined, {}, runId)), "ready", "a page that is not a wall does not start a wait");
+    assert.equal(outcome(await proxy.execute("wait_for_owner", ["50"], undefined, false, undefined, {}, runId)), "waiting");
     await page.goto(fixture.url("/owner/verify"));
     assert.equal(outcome(await proxy.execute("wait_for_owner", ["300"], undefined, false, undefined, {}, runId)), "waiting");
+    // Returning to an unrecognized wait's first page must count as a change from the later wall.
     await page.goto(fixture.url("/member"));
     assert.equal(outcome(await proxy.execute("wait_for_owner", ["2000"], undefined, false, undefined, {}, runId)), "ready");
   } finally { await h.cleanup("copy", observer); }
@@ -467,7 +468,7 @@ test("a wait_for_owner, close, or finish_task that names a run a newer open ende
   });
 });
 
-test("a wait_for_owner on a page that is not a wall returns ready and does not stick, and a later command still needs the open's run id", { timeout: scaledMs(60_000) }, async (t) => {
+test("a wait_for_owner on a page that is not a wall does not stick in needs_human, and a later command still needs the open's run id", { timeout: scaledMs(60_000) }, async (t) => {
   const h = await ownerProxy(t);
   const { fixture, proxy } = h;
   try {
@@ -475,10 +476,10 @@ test("a wait_for_owner on a page that is not a wall returns ready and does not s
     const run = proxy.activeRunId!;
     assert.equal((await proxy.execute("snapshot", [], undefined, false, undefined, {}, run))[0]!.stdout, "snapshot native output\n", "a snapshot that names the open run acts on it");
     await assert.rejects(proxy.execute("click", ["@e1"]), /run_id is required on click while a browser session is open/);
-    assert.equal(outcome(await proxy.execute("wait_for_owner", ["40"], undefined, false, undefined, {}, run)), "ready");
+    assert.equal(outcome(await proxy.execute("wait_for_owner", ["40"], undefined, false, undefined, {}, run)), "waiting");
     assert.equal(proxy.activeRunId, run);
-    assert.equal(proxy.ownerPage, undefined);
-    assert.equal(new Library(h.home).readRun(run).status, "recording");
+    assert.equal(proxy.ownerPage?.url, fixture.url("/"));
+    assert.equal(new Library(h.home).readRun(run).status, "recording", "a page that is not a wall does not stick in needs_human");
     assert.equal(await proxy.finishTask({ outcome: "passed", reason: "The page was already open." }, run), run);
     assert.equal(new Library(h.home).readRun(run).envelope?.reason, "The page was already open.");
   } finally { await h.cleanup("copy"); }

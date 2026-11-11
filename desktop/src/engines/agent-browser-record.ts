@@ -320,9 +320,9 @@ export class AgentBrowserRun {
     this.persist();
   }
 
-  /** The run status is the session owner wait: off records, and any other wait needs the owner. */
-  syncOwnerWait(wait: "off" | "pending" | { targetId: string }): void {
-    const waiting = wait !== "off";
+  /** The run status follows the owner wait. A page that is not a wall does not stick in needs_human. */
+  syncOwnerWait(wait: "off" | "pending" | { targetId: string }, human = wait !== "off"): void {
+    const waiting = wait !== "off" && human;
     const wasWaiting = this.run.status === "needs_human";
     this.run.status = waiting ? "needs_human" : "recording";
     if (this.video?.kind === "recording") {

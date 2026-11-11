@@ -1001,8 +1001,8 @@ test("a wait_for_owner on a normal page does not stick in needs_human, so finish
   try {
     await f.proxy.execute("open", ["http://127.0.0.1/"], "copy");
     const runId = f.proxy.activeRunId!;
-    const [ready] = await f.proxy.execute("wait_for_owner", ["40"], undefined, false, undefined, {}, runId);
-    assert.equal((JSON.parse(ready!.stdout) as { outcome: string }).outcome, "ready");
+    const [waiting] = await f.proxy.execute("wait_for_owner", ["40"], undefined, false, undefined, {}, runId);
+    assert.equal((JSON.parse(waiting!.stdout) as { outcome: string }).outcome, "waiting");
     const library = new Library(path.join(f.root, "home"));
     assert.equal(library.readRun(runId).status, "recording");
     assert.equal(await f.proxy.finishTask({ outcome: "passed", reason: "The page was already open." }, runId), runId);
