@@ -16,7 +16,7 @@ Load an applicable skill by its name through the harness. If that load fails, re
 
 `npm run typecheck` runs three passes: `typecheck:desktop` (including shared code), `typecheck:extension`, and the `web` typecheck. `npm run check` runs `npm run typecheck`, then the desktop unit suite.
 
-`npm run test:v1` is the desktop unit suite. It compiles with `tsc -p tsconfig.desktop.json`, then `desktop/test/run-v1.mjs` runs the files in `desktop/test/unit`. A non-zero exit fails this pass. The runner drops `CI`, the vendor model keys, and every inherited name that starts with `BAO`, then sets `BAO_HEAL_CURSOR_ACCOUNT` to `0`. The suite does not request public hosts. The public demos are in `desktop/test/live/files-dates-public.test.ts`. They run only through `desktop/test/run-live.mjs`, which sets `BAO_LIVE_TESTS=1`. `desktop/test/README.md` describes both runners.
+`npm run test:v1` is the desktop unit suite. It compiles with `tsc -p tsconfig.desktop.json`, then `desktop/test/run-v1.mjs` runs the files in `desktop/test/unit`. A non-zero exit fails this pass. The runner drops `CI`, the vendor model keys, and every inherited name that starts with `BAO` except `BAO_TEST_TIME_SCALE`, then sets `BAO_HEAL_CURSOR_ACCOUNT` to `0`. The suite does not request public hosts. The public demos are in `desktop/test/live/files-dates-public.test.ts`. They run only through `desktop/test/run-live.mjs`, which sets `BAO_LIVE_TESTS=1`. `desktop/test/README.md` describes both runners.
 
 The old root extension and `npm test` entry point are retired. Current test commands are in `docs/TESTING.md`.
 

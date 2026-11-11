@@ -46,7 +46,7 @@ Use `scripts/test-essential.mjs <group>` for one essential group after building.
 For an exact desktop file, run its compiled path with Node's test runner in an
 isolated environment. Do not pass a filename to `desktop/test/run-v1.mjs` to
 select it: that runner still appends the full suite. The shared environment
-helper pins Playwright Chromium, keeps the real browser cache across a temp `HOME`, and strips model keys and inherited Bao settings:
+helper pins Playwright Chromium, keeps the real browser cache across a temp `HOME`, and strips model keys and inherited Bao settings except `BAO_TEST_TIME_SCALE`:
 
 ```sh
 node --input-type=module <<'JS'

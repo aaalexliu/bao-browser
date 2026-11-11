@@ -12,6 +12,7 @@ import { pagePoster } from "../../src/v1/browser-driver";
 import { cleanSaveField, saveIntentPrompt } from "../../src/v1/save-intent";
 import { projectTeach } from "../../src/v1/teach";
 import { Library } from "../../src/v1/store";
+import { scaledMs } from "../runtime";
 
 const fields = [
   { id: "otp", autocomplete: "one-time-code", value: "683", secret: true },
@@ -26,7 +27,7 @@ const fields = [
   { id: "token", autocomplete: "off", value: "sk-localFixtureToken", secret: false },
 ];
 
-test("browser capture retains password changes and ordinary fields in Library defaults and trails", { timeout: 30_000 }, async (t) => {
+test("browser capture retains password changes and ordinary fields in Library defaults and trails", { timeout: scaledMs(30_000) }, async (t) => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-input-capture-"));
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const library = new Library(home);
@@ -77,7 +78,7 @@ test("browser capture retains password changes and ordinary fields in Library de
   }
 });
 
-test("sequential password prefixes do not turn Guests into a secret or erase ordinary naming", { timeout: 30_000 }, async (t) => {
+test("sequential password prefixes do not turn Guests into a secret or erase ordinary naming", { timeout: scaledMs(30_000) }, async (t) => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-password-prefix-"));
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const library = new Library(home);

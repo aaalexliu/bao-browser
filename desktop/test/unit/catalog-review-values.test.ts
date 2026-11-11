@@ -15,6 +15,7 @@ import { privateReviewStep } from "../../src/mcp/review-step-privacy";
 import { inspectRunView, openStepPictures } from "../../src/mcp/run-view";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
+import { scaledMs } from "../runtime";
 
 const values = ["sk-reviewFixtureToken123456789", "4111111111111111", "123-45-6789", "Ada Lovelace"];
 
@@ -63,7 +64,7 @@ test("review crop eligibility covers literal, default and actual run text values
   }
 });
 
-test("marketplace review withholds token card and SSN crops but retains raw local text evidence", { timeout: 60_000 }, async () => {
+test("marketplace review withholds token card and SSN crops but retains raw local text evidence", { timeout: scaledMs(60_000) }, async () => {
   process.env.BAO_CHROME_NO_SANDBOX = "1";
   const root = mkdtempSync(path.join(tmpdir(), "bao-review-values-"));
   const library = new Library(root);

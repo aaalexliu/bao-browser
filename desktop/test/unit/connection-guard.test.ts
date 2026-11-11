@@ -4,7 +4,7 @@ import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { CONNECTION_GUARD, laneChildEnv } from "../runtime";
+import { CONNECTION_GUARD, laneChildEnv, scaledMs } from "../runtime";
 
 // Loaded before the guard, so the guard wraps it. It stands in for the network and the disk:
 // a 9222 connection or a read under the real Chrome folder that gets past the guard is recorded, never made.
@@ -98,7 +98,7 @@ function runGuarded() {
   writeFileSync(floor, FLOOR);
   writeFileSync(probe, PROBE);
   const env = { ...process.env, NODE_OPTIONS: `--require ${JSON.stringify(floor)} --require ${JSON.stringify(CONNECTION_GUARD)}` };
-  return spawnSync(process.execPath, [probe], { env, encoding: "utf8", timeout: 30_000 });
+  return spawnSync(process.execPath, [probe], { env, encoding: "utf8", timeout: scaledMs(30_000) });
 }
 
 test("the guard refuses every route to the owner's Chrome port and folder, and fails the process", () => {
@@ -142,7 +142,7 @@ test("a node child with NODE_OPTIONS cleared still refuses the owner's Chrome po
   ].join("\n");
   const env = { ...process.env };
   delete env.NODE_OPTIONS;
-  const result = spawnSync(process.execPath, ["-e", script], { env, encoding: "utf8", timeout: 15_000 });
+  const result = spawnSync(process.execPath, ["-e", script], { env, encoding: "utf8", timeout: scaledMs(15_000) });
   assert.equal(result.stdout.trim(), "EOWNERCHROME", result.stderr);
 });
 
@@ -166,10 +166,10 @@ test("a headed browser fails outside the live lane and is allowed in it", () => 
     'process.stdout.write("quiet " + once(["--headless=new", "about:blank"]) + "\\n");',
   ].join("\n");
   const base = { ...process.env, CHROME: chrome, NODE_OPTIONS: `--require ${JSON.stringify(CONNECTION_GUARD)}` };
-  const hermetic = spawnSync(process.execPath, ["-e", probe], { env: { ...base, BAO_LANE: "hermetic" }, encoding: "utf8", timeout: 15_000 });
+  const hermetic = spawnSync(process.execPath, ["-e", probe], { env: { ...base, BAO_LANE: "hermetic" }, encoding: "utf8", timeout: scaledMs(15_000) });
   assert.match(hermetic.stdout, /headed EOWNERCHROME/);
   assert.match(hermetic.stdout, /quiet 0/, hermetic.stderr);
-  const live = spawnSync(process.execPath, ["-e", probe], { env: { ...base, BAO_LANE: "live" }, encoding: "utf8", timeout: 15_000 });
+  const live = spawnSync(process.execPath, ["-e", probe], { env: { ...base, BAO_LANE: "live" }, encoding: "utf8", timeout: scaledMs(15_000) });
   assert.match(live.stdout, /headed 0/, live.stderr);
   assert.match(live.stdout, /quiet 0/, live.stderr);
 });

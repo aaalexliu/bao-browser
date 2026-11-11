@@ -8,6 +8,7 @@ import type { CdpSocket } from "../../src/cdp-live/socket";
 import { startCdpVideo } from "../../src/engines/cdp-video";
 import { ffmpegBin } from "../../src/v1/replay-video";
 import { redactedPng } from "../../src/v1/redacted-png";
+import { scaledMs } from "../runtime";
 
 function frameSource() {
   let emit = (_params: Record<string, unknown>) => {};
@@ -25,7 +26,7 @@ function frameSource() {
 const ffmpeg = ffmpegBin();
 const hasFfprobe = spawnSync("ffprobe", ["-version"], { stdio: "ignore" }).status === 0;
 
-test("MP4 clips use QuickTime-safe H.264 with square pixels and a 30 fps timeline", { skip: !ffmpeg || !hasFfprobe, timeout: 30_000 }, async (t) => {
+test("MP4 clips use QuickTime-safe H.264 with square pixels and a 30 fps timeline", { skip: !ffmpeg || !hasFfprobe, timeout: scaledMs(30_000) }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-video-quicktime-"));
   const destination = path.join(root, "clip.mp4");
   const source = frameSource();
@@ -95,7 +96,7 @@ test("MP4 clips use QuickTime-safe H.264 with square pixels and a 30 fps timelin
   }
 });
 
-test("an MP4 keeps its full timeline and post-handoff frames across a twenty-minute pause", { skip: !ffmpeg || !hasFfprobe, timeout: 60_000 }, async (t) => {
+test("an MP4 keeps its full timeline and post-handoff frames across a twenty-minute pause", { skip: !ffmpeg || !hasFfprobe, timeout: scaledMs(60_000) }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-video-long-handoff-"));
   const destination = path.join(root, "clip.mp4");
   const source = frameSource();
@@ -152,7 +153,7 @@ test("an MP4 keeps its full timeline and post-handoff frames across a twenty-min
   }
 });
 
-for (const outcome of ["failure", "timeout"] as const) test(`an MP4 encoder ${outcome} retains recoverable source frames`, { skip: !ffmpeg, timeout: 30_000 }, async (t) => {
+for (const outcome of ["failure", "timeout"] as const) test(`an MP4 encoder ${outcome} retains recoverable source frames`, { skip: !ffmpeg, timeout: scaledMs(30_000) }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-video-encoder-failure-"));
   const destination = path.join(root, "clip.mp4");
   const source = frameSource();
@@ -207,7 +208,7 @@ for (const outcome of ["failure", "timeout"] as const) test(`an MP4 encoder ${ou
   }
 });
 
-test("temporary frames and encoded video are veiled before persistence; pause drops frames", { skip: !ffmpeg, timeout: 30_000 }, async (t) => {
+test("temporary frames and encoded video are veiled before persistence; pause drops frames", { skip: !ffmpeg, timeout: scaledMs(30_000) }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-video-privacy-"));
   const destination = path.join(root, "clip.mp4");
   const source = frameSource();
@@ -267,7 +268,7 @@ test("temporary frames and encoded video are veiled before persistence; pause dr
   }
 });
 
-test("explicit no-blur recording preserves source pixels in temporary frames and the encoded clip", { skip: !ffmpeg, timeout: 30_000 }, async (t) => {
+test("explicit no-blur recording preserves source pixels in temporary frames and the encoded clip", { skip: !ffmpeg, timeout: scaledMs(30_000) }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-eval-video-"));
   const destination = path.join(root, "clip.mp4");
   const source = frameSource();
@@ -300,7 +301,7 @@ test("explicit no-blur recording preserves source pixels in temporary frames and
   }
 });
 
-test("a missing final screencast frame fails instead of saving only startup frames", { skip: !ffmpeg, timeout: 30_000 }, async (t) => {
+test("a missing final screencast frame fails instead of saving only startup frames", { skip: !ffmpeg, timeout: scaledMs(30_000) }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-video-final-frame-"));
   const destination = path.join(root, "clip.webm");
   const source = frameSource();
@@ -321,7 +322,7 @@ test("a missing final screencast frame fails instead of saving only startup fram
   }
 });
 
-test("a failed frame transform never writes the raw input or leaves a clip", { skip: !ffmpeg, timeout: 30_000 }, async (t) => {
+test("a failed frame transform never writes the raw input or leaves a clip", { skip: !ffmpeg, timeout: scaledMs(30_000) }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-video-fail-closed-"));
   const source = frameSource();
   const fs = require("node:fs/promises") as typeof import("node:fs/promises");

@@ -13,7 +13,7 @@ import { closeRetainedChrome, launchOwnedChrome, launchOwnedChromeEndpoint, pinT
 import * as cdpSocket from "../../src/cdp-live/socket";
 import { Library } from "../../src/v1/store";
 import { loadState, saveState } from "../../src/v1/sync";
-import { laneChildEnv } from "../runtime";
+import { laneChildEnv, scaledMs } from "../runtime";
 import { LIST_TARGETS } from "../support/fake-agent-browser";
 
 const cli = path.resolve(__dirname, "../../src/app/cli.js");
@@ -86,7 +86,7 @@ module.exports = { drive };
 interface Result { isError?: boolean; content?: { text: string }[]; structuredContent?: Record<string, unknown> }
 
 async function until(read: () => boolean | Promise<boolean>): Promise<void> {
-  const deadline = Date.now() + 20_000;
+  const deadline = Date.now() + scaledMs(20_000);
   while (Date.now() < deadline) { if (await read()) return; await delay(50); }
   throw new Error("session cleanup timed out");
 }
@@ -238,7 +238,7 @@ function client(env: NodeJS.ProcessEnv, agent: boolean, group: boolean) {
   };
 }
 
-test("a failed finish does not save a replayable task or repeat the agent's reason", { timeout: 60_000 }, async (t) => {
+test("a failed finish does not save a replayable task or repeat the agent's reason", { timeout: scaledMs(60_000) }, async (t) => {
   pinTestBrowser();
   const root = await mkdtemp(path.join(tmpdir(), "bao-failed-save-"));
   const home = path.join(root, "home");
@@ -279,7 +279,7 @@ test("a failed finish does not save a replayable task or repeat the agent's reas
 });
 
 if (process.env.BAO_SESSION_END_FAILURE_PROBE) {
-  test("kept-copy failure probe", { timeout: 60_000 }, async (t) => {
+  test("kept-copy failure probe", { timeout: scaledMs(60_000) }, async (t) => {
     const f = await fixture("close");
     t.after(async () => {
       try {
@@ -308,7 +308,7 @@ if (process.env.BAO_SESSION_END_FAILURE_PROBE) {
     assert.fail("kept-copy-body-marker");
   });
 } else {
-  test("fixture teardown preserves body failures and reclaims kept copies", { timeout: 120_000 }, async () => {
+  test("fixture teardown preserves body failures and reclaims kept copies", { timeout: scaledMs(120_000) }, async () => {
     const root = await mkdtemp(path.join(tmpdir(), "bao-session-end-failure-"));
     try {
       const receipt = path.join(root, "body.json");
@@ -317,7 +317,7 @@ if (process.env.BAO_SESSION_END_FAILURE_PROBE) {
       delete env.NODE_TEST_CONTEXT;
       const result = await new Promise<{ code: number | string | null | undefined; output: string }>((resolve) => {
         execFile(process.execPath, ["--test", "--test-isolation=process", "--test-reporter=tap",
-          "--test-name-pattern=^kept-copy failure probe$", __filename], { env, timeout: 90_000 }, (error, stdout, stderr) => {
+          "--test-name-pattern=^kept-copy failure probe$", __filename], { env, timeout: scaledMs(90_000) }, (error, stdout, stderr) => {
           resolve({ code: error?.code, output: stdout + stderr });
         });
       });
@@ -328,7 +328,7 @@ if (process.env.BAO_SESSION_END_FAILURE_PROBE) {
   });
 }
 
-test("retained-profile reclaim removes orphan renderers only for its exact profile", { timeout: 30_000 }, async (t) => {
+test("retained-profile reclaim removes orphan renderers only for its exact profile", { timeout: scaledMs(30_000) }, async (t) => {
   pinTestBrowser();
   const root = await mkdtemp(path.join(tmpdir(), "bao-orphan-reclaim-"));
   const executable = path.join(root, "chrome-renderer.cjs");
@@ -359,7 +359,7 @@ test("retained-profile reclaim removes orphan renderers only for its exact profi
   assert.equal(children[2]!.child.signalCode, null, "a different profile is never signaled");
 });
 
-test("owned shutdown waits for exact-profile orphan processes to exit", { timeout: 30_000 }, async (t) => {
+test("owned shutdown waits for exact-profile orphan processes to exit", { timeout: scaledMs(30_000) }, async (t) => {
   pinTestBrowser();
   const root = await mkdtemp(path.join(tmpdir(), "bao-shutdown-orphan-"));
   const profile = path.join(root, "chrome");
@@ -396,7 +396,7 @@ test("owned shutdown waits for exact-profile orphan processes to exit", { timeou
   assert.equal(pidsForDataDir(profile).length, 0, "close must await process exit, not just signal delivery");
 });
 
-test("owned shutdown terminates a stalled exact-profile browser before returning", { timeout: 30_000 }, async (t) => {
+test("owned shutdown terminates a stalled exact-profile browser before returning", { timeout: scaledMs(30_000) }, async (t) => {
   pinTestBrowser();
   const root = await mkdtemp(path.join(tmpdir(), "bao-shutdown-stalled-"));
   const profile = path.join(root, "chrome");
@@ -416,7 +416,7 @@ test("owned shutdown terminates a stalled exact-profile browser before returning
   assert.equal(pidsForDataDir(profile).length, 0, "close must not succeed while its owned browser is still alive");
 });
 
-test("retained reclaim terminates its exact browser even when CDP acknowledges close without exiting", { timeout: 30_000 }, async (t) => {
+test("retained reclaim terminates its exact browser even when CDP acknowledges close without exiting", { timeout: scaledMs(30_000) }, async (t) => {
   pinTestBrowser();
   const root = await mkdtemp(path.join(tmpdir(), "bao-reclaim-ack-"));
   const profile = path.join(root, "chrome");
@@ -433,7 +433,7 @@ test("retained reclaim terminates its exact browser even when CDP acknowledges c
   assert.equal(pidsForDataDir(profile).length, 0, "a close acknowledgement is not proof that Chrome exited");
 });
 
-test("retained reclaim terminates a stalled exact-profile browser before returning", { timeout: 30_000 }, async (t) => {
+test("retained reclaim terminates a stalled exact-profile browser before returning", { timeout: scaledMs(30_000) }, async (t) => {
   pinTestBrowser();
   const root = await mkdtemp(path.join(tmpdir(), "bao-reclaim-stalled-"));
   const profile = path.join(root, "chrome");
@@ -458,7 +458,7 @@ test("retained reclaim terminates a stalled exact-profile browser before returni
 });
 
 for (const keepOpen of [false, true]) {
-  test(`finish_task finalizes without close or disconnect, honors keep-open=${keepOpen}, and accepts another task`, { timeout: 60_000 }, async (t) => {
+  test(`finish_task finalizes without close or disconnect, honors keep-open=${keepOpen}, and accepts another task`, { timeout: scaledMs(60_000) }, async (t) => {
     const f = await fixture();
     t.after(() => f.close());
     f.library.updateSettings({ keepAgentBrowserOpen: keepOpen, heal: "never" });
@@ -501,7 +501,7 @@ for (const keepOpen of [false, true]) {
   });
 }
 
-test("finish_task after a completed close leaves the prior task unchanged", { timeout: 60_000 }, async (t) => {
+test("finish_task after a completed close leaves the prior task unchanged", { timeout: scaledMs(60_000) }, async (t) => {
   const f = await fixture();
   t.after(() => f.close());
   const c = f.start();
@@ -528,7 +528,7 @@ test("finish_task after a completed close leaves the prior task unchanged", { ti
 });
 
 for (const outcome of ["failed-task", "failed-command", "owner-wait"] as const) {
-  test(`finish_task records the checked outcome for ${outcome}`, { timeout: 60_000 }, async (t) => {
+  test(`finish_task records the checked outcome for ${outcome}`, { timeout: scaledMs(60_000) }, async (t) => {
     const f = await fixture();
     t.after(() => f.close());
     const c = f.start();
@@ -578,7 +578,7 @@ for (const outcome of ["failed-task", "failed-command", "owner-wait"] as const) 
   });
 }
 
-test("a failed finish_task on a saveable open and click says the task failed, once", { timeout: 90_000 }, async (t) => {
+test("a failed finish_task on a saveable open and click says the task failed, once", { timeout: scaledMs(90_000) }, async (t) => {
   const server = createServer((_req, res) => {
     res.end("<!doctype html><title>Grocery</title><button data-testid=\"chosen\">Add blueberries</button>");
   });
@@ -609,7 +609,7 @@ test("a failed finish_task on a saveable open and click says the task failed, on
   assert.equal(f.library.list().workflows.length, 0);
 });
 
-test("a failed open from another chat does not name the run it ended", { timeout: 60_000 }, async (t) => {
+test("a failed open from another chat does not name the run it ended", { timeout: scaledMs(60_000) }, async (t) => {
   const f = await fixture();
   t.after(() => f.close());
   const c = f.start();
@@ -624,7 +624,7 @@ test("a failed open from another chat does not name the run it ended", { timeout
   assert.equal(f.library.listRuns().some((run) => run.status === "recording"), false);
 });
 
-test("finish_task for a run a newer task ended stays closed while that session is open", { timeout: 90_000 }, async (t) => {
+test("finish_task for a run a newer task ended stays closed while that session is open", { timeout: scaledMs(90_000) }, async (t) => {
   const f = await fixture();
   t.after(() => f.close());
   const c = f.start();
@@ -650,7 +650,7 @@ test("finish_task for a run a newer task ended stays closed while that session i
   assert.equal(still.content!.some((block) => block.text.includes(older)), false);
 });
 
-test("after the newer task finishes, the older chat's named commands stay closed", { timeout: 90_000 }, async (t) => {
+test("after the newer task finishes, the older chat's named commands stay closed", { timeout: scaledMs(90_000) }, async (t) => {
   const f = await fixture();
   t.after(() => f.close());
   const c = f.start();
@@ -695,7 +695,7 @@ test("after the newer task finishes, the older chat's named commands stay closed
   assert.ok(started && started !== older);
 });
 
-test("a wait_for_owner, close, or finish_task whose run_id is not the open session names that run and leaves the open session alone", { timeout: 60_000 }, async (t) => {
+test("a wait_for_owner, close, or finish_task whose run_id is not the open session names that run and leaves the open session alone", { timeout: scaledMs(60_000) }, async (t) => {
   const f = await fixture();
   t.after(() => f.close());
   const c = f.start();
@@ -730,7 +730,7 @@ test("a wait_for_owner, close, or finish_task whose run_id is not the open sessi
   await c.close();
 });
 
-test("an untouched MCP client disconnect creates no recording run", { timeout: 30_000 }, async (t) => {
+test("an untouched MCP client disconnect creates no recording run", { timeout: scaledMs(30_000) }, async (t) => {
   const f = await fixture();
   t.after(() => f.close());
   const c = f.start();
@@ -740,7 +740,7 @@ test("an untouched MCP client disconnect creates no recording run", { timeout: 3
 });
 
 for (const ending of ["queued-eof", "active-signal"] as const) {
-  test(`explicit close overrides keep-open during ${ending}`, { timeout: 60_000 }, async (t) => {
+  test(`explicit close overrides keep-open during ${ending}`, { timeout: scaledMs(60_000) }, async (t) => {
     const f = await fixture(ending === "queued-eof" ? "snapshot" : "close");
     t.after(() => f.close());
     f.library.updateSettings({ keepAgentBrowserOpen: true });
@@ -765,7 +765,7 @@ for (const ending of ["queued-eof", "active-signal"] as const) {
 }
 
 for (const ending of ["agent-exit", "disconnect", "signal"] as const) {
-  test(`${ending} closes the marked Chrome, removes its copy, finishes the run and allows another open`, { timeout: 60_000 }, async (t) => {
+  test(`${ending} closes the marked Chrome, removes its copy, finishes the run and allows another open`, { timeout: scaledMs(60_000) }, async (t) => {
     const f = await fixture();
     t.after(() => f.close());
     const c = f.start(ending === "agent-exit");
@@ -788,7 +788,7 @@ for (const ending of ["agent-exit", "disconnect", "signal"] as const) {
 
 for (const [signal, repeat] of [["SIGINT", false], ["SIGTERM", false], ["SIGHUP", false], ["SIGINT", true], ["SIGTERM", true]] as const) {
   for (const keepOpen of [false, true]) {
-    test(`terminal group ${signal}${repeat ? " twice" : ""} respects keep-open=${keepOpen}`, { timeout: 60_000 }, async (t) => {
+    test(`terminal group ${signal}${repeat ? " twice" : ""} respects keep-open=${keepOpen}`, { timeout: scaledMs(60_000) }, async (t) => {
       const f = await fixture();
       t.after(() => f.close());
       f.library.updateSettings({ keepAgentBrowserOpen: keepOpen });
@@ -813,7 +813,7 @@ for (const [signal, repeat] of [["SIGINT", false], ["SIGTERM", false], ["SIGHUP"
   }
 }
 
-test("a stopped MCP cleans up its proxy even while a catalog request is stuck", { timeout: 45_000 }, async (t) => {
+test("a stopped MCP cleans up its proxy even while a catalog request is stuck", { timeout: scaledMs(45_000) }, async (t) => {
   const f = await fixture();
   t.after(() => f.close());
   let received!: () => void;
@@ -844,7 +844,7 @@ test("a stopped MCP cleans up its proxy even while a catalog request is stuck", 
   }
 });
 
-test("close near the stop deadline closes a retained window before a queued catalog call finishes", { timeout: 45_000 }, async (t) => {
+test("close near the stop deadline closes a retained window before a queued catalog call finishes", { timeout: scaledMs(45_000) }, async (t) => {
   const f = await fixture();
   t.after(() => f.close());
   let received!: () => void;
@@ -891,7 +891,7 @@ test("close near the stop deadline closes a retained window before a queued cata
   }
 });
 
-test("keep-open finishes the run and the next session reclaims only that home's retained window", { timeout: 60_000 }, async (t) => {
+test("keep-open finishes the run and the next session reclaims only that home's retained window", { timeout: scaledMs(60_000) }, async (t) => {
   let other: Awaited<ReturnType<typeof fixture>> | undefined;
   const f = await fixture();
   t.after(async () => {
@@ -934,7 +934,7 @@ test("keep-open finishes the run and the next session reclaims only that home's 
   await next.close();
 });
 
-test("MCP find and diff reach the agent result, and finish_task keeps the owner card while shortening the model receipt", { timeout: 60_000 }, async (t) => {
+test("MCP find and diff reach the agent result, and finish_task keeps the owner card while shortening the model receipt", { timeout: scaledMs(60_000) }, async (t) => {
   const f = await fixture();
   t.after(() => f.close());
   const page = "- banner\n  - button \"Open search\" [ref=e1]\n- main\n  - link \"Repo 0\" [ref=e10]\n";

@@ -6,8 +6,9 @@ import path from "node:path";
 import test from "node:test";
 import { startApp } from "../../src/app/server";
 import { testChromium } from "../../src/test-browser";
+import { scaledMs } from "../runtime";
 
-test("capture list mapping and record controls stay reachable without scrolling the shell", { timeout: 90_000 }, async () => {
+test("capture list mapping and record controls stay reachable without scrolling the shell", { timeout: scaledMs(90_000) }, async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-capture-picker-"));
   const oldHome = process.env.HOME;
   const oldDrive = process.env.BAO_DRIVE;

@@ -7,6 +7,7 @@ import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import { buildLocators, matchLocator, scoreLocator } from "../../src/v1/locators";
 import { replay, runPassed, type Driver, type LiveTree } from "../../src/v1/replay";
 import { unavailableHeal } from "../../src/v1/heal";
+import { scaledMs } from "../runtime";
 
 function dom(partial: Partial<Identity> & { role: string }): Identity {
   return { surface: "dom", path: [], ...partial };
@@ -198,7 +199,7 @@ test("the real signup-email tie is broken by the recorded test id and css path",
   assert.equal(result.steps[0]?.status, "passed");
 });
 
-test("a recorded purchase-labelled click replays on the page without a human gate", { timeout: 20_000 }, async () => {
+test("a recorded purchase-labelled click replays on the page without a human gate", { timeout: scaledMs(20_000) }, async () => {
   const { testChromium: chromium } = await import("../../src/test-browser.js");
   const { BrowserDriver } = await import("../../src/v1/browser-driver.js");
   const { condense } = await import("../../src/v1/condense.js");
@@ -343,7 +344,7 @@ test("a click inside an open shadow root is recorded on the inner control", asyn
     await page.locator("shop-app").locator("#ladies").click();
     await page.locator("#gender-radio-1").check();
     await page.locator("#months").selectOption({ label: "February" });
-    await page.waitForTimeout(80);
+    await page.waitForTimeout(scaledMs(80));
     const place = events.find((event) => event.op === "click" && event.name === "Place Order");
     assert.equal(place?.target?.role, "button");
     const click = events.find((event) => event.op === "click" && event.text === "Ladies Outerwear");
@@ -356,7 +357,7 @@ test("a click inside an open shadow root is recorded on the inner control", asyn
     assert.equal(selected?.target?.role, "listbox");
     await page.locator("shop-app").locator("inner-pic").locator("img").click();
     await page.locator("shop-app").locator("#shade").selectOption({ label: "M" });
-    await page.waitForTimeout(80);
+    await page.waitForTimeout(scaledMs(80));
     const deep = events.find((event) => event.op === "click" && (event.text || "").includes("Deep link"));
     assert.equal(deep?.target?.role, "link");
     const shaded = events.filter((event) => event.op === "select");

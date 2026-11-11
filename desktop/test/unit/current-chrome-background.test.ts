@@ -18,6 +18,7 @@ import { launchOwnedChromeEndpoint, pinTestBrowser } from "../../src/launch";
 import type { WorkflowStep } from "../../src/v1/schema";
 import { targetFor, testWorkflow } from "../support/workflow";
 import { chromeProfiles } from "../support/chrome-profiles";
+import { scaledMs } from "../runtime";
 
 pinTestBrowser();
 
@@ -54,7 +55,7 @@ async function openOwnerTab(probe: CdpSocket, url: string) {
   return { owner, ownerState };
 }
 
-test("the owner's Chrome keeps its active tab while the agent works in a background task tab", { skip: !binary, timeout: 60_000 }, async (t) => {
+test("the owner's Chrome keeps its active tab while the agent works in a background task tab", { skip: !binary, timeout: scaledMs(60_000) }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-current-background-"));
   const server = createServer((request, response) => {
     response.setHeader("content-type", "text/html");
@@ -92,7 +93,7 @@ test("the owner's Chrome keeps its active tab while the agent works in a backgro
     assert.deepEqual(await ownerState(), { visibility: "visible", events: [] }, "the owner's tab never left the front");
 
     assert.equal((await proxy.execute("close", [], undefined, false, undefined, {}, proxy.activeRunId))[0]!.exitCode, 0);
-    const deadline = Date.now() + 2000;
+    const deadline = Date.now() + scaledMs(2000);
     let pages: string[] = [];
     while (Date.now() < deadline) {
       pages = (await probe.send<{ targetInfos: { targetId: string; type: string }[] }>("Target.getTargets")).targetInfos
@@ -112,7 +113,7 @@ test("the owner's Chrome keeps its active tab while the agent works in a backgro
   }
 });
 
-test("on the owner's Chrome the agent keeps its task tab when the owner opens a tab, and follows a tab its own click opens", { skip: !binary, timeout: 60_000 }, async (t) => {
+test("on the owner's Chrome the agent keeps its task tab when the owner opens a tab, and follows a tab its own click opens", { skip: !binary, timeout: scaledMs(60_000) }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-current-tabs-"));
   const server = createServer((request, response) => {
     response.setHeader("content-type", "text/html");
@@ -162,7 +163,7 @@ test("on the owner's Chrome the agent keeps its task tab when the owner opens a 
   }
 });
 
-test("replaying a workflow on the owner's Chrome works in a background tab and shows it only when it holds for the owner", { skip: replaySkip, timeout: 180_000 }, async (t) => {
+test("replaying a workflow on the owner's Chrome works in a background tab and shows it only when it holds for the owner", { skip: replaySkip, timeout: scaledMs(180_000) }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-current-replay-"));
   const server = createServer((request, response) => {
     response.setHeader("content-type", "text/html");
@@ -219,7 +220,7 @@ test("replaying a workflow on the owner's Chrome works in a background tab and s
   }
 });
 
-test("app Replay on the owner's Chrome works in a background tab and shows it only when it holds for the owner", { skip: replaySkip, timeout: 180_000 }, async (t) => {
+test("app Replay on the owner's Chrome works in a background tab and shows it only when it holds for the owner", { skip: replaySkip, timeout: scaledMs(180_000) }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-current-app-replay-"));
   const server = createServer((request, response) => {
     response.setHeader("content-type", "text/html");
@@ -269,7 +270,7 @@ test("app Replay on the owner's Chrome works in a background tab and shows it on
   }
 });
 
-test("replay on the owner's Chrome starts and finishes while another owner tab never answers, and attaches none of the owner's tabs", { skip: replaySkip, timeout: 180_000 }, async (t) => {
+test("replay on the owner's Chrome starts and finishes while another owner tab never answers, and attaches none of the owner's tabs", { skip: replaySkip, timeout: scaledMs(180_000) }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-current-stuck-"));
   let blocked!: () => void;
   const stuckPage = new Promise<void>(resolve => { blocked = resolve; });

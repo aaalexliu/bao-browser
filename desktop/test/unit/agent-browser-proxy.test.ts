@@ -15,6 +15,7 @@ import * as sockets from "../../src/cdp-live/socket";
 import { pageShotLine } from "../../src/mcp/tool-card";
 import { Library } from "../../src/v1/store";
 import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
+import { scaledMs } from "../runtime";
 
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aL1sAAAAASUVORK5CYII=", "base64");
 
@@ -97,7 +98,7 @@ else process.stdout.write(command === 'tab' ? 't1 Synthetic - http://127.0.0.1/\
   };
 }
 
-for (const ending of ["no-active", "missing-target", "disconnect", "abort-send", "dead-socket", "delayed-shutdown", "explicit-close"]) test(`owner wait handles ${ending} without leaving an active prompt`, { timeout: 4000 }, async (t) => {
+for (const ending of ["no-active", "missing-target", "disconnect", "abort-send", "dead-socket", "delayed-shutdown", "explicit-close"]) test(`owner wait handles ${ending} without leaving an active prompt`, { timeout: scaledMs(4000) }, async (t) => {
   const f = await fixture(t);
   try {
     await f.proxy.execute("open", ["http://127.0.0.1/"], "copy");
@@ -155,7 +156,7 @@ for (const ending of ["no-active", "missing-target", "disconnect", "abort-send",
   } finally { await f.close(); }
 });
 
-for (const failure of ["connect", "metadata", "poll"]) test(`owner wait keeps its handoff through a live ${failure} error until the deadline`, { timeout: 4000 }, async (t) => {
+for (const failure of ["connect", "metadata", "poll"]) test(`owner wait keeps its handoff through a live ${failure} error until the deadline`, { timeout: scaledMs(4000) }, async (t) => {
   const f = await fixture(t);
   try {
     await f.proxy.execute("open", [], "copy");
@@ -194,7 +195,7 @@ for (const failure of ["connect", "metadata", "poll"]) test(`owner wait keeps it
   } finally { await f.close(); }
 });
 
-for (const failure of ["connect", "metadata", "poll"]) test(`owner wait resumes in the same run after a temporary ${failure} error`, { timeout: 4000 }, async (t) => {
+for (const failure of ["connect", "metadata", "poll"]) test(`owner wait resumes in the same run after a temporary ${failure} error`, { timeout: scaledMs(4000) }, async (t) => {
   const f = await fixture(t);
   try {
     await f.proxy.execute("open", [], "copy");
@@ -464,7 +465,7 @@ function alive(pid: number): boolean {
 }
 
 async function waitFor(ready: () => Promise<boolean>): Promise<void> {
-  const until = Date.now() + 3000;
+  const until = Date.now() + scaledMs(3000);
   while (!await ready()) {
     assert.ok(Date.now() < until, "fixture did not reach the expected state");
     await delay(10);
@@ -686,7 +687,7 @@ test("missing privacy metadata refuses page input before recording its arguments
   } finally { await f.close(); }
 });
 
-test("a stalled recording CDP connection times out without failing the forwarded command", { timeout: 60_000 }, async (t) => {
+test("a stalled recording CDP connection times out without failing the forwarded command", { timeout: scaledMs(60_000) }, async (t) => {
   const f = await fixture(t);
   t.mock.method(sockets, "connectCdp", async () => {
     const socket = new Socket();

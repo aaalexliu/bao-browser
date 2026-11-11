@@ -14,7 +14,7 @@ import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { connectCdp, type CdpSocket } from "../../src/cdp-live/socket";
 import { extensionOrigin } from "../../src/extension/protocol";
 import { launchOwnedChromeEndpoint } from "../../src/launch";
-import { applyHermeticApp } from "../runtime";
+import { applyHermeticApp, scaledMs } from "../runtime";
 
 export interface StripTab { id: number; index: number; active: boolean; groupId: number; title: string; url: string }
 export interface StripGroup { id: number; title: string; color: string; collapsed: boolean }
@@ -138,7 +138,7 @@ export async function ownerChrome(t: TestContext, pages: Record<string, string |
 
 /** Polls the strip until `ready` holds, so a check waits for Chrome's own tab and group events. */
 export async function stripWhen(chrome: OwnerChrome, ready: (strip: Strip) => boolean, timeoutMs = 5000): Promise<Strip> {
-  const deadline = Date.now() + timeoutMs;
+  const deadline = Date.now() + scaledMs(timeoutMs);
   for (;;) {
     const strip = await chrome.strip();
     if (ready(strip) || Date.now() > deadline) return strip;

@@ -4,8 +4,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { startApp } from "../../src/app/server";
+import { scaledMs } from "../runtime";
 
-test("site evidence and login details retain personal-looking text within existing limits", { timeout: 60000 }, async () => {
+test("site evidence and login details retain personal-looking text within existing limits", { timeout: scaledMs(60000) }, async () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-site-evidence-"));
   const app = await startApp({ home, port: 0, extensionHost: false, chromeProfilesRoot: path.join(home, "profiles") });
   const post = (route: string, body: unknown) => fetch(`http://127.0.0.1:${app.port}${route}`, {

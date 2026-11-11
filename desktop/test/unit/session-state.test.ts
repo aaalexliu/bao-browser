@@ -5,7 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { moveSession, startApp, type CaptureSession, type PendingCapture } from "../../src/app/server";
 import { testWorkflow } from "../support/workflow";
-import { applyHermeticApp } from "../runtime";
+import { applyHermeticApp, scaledMs } from "../runtime";
 
 const pending = {
   workflow: testWorkflow({ id: "wf-sheet" }),
@@ -93,7 +93,7 @@ test("teach claims its seat, then becomes live with the same clock", () => {
   assert.deepEqual(review.session, { phase: "teachReview" });
 });
 
-test("a replay started during recording is refused", { timeout: 120_000 }, async () => {
+test("a replay started during recording is refused", { timeout: scaledMs(120_000) }, async () => {
   assert.ok(process.env.BAO_TEST_BROWSER, "Run with laneChildEnv so Chromium is pinned");
   const dirs = applyHermeticApp("session-replay");
   const app = await startApp({ home: dirs.home, port: 0, chromeUserData: dirs.chromeUserData });
@@ -178,7 +178,7 @@ async function claimedTeach(label: string): Promise<{
   });
   const start = Date.now();
   let launching = false;
-  while (Date.now() - start < 15_000) {
+  while (Date.now() - start < scaledMs(15_000)) {
     const state = await (await fetch(`${base}/api/state`)).json() as { recording: boolean; teach: { phase: string } };
     if (!state.recording && state.teach.phase !== "live" && hits > 0) {
       launching = true;
@@ -210,7 +210,7 @@ function holdPage(): { promise: Promise<void>; release: () => void } {
   return { promise, release };
 }
 
-test("a replay during a teach launch is refused and the teach comes up as teach", { timeout: 120_000 }, async () => {
+test("a replay during a teach launch is refused and the teach comes up as teach", { timeout: scaledMs(120_000) }, async () => {
   assert.ok(process.env.BAO_TEST_BROWSER, "Run with laneChildEnv so Chromium is pinned");
   const gate = holdPage();
   let hits = 0;
@@ -253,7 +253,7 @@ test("a replay during a teach launch is refused and the teach comes up as teach"
     });
     const start = Date.now();
     let launching = false;
-    while (Date.now() - start < 15_000) {
+    while (Date.now() - start < scaledMs(15_000)) {
       const state = await (await fetch(`${base}/api/state`)).json() as {
         recording: boolean;
         teach: { phase: string };
@@ -308,7 +308,7 @@ test("a replay during a teach launch is refused and the teach comes up as teach"
   }
 });
 
-test("a check during a slow opening navigation is refused", { timeout: 120_000 }, async () => {
+test("a check during a slow opening navigation is refused", { timeout: scaledMs(120_000) }, async () => {
   assert.ok(process.env.BAO_TEST_BROWSER, "Run with laneChildEnv so Chromium is pinned");
   process.env.BAO_DRIVE = "1";
   const launch = await claimedTeach("teach-check-launch");
@@ -344,7 +344,7 @@ test("a check during a slow opening navigation is refused", { timeout: 120_000 }
   }
 });
 
-test("a stop during a teach launch waits for the page", { timeout: 120_000 }, async () => {
+test("a stop during a teach launch waits for the page", { timeout: scaledMs(120_000) }, async () => {
   assert.ok(process.env.BAO_TEST_BROWSER, "Run with laneChildEnv so Chromium is pinned");
   const launch = await claimedTeach("teach-stop-launch");
   try {
@@ -373,7 +373,7 @@ test("a stop during a teach launch waits for the page", { timeout: 120_000 }, as
   }
 });
 
-test("a capture stop during a teach launch waits for the page", { timeout: 120_000 }, async () => {
+test("a capture stop during a teach launch waits for the page", { timeout: scaledMs(120_000) }, async () => {
   assert.ok(process.env.BAO_TEST_BROWSER, "Run with laneChildEnv so Chromium is pinned");
   const launch = await claimedTeach("teach-capture-stop-launch");
   try {
@@ -401,7 +401,7 @@ test("a capture stop during a teach launch waits for the page", { timeout: 120_0
   }
 });
 
-test("a discard during a teach launch waits for the page", { timeout: 120_000 }, async () => {
+test("a discard during a teach launch waits for the page", { timeout: scaledMs(120_000) }, async () => {
   assert.ok(process.env.BAO_TEST_BROWSER, "Run with laneChildEnv so Chromium is pinned");
   const launch = await claimedTeach("teach-discard-launch");
   try {
@@ -429,7 +429,7 @@ test("a discard during a teach launch waits for the page", { timeout: 120_000 },
   }
 });
 
-test("a stop during live teach keeps the demonstration", { timeout: 120_000 }, async () => {
+test("a stop during live teach keeps the demonstration", { timeout: scaledMs(120_000) }, async () => {
   assert.ok(process.env.BAO_TEST_BROWSER, "Run with laneChildEnv so Chromium is pinned");
   const dirs = applyHermeticApp("teach-stop-keeps");
   const bar = path.join(dirs.home, "fake-bar.js");
@@ -479,7 +479,7 @@ test("a stop during live teach keeps the demonstration", { timeout: 120_000 }, a
     const start = Date.now();
     let steps: string[] = [];
     let phase = "";
-    while (Date.now() - start < 8_000) {
+    while (Date.now() - start < scaledMs(8_000)) {
       const state = await (await fetch(`${base}/api/state`)).json() as {
         recording: boolean;
         capture: { steps: string[] };
@@ -502,7 +502,7 @@ test("a stop during live teach keeps the demonstration", { timeout: 120_000 }, a
   }
 });
 
-test("a failed save leaves the capture so it can be saved again", { timeout: 120_000 }, async () => {
+test("a failed save leaves the capture so it can be saved again", { timeout: scaledMs(120_000) }, async () => {
   assert.ok(process.env.BAO_TEST_BROWSER, "Run with laneChildEnv so Chromium is pinned");
   const dirs = applyHermeticApp("save-retry");
   const app = await startApp({ home: dirs.home, port: 0, chromeUserData: dirs.chromeUserData });
@@ -549,7 +549,7 @@ test("a failed save leaves the capture so it can be saved again", { timeout: 120
   }
 });
 
-test("a failed save leaves recording and lets a new capture start", { timeout: 120_000 }, async () => {
+test("a failed save leaves recording and lets a new capture start", { timeout: scaledMs(120_000) }, async () => {
   assert.ok(process.env.BAO_TEST_BROWSER, "Run with laneChildEnv so Chromium is pinned");
   const dirs = applyHermeticApp("save-start-again");
   const app = await startApp({ home: dirs.home, port: 0, chromeUserData: dirs.chromeUserData });

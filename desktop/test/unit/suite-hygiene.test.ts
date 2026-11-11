@@ -8,7 +8,7 @@ import { artifactsRoot, testArtifacts, tryWriteEvidence } from "../artifacts";
 import { chromeProfilesRoot } from "../../src/engines/chrome-profile-copy";
 import { ACCOUNT_CHROME_MAC, LINUX_CHROME, formatShutdown, ownedChromeLaunchArgs, ownedHeadless, resolveNormalChrome } from "../../src/launch";
 import { assertNotDailyChrome } from "../../src/profile";
-import { classifyStatus, compiledTestPlan, cookieKeys, laneChildEnv, liveSkip, MAC_MOCK_KEYCHAIN_PASSWORD, ownApiOutage } from "../runtime";
+import { classifyStatus, compiledTestPlan, cookieKeys, laneChildEnv, liveSkip, MAC_MOCK_KEYCHAIN_PASSWORD, ownApiOutage, scaledMs } from "../runtime";
 
 function fakeChromium(): string {
   const file = path.join(mkdtempSync(path.join(tmpdir(), "bao-lane-pin-")), "Google Chrome for Testing");
@@ -236,7 +236,7 @@ test("an artifact leaf cannot leave its run directory", () => {
   assert.equal(testArtifacts("files-dates-public", env), path.join(root, "files-dates-public"));
 });
 
-test("inherited BAO names and CI do not reach the launched Chrome", { timeout: 20_000 }, () => {
+test("inherited BAO names and CI do not reach the launched Chrome", { timeout: scaledMs(20_000) }, () => {
   const canaries: Record<string, string> = {
     BAO_INVITE_SECRET: "canary-invite-secret",
     BAO_PUBLIC: "canary-public",
@@ -256,7 +256,9 @@ test("inherited BAO names and CI do not reach the launched Chrome", { timeout: 2
     CI: "true",
   };
   const pin = fakeChromium();
-  const env = laneChildEnv("hermetic", { ...process.env, ...canaries, LANG: "C" }, () => pin);
+  const parent: NodeJS.ProcessEnv = { ...process.env, ...canaries, LANG: "C" };
+  delete parent.BAO_TEST_TIME_SCALE;
+  const env = laneChildEnv("hermetic", parent, () => pin);
   const names = Object.keys(env).filter((key) => /^bao/i.test(key)).sort();
   assert.deepEqual(names, [
     "BAO_AGENT_BROWSER_PROFILE_ROOT",
@@ -297,7 +299,7 @@ test("inherited BAO names and CI do not reach the launched Chrome", { timeout: 2
     let raw = "";
     const started = Date.now();
     let last = "missing";
-    while (Date.now() - started < 2000) {
+    while (Date.now() - started < scaledMs(2000)) {
       try {
         raw = readFileSync(`/proc/${pid}/environ`).toString("utf8");
         if (raw) break;

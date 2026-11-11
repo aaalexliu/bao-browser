@@ -5,9 +5,9 @@ import path from "node:path";
 import test from "node:test";
 import { startApp } from "../../src/app/server";
 import { testChromium } from "../../src/test-browser.js";
-import { applyHermeticApp } from "../runtime";
+import { applyHermeticApp, scaledMs } from "../runtime";
 
-test("workflow recovery keeps user choices, results and focus across state polls", { timeout: 60_000 }, async () => {
+test("workflow recovery keeps user choices, results and focus across state polls", { timeout: scaledMs(60_000) }, async () => {
   const dirs = applyHermeticApp("workflow-recovery");
   const app = await startApp({ home: dirs.home, port: 0, extensionHost: false, chromeProfilesRoot: path.join(dirs.home, "profiles") });
   let browser: Awaited<ReturnType<typeof testChromium.launch>> | undefined;

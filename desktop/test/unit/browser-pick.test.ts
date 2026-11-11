@@ -17,6 +17,7 @@ import { openWorkflowBrowser, settingsProfileQuestion } from "../../src/engines/
 import { Library } from "../../src/v1/store";
 import { chromeProfiles, type ProfileNames } from "../support/chrome-profiles";
 import { testWorkflow } from "../support/workflow";
+import { scaledMs } from "../runtime";
 
 async function chromeRoot(t: TestContext, profiles: ProfileNames): Promise<string> {
   const root = await mkdtemp(path.join(tmpdir(), "bao-pick-"));
@@ -165,7 +166,7 @@ test("the sign-in import line says what Bao read and wrote, a wall retry, or why
     'Sign-in import for https://www.nytimes.com from Chrome profile "Default" failed: EPERM: operation not permitted, scandir \'/Chrome/Default/Local Storage/leveldb\'. Bao\'s profile kept its saved sign-ins.');
 });
 
-test("a saved workflow runs in Bao's profile with Chrome's folder refused, and a Chrome copy or Running Chrome stops", { timeout: 60_000 }, async (t) => {
+test("a saved workflow runs in Bao's profile with Chrome's folder refused, and a Chrome copy or Running Chrome stops", { timeout: scaledMs(60_000) }, async (t) => {
   const root = await chromeRoot(t, { Default: { name: "Alex" }, "Profile 2": { name: "Work" } });
   const home = await mkdtemp(path.join(tmpdir(), "bao-pick-home-"));
   pinTestBrowser();
@@ -186,7 +187,7 @@ test("a saved workflow runs in Bao's profile with Chrome's folder refused, and a
   }
 });
 
-test("run_workflow names its route, Chrome profile, and sign-in import, and a sign-in stop in Bao's profile gives the call back to Running Chrome", { timeout: 120_000 }, async (t) => {
+test("run_workflow names its route, Chrome profile, and sign-in import, and a sign-in stop in Bao's profile gives the call back to Running Chrome", { timeout: scaledMs(120_000) }, async (t) => {
   pinTestBrowser();
   const root = await mkdtemp(path.join(tmpdir(), "bao-run-pick-"));
   const sourceRoot = path.join(root, "chrome");

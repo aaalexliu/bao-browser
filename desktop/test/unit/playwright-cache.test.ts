@@ -5,7 +5,7 @@ import { tmpdir, userInfo } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { swapTestHome } from "../../src/playwright-cache.js";
-import { laneChildEnv } from "../runtime";
+import { laneChildEnv, scaledMs } from "../runtime";
 
 function realCache(): string {
   const home = userInfo().homedir;
@@ -62,7 +62,7 @@ test("laneChildEnv pins the real cache even when HOME is already a temp dir", ()
   }
 });
 
-test("a temp HOME with an empty cache still launches a headless test browser", { timeout: 60_000 }, () => {
+test("a temp HOME with an empty cache still launches a headless test browser", { timeout: scaledMs(60_000) }, () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-pw-launch-"));
   const browserModule = path.resolve("desktop/dist/desktop/src/test-browser.js");
   const script = `
@@ -99,7 +99,7 @@ test("a temp HOME with an empty cache still launches a headless test browser", {
   const guard = path.resolve("desktop/test/connection-guard.cjs");
   env.NODE_OPTIONS = `--require ${JSON.stringify(guard)}`;
   try {
-    const result = spawnSync(process.execPath, ["-e", script], { env, encoding: "utf8", timeout: 45_000 });
+    const result = spawnSync(process.execPath, ["-e", script], { env, encoding: "utf8", timeout: scaledMs(45_000) });
     assert.equal(result.status, 0, `${result.stderr}\n${result.stdout}`);
     assert.match(result.stdout, /^headless\n$/);
   } finally {

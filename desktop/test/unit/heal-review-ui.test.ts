@@ -7,6 +7,7 @@ import test from "node:test";
 import { startApp } from "../../src/app/server";
 import { testChromium } from "../../src/test-browser";
 import { stepTarget, type WorkflowV2 } from "../../src/v1/schema";
+import { scaledMs } from "../runtime";
 
 const workflow: WorkflowV2 = testWorkflow({
   schema: "bao.workflow/v4", id: "statements", name: "Download statement", createdAt: 1,
@@ -23,7 +24,7 @@ const workflow: WorkflowV2 = testWorkflow({
   }],
 });
 
-test("target review matches the paired layout and keeps decisions on the exact existing record", { timeout: 60_000 }, async () => {
+test("target review matches the paired layout and keeps decisions on the exact existing record", { timeout: scaledMs(60_000) }, async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-heal-review-ui-"));
   const oldHome = process.env.HOME;
   process.env.HOME = home;
@@ -131,7 +132,7 @@ test("target review matches the paired layout and keeps decisions on the exact e
   }
 });
 
-test("a patchless heal keeps Revert available and describes AX targets by name, role and container", { timeout: 60_000 }, async () => {
+test("a patchless heal keeps Revert available and describes AX targets by name, role and container", { timeout: scaledMs(60_000) }, async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-heal-no-proposal-"));
   const oldHome = process.env.HOME;
   process.env.HOME = home;

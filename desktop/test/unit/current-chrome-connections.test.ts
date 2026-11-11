@@ -16,6 +16,7 @@ import * as profileCopy from "../../src/engines/chrome-profile-copy";
 import { launchOwnedChromeEndpoint, pinTestBrowser } from "../../src/launch";
 import type { AxHit } from "../../src/proxy/os-macos";
 import { chromeProfiles } from "../support/chrome-profiles";
+import { scaledMs } from "../runtime";
 
 pinTestBrowser();
 
@@ -72,7 +73,7 @@ async function testChrome(t: TestContext) {
   return { root, userDataDir, ...counted };
 }
 
-test("clients of the shared endpoint ride Bao's one connection, each in its own browser session", { timeout: 60_000 }, async (t) => {
+test("clients of the shared endpoint ride Bao's one connection, each in its own browser session", { timeout: scaledMs(60_000) }, async (t) => {
   const f = await testChrome(t);
   const bao = await connectCdp(f.endpoint.port, f.endpoint.browserPath);
   const shared = await shareConnection(bao);
@@ -112,7 +113,7 @@ test("clients of the shared endpoint ride Bao's one connection, each in its own 
   }
 });
 
-test("a reply without a session reaches the one who asked, though Bao and a client use the same ids", { timeout: 60_000 }, async (t) => {
+test("a reply without a session reaches the one who asked, though Bao and a client use the same ids", { timeout: scaledMs(60_000) }, async (t) => {
   const f = await testChrome(t);
   const bao = await connectCdp(f.endpoint.port, f.endpoint.browserPath);
   const shared = await shareConnection(bao);
@@ -202,7 +203,7 @@ socket.onopen = async () => {
 };
 `;
 
-test("one Running Chrome session makes one browser connection to Chrome, whatever its native calls and workflow capture do", { timeout: 90_000 }, async (t) => {
+test("one Running Chrome session makes one browser connection to Chrome, whatever its native calls and workflow capture do", { timeout: scaledMs(90_000) }, async (t) => {
   const f = await testChrome(t);
   const home = path.join(f.root, "home");
   const executable = path.join(f.root, "native");

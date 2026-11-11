@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpath
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { scaledMs } from "../runtime";
 
 function repoRoot(): string {
   let dir = process.cwd();
@@ -32,7 +33,7 @@ test("install-dev.sh names the current installer and does not stage", () => {
     cwd: root,
     encoding: "utf8",
     env: { ...process.env, BAO_EXT_DIR: stage, BAO_SKIP_BUILD: "1" },
-    timeout: 15000,
+    timeout: scaledMs(15000),
   });
   const output = `${result.stdout}${result.stderr}`;
   assert.equal(result.status, 2, output);
@@ -169,7 +170,7 @@ test("bao runs the compiled cli without compiling", () => {
   const result = spawnSync("npm", ["run", "bao", "--", "nope"], {
     cwd: root,
     encoding: "utf8",
-    timeout: 20000,
+    timeout: scaledMs(20000),
   });
   const output = `${result.stdout}${result.stderr}`;
   assert.equal(result.status, 1, output);
@@ -181,7 +182,7 @@ test("live runner rejects a test name it did not compile", () => {
   const result = spawnSync(process.execPath, [path.join(root, "desktop/test/run-live.mjs"), "browser.test.js", "nope.test.js"], {
     cwd: root,
     encoding: "utf8",
-    timeout: 20000,
+    timeout: scaledMs(20000),
   });
   const output = `${result.stdout}${result.stderr}`;
   assert.equal(result.status, 1, output);
@@ -297,7 +298,7 @@ test("bao-mcp.sh asks for the serve home when BAO_HOME is unset and picks no lib
     cwd,
     encoding: "utf8",
     env,
-    timeout: 5000,
+    timeout: scaledMs(5000),
   });
   const output = `${result.stdout}${result.stderr}`;
   assert.equal(result.status, 1, output);

@@ -23,6 +23,7 @@ import { Library } from "../../src/v1/store";
 import { chromeProfiles, fakeTaskTab } from "../support/chrome-profiles";
 import { trapPort } from "../support/trap-port";
 import { LIST_TARGETS } from "../support/fake-agent-browser";
+import { scaledMs } from "../runtime";
 
 pinTestBrowser();
 
@@ -437,7 +438,7 @@ test("a recovered consent poll does not taint a later connection failure", async
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
 
-for (const ending of ["close", "finish", "disconnect"] as const) test(`current proxy drives a background task tab and closes only task tabs on ${ending}`, { timeout: 30_000 }, async (t) => {
+for (const ending of ["close", "finish", "disconnect"] as const) test(`current proxy drives a background task tab and closes only task tabs on ${ending}`, { timeout: scaledMs(30_000) }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-current-proxy-"));
   const home = path.join(root, "home");
   await chromeProfiles(path.join(root, "chrome"));
@@ -903,7 +904,7 @@ for (const missing of ["task", "active-page"] as const) test(`closing the waitin
 });
 
 async function untilSessionEnds(proxy: AgentBrowserProxy): Promise<void> {
-  const deadline = Date.now() + 5_000;
+  const deadline = Date.now() + scaledMs(5_000);
   while (proxy.hasSession() && Date.now() < deadline) await new Promise<void>((resolve) => setImmediate(resolve));
   assert.equal(proxy.hasSession(), false);
 }
@@ -1263,7 +1264,7 @@ test("Bao's task tab opens in a window of the chosen Chrome profile and never in
   skip: process.env.BAO_LANE === "live" || process.env.BAO_LIVE_TESTS === "1"
     ? process.platform !== "darwin" && "a headed test Chrome is Mac-only here"
     : "a headed browser belongs in the live lane",
-  timeout: 90_000,
+  timeout: scaledMs(90_000),
 }, async (t) => {
   const root = await chromeProfiles(await realpath(await mkdtemp(path.join(tmpdir(), "bao-task-profile-"))),
     { Default: { name: "Alex", user_name: "alex@example.test" }, "Profile 1": { name: "Work", user_name: "alex@work.test" } });

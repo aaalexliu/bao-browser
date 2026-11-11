@@ -9,6 +9,7 @@ import { startApp } from "../../src/app/server";
 import { testChromium } from "../../src/test-browser";
 import { stepTarget, type WorkflowV2 } from "../../src/v1/schema";
 import { formatClock } from "../../src/v1/time";
+import { scaledMs } from "../runtime";
 
 const workflow: WorkflowV2 = testWorkflow({
   schema: "bao.workflow/v4", id: "statements", name: "Download statement", createdAt: 1,
@@ -25,7 +26,7 @@ const workflow: WorkflowV2 = testWorkflow({
   }],
 });
 
-test("Runs rows open the exact target proposal, preserve receipts, keep keyboard selection through polling", { timeout: 60_000 }, async () => {
+test("Runs rows open the exact target proposal, preserve receipts, keep keyboard selection through polling", { timeout: scaledMs(60_000) }, async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-runs-rows-"));
   const oldHome = process.env.HOME;
   process.env.HOME = home;
@@ -109,7 +110,7 @@ test("Runs rows open the exact target proposal, preserve receipts, keep keyboard
   }
 });
 
-test("historical live sessions create no rows or attention, and stored waits keep their clock text", { timeout: 30_000 }, async () => {
+test("historical live sessions create no rows or attention, and stored waits keep their clock text", { timeout: scaledMs(30_000) }, async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-live-row-"));
   const oldHome = process.env.HOME;
   process.env.HOME = home;

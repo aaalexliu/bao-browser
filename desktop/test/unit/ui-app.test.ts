@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { testChromium as chromium } from "../../src/test-browser.js";
 import { startApp } from "../../src/app/server";
-import { applyHermeticApp } from "../runtime";
+import { applyHermeticApp, scaledMs } from "../runtime";
 
 function workflow(port: number, id: string, name: string, start: string, steps: WorkflowV2["steps"]): WorkflowV2 {
   return testWorkflow({
@@ -32,7 +32,7 @@ async function post(port: number, pathname: string, body?: unknown): Promise<unk
   return json;
 }
 
-test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, async () => {
+test("act bar, run viewer, and heal review in the window", { timeout: scaledMs(180000) }, async () => {
   process.env.BAO_DRIVE = "1";
   delete process.env.BAO_HEAL_FIXTURE;
   const previousChrome = process.env.BAO_CHROME_USER_DATA;
@@ -112,7 +112,7 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
         await Promise.all([waitForAsk("login"), page.click("#run")]);
         // Time rendering after the handoff arrives, not navigation, pictures, or browser startup.
         const loginRenderStarted = Date.now();
-        await page.waitForSelector("#act-bar[data-ask=login]", { timeout: 1000 });
+        await page.waitForSelector("#act-bar[data-ask=login]", { timeout: scaledMs(1000) });
         assert.ok(Date.now() - loginRenderStarted < 1000, "login bar was late");
         assert.equal((await (await fetch(`http://127.0.0.1:${app.port}/api/state`)).json()).replaying, true);
         const loginBar = await page.locator("#act-bar").innerText();
@@ -129,7 +129,7 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
           })(),
         ]);
         const confirmRenderStarted = Date.now();
-        await page.waitForSelector("#act-bar[data-ask=confirm]", { timeout: 2000 });
+        await page.waitForSelector("#act-bar[data-ask=confirm]", { timeout: scaledMs(2000) });
         assert.ok(Date.now() - confirmRenderStarted < 2000, "confirm bar was late");
         const confirmBar = await page.locator("#act-bar").innerText();
         assert.match(confirmBar, /Press Apply on the fixture in the Bao window/);

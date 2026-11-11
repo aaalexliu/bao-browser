@@ -12,8 +12,9 @@ import { saveRelay } from "../../src/v1/relay-link";
 import { Library } from "../../src/v1/store";
 import { MemoryJobStore } from "../../../web/src/lib/relay-job";
 import { createRelay, listenRelay, MemoryDirectory } from "../../../web/src/lib/relay";
+import { scaledMs } from "../runtime";
 
-test("production remote confirms continue locally once and reject non-held order resumes", { timeout: 60_000 }, async () => {
+test("production remote confirms continue locally once and reject non-held order resumes", { timeout: scaledMs(60_000) }, async () => {
   process.env.BAO_CHROME_NO_SANDBOX = "1";
   const home = mkdtempSync(path.join(tmpdir(), "bao-remote-resume-"));
   const library = new Library(home);
@@ -351,7 +352,7 @@ test("production remote confirms continue locally once and reject non-held order
 });
 
 for (const observationFailure of ["navigation", "unreadable"] as const) {
-  test(`live continuation drains a ${observationFailure} observation before replay`, { timeout: 30_000 }, async () => {
+  test(`live continuation drains a ${observationFailure} observation before replay`, { timeout: scaledMs(30_000) }, async () => {
     const home = mkdtempSync(path.join(tmpdir(), "bao-observer-resume-"));
     const library = new Library(home);
     let finishes = 0;
@@ -482,14 +483,14 @@ for (const observationFailure of ["navigation", "unreadable"] as const) {
 }
 
 async function waitFor(ready: () => boolean): Promise<void> {
-  const deadline = Date.now() + 5000;
+  const deadline = Date.now() + scaledMs(5000);
   while (!ready()) {
     assert.ok(Date.now() < deadline, "held run did not settle");
     await new Promise((resolve) => setTimeout(resolve, 40));
   }
 }
 
-test("a later run drops a parked sign-in page and resume together", { timeout: 60_000 }, async () => {
+test("a later run drops a parked sign-in page and resume together", { timeout: scaledMs(60_000) }, async () => {
   process.env.BAO_HEADED = "0";
   process.env.BAO_CHROME_NO_SANDBOX = "1";
   const home = mkdtempSync(path.join(tmpdir(), "bao-remote-park-"));
@@ -584,7 +585,7 @@ test("a later run drops a parked sign-in page and resume together", { timeout: 6
   }
 });
 
-test("stop during a resumed held run stops the replay and returns", { timeout: 90_000 }, async () => {
+test("stop during a resumed held run stops the replay and returns", { timeout: scaledMs(90_000) }, async () => {
   process.env.BAO_HEADED = "0";
   process.env.BAO_CHROME_NO_SANDBOX = "1";
   const unmetCheckMs = 30_000;
@@ -826,14 +827,14 @@ async function killDuringHeldReplay(
   return { pay, result };
 }
 
-test("a new run after kill does not let the held replay click the next step", { timeout: 90_000 }, async () => {
+test("a new run after kill does not let the held replay click the next step", { timeout: scaledMs(90_000) }, async () => {
   const { pay, result } = await killDuringHeldReplay("kill-next", (tool) => tool("run_workflow", { id: "missing-workflow" }));
   assert.equal(pay, 0, "a killed replay clicked its next recorded step");
   assert.equal(result.outcome, "failed", JSON.stringify(result));
   assert.equal(hasHeldRuns(), false, "the killed replay was still in the catalog");
 });
 
-test("a retried resume of a killed token does not return the running replay", { timeout: 90_000 }, async () => {
+test("a retried resume of a killed token does not return the running replay", { timeout: scaledMs(90_000) }, async () => {
   const { pay, result } = await killDuringHeldReplay("kill-resume", (tool, token) => tool("resume_workflow", { resume: token }));
   assert.equal(pay, 0, "a retried resume returned the running replay and it clicked the next step");
   assert.equal(result.outcome, "failed", JSON.stringify(result));
@@ -841,7 +842,7 @@ test("a retried resume of a killed token does not return the running replay", { 
   assert.equal(hasHeldRuns(), false);
 });
 
-test("a get_run while parked shows its own label and leaves the parked workflow", { timeout: 90_000 }, async () => {
+test("a get_run while parked shows its own label and leaves the parked workflow", { timeout: scaledMs(90_000) }, async () => {
   process.env.BAO_HEADED = "0";
   process.env.BAO_CHROME_NO_SANDBOX = "1";
   const home = mkdtempSync(path.join(tmpdir(), "bao-remote-label-"));

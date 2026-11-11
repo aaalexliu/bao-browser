@@ -13,7 +13,7 @@ import { UI_EXTENSION, VIEWER_MIME } from "../../src/mcp/viewer";
 import { STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import { verifyReceiptChain, type Receipt } from "../../src/v1/receipt";
 import type { WorkflowStep, WorkflowV2 } from "../../src/v1/schema";
-import { laneChildEnv } from "../runtime";
+import { laneChildEnv, scaledMs } from "../runtime";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -153,7 +153,7 @@ async function assertViews(f: Awaited<ReturnType<typeof fixture>>, runId: string
   assert.ok(f.typed.includes(value));
 }
 
-test("new run secret names survive workflow edits/deletion and explicit empty provenance stays authoritative", { timeout: 60_000 }, async (t) => {
+test("new run secret names survive workflow edits/deletion and explicit empty provenance stays authoritative", { timeout: scaledMs(60_000) }, async (t) => {
   const f = await fixture(t);
   const prefix = "Retained-local-readback-";
   const value = prefix + "s".repeat(500 - prefix.length);
@@ -170,7 +170,7 @@ test("new run secret names survive workflow edits/deletion and explicit empty pr
   await assertViews(f, ordinary.run.id, "Ordinary entry retained", false);
 });
 
-test("runs without secret-name provenance follow current workflow typing without changing local receipts", { timeout: 60_000 }, async (t) => {
+test("runs without secret-name provenance follow current workflow typing without changing local receipts", { timeout: scaledMs(60_000) }, async (t) => {
   const f = await fixture(t);
   const value = "Legacy-local-readback-867!";
   const saved = await f.run("legacy-provenance", true, value);

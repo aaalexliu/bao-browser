@@ -12,6 +12,7 @@ import { testChromium as chromium } from "../../src/test-browser.js";
 import { startApp } from "../../src/app/server";
 import { loadTeachIntentCases } from "../../src/eval/intent/teach-cases";
 import { stepTarget, type WorkflowV2 } from "../../src/v1/schema";
+import { scaledMs } from "../runtime";
 
 process.env.BAO_DRIVE = "1";
 
@@ -65,7 +66,7 @@ test("retired repair requests fail clearly without starting capture or changing 
   }
 });
 
-test("teach a new workflow, correct three cards, and replay twice", { timeout: 180000 }, async () => {
+test("teach a new workflow, correct three cards, and replay twice", { timeout: scaledMs(180000) }, async () => {
   delete process.env.BAO_HEAL_FIXTURE;
   delete process.env.OPENAI_API_KEY;
   delete process.env.ANTHROPIC_API_KEY;
@@ -191,7 +192,7 @@ test("teach a new workflow, correct three cards, and replay twice", { timeout: 1
       });
       const started = Date.now();
       let asked = false;
-      while (Date.now() - started < 15000) {
+      while (Date.now() - started < scaledMs(15000)) {
         const current = await state(app.port);
         if (current.activeAsk?.kind === "confirm") {
           asked = true;
@@ -222,7 +223,7 @@ test("teach a new workflow, correct three cards, and replay twice", { timeout: 1
   }
 });
 
-test("a logged-in demo and a login demo merge into one route", { timeout: 180000 }, async () => {
+test("a logged-in demo and a login demo merge into one route", { timeout: scaledMs(180000) }, async () => {
   delete process.env.BAO_HEAL_FIXTURE;
   delete process.env.OPENAI_API_KEY;
   delete process.env.ANTHROPIC_API_KEY;
@@ -270,7 +271,7 @@ test("a logged-in demo and a login demo merge into one route", { timeout: 180000
       const dir = path.join(home, "shots", "workflows", id);
       return { id, files: existsSync(dir) ? readdirSync(dir) : [] };
     });
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(scaledMs(1500));
     const cards = await page.evaluate(() => [...document.querySelectorAll("[data-step-panel]")].map((card) => {
       const thumb = card.querySelector(".wf-picture");
       const img = thumb?.querySelector("img") as HTMLImageElement | null;

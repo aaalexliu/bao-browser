@@ -4,8 +4,9 @@ import { BrowserDriver } from "../../src/v1/browser-driver";
 import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import { recorderSource } from "../../src/v1/recorder";
 import { replay } from "../../src/v1/replay";
+import { scaledMs } from "../runtime";
 
-test("a placeholder-only field replays into the input, not the nearby button", { timeout: 30_000 }, async () => {
+test("a placeholder-only field replays into the input, not the nearby button", { timeout: scaledMs(30_000) }, async () => {
   const { testChromium } = await import("../../src/test-browser.js");
   const browser = await testChromium.launch({ headless: true });
   try {

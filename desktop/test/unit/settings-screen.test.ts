@@ -11,6 +11,7 @@ import { MacOsHelper } from "../../src/proxy/os-macos";
 import { testChromium } from "../../src/test-browser";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { makeAsk } from "../../src/v1/human-ask";
+import { scaledMs } from "../runtime";
 
 interface StateFixture extends Record<string, unknown> {
   sync?: Record<string, unknown>;
@@ -24,7 +25,7 @@ async function eventually(check: () => boolean): Promise<void> {
   assert.ok(check(), "saved setting did not reach the Library");
 }
 
-test("main-pane navigation shows a focus ring only for keyboard input", { timeout: 60_000 }, async (t) => {
+test("main-pane navigation shows a focus ring only for keyboard input", { timeout: scaledMs(60_000) }, async (t) => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-settings-focus-"));
   const previousHome = process.env.HOME;
   process.env.HOME = home;
@@ -175,7 +176,7 @@ test("main-pane navigation shows a focus ring only for keyboard input", { timeou
   }
 });
 
-test("a settings load keeps the keyboard focus ring on the first control", { timeout: 60_000 }, async (t) => {
+test("a settings load keeps the keyboard focus ring on the first control", { timeout: scaledMs(60_000) }, async (t) => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-settings-focus-refresh-"));
   const previousHome = process.env.HOME;
   process.env.HOME = home;
@@ -271,7 +272,7 @@ test("a settings load keeps the keyboard focus ring on the first control", { tim
   }
 });
 
-test("AI help saves each source and keeps API drafts across refreshes", { timeout: 60_000 }, async (t) => {
+test("AI help saves each source and keeps API drafts across refreshes", { timeout: scaledMs(60_000) }, async (t) => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-settings-ai-"));
   const previousHome = process.env.HOME;
   process.env.HOME = home;
@@ -334,7 +335,7 @@ test("AI help saves each source and keeps API drafts across refreshes", { timeou
   }
 });
 
-test("grouped Settings saves live controls, preserves secondary settings, opens Logins", { timeout: 60_000 }, async (t) => {
+test("grouped Settings saves live controls, preserves secondary settings, opens Logins", { timeout: scaledMs(60_000) }, async (t) => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-settings-"));
   const previousHome = process.env.HOME;
   process.env.HOME = home;
@@ -549,7 +550,7 @@ test("grouped Settings saves live controls, preserves secondary settings, opens 
   }
 });
 
-test("the first Settings visit keeps the saved Chrome profile", { timeout: 60_000 }, async (t) => {
+test("the first Settings visit keeps the saved Chrome profile", { timeout: scaledMs(60_000) }, async (t) => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-settings-profile-"));
   const previousHome = process.env.HOME;
   process.env.HOME = home;
@@ -600,7 +601,7 @@ test("the first Settings visit keeps the saved Chrome profile", { timeout: 60_00
   }
 });
 
-test("an earlier Settings save cannot erase a later numeric edit", { timeout: 60_000 }, async (t) => {
+test("an earlier Settings save cannot erase a later numeric edit", { timeout: scaledMs(60_000) }, async (t) => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-settings-overlap-"));
   const previousHome = process.env.HOME;
   process.env.HOME = home;
@@ -683,7 +684,7 @@ test("an earlier Settings save cannot erase a later numeric edit", { timeout: 60
   }
 });
 
-test("Enter commits each edited number once without waiting for blur", { timeout: 60_000 }, async (t) => {
+test("Enter commits each edited number once without waiting for blur", { timeout: scaledMs(60_000) }, async (t) => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-settings-enter-"));
   const previousHome = process.env.HOME;
   process.env.HOME = home;
@@ -760,7 +761,7 @@ test("Enter commits each edited number once without waiting for blur", { timeout
   }
 });
 
-test("a clean focused number adopts external updates without writing back", { timeout: 60_000 }, async (t) => {
+test("a clean focused number adopts external updates without writing back", { timeout: scaledMs(60_000) }, async (t) => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-settings-external-"));
   const previousHome = process.env.HOME;
   process.env.HOME = home;
@@ -846,7 +847,7 @@ test("closing the app does not wait for a Chrome profiles read that never finish
   }
 });
 
-test("Settings Stop survives restart and stops a changed fixture step without a heal", { timeout: 60_000 }, async (t) => {
+test("Settings Stop survives restart and stops a changed fixture step without a heal", { timeout: scaledMs(60_000) }, async (t) => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-settings-stop-"));
   const previousHome = process.env.HOME;
   const previousFixture = process.env.BAO_HEAL_FIXTURE;
@@ -929,7 +930,7 @@ for (const { mode, label, status, modelCalls, heals, laterStep } of [
   { mode: "approve", label: "Ask me", status: "paused", modelCalls: 1, heals: 1, laterStep: "pending" },
   { mode: "never", label: "Stop", status: "failed", modelCalls: 0, heals: 0, laterStep: "pending" },
 ] as const) {
-  test(`Settings ${label} saves through the UI and applies to a changed fixture step`, { timeout: 60_000 }, async (t) => {
+  test(`Settings ${label} saves through the UI and applies to a changed fixture step`, { timeout: scaledMs(60_000) }, async (t) => {
     const home = await mkdtemp(path.join(tmpdir(), `bao-settings-${mode}-`));
     const previousHome = process.env.HOME;
     const previousFixture = process.env.BAO_HEAL_FIXTURE;
@@ -1012,7 +1013,7 @@ for (const { mode, label, status, modelCalls, heals, laterStep } of [
   });
 }
 
-test("pending CLI imports and the Logins profile picker keep separate handlers", { timeout: 60_000 }, async (t) => {
+test("pending CLI imports and the Logins profile picker keep separate handlers", { timeout: scaledMs(60_000) }, async (t) => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-settings-import-"));
   const previousHome = process.env.HOME;
   process.env.HOME = home;

@@ -5,9 +5,9 @@ import path from "node:path";
 import test from "node:test";
 import { testChromium as chromium } from "../../src/test-browser.js";
 import { startApp } from "../../src/app/server";
-import { applyHermeticApp } from "../runtime";
+import { applyHermeticApp, scaledMs } from "../runtime";
 
-test("Library step frame fits the captured viewport without letterboxing or cropping", { timeout: 30_000 }, async () => {
+test("Library step frame fits the captured viewport without letterboxing or cropping", { timeout: scaledMs(30_000) }, async () => {
   const previousHome = process.env.BAO_HOME;
   const dirs = applyHermeticApp("shot-stage");
   const app = await startApp({ home: dirs.home });

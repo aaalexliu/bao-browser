@@ -11,6 +11,7 @@ import { startExtensionLink, hostScriptPath } from "../../src/extension/link";
 import { assertSocketPath, createSocketSession, prepareSocketPath, socketRoot } from "../../src/unix-socket";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import * as launches from "../../src/launch";
+import { scaledMs } from "../runtime";
 
 function deepTmpdir(t: TestContext, value: string): void {
   const previous = process.env.TMPDIR;
@@ -53,7 +54,7 @@ test("Unix socket length errors include the path and its byte length", () => {
   }
 });
 
-test("deep TMPDIR and two Bao homes keep extension bridges separate", { timeout: 20_000 }, async t => {
+test("deep TMPDIR and two Bao homes keep extension bridges separate", { timeout: scaledMs(20_000) }, async t => {
   const root = await mkdtemp("/tmp/bao-sockets-test-");
   const deep = path.join(root, "x".repeat(150));
   await mkdir(deep);
@@ -104,7 +105,7 @@ test("a finished owner leaves the shared root a peer has already prepared", asyn
   }
 });
 
-test("CLI serve and the MCP client bind short sockets from a deep TMPDIR", { timeout: 40_000 }, async t => {
+test("CLI serve and the MCP client bind short sockets from a deep TMPDIR", { timeout: scaledMs(40_000) }, async t => {
   const root = await mkdtemp("/tmp/bao-socket-start-");
   const deep = path.join(root, "x".repeat(150));
   await mkdir(deep);
@@ -136,7 +137,7 @@ test("CLI serve and the MCP client bind short sockets from a deep TMPDIR", { tim
   }
 });
 
-test("a long BAO_MCP_SOCK override exits with the byte-length error", { timeout: 15_000 }, async () => {
+test("a long BAO_MCP_SOCK override exits with the byte-length error", { timeout: scaledMs(15_000) }, async () => {
   const root = await mkdtemp("/tmp/bao-mcp-long-");
   const mcpSock = path.join(root, "x".repeat(120));
   assert.ok(Buffer.byteLength(mcpSock) > 103);
@@ -160,7 +161,7 @@ test("a long BAO_MCP_SOCK override exits with the byte-length error", { timeout:
 
 const native = process.env.AGENT_BROWSER_PROXY_BINARY;
 
-test("the pinned agent-browser starts its session socket with deep TMPDIR", { skip: !native, timeout: 60_000 }, async t => {
+test("the pinned agent-browser starts its session socket with deep TMPDIR", { skip: !native, timeout: scaledMs(60_000) }, async t => {
   launches.pinTestBrowser();
   const root = await mkdtemp("/tmp/bao-native-socket-");
   const deep = path.join(root, "x".repeat(150));
@@ -196,7 +197,7 @@ test("the pinned agent-browser starts its session socket with deep TMPDIR", { sk
   }
 });
 
-test("native and JS socket paths match, bind and clean with deep TMPDIR", { skip: process.platform !== "darwin", timeout: 60_000 }, async t => {
+test("native and JS socket paths match, bind and clean with deep TMPDIR", { skip: process.platform !== "darwin", timeout: scaledMs(60_000) }, async t => {
   const root = await mkdtemp("/tmp/bao-notify-socket-");
   const deep = path.join(root, "x".repeat(150));
   await mkdir(deep);
@@ -236,8 +237,8 @@ int main(int argc, char **argv) {
     const binary = path.join(root, "notify-test");
     execFileSync("/usr/bin/clang", ["-fobjc-arc", "-O2", "-Wall", "-Wextra", "-Werror", "-I", macos,
       "-framework", "Foundation", "-framework", "AppKit", "-framework", "WebKit", "-framework", "UserNotifications",
-      fixture, path.join(macos, "bao-launch.c"), path.join(macos, "bao-run-node.c"), path.join(macos, "bao-notify.m"), "-o", binary], { timeout: 40_000 });
-    const output = execFileSync(binary, [home, socketPath], { env: { ...process.env, HOME: root, TMPDIR: deep }, encoding: "utf8", timeout: 5000 });
+      fixture, path.join(macos, "bao-launch.c"), path.join(macos, "bao-run-node.c"), path.join(macos, "bao-notify.m"), "-o", binary], { timeout: scaledMs(40_000) });
+    const output = execFileSync(binary, [home, socketPath], { env: { ...process.env, HOME: root, TMPDIR: deep }, encoding: "utf8", timeout: scaledMs(5000) });
     assert.equal(output, `${socketPath}\nok native notification socket\n`);
     assert.equal((await lstat(socketRoot(home))).isDirectory(), true);
   } finally {

@@ -10,6 +10,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { baoAgentProfileDir } from "../../src/engines/bao-profile";
 import { closeRetainedChrome, pidsForDataDir } from "../../src/launch";
 import { LIST_TARGETS } from "../support/fake-agent-browser";
+import { scaledMs } from "../runtime";
 
 interface Result { isError?: boolean; content?: { text: string }[] }
 
@@ -64,12 +65,12 @@ function client(env: NodeJS.ProcessEnv) {
 }
 
 async function gone(profile: string): Promise<void> {
-  const deadline = Date.now() + 20_000;
+  const deadline = Date.now() + scaledMs(20_000);
   while (pidsForDataDir(profile).length && Date.now() < deadline) await delay(50);
   assert.deepEqual(pidsForDataDir(profile), [], "Bao's Chrome exited");
 }
 
-test("a process list over 1 MiB never breaks open, close, or finish_task, and an unreadable list never breaks close or finish_task", { timeout: 180_000 }, async (t) => {
+test("a process list over 1 MiB never breaks open, close, or finish_task, and an unreadable list never breaks close or finish_task", { timeout: scaledMs(180_000) }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-process-list-"));
   const home = path.join(root, "home");
   const sourceRoot = path.join(root, "source");

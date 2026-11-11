@@ -9,6 +9,7 @@ import { shellPlaces, shellScreen, shellScreens, type Screen } from "../../src/a
 import { commandItems, rail, shellList, type ShellState } from "../../src/app/views";
 import { testChromium } from "../../src/test-browser";
 import type { WorkflowV2 } from "../../src/v1/schema";
+import { scaledMs } from "../runtime";
 
 const routes = [
   ["runs", "runs", "Runs"], ["live", "runs", "Live session"], ["heals", "runs", "Heals"],
@@ -34,7 +35,7 @@ test("three places keep all nine screens and their detail routes reachable", () 
   assert.match(shellList("heals", { runs: [{ id: "run", workflowId: "wf", status: "passed", heals: [{ id: "heal" }] }] }), /data-heal="heal" data-run="run"/);
 });
 
-test("native narrow headers reserve one clearance and keep controls clickable", { timeout: 60_000 }, async () => {
+test("native narrow headers reserve one clearance and keep controls clickable", { timeout: scaledMs(60_000) }, async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-native-shell-layout-"));
   const oldHome = process.env.HOME;
   process.env.HOME = home;
@@ -106,7 +107,7 @@ test("native narrow headers reserve one clearance and keep controls clickable", 
   }
 });
 
-test("the running app keeps navigation, details, keyboard focus and narrow layouts working", { timeout: 60_000 }, async () => {
+test("the running app keeps navigation, details, keyboard focus and narrow layouts working", { timeout: scaledMs(60_000) }, async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-shell-nav-"));
   const oldHome = process.env.HOME;
   process.env.HOME = home;
@@ -357,7 +358,7 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
   }
 });
 
-test("Workflows list keeps long names, search recovery, warnings and actions reachable", { timeout: 60_000 }, async () => {
+test("Workflows list keeps long names, search recovery, warnings and actions reachable", { timeout: scaledMs(60_000) }, async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-workflows-list-"));
   const oldHome = process.env.HOME;
   process.env.HOME = home;
@@ -453,7 +454,7 @@ test("Workflows list keeps long names, search recovery, warnings and actions rea
   }
 });
 
-test("the palette takes focus from the modal sidebar without a queued close stealing it", { timeout: 60_000 }, async () => {
+test("the palette takes focus from the modal sidebar without a queued close stealing it", { timeout: scaledMs(60_000) }, async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-shell-palette-"));
   const oldHome = process.env.HOME;
   process.env.HOME = home;

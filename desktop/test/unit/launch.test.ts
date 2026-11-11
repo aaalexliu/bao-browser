@@ -6,6 +6,7 @@ import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, st
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { ACCOUNT_CHROME_MAC, LAUNCH_SERVICES_RESTART, LINUX_CHROME, accountLaunchArgs, assertChromeProfileAvailable, assessOwnedCommand, browserPidFromLauncher, discardRestoredTabs, guiChromeBrowserPid, guiChromeLaunchArgs, killCommandToken, killStalledProfile, launchServicesStalled, ownedChromeLaunchArgs, ownedChromeStalled, pidsForDataDir, pinTestBrowser, readOwnedCommand, resolveAccountChrome, resolveNormalChrome, stopOwnedChrome, testLaneBrowser, testLaneKeychainArgs, testLaneMediaArgs } from "../../src/launch";
+import { scaledMs } from "../runtime";
 
 const processes = require("node:child_process") as typeof import("node:child_process");
 const fixture = readFileSync(path.join(process.cwd(), "desktop/test/fixtures/ps-chrome-owned.txt"), "utf8");
@@ -120,7 +121,7 @@ async function reap(child: ChildProcess): Promise<void> {
 }
 
 for (const waiterExit of ["exit", "signal"] as const) {
-  test(`GUI shutdown follows the browser PID after waiter ${waiterExit}`, { timeout: 5000 }, async (t) => {
+  test(`GUI shutdown follows the browser PID after waiter ${waiterExit}`, { timeout: scaledMs(5000) }, async (t) => {
     const profile = mkdtempSync(path.join(tmpdir(), "bao-gui-owner-"));
     const waiter = spawn(process.execPath, ["-e", "process.on('message', () => process.exit(0)); process.send('ready');"], {
       stdio: ["ignore", "ignore", "ignore", "ipc"],
@@ -158,7 +159,7 @@ for (const waiterExit of ["exit", "signal"] as const) {
 }
 
 for (const mismatch of ["helper executable", "helper type", "other profile", "reused PID"] as const) {
-  test(`GUI shutdown refuses ${mismatch} but signals the owned browser`, { timeout: 5000 }, async (t) => {
+  test(`GUI shutdown refuses ${mismatch} but signals the owned browser`, { timeout: scaledMs(5000) }, async (t) => {
     const profile = mkdtempSync(path.join(tmpdir(), "bao-gui-identity-"));
     const browser = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)", "--", "chrome-fixture", `--user-data-dir=${profile}`], { stdio: "ignore" });
     const waiter = new ChildProcess();
@@ -194,7 +195,7 @@ for (const mismatch of ["helper executable", "helper type", "other profile", "re
   });
 }
 
-test("direct shutdown signals its child only while it is running", { timeout: 5000 }, async (t) => {
+test("direct shutdown signals its child only while it is running", { timeout: scaledMs(5000) }, async (t) => {
   const profile = mkdtempSync(path.join(tmpdir(), "bao-direct-owner-"));
   const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)", "--", "chrome-fixture", `--user-data-dir=${profile}`], { stdio: "ignore" });
   try {
@@ -571,7 +572,7 @@ test("package-app.sh stops before it builds an app when the helper is absent", (
   }
 });
 
-test("stage-runtime compiles into a temp dir and leaves extension/dist alone", { timeout: 180_000 }, () => {
+test("stage-runtime compiles into a temp dir and leaves extension/dist alone", { timeout: scaledMs(180_000) }, () => {
   const parent = mkdtempSync(path.join(tmpdir(), "bao-stage-"));
   const dest = path.join(parent, "Resources");
   mkdirSync(dest);

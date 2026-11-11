@@ -10,6 +10,7 @@ import test from "node:test";
 import { chromeHelper, closeInspectTab, openInspect } from "../../src/cdp-live/ax";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { setRemoteDebugging } from "../../src/cdp-live/remote-debugging";
+import { scaledMs } from "../runtime";
 
 const CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const enabled = process.env.BAO_REMOTE_DEBUGGING_LIVE === "1";
@@ -81,7 +82,7 @@ test("throwaway Chrome remote debugging turns on and off by pid with a decoy", {
 });
 
 async function waitForPid(dir: string): Promise<number> {
-  const deadline = Date.now() + 20_000;
+  const deadline = Date.now() + scaledMs(20_000);
   for (;;) {
     const pids = browserPids(await ps(), dir);
     if (pids[0]) return pids[0];

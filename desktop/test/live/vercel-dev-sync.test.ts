@@ -12,8 +12,9 @@ import path from "node:path";
 import test from "node:test";
 import { Library } from "../../src/v1/store";
 import { pairDevice, syncAll } from "../../src/v1/sync";
+import { scaledMs } from "../runtime";
 
-test("pair, push, and pull against local vercel dev", { timeout: 600_000 }, async () => {
+test("pair, push, and pull against local vercel dev", { timeout: scaledMs(600_000) }, async () => {
   const root = mkdtempSync(path.join(tmpdir(), "bao-vercel-"));
   const port = await freePort();
   const origin = `http://127.0.0.1:${port}`;
@@ -122,7 +123,7 @@ async function pairCode(origin: string, cookie: string): Promise<string> {
 async function waitHealth(origin: string, logs: string[]): Promise<{ ok?: boolean; driver?: string }> {
   const start = Date.now();
   let last = "";
-  while (Date.now() - start < 300_000) {
+  while (Date.now() - start < scaledMs(300_000)) {
     try {
       const res = await fetch(`${origin}/api/health`);
       last = await res.text();

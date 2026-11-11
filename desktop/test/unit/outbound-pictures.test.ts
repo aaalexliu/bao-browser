@@ -16,6 +16,7 @@ import type { Identity, WorkflowStep, WorkflowV2 } from "../../src/v1/schema";
 import { shotFile, workflowShotName } from "../../src/v1/shots";
 import { Library } from "../../src/v1/store";
 import { saveState, syncAll } from "../../src/v1/sync";
+import { scaledMs } from "../runtime";
 
 function typeStep(id: string, index: number, node: Identity): WorkflowStep {
   return { id, index, timeoutMs: 1000, caption: { text: "Click Pay" }, action: "type", target: targetFor(node), text: { literal: "" } };
@@ -141,7 +142,7 @@ test("sync omits private-workflow step pictures from versions and runs without c
   }
 });
 
-test("relay run results omit private-input pictures and reject unreadable workflows while retaining ordinary pictures", { timeout: 60000 }, async () => {
+test("relay run results omit private-input pictures and reject unreadable workflows while retaining ordinary pictures", { timeout: scaledMs(60000) }, async () => {
   const root = mkdtempSync(path.join(tmpdir(), "bao-relay-pictures-"));
   const library = new Library(root);
   const site = createServer((_req, res) => {

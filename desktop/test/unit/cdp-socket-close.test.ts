@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import { createConnection, createServer, type AddressInfo, type Socket } from "node:net";
 import test from "node:test";
 import { CdpSocket } from "../../src/cdp-live/socket";
+import { scaledMs } from "../runtime";
 
 for (const mode of ["remote-end", "transport-error"] as const) {
-  test(`raw CDP rejects pending commands and reports disconnect after ${mode}`, { timeout: 5000 }, async () => {
+  test(`raw CDP rejects pending commands and reports disconnect after ${mode}`, { timeout: scaledMs(5000) }, async () => {
     const server = createServer();
     let peer!: Socket;
     const connected = new Promise<void>(resolve => {

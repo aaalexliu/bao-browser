@@ -5,6 +5,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test, { type TestContext } from "node:test";
+import { scaledMs } from "../runtime";
 
 const INSTALLER = path.join(process.cwd(), "installer/bin/bao-browser.mjs");
 const skip = process.platform !== "darwin" ? "the installer places a signed Mac app" : false;
@@ -73,7 +74,7 @@ function installWith(lab: Lab, env: NodeJS.ProcessEnv, ...args: string[]) {
   return spawnSync(process.execPath, [INSTALLER, "--dir", lab.apps, "--release", lab.release, ...args], {
     env: { HOME: lab.home, PATH: "/usr/bin:/bin", ...env },
     encoding: "utf8",
-    timeout: 60_000,
+    timeout: scaledMs(60_000),
   });
 }
 

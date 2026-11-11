@@ -7,10 +7,11 @@ import test from "node:test";
 import { openWorkflowBrowser } from "../../src/engines/workflow-browser";
 import { closeRetainedChrome, launchOwnedChrome, pidsForDataDir, pinTestBrowser } from "../../src/launch";
 import { chromeProfiles } from "../support/chrome-profiles";
+import { scaledMs } from "../runtime";
 
 pinTestBrowser();
 
-test("a disconnect followed by context.close runs one shutdown", { timeout: 20_000 }, async (t) => {
+test("a disconnect followed by context.close runs one shutdown", { timeout: scaledMs(20_000) }, async (t) => {
   const userDataDir = await mkdtemp(path.join(tmpdir(), "bao-playwright-close-"));
   const context = await launchOwnedChrome({ userDataDir, headless: true });
   const browser = context.browser();
@@ -33,7 +34,7 @@ test("a disconnect followed by context.close runs one shutdown", { timeout: 20_0
   });
   try {
     await browser.close();
-    const started = Date.now() + 2000;
+    const started = Date.now() + scaledMs(2000);
     while (sigterms < 1 && Date.now() < started) await new Promise((resolve) => setTimeout(resolve, 20));
     assert.equal(sigterms, 1, "disconnect must start one shutdown");
     const closing = context.close();
@@ -53,7 +54,7 @@ test("a disconnect followed by context.close runs one shutdown", { timeout: 20_0
   }
 });
 
-test("a Playwright disconnect after keep-open leaves the retained Chrome up", { timeout: 30_000 }, async () => {
+test("a Playwright disconnect after keep-open leaves the retained Chrome up", { timeout: scaledMs(30_000) }, async () => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-playwright-retain-"));
   const sourceRoot = await chromeProfiles(path.join(root, "source"));
   const session = await openWorkflowBrowser({ browser: "bao", home: root, site: "about:blank", sourceRoot });

@@ -20,6 +20,7 @@ import { VIEWER_TOOLS } from "../../src/mcp/viewer-tools";
 import type { BrowserToolCard } from "../../src/mcp/tool-card";
 import { Library } from "../../src/v1/store";
 import type { WorkflowStep, WorkflowV2 } from "../../src/v1/schema";
+import { scaledMs } from "../runtime";
 
 interface HistoryPayload {
   library: LibraryIdentity;
@@ -204,7 +205,7 @@ test("MCP search and describe mark the owner's saved inputs optional", async () 
   });
 });
 
-test("MCP run omits a saved login password but still requires a fresh OTP", { timeout: 60_000 }, async () => {
+test("MCP run omits a saved login password but still requires a fresh OTP", { timeout: scaledMs(60_000) }, async () => {
   const submissions: Record<string, string>[] = [];
   const passwords: string[] = [];
   const server = createServer((req, res) => {
@@ -293,7 +294,7 @@ test("MCP run omits a saved login password but still requires a fresh OTP", { ti
   } finally { await new Promise<void>((resolve) => server.close(() => resolve())); }
 });
 
-test("MCP run fills an owner's saved name, email, and password and lists them", { timeout: 60_000 }, async () => {
+test("MCP run fills an owner's saved name, email, and password and lists them", { timeout: scaledMs(60_000) }, async () => {
   const seen: Record<string, string>[] = [];
   const server = createServer((req, res) => {
     const url = new URL(req.url || "/", "http://127.0.0.1");
@@ -537,7 +538,7 @@ function startMcp(prefix: string, cmd = "mcp", setup?: (user: string, home: stri
     const id = nextId++;
     child.stdin.write(frame({ jsonrpc: "2.0", id, method, params }));
     const start = Date.now();
-    while (Date.now() - start < timeoutMs) {
+    while (Date.now() - start < scaledMs(timeoutMs)) {
       const hit = messages.find((msg) => msg.id === id);
       if (hit) return hit;
       await new Promise((resolve) => setTimeout(resolve, 20));
@@ -874,7 +875,7 @@ test("update polling preserves a long in-flight call and an idle browser session
   try {
     await initialize(mcp);
     const reply = mcp.request("tools/call", { name: "agent_browser", arguments: { command: "open", args: ["https://example.test/"] } }, 12_000);
-    const deadline = Date.now() + 5000;
+    const deadline = Date.now() + scaledMs(5000);
     while (!existsSync(started) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20));
     assert.ok(existsSync(started), "browser operation started");
     writeFileSync(entry, "replacement installed");
@@ -897,7 +898,7 @@ test("update polling preserves a long in-flight call and an idle browser session
   }
 });
 
-test("input resumes preserve the browser choice and allow explicit overrides", { timeout: 90_000 }, async () => {
+test("input resumes preserve the browser choice and allow explicit overrides", { timeout: scaledMs(90_000) }, async () => {
   const seen: string[] = [];
   const fixture = createServer((req, res) => {
     if (req.url === "/resume-account") seen.push(req.headers.cookie?.includes("route=bao") ? "bao" : "copy");
@@ -967,7 +968,7 @@ test("input resumes preserve the browser choice and allow explicit overrides", {
   }
 });
 
-test("replay failure and continued held-run tokens preserve a named browser", { timeout: 90_000 }, async (t) => {
+test("replay failure and continued held-run tokens preserve a named browser", { timeout: scaledMs(90_000) }, async (t) => {
   const root = mkdtempSync(path.join(tmpdir(), "bao-resume-writers-"));
   const sourceRoot = path.join(root, "source");
   mkdirSync(path.join(sourceRoot, "Default"), { recursive: true });
@@ -1048,7 +1049,7 @@ test("replay failure and continued held-run tokens preserve a named browser", { 
   }
 });
 
-test("a held replay blocks update stops and supports resume and cancel after replacement", { timeout: 60_000 }, async () => {
+test("a held replay blocks update stops and supports resume and cancel after replacement", { timeout: scaledMs(60_000) }, async () => {
   const root = mkdtempSync(path.join(tmpdir(), "bao-mcp-held-"));
   const entry = path.join(root, "server.js");
   writeFileSync(entry, "loaded");
@@ -1124,7 +1125,7 @@ test("a held replay blocks update stops and supports resume and cancel after rep
   }
 });
 
-test("a bad browser value returns only that error and leaves the open session alone", { timeout: 120_000 }, async () => {
+test("a bad browser value returns only that error and leaves the open session alone", { timeout: scaledMs(120_000) }, async () => {
   const page = createServer((_req, res) => {
     res.setHeader("content-type", "text/html");
     res.end("<!doctype html><h1 id=marker>CHAT_A_MARKER</h1>");

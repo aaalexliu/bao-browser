@@ -12,6 +12,7 @@ import { launchOwnedChrome, pinTestBrowser } from "../../src/launch";
 import type { PageProposal } from "../../src/v1/data-steps";
 import { parseWorkflow } from "../../src/v1/schema";
 import { testArtifacts } from "../artifacts";
+import { scaledMs } from "../runtime";
 
 process.env.BAO_DRIVE = "1";
 process.env.BAO_HEAL_CURSOR_ACCOUNT = "0";
@@ -52,7 +53,7 @@ async function get(port: number, pathname: string): Promise<unknown> {
 async function until(label: string, fn: () => Promise<boolean>): Promise<void> {
   const start = Date.now();
   let last = "";
-  while (Date.now() - start < 25000) {
+  while (Date.now() - start < scaledMs(25000)) {
     try {
       if (await fn()) return;
     } catch (err) {
@@ -63,7 +64,7 @@ async function until(label: string, fn: () => Promise<boolean>): Promise<void> {
   throw new Error(`timeout ${label} ${last}`);
 }
 
-test("books.toscrape: record a category list, replay another category, CSV matches the site", { timeout: 240_000 }, async () => {
+test("books.toscrape: record a category list, replay another category, CSV matches the site", { timeout: scaledMs(240_000) }, async () => {
   process.env.BAO_RUN_VIDEO = "1";
   const home = mkdtempSync(path.join(tmpdir(), "bao-books-"));
   const app = await startApp({ home, port: 0 });
@@ -158,7 +159,7 @@ test("books.toscrape: record a category list, replay another category, CSV match
   copyFileSync(webm, path.join(ARTIFACTS, "scrape-replay.webm"));
 });
 
-test("for_each types a 3-row CSV into the-internet login and submits every row", { timeout: 180_000 }, async () => {
+test("for_each types a 3-row CSV into the-internet login and submits every row", { timeout: scaledMs(180_000) }, async () => {
   delete process.env.BAO_RUN_VIDEO;
   const home = mkdtempSync(path.join(tmpdir(), "bao-form-"));
   const app = await startApp({ home, port: 0 });

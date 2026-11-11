@@ -10,6 +10,7 @@ import { blankPng, redactedPng } from "../../src/v1/redacted-png";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { guideShotName, shotFile, workflowShotName } from "../../src/v1/shots";
 import { Library } from "../../src/v1/store";
+import { scaledMs } from "../runtime";
 
 const secret = "SuperSecretPassword!";
 const file = "/Users/alex/notes.txt";
@@ -387,7 +388,7 @@ test("guide crops prefer the original capture over an old empty-field copy and s
   assert.equal(crops.has("apply"), false);
 });
 
-test("GET /guide returns stored evidence without reading separate replay input files", { timeout: 60000 }, async () => {
+test("GET /guide returns stored evidence without reading separate replay input files", { timeout: scaledMs(60000) }, async () => {
   const homeDir = mkdtempSync(path.join(tmpdir(), "bao-guide-http-"));
   const app = await startApp({ home: homeDir, port: 0, extensionHost: false, chromeProfilesRoot: path.join(homeDir, "profiles") });
   try {

@@ -9,10 +9,11 @@ import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { CdpSocket, connectCdp } from "../../src/cdp-live/socket";
 import { launchOwnedChromeEndpoint, pinTestBrowser, pidsForDataDir } from "../../src/launch";
 import { trapPort } from "../support/trap-port";
+import { scaledMs } from "../runtime";
 
 pinTestBrowser();
 
-test("owned Chrome publishes its own nonzero debugging endpoint, replacing a stale file", { timeout: 30_000 }, async (t) => {
+test("owned Chrome publishes its own nonzero debugging endpoint, replacing a stale file", { timeout: scaledMs(30_000) }, async (t) => {
   const sent: string[] = [];
   const send = CdpSocket.prototype.send;
   t.mock.method(CdpSocket.prototype, "send", function (this: CdpSocket, ...args: Parameters<typeof send>) {
@@ -45,7 +46,7 @@ test("owned Chrome publishes its own nonzero debugging endpoint, replacing a sta
   }
 });
 
-test("a debugging connection refused while the port opens is retried", { timeout: 5_000 }, async () => {
+test("a debugging connection refused while the port opens is retried", { timeout: scaledMs(5_000) }, async () => {
   const server = net.createServer((socket) => {
     socket.once("data", () => {
       socket.write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n");
@@ -75,7 +76,7 @@ test("a refused debugging connection still fails inside the caller's timeout", a
   assert.ok(elapsed < 1500, `refused connection waited ${elapsed}ms`);
 });
 
-test("a Chrome that exits once before its debugging port opens is started again", { timeout: 60_000 }, async () => {
+test("a Chrome that exits once before its debugging port opens is started again", { timeout: scaledMs(60_000) }, async () => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-startup-exit-retry-"));
   const profile = path.join(root, "profile");
   const marker = path.join(root, "exited");
@@ -94,13 +95,13 @@ exec ${JSON.stringify(pinTestBrowser())} "$@"
     assert.ok(pidsForDataDir(profile).length > 0);
   } finally {
     await chrome.close();
-    const deadline = Date.now() + 3000;
+    const deadline = Date.now() + scaledMs(3000);
     while (pidsForDataDir(profile).length && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
     await rm(root, { recursive: true, force: true });
   }
 });
 
-test("a Chrome that listens on ::1 because 127.0.0.1 was taken is started again", { timeout: 60_000 }, async () => {
+test("a Chrome that listens on ::1 because 127.0.0.1 was taken is started again", { timeout: scaledMs(60_000) }, async () => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-startup-ipv6-retry-"));
   const profile = path.join(root, "profile");
   const first = path.join(root, "first");
@@ -129,13 +130,13 @@ exec ${JSON.stringify(pinTestBrowser())} "$@"
     assert.notEqual((await readDevToolsActivePort(chrome.portFile)).browserPath, "/devtools/browser/ipv6-id");
   } finally {
     await chrome.close();
-    const deadline = Date.now() + 3000;
+    const deadline = Date.now() + scaledMs(3000);
     while (pidsForDataDir(profile).length && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
     await rm(root, { recursive: true, force: true });
   }
 });
 
-test("a Chrome that cannot start its debugging server is started again without the startup wait", { timeout: 30_000 }, async () => {
+test("a Chrome that cannot start its debugging server is started again without the startup wait", { timeout: scaledMs(30_000) }, async () => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-startup-devtools-down-"));
   const profile = path.join(root, "profile");
   const marker = path.join(root, "attempts");
@@ -150,13 +151,13 @@ exec sleep 60
   await assert.rejects(launchOwnedChromeEndpoint({ userDataDir: profile, headless: true, executablePath: wrapper }), /could not start its debugging server/);
   assert.ok(Date.now() - started < 10_000, "a dead debugging server must not wait out the startup deadline");
   assert.equal((await readFile(marker, "utf8")).trim().split("\n").length, 3);
-  const deadline = Date.now() + 3000;
+  const deadline = Date.now() + scaledMs(3000);
   while (pidsForDataDir(profile).length && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
   assert.deepEqual(pidsForDataDir(profile), []);
   await rm(root, { recursive: true, force: true });
 });
 
-test("a debugging-port bind race fails without connecting to the other listener", { timeout: 60_000 }, async (t) => {
+test("a debugging-port bind race fails without connecting to the other listener", { timeout: scaledMs(60_000) }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-startup-port-race-"));
   let requests = 0;
   const listener = createServer((_request, response) => { requests++; response.end("not our Chrome"); });
@@ -175,7 +176,7 @@ test("a debugging-port bind race fails without connecting to the other listener"
     assert.equal(requests, 0);
   } finally {
     await new Promise<void>(resolve => listener.close(() => resolve()));
-    const deadline = Date.now() + 3000;
+    const deadline = Date.now() + scaledMs(3000);
     while (pidsForDataDir(root).length && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
     assert.deepEqual(pidsForDataDir(root), []);
     await rm(root, { recursive: true, force: true });
@@ -186,7 +187,7 @@ test("headed owned Chrome keeps navigator.webdriver false before and after a Run
   skip: process.env.BAO_LANE === "live" || process.env.BAO_LIVE_TESTS === "1"
     ? process.platform !== "darwin" && !process.env.DISPLAY
     : "a headed browser belongs in the live lane",
-  timeout: 30_000,
+  timeout: scaledMs(30_000),
 }, async () => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-headed-marker-"));
   const chrome = await launchOwnedChromeEndpoint({ userDataDir: root, headless: false });

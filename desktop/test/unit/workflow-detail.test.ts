@@ -5,11 +5,11 @@ import path from "node:path";
 import test from "node:test";
 import { startApp } from "../../src/app/server";
 import { testChromium } from "../../src/test-browser.js";
-import { applyHermeticApp } from "../runtime";
+import { applyHermeticApp, scaledMs } from "../runtime";
 import { workflowDetail, libraryTable, type StepCard, type RunSummary, type ShellState } from "../../src/app/views";
 import { clearConflict, noteConflict } from "../../src/v1/versions";
 
-test("Inbox workflow detail keeps selection, inputs, history, and existing actions reachable", { timeout: 60_000 }, async () => {
+test("Inbox workflow detail keeps selection, inputs, history, and existing actions reachable", { timeout: scaledMs(60_000) }, async () => {
   const dirs = applyHermeticApp("workflow-detail");
   const app = await startApp({ home: dirs.home, extensionHost: false, chromeProfilesRoot: path.join(dirs.home, "profiles") });
   const name = `Set up the sign-in screen for 五秒 ${"A long workflow title ".repeat(12)}`;
@@ -198,7 +198,7 @@ test("Inbox workflow detail keeps selection, inputs, history, and existing actio
   }
 });
 
-test("workflow loading and retry stay in the current visit across state polls", { timeout: 30_000 }, async () => {
+test("workflow loading and retry stay in the current visit across state polls", { timeout: scaledMs(30_000) }, async () => {
   const dirs = applyHermeticApp("workflow-detail-polls");
   const app = await startApp({ home: dirs.home, extensionHost: false, chromeProfilesRoot: path.join(dirs.home, "profiles") });
   app.library.save(testWorkflow({ schema: "bao.workflow/v4", id: "poll-detail", name: "Poll detail", createdAt: 1, startUrl: "/fixture", inputs: [], steps: [] }));
@@ -319,7 +319,7 @@ test("Finds names the control in words and never shows a css or xpath selector",
   assert.equal(finds({ id: "bare", action: "click", target: { locators: [{ kind: "css", value: "#username" }, { kind: "testid", value: "login-btn" }] } }), "No saved target");
 });
 
-test("the Inspector zooms a boxed step picture around its target and keeps the mark on it", { timeout: 60_000 }, async () => {
+test("the Inspector zooms a boxed step picture around its target and keeps the mark on it", { timeout: scaledMs(60_000) }, async () => {
   const dirs = applyHermeticApp("workflow-zoom");
   const app = await startApp({ home: dirs.home, extensionHost: false, chromeProfilesRoot: path.join(dirs.home, "profiles") });
   const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });

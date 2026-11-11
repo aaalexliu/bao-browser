@@ -13,6 +13,7 @@ import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { ACCOUNT_CHROME_MAC, pinTestBrowser } from "../../src/launch";
 import { Library } from "../../src/v1/store";
 import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
+import { scaledMs } from "../runtime";
 
 const binary = process.env.AGENT_BROWSER_PROXY_BINARY;
 const installed = process.env.AGENT_BROWSER_PROXY_INSTALLED_CHROME === "1";
@@ -87,7 +88,7 @@ function envFor(root: string, sourceRoot: string): NodeJS.ProcessEnv {
   };
 }
 
-test("Bao MCP and raw native agent-browser return the same output for the same local commands", { skip: !binary || installed, timeout: 180_000 }, async () => {
+test("Bao MCP and raw native agent-browser return the same output for the same local commands", { skip: !binary || installed, timeout: scaledMs(180_000) }, async () => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-proxy-parity-"));
   const sourceRoot = await source(root);
   const env = envFor(root, sourceRoot);
@@ -197,7 +198,7 @@ test("Bao MCP and raw native agent-browser return the same output for the same l
   }
 });
 
-test("relative, implicit and JPEG native screenshots survive MCP close, disconnect and agent termination", { skip: !binary || installed, timeout: 180_000 }, async () => {
+test("relative, implicit and JPEG native screenshots survive MCP close, disconnect and agent termination", { skip: !binary || installed, timeout: scaledMs(180_000) }, async () => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-proxy-record-"));
   const env = envFor(root, await source(root));
   const home = env.BAO_HOME!;
@@ -258,7 +259,7 @@ test("relative, implicit and JPEG native screenshots survive MCP close, disconne
   }
 });
 
-test("a throwaway marked profile opens headed in installed Google Chrome through MCP", { skip: !binary || !installed || process.platform !== "darwin", timeout: 120_000 }, async () => {
+test("a throwaway marked profile opens headed in installed Google Chrome through MCP", { skip: !binary || !installed || process.platform !== "darwin", timeout: scaledMs(120_000) }, async () => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-proxy-installed-"));
   const sourceRoot = await source(root);
   const env = envFor(root, sourceRoot);

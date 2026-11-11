@@ -13,6 +13,7 @@ import { ensurePartialTrail, liveCrashReason, withRateLimitRetry, type LiveCliRe
 import { McpClient } from "../../src/eval/mcp-client";
 import { CAPTURE_SECRET, DRIVER_TASKS, taskHtml } from "../../src/eval/tasks";
 import type { TrailEvent } from "../../src/v1/interpret";
+import { scaledMs } from "../runtime";
 
 const FILE_PATH = "/tmp/bao-secret-folder/note-a.txt";
 const DRAG_PATH = "/var/bao-drag/taxes.pdf";
@@ -180,7 +181,7 @@ test("a 429 is retried, and a leftover crash writes a partial trail as driver-er
   assert.match(readFileSync(path.join(home, "trail.jsonl"), "utf8"), /click/);
 });
 
-test("fixture trails: a typed path never lands in the trail, and a login stop replays Welcome", { timeout: 180_000 }, async () => {
+test("fixture trails: a typed path never lands in the trail, and a login stop replays Welcome", { timeout: scaledMs(180_000) }, async () => {
   const server = await fixtureServer();
   try {
     const form = DRIVER_TASKS.find((task) => task.id === "form-file");

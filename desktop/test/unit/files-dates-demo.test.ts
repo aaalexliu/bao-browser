@@ -14,6 +14,7 @@ import { replay } from "../../src/v1/replay";
 import { unavailableHeal } from "../../src/v1/heal";
 import { WORKFLOW_SCHEMA_ID, type WorkflowV2 } from "../../src/v1/schema";
 import { testArtifacts } from "../artifacts";
+import { scaledMs } from "../runtime";
 
 const CLOCK = new Date("2026-10-22T15:00:00Z");
 
@@ -110,7 +111,7 @@ async function withBrowser(fn: (browser: Browser) => Promise<void>): Promise<voi
 }
 
 describe("files and dates demos", { concurrency: 1 }, () => {
-  test("date cells are computed from the resolved date", { timeout: 60_000 }, async () => {
+  test("date cells are computed from the resolved date", { timeout: scaledMs(60_000) }, async () => {
     const site = await listen((req, res) => {
       res.setHeader("content-type", "text/html; charset=utf-8");
       res.end(fixturePage());
@@ -173,7 +174,7 @@ describe("files and dates demos", { concurrency: 1 }, () => {
     }
   });
 
-  test("a download is templated, hashed, and uploaded through the bound file input", { timeout: 60_000 }, async () => {
+  test("a download is templated, hashed, and uploaded through the bound file input", { timeout: scaledMs(60_000) }, async () => {
     const payload = Buffer.from("hello bao chain\n");
     const site = await listen(async (req, res) => {
       const url = req.url || "/";
@@ -280,7 +281,7 @@ describe("files and dates demos", { concurrency: 1 }, () => {
     }
   });
 
-  test("the run form previews the resolved date in light and dark", { timeout: 60_000 }, async () => {
+  test("the run form previews the resolved date in light and dark", { timeout: scaledMs(60_000) }, async () => {
     const sheet = readFileSync("desktop/src/app/public/index.html", "utf8").match(/<style>([\s\S]*?)<\/style>/)?.[1] || "";
     const fields = [
       runField({ name: "checkIn", type: "date", label: "Check in", relative: "+14d", format: "D MMM YYYY", zone: "UTC", supply: "must" }, undefined, CLOCK),

@@ -15,6 +15,7 @@ import { readDevToolsActivePort, type DevToolsEndpoint } from "../../src/cdp-liv
 import { connectCdp, ServerFrameDecoder, serverFrame } from "../../src/cdp-live/socket";
 import { launchOwnedChromeEndpoint, pinTestBrowser } from "../../src/launch";
 import { chromeProfiles } from "../support/chrome-profiles";
+import { scaledMs } from "../runtime";
 
 pinTestBrowser();
 
@@ -110,7 +111,7 @@ test("a packaged hold starts through bao so the Chrome folder read stays Bao's",
   assert.deepEqual(packaged.args, ["--run-node", "--own", "/Applications/Bao.app/Contents/Resources/bao/src/app/cli.js", "chrome-hold", "--root", options.root, "--ax-log", options.axLog]);
 });
 
-test("one user-data-dir is one Chrome connection, shared by a later process, and a restart opens one more", { timeout: 120_000 }, async (t) => {
+test("one user-data-dir is one Chrome connection, shared by a later process, and a restart opens one more", { timeout: scaledMs(120_000) }, async (t) => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-chrome-hold-home-"));
   const scratch = await mkdtemp(path.join(tmpdir(), "bao-chrome-hold-"));
   const userDataDir = await chromeProfiles(path.join(scratch, "chrome"));
@@ -194,7 +195,7 @@ test("one user-data-dir is one Chrome connection, shared by a later process, and
   const killed = await holderPid(userDataDir);
   if (!killed) throw new Error("no holder to reuse");
   process.kill(killed, "SIGKILL");
-  const deadAt = Date.now() + 5_000;
+  const deadAt = Date.now() + scaledMs(5_000);
   while (pidAlive(killed)) {
     if (Date.now() >= deadAt) throw new Error("the holder did not die");
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -214,7 +215,7 @@ test("one user-data-dir is one Chrome connection, shared by a later process, and
   recovered.detach();
 
   counted.closeConnections();
-  const gone = Date.now() + 12_000;
+  const gone = Date.now() + scaledMs(12_000);
   while (await holderPid(userDataDir) !== undefined || await holderPid(otherRoot) !== undefined) {
     if (Date.now() >= gone) throw new Error("the hold stayed up after its Chrome connection closed");
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -313,7 +314,7 @@ test("serveHold publishes only after the hold lock is free", async (t) => {
   await rm(lock);
   const holdFile = path.join(dir, "hold.json");
   const startingFile = path.join(dir, "starting.json");
-  const deadline = Date.now() + 2_000;
+  const deadline = Date.now() + scaledMs(2_000);
   while (!existsSync(holdFile) || existsSync(startingFile)) {
     if (Date.now() >= deadline) {
       throw new Error(`the hold did not finish publishing after the lock was released (hold.json ${existsSync(holdFile)}, starting.json ${existsSync(startingFile)})`);
@@ -330,7 +331,7 @@ test("serveHold publishes only after the hold lock is free", async (t) => {
   await serving;
 });
 
-test("a session that misses the hold reads it again before reporting it stopped", { timeout: 15_000 }, async (t) => {
+test("a session that misses the hold reads it again before reporting it stopped", { timeout: scaledMs(15_000) }, async (t) => {
   const browserPath = "/devtools/browser/reread";
   const endpoint = await versionEndpoint(t, browserPath);
   const scratch = await mkdtemp(path.join(tmpdir(), "bao-chrome-hold-reread-"));
@@ -365,7 +366,7 @@ test("a session that misses the hold reads it again before reporting it stopped"
   child.stdout?.on("data", (chunk: Buffer) => { out += chunk.toString("utf8"); });
   child.stderr?.on("data", (chunk: Buffer) => { errText += chunk.toString("utf8"); });
   t.after(() => { if (child.pid && pidAlive(child.pid)) child.kill("SIGKILL"); });
-  const deadline = Date.now() + 8_000;
+  const deadline = Date.now() + scaledMs(8_000);
   let fedStart = false;
   while (!out.includes("port")) {
     if (Date.now() >= deadline) throw new Error(`the session did not join the hold it missed: ${errText}`);
@@ -397,7 +398,7 @@ test("a session that misses the hold reads it again before reporting it stopped"
   assert.equal(saved.holderPid, process.pid);
 });
 
-test("teardown leaves a successor hold, and a waiting session joins the published one", { timeout: 20_000 }, async (t) => {
+test("teardown leaves a successor hold, and a waiting session joins the published one", { timeout: scaledMs(20_000) }, async (t) => {
   const browserPath = "/devtools/browser/published";
   const endpoint = await versionEndpoint(t, browserPath);
   const scratch = await mkdtemp(path.join(tmpdir(), "bao-chrome-hold-publish-"));
@@ -443,7 +444,7 @@ test("teardown leaves a successor hold, and a waiting session joins the publishe
   again.detach();
 });
 
-test("a failed hold records its error and leaves a successor starting record", { timeout: 20_000 }, async (t) => {
+test("a failed hold records its error and leaves a successor starting record", { timeout: scaledMs(20_000) }, async (t) => {
   let fail: () => void = () => undefined;
   const failed = new Promise<void>((resolve) => { fail = resolve; });
   const server = createServer((socket) => {
@@ -478,7 +479,7 @@ test("a failed hold records its error and leaves a successor starting record", {
   });
   child.stderr?.on("data", (chunk: Buffer) => { errText += chunk.toString("utf8"); });
   t.after(() => { if (child.pid && pidAlive(child.pid)) child.kill("SIGKILL"); });
-  const started = Date.now() + 10_000;
+  const started = Date.now() + scaledMs(10_000);
   let holder = 0;
   while (holder !== child.pid) {
     if (Date.now() >= started) throw new Error(`the hold did not write its starting record: ${errText}`);

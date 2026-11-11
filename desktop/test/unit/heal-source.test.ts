@@ -10,10 +10,11 @@ import { MacOsHelper } from "../../src/proxy/os-macos";
 import { resetCursorAccountCache } from "../../src/v1/cursor-account";
 import type { HealRecord, HealSource } from "../../src/v1/heal";
 import type { WorkflowV2 } from "../../src/v1/schema";
+import { scaledMs } from "../runtime";
 
 const patch = { identity: { surface: "dom", role: "button", testId: "login", path: [] } };
 
-test("unusable vendor replies retain failed heal evidence", { timeout: 60_000 }, async (t) => {
+test("unusable vendor replies retain failed heal evidence", { timeout: scaledMs(60_000) }, async (t) => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-heal-evidence-"));
   const previousHome = process.env.HOME;
   process.env.HOME = home;
@@ -81,7 +82,7 @@ test("unusable vendor replies retain failed heal evidence", { timeout: 60_000 },
   }
 });
 
-test("saved None, Cursor account and API keys drive real replay heals after restart", { timeout: 240_000 }, async (t) => {
+test("saved None, Cursor account and API keys drive real replay heals after restart", { timeout: scaledMs(240_000) }, async (t) => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-heal-source-"));
   const previous = { HOME: process.env.HOME, BAO_CURSOR_AGENT: process.env.BAO_CURSOR_AGENT, BAO_HEAL_CURSOR_ACCOUNT: process.env.BAO_HEAL_CURSOR_ACCOUNT, OPENAI_API_KEY: process.env.OPENAI_API_KEY };
   process.env.OPENAI_API_KEY = "fixture-env-key";

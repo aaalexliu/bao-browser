@@ -13,7 +13,7 @@ import { unavailableHeal } from "../../src/v1/heal";
 import { replay } from "../../src/v1/replay";
 import { WORKFLOW_SCHEMA_ID, type WorkflowV2 } from "../../src/v1/schema";
 import { testArtifacts, tryWriteEvidence } from "../artifacts";
-import { liveSkip, offOriginFailureUrl, ownApiOutage, probeSite, type SiteProbe } from "../runtime";
+import { liveSkip, offOriginFailureUrl, ownApiOutage, probeSite, type SiteProbe, scaledMs } from "../runtime";
 
 const CLOCK = new Date("2026-10-22T15:00:00Z");
 const UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
@@ -59,7 +59,7 @@ function failureForSkip(
   return url ? { ...failure, url } : failure;
 }
 
-test("restful-booker selects the replayed check-in and check-out cells", { timeout: 120_000, skip: liveOnly }, async (t) => {
+test("restful-booker selects the replayed check-in and check-out cells", { timeout: scaledMs(120_000), skip: liveOnly }, async (t) => {
   const start = "https://automationintesting.online/reservation/1?checkin=2027-06-01&checkout=2027-06-04";
   const probe = await requireSite(t, start);
   if (!probe) return;
@@ -142,7 +142,7 @@ test("restful-booker selects the replayed check-in and check-out cells", { timeo
     assert.ok(selected.isos.includes("2026-11-14"), JSON.stringify(selected));
     const reserve = page.getByRole("button", { name: /reserve/i });
     await reserve.scrollIntoViewIfNeeded();
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(scaledMs(1000));
     await tryWriteEvidence(() => writeFileSync(path.join(shots, "booking-selection.json"), JSON.stringify({ selected, modelCalls: result.modelCalls, status: result.status, http: probe.status }, null, 2)));
   } catch (err) {
     failure = err;
@@ -158,7 +158,7 @@ test("restful-booker selects the replayed check-in and check-out cells", { timeo
   if (failure) throw failure;
 });
 
-test("the IRS W-9 downloads twice to the same templated hash", { timeout: 120_000, skip: liveOnly }, async (t) => {
+test("the IRS W-9 downloads twice to the same templated hash", { timeout: scaledMs(120_000), skip: liveOnly }, async (t) => {
   const url = "https://www.irs.gov/pub/irs-pdf/fw9.pdf";
   const probe = await requireSite(t, url);
   if (!probe) return;
@@ -219,7 +219,7 @@ test("the IRS W-9 downloads twice to the same templated hash", { timeout: 120_00
   await tryWriteEvidence(() => writeFileSync(path.join(testArtifacts("files-dates-public"), "w9-downloads.json"), JSON.stringify({ sha256: hashes[0], paths, name: "2026-10-22-irs-statement.pdf", http: probe.status }, null, 2)));
 });
 
-test("a downloaded file uploads to the-internet and the filename is shown", { timeout: 120_000, skip: liveOnly }, async (t) => {
+test("a downloaded file uploads to the-internet and the filename is shown", { timeout: scaledMs(120_000), skip: liveOnly }, async (t) => {
   const fileUrl = "https://the-internet.herokuapp.com/download/some-file.txt";
   const uploadUrl = "https://the-internet.herokuapp.com/upload";
   const downloaded = await requireSite(t, fileUrl);

@@ -9,11 +9,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { startApp } from "../../src/app/server";
+import { scaledMs } from "../runtime";
 
 process.env.BAO_DRIVE = "1";
 process.env.BAO_CHROME_NO_SANDBOX = "1";
 
-test("capture drive clicks a covered calendar day and does not reserve", { timeout: 120000 }, async () => {
+test("capture drive clicks a covered calendar day and does not reserve", { timeout: scaledMs(120000) }, async () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-cal-"));
   const app = await startApp({ home, port: 0 });
   try {
