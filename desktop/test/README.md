@@ -8,7 +8,7 @@ Install the locked dependencies with `npm ci`, then run `npx playwright install 
 
 Both desktop runners stop before starting tests if the installed Playwright version differs from `package-lock.json`. The error names both versions and tells you to run `npm ci`.
 
-The runner drops model keys, `CI`, and every inherited name that starts with `BAO`. It sets headless mode, the lane name, replay video off, and `BAO_HEAL_CURSOR_ACCOUNT=0`. It pins `BAO_TEST_BROWSER` to Playwright's Chromium and stops if that binary is missing. Resolve that binary before changing HOME, or preserve its cache path explicitly.
+The runner drops model keys, `CI`, and every inherited name that starts with `BAO`. It sets headless mode, the lane name, replay video off, and `BAO_HEAL_CURSOR_ACCOUNT=0`. It pins `BAO_TEST_BROWSER` to Playwright's Chromium and stops if that binary is missing. `swapTestHome` in `desktop/src/playwright-cache.js` sets `PLAYWRIGHT_BROWSERS_PATH` from the passwd home's cache before it changes `HOME`. An explicit path is kept. `laneChildEnv` and `testChromium.launch` use that helper, so a temp `HOME` does not hide the browsers.
 
 If `bao-profile.test.ts` fails to read the closed source's localStorage and several sign-in refresh cases fail too, compare the installed Playwright version with `package-lock.json` before changing import code. Playwright 1.65.0 with Chromium 158 writes `Default/LocalStorage` as SQLite; the locked Playwright 1.61.1 browser uses `Default/Local Storage/leveldb`. A stale local install caused seven failures while the same cases passed in CI. Restoring the locked dependencies made all seven pass without product or test changes.
 
