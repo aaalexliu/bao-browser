@@ -1,21 +1,26 @@
 // One debugging connection per running Chrome. Chrome asks on every new WebSocket to /devtools/browser, so a long-lived
 // Bao process owns that socket for one user-data-dir (every profile in it shares the port) and publishes the local
-// endpoint here. Sessions join it. A session leaving does not close it. Chrome quitting does: the next session starts
-// a new hold, which is one new sheet.
+// endpoint here. Sessions join it. A session leaving does not close it. Chrome quitting does: the kernel closes the
+// loopback socket, the hold ends, and the next session starts a new hold, which is one new sheet.
 
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { closeSync, constants, existsSync, openSync, readFileSync, realpathSync, unlinkSync, writeSync } from "node:fs";
-import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { closeSync, constants, existsSync, fchmodSync, fstatSync, linkSync, lstatSync, openSync, readFileSync, realpathSync, renameSync, unlinkSync, writeSync } from "node:fs";
+import { chmod, mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { appBundleOf } from "../app/bundle";
 import type { CurrentChrome } from "./current-chrome";
 import { shareConnection } from "./shared-connection";
 import { connectCdp } from "./socket";
 
-/** Shared by every Bao home on this Mac. A private TMPDIR must not split the owner's Chrome into two sheets. */
-const HOLD_ROOT = "/tmp/bao-chrome-hold";
 const HOLD_WAIT_MS = 120_000;
+
+/** Shared by every Bao home on this Mac, and private to this user. A private TMPDIR must not split the owner's Chrome into two sheets. */
+function holdRoot(): string {
+  const id = process.getuid?.();
+  if (id === undefined) throw new Error("Bao's Chrome connection needs a user id");
+  return `/tmp/bao-chrome-hold-${id}`;
+}
 
 export interface HoldOptions {
   root: string;
@@ -46,7 +51,7 @@ interface HoldFixture {
 
 export function holdDir(root: string): string {
   const real = realpathSync(root);
-  return path.join(HOLD_ROOT, createHash("sha256").update(real).digest("hex").slice(0, 32));
+  return path.join(holdRoot(), createHash("sha256").update(real).digest("hex").slice(0, 32));
 }
 
 function pidAlive(pid: number): boolean {
@@ -84,44 +89,181 @@ function spawnHolder(options: HoldOptions): number {
   return child.pid;
 }
 
+function assertOwnedDir(dir: string): void {
+  const id = process.getuid?.();
+  let st;
+  try { st = lstatSync(dir); } catch { throw new Error("Bao's Chrome connection directory is not private"); }
+  if (!st.isDirectory() || id === undefined || st.uid !== id || (st.mode & 0o777) !== 0o700) {
+    throw new Error("Bao's Chrome connection directory is not private");
+  }
+}
+
+async function ensureOwnedDir(dir: string): Promise<void> {
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  const id = process.getuid?.();
+  let st = lstatSync(dir);
+  if (!st.isDirectory() || id === undefined || st.uid !== id) throw new Error("Bao's Chrome connection directory is not private");
+  if ((st.mode & 0o777) !== 0o700) {
+    await chmod(dir, 0o700);
+    st = lstatSync(dir);
+    if (!st.isDirectory() || st.uid !== id || (st.mode & 0o777) !== 0o700) {
+      throw new Error("Bao's Chrome connection directory is not private");
+    }
+  }
+}
+
+async function prepareHoldDir(dir: string): Promise<void> {
+  await ensureOwnedDir(path.dirname(dir));
+  await ensureOwnedDir(dir);
+}
+
+function unlinkIfSymlink(file: string): boolean {
+  try {
+    if (!lstatSync(file).isSymbolicLink()) return false;
+    unlinkSync(file);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function writePrivate(file: string, text: string): void {
+  assertOwnedDir(path.dirname(file));
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const fd = openSync(file, constants.O_CREAT | constants.O_WRONLY | constants.O_TRUNC | constants.O_NOFOLLOW, 0o600);
+      try {
+        writeSync(fd, text);
+        fchmodSync(fd, 0o600);
+      } finally { closeSync(fd); }
+      return;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ELOOP" || attempt === 1 || !unlinkIfSymlink(file)) throw error;
+    }
+  }
+}
+
+function readPrivate(file: string): string | undefined {
+  try { assertOwnedDir(path.dirname(file)); } catch { return undefined; }
+  try {
+    const fd = openSync(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+    try { return readFileSync(fd, "utf8"); } finally { closeSync(fd); }
+  } catch {
+    return undefined;
+  }
+}
+
+let lockNonce = 0;
+function uniqueSuffix(): string {
+  lockNonce += 1;
+  return `${process.pid}.${Date.now()}.${lockNonce}`;
+}
+
+/** A parsed pid that is not running. Empty, unreadable, or live content is not this. */
+function deadPid(text: string): number | undefined {
+  const trimmed = text.trim();
+  if (!/^[1-9]\d{0,9}$/.test(trimmed)) return undefined;
+  const pid = Number(trimmed);
+  if (!Number.isSafeInteger(pid) || pidAlive(pid)) return undefined;
+  return pid;
+}
+
+function restoreLock(stale: string, file: string): void {
+  try { linkSync(stale, file); } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") return;
+  }
+  try { unlinkSync(stale); } catch { /* the canonical name remains, or both are gone */ }
+}
+
+function takeDeadLock(file: string): boolean {
+  let fd: number | undefined;
+  let seen: { pid: number; dev: number; ino: number } | undefined;
+  try {
+    fd = openSync(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const st = fstatSync(fd);
+    const pid = deadPid(readFileSync(fd, "utf8"));
+    if (pid !== undefined) seen = { pid, dev: st.dev, ino: st.ino };
+  } catch {
+    return false;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+  if (!seen) return false;
+  const stale = `${file}.stale.${uniqueSuffix()}`;
+  try { renameSync(file, stale); } catch { return false; }
+  let movedDev = 0;
+  let movedIno = 0;
+  let stillDead = false;
+  try {
+    const moved = openSync(stale, constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      const st = fstatSync(moved);
+      movedDev = st.dev;
+      movedIno = st.ino;
+      stillDead = deadPid(readFileSync(moved, "utf8")) === seen.pid;
+    } finally { closeSync(moved); }
+  } catch { stillDead = false; }
+  if (movedDev !== seen.dev || movedIno !== seen.ino || !stillDead) {
+    restoreLock(stale, file);
+    return false;
+  }
+  try { unlinkSync(stale); } catch { /* already gone */ }
+  return true;
+}
+
+function releaseLock(file: string): void {
+  const done = `${file}.done.${uniqueSuffix()}`;
+  try {
+    renameSync(file, done);
+    unlinkSync(done);
+  } catch { /* already released, or a new holder owns the name */ }
+}
+
 async function withHoldLock<T>(dir: string, body: () => Promise<T>): Promise<T> {
+  assertOwnedDir(dir);
   const file = path.join(dir, "lock");
   const deadline = Date.now() + HOLD_WAIT_MS;
   for (;;) {
+    let fd: number | undefined;
     try {
-      const fd = openSync(file, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
-      try {
-        writeSync(fd, `${process.pid}\n`);
-      } finally {
-        closeSync(fd);
-      }
-      try {
-        return await body();
-      } finally {
-        try { unlinkSync(file); } catch { /* already gone */ }
-      }
+      fd = openSync(file, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW, 0o600);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      let dead = false;
-      try { dead = !pidAlive(Number(readFileSync(file, "utf8").trim())); }
-      catch { dead = false; }
-      if (dead) {
-        try { unlinkSync(file); continue; } catch { /* the other taker won */ }
-      }
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ELOOP" && unlinkIfSymlink(file)) continue;
+      if (code !== "EEXIST") throw error;
+      if (takeDeadLock(file)) continue;
       if (Date.now() >= deadline) throw new Error("Bao is still opening its Chrome connection");
       await new Promise((resolve) => setTimeout(resolve, 50));
+      continue;
+    }
+    if (fd === undefined) throw new Error("Bao could not start its Chrome connection");
+    const held = fd;
+    fd = undefined;
+    try {
+      writeSync(held, `${process.pid}\n`);
+      closeSync(held);
+      return await body();
+    } finally {
+      releaseLock(file);
     }
   }
 }
 
 async function readJson<T>(file: string): Promise<T | undefined> {
-  try { return JSON.parse(await readFile(file, "utf8")) as T; }
+  const text = readPrivate(file);
+  if (!text) return undefined;
+  try { return JSON.parse(text) as T; }
   catch { return undefined; }
 }
 
 function isRecord(value: HoldRecord | undefined, root: string): value is HoldRecord {
   return !!value && value.root === root && Number.isInteger(value.port) && value.browserPath.startsWith("/devtools/browser")
     && Number.isInteger(value.holderPid) && Number.isInteger(value.chromePid) && typeof value.executable === "string";
+}
+
+function sameHold(a: HoldRecord, b: HoldRecord): boolean {
+  return a.root === b.root && a.port === b.port && a.browserPath === b.browserPath
+    && a.holderPid === b.holderPid && a.chromePid === b.chromePid && a.executable === b.executable;
 }
 
 /** The published hold, if its process is still alive. The caller removes a dead record while it holds the lock. */
@@ -138,12 +280,8 @@ async function readStarting(dir: string): Promise<HoldStarting | undefined> {
 }
 
 async function readErr(dir: string): Promise<string | undefined> {
-  try {
-    const text = (await readFile(path.join(dir, "hold.err"), "utf8")).trim();
-    return text || undefined;
-  } catch {
-    return undefined;
-  }
+  const text = readPrivate(path.join(dir, "hold.err"))?.trim();
+  return text || undefined;
 }
 
 async function ensureHold(dir: string, root: string, options: HoldOptions): Promise<HoldRecord> {
@@ -156,7 +294,7 @@ async function ensureHold(dir: string, root: string, options: HoldOptions): Prom
     await rm(path.join(dir, "hold.err"), { force: true });
     await rm(path.join(dir, "hold.json"), { force: true });
     const holderPid = spawnHolder(options);
-    await writeFile(path.join(dir, "starting.json"), JSON.stringify({ holderPid, startedAt: Date.now() }), { mode: 0o600 });
+    writePrivate(path.join(dir, "starting.json"), JSON.stringify({ holderPid, startedAt: Date.now() }));
     return undefined;
   });
   return ready ?? waitForHold(dir, root, options.signal);
@@ -198,19 +336,37 @@ async function joinRecord(record: HoldRecord, signal?: AbortSignal): Promise<Cur
   };
 }
 
+function connectionRefused(error: unknown): boolean {
+  return (error as NodeJS.ErrnoException).code === "ECONNREFUSED";
+}
+
+async function dropUnchanged(dir: string, record: HoldRecord): Promise<void> {
+  await withHoldLock(dir, async () => {
+    const current = await readJson<HoldRecord>(path.join(dir, "hold.json"));
+    if (current && isRecord(current, record.root) && !sameHold(current, record)) return;
+    await rm(path.join(dir, "hold.json"), { force: true });
+    await rm(path.join(dir, "hold.err"), { force: true });
+    const starting = await readStarting(dir);
+    if (!starting || starting.holderPid === record.holderPid) await rm(path.join(dir, "starting.json"), { force: true });
+  });
+}
+
 /** Joins the hold for this user-data-dir, starting it when Chrome has none. A second call does not open a second socket. */
 export async function joinOrStartHold(options: HoldOptions): Promise<CurrentChrome> {
   const root = realpathSync(options.root);
   const dir = holdDir(root);
-  await mkdir(dir, { recursive: true, mode: 0o700 });
-  await chmod(dir, 0o700);
+  await prepareHoldDir(dir);
   let missed = false;
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < 3; attempt++) {
     const record = await ensureHold(dir, root, options);
     try {
       return await joinRecord(record, options.signal);
     } catch (error) {
       if (options.signal?.aborted) throw error;
+      if (connectionRefused(error)) {
+        await dropUnchanged(dir, record);
+        continue;
+      }
       if (await readLive(dir, root)) throw error;
       if (missed) throw error;
       missed = true;
@@ -252,32 +408,23 @@ function readFixture(): HoldFixture | undefined {
   return fixture;
 }
 
-/** Owns the Chrome socket until Chrome quits, and publishes the endpoint sessions join. */
-export async function serveHold(chrome: CurrentChrome, stillRunning: () => Promise<boolean>, signal?: AbortSignal): Promise<void> {
+/** Owns the Chrome socket until that socket closes, and publishes the endpoint sessions join. */
+export async function serveHold(chrome: CurrentChrome, signal?: AbortSignal): Promise<void> {
   const root = realpathSync(chrome.root);
   const dir = holdDir(root);
   const record: HoldRecord = {
     root, chromePid: chrome.pid, executable: chrome.executable,
     port: chrome.endpoint.port, browserPath: chrome.endpoint.browserPath, holderPid: process.pid,
   };
-  await mkdir(dir, { recursive: true, mode: 0o700 });
-  await writeFile(path.join(dir, "hold.json"), JSON.stringify(record), { mode: 0o600 });
+  await prepareHoldDir(dir);
+  writePrivate(path.join(dir, "hold.json"), JSON.stringify(record));
   await rm(path.join(dir, "starting.json"), { force: true });
   await rm(path.join(dir, "hold.err"), { force: true });
-  let misses = 0;
-  const timer = setInterval(() => {
-    void stillRunning().then((running) => {
-      misses = running ? 0 : misses + 1;
-      if (misses >= 2) chrome.detach();
-    }).catch(() => undefined);
-  }, 2_000);
-  timer.unref();
   const stopped = new Promise<void>((resolve) => {
     if (signal?.aborted) resolve();
     else signal?.addEventListener("abort", () => resolve(), { once: true });
   });
   await Promise.race([chrome.closed, stopped]);
-  clearInterval(timer);
   chrome.detach();
   await rm(path.join(dir, "hold.json"), { force: true });
   await rm(path.join(dir, "starting.json"), { force: true });
@@ -295,25 +442,20 @@ export async function holdMain(args: readonly string[]): Promise<void> {
   if (!rootArg || !axLog) throw new Error("usage: bao chrome-hold --root dir --ax-log file");
   const root = realpathSync(rootArg);
   const dir = holdDir(root);
-  await mkdir(dir, { recursive: true, mode: 0o700 });
-  await writeFile(path.join(dir, "starting.json"), JSON.stringify({ holderPid: process.pid, startedAt: Date.now() }), { mode: 0o600 });
+  await prepareHoldDir(dir);
+  writePrivate(path.join(dir, "starting.json"), JSON.stringify({ holderPid: process.pid, startedAt: Date.now() }));
   const stopping = new AbortController();
   process.once("SIGTERM", () => stopping.abort());
   process.once("SIGINT", () => stopping.abort());
   try {
     const fixture = readFixture();
     const { connectOwnedChrome } = await import("./current-chrome");
-    const { dailyChromePids } = await import("./remote-debugging");
-    const { chromeProfilesRoot } = await import("../engines/chrome-profile-copy");
     const chrome = fixture ? await connectFixture(root, fixture) : await connectOwnedChrome({ root, axLog });
-    const stillRunning = fixture
-      ? async () => pidAlive(fixture.chromePid)
-      : async () => (await dailyChromePids(root, chromeProfilesRoot())).includes(chrome.pid);
-    await serveHold(chrome, stillRunning, stopping.signal);
+    await serveHold(chrome, stopping.signal);
     process.exit(0);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await writeFile(path.join(dir, "hold.err"), message, { mode: 0o600 });
+    writePrivate(path.join(dir, "hold.err"), message);
     await rm(path.join(dir, "starting.json"), { force: true });
     throw error;
   }

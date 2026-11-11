@@ -141,7 +141,7 @@ test("a sheet that stays up is pressed once", async () => {
       return { ok: true };
     };
     f.deps.connect = async () => {
-      await new Promise((resolve) => setTimeout(resolve, 900));
+      await new Promise((resolve) => setTimeout(resolve, 400));
       return {
         get isOpen() { return true; },
         disconnected: new Promise<void>(() => undefined),
@@ -154,6 +154,44 @@ test("a sheet that stays up is pressed once", async () => {
     const allowPolls = polls.filter((call) => call[0] === "debug-allow");
     assert.equal(allowPolls.filter((call) => call.includes("--press")).length, 1);
     assert.ok(allowPolls.length > 1, "later polls see the sheet and do not press it");
+    chrome.detach();
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
+test("a leftover sheet does not block the next one, and a hold presses at most three times", async () => {
+  const f = await fixture(true);
+  try {
+    let presses = 0;
+    let firstPressAt = 0;
+    let approve: () => void = () => undefined;
+    const ready = new Promise<void>((resolve) => { approve = resolve; });
+    f.deps.helper!.exec = async (args) => {
+      if (args[0] === "debug-allow" && args.includes("--press")) {
+        presses += 1;
+        if (presses === 1) firstPressAt = Date.now();
+        else if (Date.now() - firstPressAt >= 1_000) approve();
+        return { ok: true, found: true, pressed: true };
+      }
+      if (args[0] === "debug-allow") return { ok: true, found: true, pressed: false };
+      return { ok: true };
+    };
+    f.deps.connect = async () => {
+      const opened = await Promise.race([
+        ready.then(() => true),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 4_000)),
+      ]);
+      if (!opened) throw new Error(`the connection stayed waiting behind the leftover sheet after ${presses} presses`);
+      return {
+        get isOpen() { return true; },
+        disconnected: new Promise<void>(() => undefined),
+        close() {},
+        async send() { return { targetInfos: [] }; },
+        sendUntilProgress() { return Promise.resolve({}); },
+      } as unknown as CdpSocket;
+    };
+    const chrome = await currentChrome.openCurrentChrome(f.options, f.deps);
+    assert.ok(presses >= 2, "the sheet that replaced the leftover one was pressed");
+    assert.ok(presses <= 3);
     chrome.detach();
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });

@@ -2,8 +2,8 @@
 // opens one more. The counting endpoint stands in for Chrome's Allow sheet: each browser-level upgrade is one ask.
 
 import assert from "node:assert/strict";
-import { spawn, type ChildProcess } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { lstat, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createConnection, createServer, type AddressInfo, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -47,13 +47,22 @@ async function countingEndpoint(t: TestContext, chrome: DevToolsEndpoint) {
     server.close();
     for (const socket of sockets) socket.destroy();
   });
-  return { port: (server.address() as AddressInfo).port, browserPath: chrome.browserPath, upgrades: () => upgrades };
+  return {
+    port: (server.address() as AddressInfo).port,
+    browserPath: chrome.browserPath,
+    upgrades: () => upgrades,
+    closeConnections() {
+      for (const socket of sockets) socket.destroy();
+    },
+  };
 }
 
-function sleepProc(): ChildProcess {
-  const child = spawn("/bin/sleep", ["300"], { stdio: "ignore" });
-  if (!child.pid) throw new Error("sleep did not start");
-  return child;
+async function closedPort(): Promise<number> {
+  const server = createServer();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as AddressInfo).port;
+  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  return port;
 }
 
 async function joinFromOtherProcess(root: string, axLog: string, home: string): Promise<{ port: number; targetId: string }> {
@@ -100,7 +109,7 @@ test("a packaged hold starts through bao so the Chrome folder read stays Bao's",
   assert.deepEqual(packaged.args, ["--run-node", "--own", "/Applications/Bao.app/Contents/Resources/bao/src/app/cli.js", "chrome-hold", "--root", options.root, "--ax-log", options.axLog]);
 });
 
-test("one user-data-dir is one Chrome connection, shared by a later process, and a restart opens one more", { timeout: 90_000 }, async (t) => {
+test("one user-data-dir is one Chrome connection, shared by a later process, and a restart opens one more", { timeout: 120_000 }, async (t) => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-chrome-hold-home-"));
   const scratch = await mkdtemp(path.join(tmpdir(), "bao-chrome-hold-"));
   const userDataDir = await chromeProfiles(path.join(scratch, "chrome"));
@@ -112,16 +121,14 @@ test("one user-data-dir is one Chrome connection, shared by a later process, and
   await keeper.send("Target.createTarget", { url: "about:blank", background: true });
   t.after(() => keeper.close());
   const counted = await countingEndpoint(t, endpoint);
-  const chromePid = sleepProc();
-  const otherPid = sleepProc();
   const holders: number[] = [];
   const previousHome = process.env.HOME;
   const previousFixture = process.env.BAO_CHROME_HOLD_FIXTURE;
-  const fixture = (pid: number | undefined) => JSON.stringify({
-    port: counted.port, browserPath: counted.browserPath, chromePid: pid, executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  const fixture = JSON.stringify({
+    port: counted.port, browserPath: counted.browserPath, chromePid: process.pid, executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
   });
   process.env.HOME = home;
-  process.env.BAO_CHROME_HOLD_FIXTURE = fixture(chromePid.pid);
+  process.env.BAO_CHROME_HOLD_FIXTURE = fixture;
   const axLog = path.join(home, "audit", "current-chrome.jsonl");
   const holds = [holdDir(userDataDir), holdDir(otherRoot)];
   t.after(async () => {
@@ -129,8 +136,8 @@ test("one user-data-dir is one Chrome connection, shared by a later process, and
     if (previousFixture === undefined) delete process.env.BAO_CHROME_HOLD_FIXTURE;
     else process.env.BAO_CHROME_HOLD_FIXTURE = previousFixture;
     const left = [await holderPid(userDataDir), await holderPid(otherRoot)];
-    for (const pid of [chromePid.pid, otherPid.pid, ...holders, ...left]) {
-      if (pid && pidAlive(pid)) process.kill(pid, "SIGTERM");
+    for (const pid of [...holders, ...left]) {
+      if (pid && pid !== process.pid && pidAlive(pid)) process.kill(pid, "SIGTERM");
     }
     await owned.close();
     await rm(scratch, { recursive: true, force: true });
@@ -143,6 +150,16 @@ test("one user-data-dir is one Chrome connection, shared by a later process, and
     openCurrentChrome({ root: userDataDir, axLog }),
   ]);
   holders.push(await holderPid(userDataDir) ?? 0);
+  const holdRoot = path.dirname(holdDir(userDataDir));
+  const rootStat = await lstat(holdRoot);
+  const dirStat = await lstat(holdDir(userDataDir));
+  const recordStat = await lstat(path.join(holdDir(userDataDir), "hold.json"));
+  const uid = process.getuid?.();
+  assert.equal(path.basename(holdRoot), `bao-chrome-hold-${uid}`);
+  assert.equal(rootStat.isDirectory() && rootStat.uid === uid && (rootStat.mode & 0o777) === 0o700, true);
+  assert.equal(dirStat.isDirectory() && dirStat.uid === uid && (dirStat.mode & 0o777) === 0o700, true);
+  assert.equal(recordStat.isSymbolicLink(), false);
+  assert.equal(recordStat.mode & 0o777, 0o600);
   assert.equal(counted.upgrades(), 1, "two sessions starting together opened one connection");
   assert.equal(sibling.endpoint.port, first.endpoint.port);
   sibling.detach();
@@ -173,16 +190,37 @@ test("one user-data-dir is one Chrome connection, shared by a later process, and
   assert.equal(counted.upgrades(), 2, "a different user-data-dir is a different Chrome connection");
   separate.detach();
 
-  chromePid.kill("SIGTERM");
+  const killed = await holderPid(userDataDir);
+  if (!killed) throw new Error("no holder to reuse");
+  process.kill(killed, "SIGKILL");
+  const deadAt = Date.now() + 5_000;
+  while (pidAlive(killed)) {
+    if (Date.now() >= deadAt) throw new Error("the holder did not die");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  const recordPath = path.join(holdDir(userDataDir), "hold.json");
+  const previous = JSON.parse(await readFile(recordPath, "utf8")) as { root: string; executable: string; chromePid: number };
+  const refusedPort = await closedPort();
+  await writeFile(recordPath, JSON.stringify({
+    root: previous.root, chromePid: previous.chromePid, executable: previous.executable,
+    port: refusedPort, browserPath: "/devtools/browser/stale", holderPid: process.pid,
+  }));
+  const recovered = await openCurrentChrome({ root: userDataDir, axLog });
+  holders.push(await holderPid(userDataDir) ?? 0);
+  assert.notEqual(recovered.endpoint.port, refusedPort);
+  assert.equal(counted.upgrades(), 3, "a live reused pid does not keep a refused endpoint");
+  await recovered.cdp.send("Browser.getVersion");
+  recovered.detach();
+
+  counted.closeConnections();
   const gone = Date.now() + 12_000;
-  while (await holderPid(userDataDir) !== undefined) {
-    if (Date.now() >= gone) throw new Error("the hold stayed up after its Chrome pid exited");
+  while (await holderPid(userDataDir) !== undefined || await holderPid(otherRoot) !== undefined) {
+    if (Date.now() >= gone) throw new Error("the hold stayed up after its Chrome connection closed");
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  process.env.BAO_CHROME_HOLD_FIXTURE = fixture(otherPid.pid);
   const restarted = await openCurrentChrome({ root: userDataDir, axLog });
   holders.push(await holderPid(userDataDir) ?? 0);
-  assert.equal(counted.upgrades(), 3, "Chrome coming back opens one new connection, not one per session");
+  assert.equal(counted.upgrades(), 4, "Chrome's connection closing opens one new connection, not one per session");
   await restarted.cdp.send("Browser.getVersion");
   restarted.detach();
 });

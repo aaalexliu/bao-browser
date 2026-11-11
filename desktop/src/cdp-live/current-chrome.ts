@@ -54,23 +54,32 @@ async function withConsent<T>(helper: CurrentChromeDeps["helper"], pid: number, 
   signal.throwIfAborted();
   let finished = false;
   let pollError: unknown;
-  // One press per sheet. A sheet that stays up is waiting on the owner, not on another press.
-  let pressedSheet = false;
+  // One press when a sheet appears. While this connection is still waiting, a sheet still up 1s after the last press gets one more, and a hold stops at three.
+  let presses = 0;
+  let lastPressAt = 0;
+  let covered = false;
   const pending = operation(signal).finally(() => { finished = true; });
   void pending.catch(() => undefined);
   try {
     while (!finished) {
       signal.throwIfAborted();
+      const again = covered && Date.now() - lastPressAt >= 1_000;
+      const press = presses < 3 && (!covered || again);
+      const args = ["debug-allow", "--pid", String(pid)];
+      if (press) args.push("--press");
+      let sawSheet = true;
       try {
-        const args = ["debug-allow", "--pid", String(pid)];
-        if (!pressedSheet) args.push("--press");
         const hit = await helper.exec(args, 5000);
-        if (hit.pressed) {
-          pressedSheet = true;
-          await logAx(axLog, { what: "AXPress", role: "AXButton", name: "Allow", window: "Allow remote debugging?", at: new Date().toISOString(), via: "BaoOSHelper" });
-        } else if (!hit.found) pressedSheet = false;
+        sawSheet = !!hit.found;
+        if (hit.pressed) await logAx(axLog, { what: "AXPress", role: "AXButton", name: "Allow", window: "Allow remote debugging?", at: new Date().toISOString(), via: "BaoOSHelper" });
         pollError = undefined;
       } catch (error) { pollError = error; }
+      if (press) {
+        presses += 1;
+        lastPressAt = Date.now();
+        covered = true;
+      }
+      if (!sawSheet) covered = false;
       if (!finished) await new Promise((resolve) => setTimeout(resolve, 250));
     }
     return await pending;
