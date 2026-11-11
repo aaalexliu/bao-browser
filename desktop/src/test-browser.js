@@ -12,25 +12,15 @@ const TEST_MEDIA_ARGS = Object.freeze([
 // The feature is off unless this switch turns it on. The legacy path waits for the redraw.
 const SURFACE_SWITCH = "--enable-features=CDPScreenshotNewSurface";
 
-/** @param {string[]} args */
-function withoutSurfaceSwitch(args) {
-  return args.flatMap((arg) => {
-    const prefix = "--enable-features=";
-    if (!arg.startsWith(prefix)) return [arg];
-    const features = arg.slice(prefix.length).split(",").filter((name) => name !== "CDPScreenshotNewSurface");
-    return features.length ? [`${prefix}${features.join(",")}`] : [];
-  });
-}
-
 /** @param {import("playwright").LaunchOptions} options */
 function launchOptions(options) {
-  const args = [...withoutSurfaceSwitch(options.args ?? []), ...TEST_MEDIA_ARGS];
+  const args = [...(options.args ?? []), ...TEST_MEDIA_ARGS];
   if (options.ignoreDefaultArgs === true) return { ...options, args };
   const ignored = Array.isArray(options.ignoreDefaultArgs) ? options.ignoreDefaultArgs : [];
   return {
     ...options,
     args,
-    ignoreDefaultArgs: ignored.includes(SURFACE_SWITCH) ? ignored : [...ignored, SURFACE_SWITCH],
+    ignoreDefaultArgs: [...ignored, SURFACE_SWITCH],
   };
 }
 
