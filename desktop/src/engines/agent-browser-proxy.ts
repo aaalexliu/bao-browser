@@ -189,9 +189,9 @@ type CloseQueue = { n: number };
 type ProxySeat =
   | { phase: "starting"; promise: Promise<Session>; abort: AbortController; closes: CloseQueue; priorEnded?: "current-ended" }
   | { phase: "live"; session: Session; ownerWait: OwnerWait; closes: CloseQueue }
-  | { phase: "closing"; session: Session; ownerWait: OwnerWait; completion: Promise<void>; keep: boolean; started: boolean; resolve: () => void; reject: (error: unknown) => void; closes: CloseQueue }
+  | { phase: "closing"; session: Session; ownerWait: OwnerWait; keep: boolean; closes: CloseQueue }
   | { phase: "ended"; reason: "closed" | "current-ended"; closes: CloseQueue }
-  | { phase: "ended"; reason: "disconnected"; closes: CloseQueue; session?: Session; ownerWait?: OwnerWait; starting?: Promise<Session>; closeRequested?: boolean; completion?: Promise<void> };
+  | { phase: "ended"; reason: "disconnected"; closes: CloseQueue; session?: Session; ownerWait?: OwnerWait; starting?: Promise<Session>; closeRequested?: boolean };
 
 /**
  * macOS does not let a Chrome that Bao launched in the background make itself the front app, so Target.activateTarget only
@@ -356,10 +356,7 @@ export class AgentBrowserProxy {
       return;
     }
     if (seat.phase !== "live" || seat.session !== session) return;
-    this.seat = {
-      phase: "closing", session, ownerWait: seat.ownerWait,
-      completion: Promise.resolve(), keep: false, started: false, resolve() {}, reject() {}, closes: seat.closes,
-    };
+    this.seat = { phase: "closing", session, ownerWait: seat.ownerWait, keep: false, closes: seat.closes };
   }
 
   private removingOf(session: Session): Promise<void> | undefined {
@@ -690,12 +687,10 @@ export class AgentBrowserProxy {
     const session = seat.phase === "live" || seat.phase === "closing" ? seat.session : undefined;
     const ownerWait = seat.phase === "live" || seat.phase === "closing" ? seat.ownerWait : undefined;
     const starting = seat.phase === "starting" ? seat.promise : undefined;
-    const completion = seat.phase === "closing" && seat.started ? seat.completion : undefined;
     this.seat = {
       phase: "ended", reason: "disconnected", closes: seat.closes,
       ...(session ? { session, ownerWait } : {}),
       ...(starting ? { starting } : {}),
-      ...(completion ? { completion } : {}),
     };
   }
 
@@ -1294,10 +1289,11 @@ export class AgentBrowserProxy {
     return result;
   }
 
-  private stillWaiting(session: Session): AgentBrowserCommandResult[] {
+  private async stillWaiting(session: Session): Promise<AgentBrowserCommandResult[]> {
     const wait = this.waitOf(session);
     const wall = wait !== "off" && wait !== "pending" && ownerWall(wait.page) !== null;
     const result = this.ownerResult("waiting", session);
+    if (!wall && wait !== "off" && wait !== "pending") await this.ownerBanner(session, wait.targetId, false).catch(() => undefined);
     if (!wall) this.setWait(session, "off");
     return result;
   }
@@ -1360,7 +1356,8 @@ export class AgentBrowserProxy {
         }
         await new Promise((resolve) => setTimeout(resolve, Math.min(250, Math.max(1, deadline - Date.now()))));
       }
-      return session.abort.signal.aborted || cdp && !cdp.isOpen ? this.ownerClosed(session) : this.stillWaiting(session);
+      if (session.abort.signal.aborted || cdp && !cdp.isOpen) return this.ownerClosed(session);
+      return this.stillWaiting(session);
     } finally {
       session.ownerTouched = Date.now();
       session.abort.signal.removeEventListener("abort", onAbort);
@@ -1649,8 +1646,7 @@ export class AgentBrowserProxy {
     if ((seat.phase !== "live" && seat.phase !== "closing") || seat.session !== session) return;
     const ownerWait = seat.ownerWait;
     const keep = seat.phase === "closing" ? seat.keep : true;
-    const completion = this.cleanups.get(session) ?? Promise.resolve();
-    this.seat = { phase: "closing", session, ownerWait, completion, keep, started: true, resolve() {}, reject() {}, closes: seat.closes };
+    this.seat = { phase: "closing", session, ownerWait, keep, closes: seat.closes };
   }
 
   private async cleanupBody(session: Session, keepOpen: boolean, closeTaskTabs: boolean): Promise<void> {
