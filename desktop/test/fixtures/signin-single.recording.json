@@ -1,0 +1,391 @@
+[
+  {
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "username",
+      "nameAttr": "username",
+      "tag": "input",
+      "inputType": "text",
+      "autocomplete": "username",
+      "cssPath": "#username",
+      "name": "Username",
+      "nameSource": "label",
+      "label": "Username",
+      "path": [
+        {
+          "role": "form"
+        },
+        {
+          "role": "label",
+          "name": "Username"
+        }
+      ]
+    },
+    "beforeUrl": "http://127.0.0.1:62548/",
+    "afterUrl": "http://127.0.0.1:62548/",
+    "box": {
+      "x": 76.859375,
+      "y": 80.875,
+      "width": 153,
+      "height": 21
+    },
+    "viewport": {
+      "width": 756,
+      "height": 413
+    },
+    "id": "evt-0",
+    "ts": 1794433481476
+  },
+  {
+    "kind": "act",
+    "op": "type",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "username",
+      "nameAttr": "username",
+      "tag": "input",
+      "inputType": "text",
+      "autocomplete": "username",
+      "cssPath": "#username",
+      "name": "Username",
+      "nameSource": "label",
+      "label": "Username",
+      "path": [
+        {
+          "role": "form"
+        },
+        {
+          "role": "label",
+          "name": "Username"
+        }
+      ]
+    },
+    "value": "fixture-owner",
+    "box": {
+      "x": 76.859375,
+      "y": 80.875,
+      "width": 153,
+      "height": 21
+    },
+    "viewport": {
+      "width": 756,
+      "height": 413
+    },
+    "id": "evt-1",
+    "ts": 1794433481583
+  },
+  {
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "password",
+      "nameAttr": "password",
+      "tag": "input",
+      "inputType": "password",
+      "autocomplete": "current-password",
+      "cssPath": "#password",
+      "name": "Password",
+      "nameSource": "label",
+      "label": "Password",
+      "path": [
+        {
+          "role": "form"
+        },
+        {
+          "role": "label",
+          "name": "Password"
+        }
+      ]
+    },
+    "beforeUrl": "http://127.0.0.1:62548/",
+    "afterUrl": "http://127.0.0.1:62548/",
+    "box": {
+      "x": 299.203125,
+      "y": 80.875,
+      "width": 153,
+      "height": 21
+    },
+    "viewport": {
+      "width": 756,
+      "height": 413
+    },
+    "id": "evt-2",
+    "ts": 1794433481729
+  },
+  {
+    "kind": "act",
+    "op": "type",
+    "identity": {
+      "surface": "dom",
+      "role": "password",
+      "id": "password",
+      "nameAttr": "password",
+      "tag": "input",
+      "inputType": "password",
+      "autocomplete": "current-password",
+      "cssPath": "#password",
+      "name": "Password",
+      "nameSource": "label",
+      "label": "Password",
+      "path": [
+        {
+          "role": "form"
+        },
+        {
+          "role": "label",
+          "name": "Password"
+        }
+      ]
+    },
+    "sensitive": true,
+    "value": "fixture-password",
+    "valueMode": "full",
+    "box": {
+      "x": 299.203125,
+      "y": 80.875,
+      "width": 153,
+      "height": 21
+    },
+    "viewport": {
+      "width": 756,
+      "height": 413
+    },
+    "id": "evt-3",
+    "ts": 1794433481830
+  },
+  {
+    "kind": "act",
+    "op": "type",
+    "identity": {
+      "surface": "dom",
+      "role": "password",
+      "id": "password",
+      "nameAttr": "password",
+      "tag": "input",
+      "inputType": "password",
+      "autocomplete": "current-password",
+      "cssPath": "#password",
+      "name": "Password",
+      "nameSource": "label",
+      "label": "Password",
+      "path": [
+        {
+          "role": "form"
+        },
+        {
+          "role": "label",
+          "name": "Password"
+        }
+      ]
+    },
+    "sensitive": true,
+    "value": "fixture-password",
+    "valueMode": "full",
+    "box": {
+      "x": 299.203125,
+      "y": 80.875,
+      "width": 153,
+      "height": 21
+    },
+    "viewport": {
+      "width": 756,
+      "height": 413
+    },
+    "id": "evt-4",
+    "ts": 1794433481956
+  },
+  {
+    "kind": "act",
+    "op": "check",
+    "identity": {
+      "surface": "dom",
+      "role": "checkbox",
+      "id": "remember",
+      "tag": "input",
+      "inputType": "checkbox",
+      "cssPath": "#remember",
+      "name": "Remember me",
+      "nameSource": "label",
+      "label": "Remember me",
+      "path": [
+        {
+          "role": "form"
+        },
+        {
+          "role": "label",
+          "name": "Remember me"
+        }
+      ]
+    },
+    "checked": true,
+    "value": "on",
+    "box": {
+      "x": 460.203125,
+      "y": 82.875,
+      "width": 13,
+      "height": 13
+    },
+    "viewport": {
+      "width": 756,
+      "height": 413
+    },
+    "id": "evt-5",
+    "ts": 1794433481958
+  },
+  {
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "checkbox",
+      "id": "remember",
+      "tag": "input",
+      "inputType": "checkbox",
+      "cssPath": "#remember",
+      "name": "Remember me",
+      "nameSource": "label",
+      "label": "Remember me",
+      "path": [
+        {
+          "role": "form"
+        },
+        {
+          "role": "label",
+          "name": "Remember me"
+        }
+      ]
+    },
+    "beforeUrl": "http://127.0.0.1:62548/",
+    "afterUrl": "http://127.0.0.1:62548/",
+    "box": {
+      "x": 460.203125,
+      "y": 82.875,
+      "width": 13,
+      "height": 13
+    },
+    "viewport": {
+      "width": 756,
+      "height": 413
+    },
+    "id": "evt-6",
+    "ts": 1794433481962
+  },
+  {
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "password",
+      "nameAttr": "password",
+      "tag": "input",
+      "inputType": "password",
+      "autocomplete": "current-password",
+      "cssPath": "#password",
+      "name": "Password",
+      "nameSource": "label",
+      "label": "Password",
+      "path": [
+        {
+          "role": "form"
+        },
+        {
+          "role": "label",
+          "name": "Password"
+        }
+      ]
+    },
+    "beforeUrl": "http://127.0.0.1:62548/",
+    "afterUrl": "http://127.0.0.1:62548/",
+    "box": {
+      "x": 299.203125,
+      "y": 80.875,
+      "width": 153,
+      "height": 21
+    },
+    "viewport": {
+      "width": 756,
+      "height": 413
+    },
+    "id": "evt-7",
+    "ts": 1794433482204
+  },
+  {
+    "kind": "act",
+    "op": "key",
+    "key": "Enter",
+    "identity": {
+      "surface": "dom",
+      "role": "textbox",
+      "id": "password",
+      "nameAttr": "password",
+      "tag": "input",
+      "inputType": "password",
+      "autocomplete": "current-password",
+      "cssPath": "#password",
+      "name": "Password",
+      "nameSource": "label",
+      "label": "Password",
+      "path": [
+        {
+          "role": "form"
+        },
+        {
+          "role": "label",
+          "name": "Password"
+        }
+      ]
+    },
+    "beforeUrl": "http://127.0.0.1:62548/",
+    "afterUrl": "http://127.0.0.1:62548/account",
+    "id": "evt-8",
+    "ts": 1794433482337
+  },
+  {
+    "kind": "act",
+    "op": "verify",
+    "afterText": "Account overview",
+    "id": "evt-9",
+    "ts": 1794433482395
+  },
+  {
+    "kind": "act",
+    "op": "click",
+    "identity": {
+      "surface": "dom",
+      "role": "button",
+      "id": "business",
+      "tag": "button",
+      "inputType": "button",
+      "cssPath": "#business",
+      "text": "Open statement",
+      "path": [
+        {
+          "role": "section"
+        }
+      ]
+    },
+    "beforeUrl": "http://127.0.0.1:62548/account",
+    "afterUrl": "http://127.0.0.1:62548/account",
+    "subtreeBefore": "",
+    "subtreeAfter": "Statement opened",
+    "box": {
+      "x": 8,
+      "y": 127.78125,
+      "width": 110.859375,
+      "height": 21
+    },
+    "viewport": {
+      "width": 756,
+      "height": 413
+    },
+    "id": "evt-10",
+    "ts": 1794433482429
+  }
+]

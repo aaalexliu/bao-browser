@@ -3,7 +3,7 @@
 // A note becomes the step's intent. Two demonstrations merge into one workflow,
 // with a branch only where the steps differ.
 
-import { oneTimeCodeField } from "../../../shared/saved-secrets";
+import { oneTimeCodeField, secretSavedField } from "../../../shared/saved-secrets";
 import { explain, interpret, trailDrops, type InterpretMeta, type TrailEvent } from "./interpret";
 import { stepEnteredLiteral, targetElementId } from "../../../shared/step-read";
 import { finishInput, locatorValue, looksLikePath, targetName, stepCheck, stepInputName, stepSensitive, stepTarget, stepTitle, validateWorkflow, WORKFLOW_SCHEMA_ID, type Identity, type Target, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "./schema";
@@ -29,7 +29,13 @@ export interface TeachValue {
   label: string;
 }
 
+export interface TeachSignInSpan {
+  firstEventId: string;
+  lastEventId: string;
+}
+
 export interface TeachCard {
+  signIn?: TeachSignInSpan & { status: "suggested" | "confirmed" };
   id: string;
   eventIds: string[];
   narrator: NarratorKind;
@@ -48,6 +54,7 @@ export interface TeachCard {
 }
 
 export interface TeachDecision {
+  signIn?: TeachSignInSpan;
   ts: number;
   cardId: string;
   kind: CorrectionKind;
@@ -59,6 +66,7 @@ export interface TeachDecision {
 }
 
 export interface TeachCorrection {
+  signIn?: TeachSignInSpan;
   kind: CorrectionKind;
   cardId: string;
   intent?: string;
@@ -116,6 +124,7 @@ export interface TeachSummary {
 const NAME_RE = /^[A-Za-z][A-Za-z0-9_]*$/;
 
 interface Draft {
+  renamed?: boolean;
   id: string;
   events: TrailEvent[];
   step: WorkflowStep;
@@ -169,6 +178,9 @@ export function projectTeach(
   });
   const overrides = new Map<string, WorkflowInput>();
   for (const decision of decisions) applyDecision(drafts, decision, baseline.inputs, overrides, events);
+  for (const draft of drafts) {
+    if (!draft.dropped && !draft.merged && !draft.card.signIn) draft.card.signIn = suggestSignIn(drafts, draft);
+  }
   const kept = drafts.filter((draft) => !draft.dropped && !draft.merged);
   const steps = kept.map((draft, index) => ({
     ...draft.step,
@@ -201,13 +213,17 @@ export function decide(decisions: readonly TeachDecision[], correction: TeachCor
   if ((correction.kind === "input" || correction.kind === "secret") && name && !NAME_RE.test(name)) {
     throw new Error("parameter name");
   }
+  if (correction.signIn && (correction.kind !== "human" || !correction.signIn.firstEventId || !correction.signIn.lastEventId)) {
+    throw new Error("Choose the first and last sign-in steps.");
+  }
   if (correction.kind === "rename" && !intent) throw new Error("intent");
   if (correction.kind === "note" && !note) throw new Error("note");
   return [...decisions, {
     ts: now,
     cardId: correction.cardId,
     kind: correction.kind,
-    detail: detailFor(correction),
+    detail: correction.signIn ? "you complete sign-in" : detailFor(correction),
+    ...(correction.signIn ? { signIn: { ...correction.signIn } } : {}),
     intent,
     name,
     note,
@@ -480,6 +496,61 @@ export function publicTrail(events: readonly TrailEvent[]): TrailEvent[] {
   });
 }
 
+function suggestSignIn(drafts: Draft[], marked: Draft): TeachCard["signIn"] {
+  const index = drafts.indexOf(marked);
+  let first = index;
+  let last = index;
+  while (first > 0 && !["verify", "navigate"].includes(drafts[first - 1]!.step.action)) first--;
+  while (last < drafts.length - 1 && !["verify", "navigate"].includes(drafts[last]!.step.action)) last++;
+  if (drafts[last]!.step.action === "navigate") last--;
+  const segment = drafts.slice(first, last + 1);
+  const credential = segment.find((draft) => draft.events.some((event) =>
+    secretSavedField(event.identity) || event.identity?.autocomplete === "username" || event.identity?.nameAttr === "username",
+  ) || draft.step.action === "handoff" && draft.step.reason === "sign-in");
+  if (!credential) return undefined;
+  first = Math.min(index, drafts.indexOf(credential));
+  if (last < index || drafts.slice(first, last + 1).some((draft) => draft.dropped || draft.merged)) return undefined;
+  return { status: "suggested", firstEventId: drafts[first]!.card.eventIds[0]!, lastEventId: drafts[last]!.card.eventIds.at(-1)! };
+}
+
+function ownSignIn(drafts: Draft[], marked: Draft, span: TeachSignInSpan, events: readonly TrailEvent[]): void {
+  const existing = marked.card.signIn;
+  if (existing?.status === "confirmed") {
+    if (existing.firstEventId === span.firstEventId && existing.lastEventId === span.lastEventId) return;
+    throw new Error("This sign-in already has a confirmed span. Start a new demonstration to change its boundaries.");
+  }
+  const first = drafts.findIndex((draft) => draft.card.eventIds.includes(span.firstEventId));
+  const last = drafts.findIndex((draft) => draft.card.eventIds.includes(span.lastEventId));
+  const index = drafts.indexOf(marked);
+  if (first < 0 || last < first || index < first || index > last) throw new Error("Include the marked step between the first and last sign-in steps.");
+  const members = drafts.slice(first, last + 1);
+  if (members.some((draft) => draft.dropped || draft.merged)) throw new Error("Choose sign-in steps that have not been dropped or merged.");
+  if (members.some((draft) => draft.card.signIn?.status === "confirmed")) throw new Error("Sign-in spans cannot overlap.");
+  const end = members.at(-1)!;
+  const check = stepCheck(end.step);
+  const completion = check && check.kind !== "settled" && check.kind !== "value" && check.kind !== "state"
+    ? check : undefined;
+  const intent = marked.card.note || (marked.renamed ? marked.card.intent : "Sign in");
+  const firstRaw = events.findIndex((event) => event.id === span.firstEventId);
+  const lastRaw = events.findIndex((event) => event.id === span.lastEventId);
+  const source = events.slice(firstRaw, lastRaw + 1);
+  marked.step = {
+    id: marked.step.id, index: marked.step.index, action: "handoff", reason: "sign-in", actor: "owner",
+    timeoutMs: 15000, caption: { text: intent }, ...(completion ? { check: { ...completion, timeoutMs: 15000 } } : {}),
+  };
+  marked.events = [...source];
+  Object.assign(marked.card, {
+    signIn: { ...span, status: "confirmed" }, eventIds: source.map((event) => event.id),
+    action: "handoff", human: true, verify: false, values: [], intent,
+    outcome: completion && "match" in completion ? completion.match : "You confirm when sign-in is finished",
+  });
+  for (const draft of members) {
+    if (draft === marked) continue;
+    draft.merged = true;
+    draft.card.merged = true;
+  }
+}
+
 function applyDecision(
   drafts: Draft[],
   decision: TeachDecision,
@@ -487,9 +558,14 @@ function applyDecision(
   overrides: Map<string, WorkflowInput>,
   events: readonly TrailEvent[],
 ): void {
-  const draft = drafts.find((item) => item.id === decision.cardId);
+  const original = drafts.find((item) => item.id === decision.cardId);
+  const draft = original?.merged
+    ? drafts.find((item) => item.card.signIn?.status === "confirmed" && item.card.eventIds.includes(decision.cardId))
+    : original;
   if (!draft || draft.dropped || draft.merged) return;
+  if (draft.card.signIn?.status === "confirmed" && ["input", "constant", "secret"].includes(decision.kind)) return;
   if (decision.kind === "rename" && decision.intent) {
+    draft.renamed = true;
     const intent = fileText(decision.intent, events);
     draft.card.intent = intent;
     draft.card.noteAsIntent = false;
@@ -517,7 +593,12 @@ function applyDecision(
     draft.card.merged = true;
     return;
   }
+  if (decision.kind === "human" && decision.signIn) {
+    ownSignIn(drafts, draft, decision.signIn, events);
+    return;
+  }
   if (decision.kind === "human") {
+    if (draft.card.signIn?.status === "confirmed") return;
     const reason = draft.step.action === "handoff" && (draft.step.reason === "sign-in" || draft.step.reason === "code")
       ? draft.step.reason
       : "owner-press";
@@ -528,6 +609,7 @@ function applyDecision(
       index: draft.step.index,
       action: "handoff",
       reason,
+      ...(reason === "sign-in" ? { actor: "credentials" as const } : {}),
       timeoutMs,
       caption: { text: draft.card.intent || (reason === "sign-in" ? "Sign in" : reason === "code" ? "Enter the code" : "You press the button") },
       ...(target ? { target } : {}),
@@ -539,6 +621,11 @@ function applyDecision(
   }
   if (decision.kind === "verify" || decision.kind === "check") {
     const match = fileText(decision.outcome || draft.card.outcome || "the check holds", events);
+    if (draft.step.action === "handoff" && draft.card.signIn?.status === "confirmed") {
+      draft.step.check = { kind: "text", match, timeoutMs: 15000 };
+      draft.card.outcome = match;
+      return;
+    }
     draft.step = {
       id: draft.step.id,
       index: draft.step.index,

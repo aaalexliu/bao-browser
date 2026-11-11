@@ -93,6 +93,7 @@ let pendingSeek: number | undefined;
 let seenOpen = "";
 const noteTimers = new Map<string, number>();
 let teachOpenId = "";
+let teachSignInDraft: { cardId: string; firstEventId: string; lastEventId: string } | null = null;
 let teachHighlighted = "";
 let captureName = "";
 let captureUrl = fixtureStartValue();
@@ -2256,6 +2257,8 @@ function teachMarkup(root: HTMLElement): string {
   if (timer) timer.textContent = "0:00";
   clone.querySelectorAll(".teach-card.open").forEach((el) => el.classList.remove("open"));
   clone.querySelectorAll(".teach-row[aria-expanded]").forEach((el) => el.setAttribute("aria-expanded", "false"));
+  clone.querySelectorAll<HTMLElement>(".teach-signin").forEach((el) => { el.hidden = true; });
+  clone.querySelectorAll<HTMLElement>("[data-teach-error]").forEach((el) => { el.hidden = true; el.textContent = ""; });
   clone.querySelectorAll(".thumb img").forEach((img) => img.remove());
   clone.querySelectorAll(".has-shot").forEach((el) => el.classList.remove("has-shot"));
   clone.querySelectorAll("[data-shot-mounted]").forEach((el) => el.removeAttribute("data-shot-mounted"));
@@ -2278,6 +2281,9 @@ function paintTeach(): void {
     return;
   }
   const active = document.activeElement;
+  const signInControl = active instanceof HTMLElement && active.closest(".teach-signin")
+    ? ["data-signin-confirm", "data-signin-first", "data-signin-last", "data-owner-step", "data-signin-cancel"].find((attribute) => active.hasAttribute(attribute))
+    : undefined;
   const barNote = active instanceof HTMLInputElement && active.id === "teach-note" ? active.value : "";
   const editing = active instanceof HTMLInputElement && float.contains(active) && active.id !== "teach-note" ? teachFieldKey(active) : "";
   const value = editing && active instanceof HTMLInputElement ? active.value : "";
@@ -2306,6 +2312,9 @@ function paintTeach(): void {
     teachHighlighted = highlightedId;
     highlighted?.scrollIntoView({ block: "nearest" });
   }
+  if (signInControl && teachSignInDraft) {
+    float.querySelector<HTMLElement>(`[data-card="${CSS.escape(teachSignInDraft.cardId)}"] [${signInControl}]`)?.focus();
+  }
   if (!editing) return;
   const next = float.querySelector(editing) as HTMLInputElement | null;
   if (!next) return;
@@ -2314,12 +2323,22 @@ function paintTeach(): void {
   if (start != null && end != null) next.setSelectionRange(start, end);
 }
 
-async function correct(card: string, kind: string, extra: Record<string, string> = {}): Promise<void> {
-  await fetch("/api/teach/correct", {
+async function correct(card: string, kind: string, extra: Record<string, unknown> = {}): Promise<void> {
+  const response = await fetch("/api/teach/correct", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ cardId: card, kind, ...extra }),
   });
+  if (!response.ok) {
+    const body = await response.json() as { error?: string };
+    const message = document.querySelector<HTMLElement>(`[data-card="${CSS.escape(card)}"] [data-teach-error]`);
+    if (message) {
+      message.textContent = body.error || "Could not save the correction. Try again.";
+      message.hidden = false;
+    }
+    return;
+  }
+  teachSignInDraft = null;
   renderKey = "";
   await refresh();
 }
@@ -2382,9 +2401,37 @@ function bindTeach(root: ParentNode): void {
       row.setAttribute("aria-expanded", opening ? "true" : "false");
       teachOpenId = opening ? id : "";
     };
+    const signIn = card.querySelector<HTMLFieldSetElement>(".teach-signin");
+    const first = card.querySelector<HTMLSelectElement>("[data-signin-first]");
+    const last = card.querySelector<HTMLSelectElement>("[data-signin-last]");
+    const confirm = card.querySelector<HTMLButtonElement>("[data-signin-confirm]");
+    if (signIn && first && last && confirm) {
+      if (teachSignInDraft?.cardId === id) {
+        signIn.hidden = false;
+        first.value = teachSignInDraft.firstEventId;
+        last.value = teachSignInDraft.lastEventId;
+      }
+      const remember = () => { teachSignInDraft = { cardId: id, firstEventId: first.value, lastEventId: last.value }; };
+      first.onchange = last.onchange = remember;
+      confirm.onclick = () => { void correct(id, "human", { signIn: { firstEventId: first.value, lastEventId: last.value } }); };
+      const only = card.querySelector<HTMLButtonElement>("[data-owner-step]");
+      if (only) only.onclick = () => { void correct(id, "human"); };
+      const cancel = card.querySelector<HTMLButtonElement>("[data-signin-cancel]");
+      if (cancel) cancel.onclick = () => {
+        teachSignInDraft = null;
+        signIn.hidden = true;
+        card.querySelector<HTMLButtonElement>('[data-correct="human"]')?.focus();
+      };
+    }
     card.querySelectorAll<HTMLButtonElement>("[data-correct]").forEach((btn) => {
       btn.onclick = () => {
         const kind = btn.dataset.correct || "";
+        if (kind === "human" && signIn && first && last && confirm) {
+          teachSignInDraft = { cardId: id, firstEventId: first.value, lastEventId: last.value };
+          signIn.hidden = false;
+          confirm.focus();
+          return;
+        }
         const row = btn.closest(".teach-value");
         const name = (row?.querySelector("input[data-param]") as HTMLInputElement | null)?.value
           || card.querySelector<HTMLInputElement>("[data-param]")?.value

@@ -243,7 +243,15 @@ export function workflowJsonSchema(): Record<string, unknown> {
         step("select", ["target", "text"], { target, text: textOf }),
         step("navigate", ["url"], { url: { type: "string" } }),
         step("verify", ["check"], {}),
-        step("handoff", ["reason"], { reason: { enum: ["sign-in", "code", "owner-press"] }, target }),
+        {
+          ...step("handoff", ["reason"], { reason: { enum: ["sign-in", "code", "owner-press"] }, actor: { enum: ["owner", "credentials"] }, target }),
+          allOf: [
+            { if: { required: ["actor"] }, then: { properties: { reason: { const: "sign-in" } } } },
+            { if: { properties: { actor: { const: "owner" } }, required: ["actor"] }, then: {
+              not: { required: ["target"] }, properties: { check: { not: { properties: { kind: { const: "settled" } }, required: ["kind"] } } },
+            } },
+          ],
+        },
         step("upload", ["target", "file"], { target, file: fileOf }),
         step("drop", ["target", "file"], { target, file: fileOf }),
         step("extract", ["extract"], { extract: extractOf }, false),

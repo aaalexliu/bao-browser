@@ -1521,7 +1521,13 @@ export async function startApp(opts: {
           const previous = projected.cards.slice(0, index).reverse().find((card) => !card.dropped && !card.merged);
           if (!previous) return json(res, { error: "nothing to merge" }, 400);
         }
-        teachDecisions = decide(teachDecisions, body, Date.now());
+        try {
+          const next = decide(teachDecisions, body, Date.now());
+          projectTeach(capture.events, next, teachMeta(), spokenMap());
+          teachDecisions = next;
+        } catch (error) {
+          return json(res, { error: error instanceof Error ? error.message : "Choose the sign-in steps again." }, 400);
+        }
         persistTeachCase();
         return json(res, teachState());
       }

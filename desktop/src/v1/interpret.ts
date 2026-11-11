@@ -432,6 +432,7 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
     const named = identity?.name || identity?.text || identity?.label;
     return {
       id, index, action: "handoff", reason: owner ? "owner-press" : "sign-in", timeoutMs: 8000,
+      ...(!owner ? { actor: "credentials" as const } : {}),
       ...(owner && target.locators.length ? { target } : {}),
       caption: caption(owner ? (named ? `You press ${named}` : "You press the button") : "Sign in", owner ? cite : undefined, owner ? box : undefined),
       ...handoffCheck(observed(event, undefined, false, known, meta.secrets ?? [])),
@@ -480,7 +481,7 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
     }
     const seen = event.afterText ? { ...event, performed: true } : event;
     return {
-      id, index, action: "handoff", reason: "sign-in", timeoutMs: 8000,
+      id, index, action: "handoff", reason: "sign-in", actor: "credentials", timeoutMs: 8000,
       ...(target.locators.length ? { target } : {}),
       caption: caption("Sign in"),
       ...handoffCheck(observed(seen, undefined, false, known, meta.secrets ?? [])),

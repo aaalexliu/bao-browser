@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Fixture sign-in</title></head>
+<body>
+  <h1>Sign in</h1>
+  <form id="login">
+    <label>Username <input id="username" name="username" autocomplete="username"></label>
+    <label>Password <input id="password" name="password" type="password" autocomplete="current-password"></label>
+    <label><input id="remember" type="checkbox"> Remember me</label>
+    <button id="signin" type="submit">Sign in</button>
+  </form>
+  <form id="challenge" hidden>
+    <h2>Confirm your sign-in</h2>
+    <label>Confirm password <input id="confirm-password" type="password" autocomplete="current-password"></label>
+    <label>PIN <input id="pin" autocomplete="one-time-code" inputmode="numeric"></label>
+    <button id="verify" type="submit">Verify sign-in</button>
+  </form>
+  <section id="account" hidden>
+    <h2 role="status" data-testid="account-status"></h2>
+    <button id="business" type="button">Open statement</button>
+    <p id="result" role="status"></p>
+  </section>
+  <script>
+    const multi = new URL(location.href).searchParams.has('multi');
+    const finish = () => {
+      document.querySelector('#login').hidden = true;
+      document.querySelector('#challenge').hidden = true;
+      document.querySelector('#account').hidden = false;
+      document.querySelector('[data-testid="account-status"]').textContent = 'Account overview';
+      document.querySelector('h1').textContent = 'Signed in';
+      history.pushState({}, '', '/account');
+    };
+    document.querySelector('#login').onsubmit = event => {
+      event.preventDefault();
+      if (!multi) return finish();
+      document.querySelector('#login').hidden = true;
+      document.querySelector('#challenge').hidden = false;
+      history.pushState({}, '', '/challenge');
+    };
+    document.querySelector('#challenge').onsubmit = event => {
+      event.preventDefault();
+      finish();
+    };
+    document.querySelector('#business').onclick = () => {
+      document.querySelector('#result').textContent = 'Statement opened';
+    };
+  </script>
+</body>
+</html>

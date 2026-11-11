@@ -229,7 +229,7 @@ export type WorkflowStep =
   | StepBase & { action: "select"; target: Target; text: TextOf; check?: Check }
   | StepBase & { action: "navigate"; url: string; check?: Check }
   | StepBase & { action: "verify"; check: Check }
-  | StepBase & { action: "handoff"; reason: HandoffReason; target?: Target; check?: Check }
+  | StepBase & { action: "handoff"; reason: HandoffReason; actor?: "owner" | "credentials"; target?: Target; check?: Check }
   | StepBase & { action: "upload" | "drop"; target: Target; file: FileOf; check?: Check }
   | StepBase & { action: "extract"; extract: ExtractSpec; heal?: "never" }
   | StepBase & { action: "for_each"; forEach: ForEachSpec }
@@ -472,6 +472,13 @@ export function parseWorkflow(raw: unknown): WorkflowV2 {
 export function normalizeWorkflow(doc: WorkflowV2): WorkflowV2 {
   const next = { ...doc };
   if (Array.isArray(next.inputs)) next.inputs = next.inputs.map((input) => finishInput(input));
+  if (Array.isArray(next.steps)) next.steps = next.steps.map((step) => {
+    if (step?.action === "handoff" && step.reason === "sign-in" && step.actor === undefined) return { ...step, actor: "credentials" };
+    if (step?.action === "for_each" && Array.isArray(step.forEach?.steps)) {
+      return { ...step, forEach: { ...step.forEach, steps: normalizeWorkflow({ ...doc, steps: step.forEach.steps }).steps } };
+    }
+    return step;
+  });
   return next;
 }
 
@@ -524,7 +531,7 @@ const STEP_KEYS: Record<string, string[]> = {
   select: ["target", "text", "check"],
   navigate: ["url", "check"],
   verify: ["check"],
-  handoff: ["reason", "target", "check"],
+  handoff: ["reason", "actor", "target", "check"],
   upload: ["target", "file", "check"],
   drop: ["target", "file", "check"],
   extract: ["extract"],
@@ -590,6 +597,9 @@ function stepErrors(step: WorkflowStep, index: number, names: Set<string>, input
       break;
     case "handoff":
       if (step.reason !== "sign-in" && step.reason !== "code" && step.reason !== "owner-press") errors.push(`handoff ${step.id}`);
+      if (step.actor !== undefined && (step.reason !== "sign-in" || step.actor !== "owner" && step.actor !== "credentials")) errors.push(`handoff actor ${step.id}`);
+      if (step.actor === "owner" && step.target) errors.push(`owner sign-in target ${step.id}`);
+      if (step.actor === "owner" && step.check?.kind === "settled") errors.push(`owner sign-in check ${step.id}`);
       if (step.target) errors.push(...targetErrors(step.target, step.id));
       if (step.check) errors.push(...checkErrors(step.check, step.id));
       break;

@@ -2106,6 +2106,8 @@ export function paletteView(items: CommandItem[], query: string, active: number)
 }
 
 export interface TeachCardView {
+  signIn?: { firstEventId: string; lastEventId: string; status: "suggested" | "confirmed" };
+  eventIds?: string[];
   id: string;
   intent: string;
   outcome: string;
@@ -2175,6 +2177,7 @@ function teachList(teach: TeachView, edit: boolean): string {
     edit,
     on: card.id === newest,
     edited: editedNote(teach.decisions, card.id),
+    signInCards: cards,
   })).join("");
   const dropped = cards.filter((card) => card.dropped);
   const pile = dropped.length
@@ -2203,7 +2206,30 @@ export function teachPanel(teach: TeachView): string {
   </section>`;
 }
 
-export function teachCard(card: TeachCardView, opts: { edit?: boolean; on?: boolean; edited?: string } = {}): string {
+function signInEditor(card: TeachCardView, cards: TeachCardView[]): string {
+  const span = card.signIn;
+  if (!span || span.status !== "suggested") return "";
+  const choices = cards.filter((item) => !item.dropped && !item.merged);
+  const options = (edge: "first" | "last") => choices.map((item, index) => {
+    const id = edge === "first" ? item.eventIds?.[0] || item.id : item.eventIds?.at(-1) || item.id;
+    const selected = id === (edge === "first" ? span.firstEventId : span.lastEventId);
+    return `<option value="${esc(id)}"${selected ? " selected" : ""}>${index + 1}. ${esc(item.intent)}</option>`;
+  }).join("");
+  return `<fieldset class="teach-signin" hidden>
+    <legend>You complete sign-in</legend>
+    <p class="meta">Finish demonstrating sign-in, then include every step through the last password, PIN, or code. Bao will wait, not type or submit.</p>
+    <label>From <select data-signin-first>${options("first")}</select></label>
+    <label>Through <select data-signin-last>${options("last")}</select></label>
+    <p class="meta">Bao resumes when the last recorded check holds, or when you confirm you are done if there is no check.</p>
+    <div class="row teach-actions">
+      <button type="button" class="primary" data-signin-confirm>I'll complete sign-in</button>
+      <button type="button" data-owner-step>Only this step</button>
+      <button type="button" data-signin-cancel>Cancel</button>
+    </div>
+  </fieldset>`;
+}
+
+export function teachCard(card: TeachCardView, opts: { edit?: boolean; on?: boolean; edited?: string; signInCards?: TeachCardView[] } = {}): string {
   const who = card.narrator === "model" ? `model${card.modelName ? ` · ${card.modelName}` : ""}` : "heuristic";
   const chip = card.values[0] ? valueChip(card.values[0]) : "";
   const flags = [
@@ -2240,14 +2266,19 @@ export function teachCard(card: TeachCardView, opts: { edit?: boolean; on?: bool
         <button type="button" data-correct="drop">Drop</button>
         <button type="button" data-correct="merge">Merge</button>
       </div>
+      ${signInEditor(card, opts.signInCards || [])}
+      <p data-teach-error role="alert" hidden></p>
       ${used}
       <label>Note <input class="note" data-note value="${esc(card.note)}" placeholder="Note" aria-label="Note"></label>
     </div>` : "";
+  const covered = card.signIn?.status === "confirmed" ? (opts.signInCards || []).filter((item) => card.eventIds?.includes(item.id)) : [];
+  const coverage = covered.length ? `<details class="teach-signin-steps"><summary>Sign-in steps (${covered.length})</summary><ol>${covered.map((item) => `<li>${esc(item.id === card.id ? "Marked step" : item.intent)}</li>`).join("")}</ol><p class="meta">You do all of these steps. Bao does not replay them.</p></details>` : "";
   const classes = ["step-card", "teach-card", card.human ? "human" : "", opts.on ? "on" : ""].filter(Boolean).join(" ");
   const at = typeof card.at === "number" ? String(card.at) : "";
   const shown = typeof card.shownAt === "number" ? String(card.shownAt) : "";
   return `<article class="${classes}" data-card="${esc(card.id)}" data-narrator="${esc(card.narrator)}" data-at="${esc(at)}" data-shown="${esc(shown)}" data-input="${card.values.some((value) => value.role === "input") ? "1" : "0"}" data-secret="${card.values.some((value) => value.role === "secret") ? "1" : "0"}" data-human="${card.human ? "1" : "0"}">
     ${head}
+    ${coverage}
     ${editor}
   </article>`;
 }

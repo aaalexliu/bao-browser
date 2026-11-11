@@ -1225,6 +1225,7 @@ async function runHandoff(
   gate: ApplyGate,
 ): Promise<StepOutcome> {
   if (step.action !== "handoff") return { ok: true, repairs: [] };
+  if (step.reason === "sign-in" && step.actor === "owner") return runOwnerSignIn(step, args, driver, gate);
   if (step.reason === "sign-in") return runLogin(workflow, step, args, driver, secrets, gate);
   const check = step.check;
   const real = !!check && check.kind !== "settled";
@@ -1272,6 +1273,36 @@ async function waitForOwner(step: WorkflowStep, args: ReplayArgs, driver: Driver
   if (!check && (driver.loginContinued?.() || driver.ownerContinued?.())) return true;
   const tree = await driver.tree();
   return !!check && checkHolds(check, tree, args);
+}
+
+async function runOwnerSignIn(
+  step: Extract<WorkflowStep, { action: "handoff" }>,
+  args: ReplayArgs,
+  driver: Driver,
+  gate: ApplyGate,
+): Promise<StepOutcome> {
+  const check = step.check;
+  const real = !!check && check.kind !== "settled";
+  const tree = await driver.tree();
+  if (real && checkHolds(check, tree, args) || !real && (gate.humanReady || driver.loginContinued?.() || driver.ownerContinued?.())) {
+    const result = finishHandoff(driver, gate, step.id);
+    await driver.clearLoginWait?.(gate.runId || "");
+    return result;
+  }
+  const ask = personAsk(gate, step, "login");
+  beginHandoff(driver, gate, step.id);
+  if (!gate.humanReady) {
+    gate.onPause?.(ask);
+    await driver.showAsk?.(ask);
+    await driver.showLoginWait?.(stepTitle(step) || "Sign in on the site window");
+  }
+  if (gate.yieldHuman || gate.humanReady) return { ok: false, paused: "signin", repairs: [], ask };
+  if (await waitForOwner(step, args, driver, gate)) {
+    const result = finishHandoff(driver, gate, step.id);
+    await driver.clearLoginWait?.(gate.runId || "");
+    return result;
+  }
+  return { ok: false, paused: "signin", repairs: [], ask };
 }
 
 async function runLogin(

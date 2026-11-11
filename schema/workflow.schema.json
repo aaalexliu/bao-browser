@@ -7062,6 +7062,12 @@
                   "owner-press"
                 ]
               },
+              "actor": {
+                "enum": [
+                  "owner",
+                  "credentials"
+                ]
+              },
               "target": {
                 "type": "object",
                 "additionalProperties": false,
@@ -7320,7 +7326,56 @@
                   }
                 }
               }
-            }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "required": [
+                    "actor"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "reason": {
+                      "const": "sign-in"
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "actor": {
+                      "const": "owner"
+                    }
+                  },
+                  "required": [
+                    "actor"
+                  ]
+                },
+                "then": {
+                  "not": {
+                    "required": [
+                      "target"
+                    ]
+                  },
+                  "properties": {
+                    "check": {
+                      "not": {
+                        "properties": {
+                          "kind": {
+                            "const": "settled"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            ]
           },
           {
             "type": "object",
