@@ -320,7 +320,9 @@ export class AgentBrowserRun {
     this.persist();
   }
 
-  ownerWaiting(waiting: boolean): void {
+  /** The run status is the session owner wait: off records, and any other wait needs the owner. */
+  syncOwnerWait(wait: "off" | "pending" | { targetId: string }): void {
+    const waiting = wait !== "off";
     const wasWaiting = this.run.status === "needs_human";
     this.run.status = waiting ? "needs_human" : "recording";
     if (this.video?.kind === "recording") {
@@ -336,6 +338,10 @@ export class AgentBrowserRun {
       delete this.run.envelope;
     }
     this.persist();
+  }
+
+  ownerWaiting(waiting: boolean): void {
+    this.syncOwnerWait(waiting ? "pending" : "off");
   }
 
   finish(result?: "session_closed" | AgentBrowserTaskOutcome): void {

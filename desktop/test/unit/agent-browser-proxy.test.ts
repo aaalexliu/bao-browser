@@ -995,3 +995,33 @@ test("after the newer task finishes, a command that names the ended run stays cl
     assert.notEqual(f.proxy.activeRunId, "run-not-ended-by-newer");
   } finally { await f.close(); }
 });
+
+test("a wait_for_owner on a normal page does not stick in needs_human, so finish_task keeps the caller's outcome", async (t) => {
+  const f = await fixture(t);
+  try {
+    await f.proxy.execute("open", ["http://127.0.0.1/"], "copy");
+    const runId = f.proxy.activeRunId!;
+    const [ready] = await f.proxy.execute("wait_for_owner", ["40"], undefined, false, undefined, {}, runId);
+    assert.equal((JSON.parse(ready!.stdout) as { outcome: string }).outcome, "ready");
+    const library = new Library(path.join(f.root, "home"));
+    assert.equal(library.readRun(runId).status, "recording");
+    assert.equal(await f.proxy.finishTask({ outcome: "passed", reason: "The page was already open." }, runId), runId);
+    assert.equal(library.readRun(runId).status, "passed");
+    assert.equal(library.readRun(runId).envelope?.reason, "The page was already open.");
+  } finally { await f.close(); }
+});
+
+test("a later open replaces a retained session instead of returning closed", async (t) => {
+  const f = await fixture(t, true);
+  try {
+    await f.proxy.execute("open", ["http://127.0.0.1/"], "copy");
+    const kept = f.proxy.activeRunId!;
+    assert.equal(await f.proxy.finishTask({ outcome: "passed", reason: "Keep the window." }, kept), kept);
+    assert.equal(f.proxy.hasSession(), true);
+    assert.equal(f.closeCount(), 0);
+    const [opened] = await f.proxy.execute("open", ["http://127.0.0.1/next"], "copy");
+    assert.equal(opened!.exitCode, 0);
+    assert.notEqual(f.proxy.activeRunId, kept);
+    assert.equal(f.closeCount(), 0, "replacing a retained session does not close the kept window");
+  } finally { await f.close(); }
+});

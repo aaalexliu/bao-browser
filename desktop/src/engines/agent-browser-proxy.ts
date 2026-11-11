@@ -129,8 +129,6 @@ interface SessionData {
   abort: AbortController;
   recording: AgentBrowserRun;
   workflow: AgentBrowserWorkflow;
-  /** `reopen` is the http(s) page Running Chrome should open, when Bao knows one. */
-  ownerWait?: { targetId: string; page: OwnerPage; reopen?: string } | "pending";
   /** Chrome's own URL and title for the active tab, from the latest metadata read. */
   page?: OwnerPage;
   /** The latest http(s) page whose URL and title are not a sign-in or check. A click or later navigation reopens this at an address wall or a cross-host sign-in title. */
@@ -147,8 +145,6 @@ interface SessionData {
   /** Whether Bao brought the waiting window on top of the owner's apps for the latest handoff. */
   raised?: boolean;
   commandDone?: Promise<void>;
-  closing?: boolean;
-  removing?: Promise<void>;
   outcome?: AgentBrowserTaskOutcome;
   idleTimer?: ReturnType<typeof setTimeout>;
   /** The latest native snapshot output for each args list, the baseline of a snapshot diff. */
@@ -181,6 +177,23 @@ type Opened = { pick: BrowserPick } & (
 type Session = SessionData & Opened;
 type OwnedChrome = Awaited<ReturnType<typeof openCopiedChromeForProxy>> | Awaited<ReturnType<typeof openBaoChromeForProxy>>;
 
+/** The owner wait on a live or closing session. Recording status follows this value. */
+type OwnerWait = "off" | "pending" | { targetId: string; page: OwnerPage; reopen?: string };
+
+type CloseQueue = { n: number };
+
+/**
+ * One agent-browser session seat. A live session cannot also be closing, retained, or ended.
+ * `disconnected` is an ended reason that can still hold the session a later close must reach.
+ */
+type ProxySeat =
+  | { phase: "starting"; promise: Promise<Session>; abort: AbortController; closes: CloseQueue }
+  | { phase: "live"; session: Session; ownerWait: OwnerWait; closes: CloseQueue }
+  | { phase: "closing"; session: Session; ownerWait: OwnerWait; completion: Promise<void>; keep: boolean; started: boolean; resolve: () => void; reject: (error: unknown) => void; closes: CloseQueue }
+  | { phase: "retained"; session: Session; closes: CloseQueue }
+  | { phase: "ended"; reason: "closed" | "current-ended"; closes: CloseQueue }
+  | { phase: "ended"; reason: "disconnected"; closes: CloseQueue; session?: Session; starting?: Promise<Session>; closeRequested?: boolean; completion?: Promise<void> };
+
 /**
  * macOS does not let a Chrome that Bao launched in the background make itself the front app, so Target.activateTarget only
  * lifts its window behind the owner's. A window that comes back from the Dock comes back on top of every app's windows. The
@@ -207,21 +220,13 @@ async function behind(chrome: OwnedChrome): Promise<{ chrome: OwnedChrome; backg
   }
 }
 
-function ownerWaitPage(session: Session): OwnerPage | undefined {
-  const wait = session.ownerWait;
-  return wait && wait !== "pending" ? wait.page : session.ownerPage;
-}
-
-function ownerWaitOver(session: Session): boolean {
-  return !!session.ownerWait && !session.removing && Date.now() - (session.ownerTouched ?? Date.now()) >= OWNER_WAIT_LIMIT_MS;
+function ownerWaitPage(wait: OwnerWait, ownerPage: OwnerPage | undefined): OwnerPage | undefined {
+  return wait !== "off" && wait !== "pending" ? wait.page : ownerPage;
 }
 
 export class AgentBrowserProxy {
-  private session: Session | undefined;
-  private disconnected = false;
-  private starting: Promise<Session> | undefined;
-  private startAbort: AbortController | undefined;
-  private pendingCloses = 0;
+  private seat: ProxySeat = { phase: "ended", reason: "closed", closes: { n: 0 } };
+  private readonly cleanups = new WeakMap<Session, Promise<void>>();
   private latest: { runId: string; step: RecordedAgentBrowserCommand; steps: readonly RecordedAgentBrowserCommand[]; lastPicture?: AgentBrowserRun["lastPicture"] } | undefined;
   private workflowOutcome: string | undefined;
 
@@ -233,7 +238,7 @@ export class AgentBrowserProxy {
   /** The sign-in or check page Bao is waiting on, or the latest one it waited on. URL and title only. */
   get ownerPage(): OwnerWaitPage | undefined {
     const session = this.session;
-    const page = session && ownerWaitPage(session);
+    const page = session && ownerWaitPage(this.waitOf(session), session.ownerPage);
     return page && { ...page, ...(session?.ownerSince !== undefined ? { since: session.ownerSince } : {}) };
   }
   /**
@@ -251,10 +256,9 @@ export class AgentBrowserProxy {
     const from = session.pick.route === "bao" && session.pick.unread === undefined ? session.pick.profile?.directory : undefined;
     if (!from) return [pickLine(session.pick), ...whyMissed, ...failed];
     const missed = this.imports.some((report) => report.error || !report.found && !report.storage);
-    const fallback = missed && !session.ownerWait && !session.moveError ? `If the site still asks for a sign-in, Bao moves this session to the owner's running Chrome over remote debugging on the same Chrome profile "${from}" by itself when it sees the wall or when you call wait_for_owner.` : "";
+    const fallback = missed && this.waitOf(session) === "off" && !session.moveError ? `If the site still asks for a sign-in, Bao moves this session to the owner's running Chrome over remote debugging on the same Chrome profile "${from}" by itself when it sees the wall or when you call wait_for_owner.` : "";
     return [pickLine(session.pick), ...whyMissed, ...this.imports.map((report) => signInLine(report, from)), ...fallback ? [fallback] : [], ...failed];
   }
-  private currentEnded = false;
   /** The last session ended because Bao's task tab was closed, so the next open must name a browser. */
   private taskTabEnded = false;
   private closedCurrent = false;
@@ -287,11 +291,139 @@ export class AgentBrowserProxy {
     extensionRoute?: () => boolean;
   }) {}
 
+  /** The live, closing, retained, or disconnected session. Ended without a leftover has none. */
+  private get session(): Session | undefined {
+    const seat = this.seat;
+    switch (seat.phase) {
+      case "live":
+      case "closing":
+      case "retained":
+        return seat.session;
+      case "ended":
+        return seat.reason === "disconnected" ? seat.session : undefined;
+      default:
+        return undefined;
+    }
+  }
+
+  private get starting(): Promise<Session> | undefined {
+    const seat = this.seat;
+    if (seat.phase === "starting") return seat.promise;
+    if (seat.phase === "ended" && seat.reason === "disconnected") return seat.starting;
+    return undefined;
+  }
+
+  private gone(): boolean {
+    return this.seat.phase === "ended" && this.seat.reason === "disconnected";
+  }
+
+  private isRetained(): boolean {
+    return this.seat.phase === "retained";
+  }
+
+  private isCurrentEnded(): boolean {
+    return this.seat.phase === "ended" && this.seat.reason === "current-ended";
+  }
+
+  private clearCurrentEnded(): void {
+    if (this.seat.phase === "ended" && this.seat.reason === "current-ended") {
+      this.seat = { phase: "ended", reason: "closed", closes: this.seat.closes };
+    }
+  }
+
+  private waitOf(session: Session): OwnerWait {
+    const seat = this.seat;
+    if ((seat.phase === "live" || seat.phase === "closing") && seat.session === session) return seat.ownerWait;
+    return "off";
+  }
+
+  private setWait(session: Session, wait: OwnerWait): void {
+    const seat = this.seat;
+    if (seat.phase === "live" && seat.session === session) seat.ownerWait = wait;
+    else if (seat.phase === "closing" && seat.session === session) seat.ownerWait = wait;
+    session.recording.syncOwnerWait(wait);
+  }
+
+  private closingOf(session: Session): boolean {
+    const seat = this.seat;
+    if (seat.phase === "closing" && seat.session === session) return !seat.keep;
+    return seat.phase === "ended" && seat.reason === "disconnected" && seat.session === session && seat.closeRequested === true;
+  }
+
+  private requestClose(session: Session): void {
+    const seat = this.seat;
+    if (seat.phase === "closing" && seat.session === session) {
+      seat.keep = false;
+      return;
+    }
+    if (seat.phase === "ended" && seat.reason === "disconnected" && seat.session === session) {
+      seat.closeRequested = true;
+      return;
+    }
+    if ((seat.phase !== "live" && seat.phase !== "retained") || seat.session !== session) return;
+    this.seat = {
+      phase: "closing", session, ownerWait: seat.phase === "live" ? seat.ownerWait : "off",
+      completion: Promise.resolve(), keep: false, started: false, resolve() {}, reject() {}, closes: seat.closes,
+    };
+  }
+
+  private removingOf(session: Session): Promise<void> | undefined {
+    return this.cleanups.get(session);
+  }
+
+  private adopt(session: Session): void {
+    const seat = this.seat;
+    if (seat.phase === "ended" && seat.reason === "disconnected") {
+      this.seat = { ...seat, session, starting: undefined };
+      return;
+    }
+    this.seat = { phase: "live", session, ownerWait: "off", closes: seat.closes };
+  }
+
+  private drop(session: Session, reason: "closed" | "current-ended" = "closed"): void {
+    const seat = this.seat;
+    if (this.session !== session) return;
+    if (seat.phase === "ended" && seat.reason === "disconnected") {
+      this.seat = { phase: "ended", reason: "disconnected", closes: seat.closes };
+      return;
+    }
+    this.seat = { phase: "ended", reason, closes: seat.closes };
+  }
+
+  /** Drops a retained window without closing it, so a later open can start and the profile lease can reclaim Chrome. */
+  private releaseRetained(): void {
+    if (this.seat.phase !== "retained") return;
+    this.seat = { phase: "ended", reason: "closed", closes: this.seat.closes };
+  }
+
+  private clearStart(): void {
+    const seat = this.seat;
+    if (seat.phase === "starting") this.seat = { phase: "ended", reason: "closed", closes: seat.closes };
+    else if (seat.phase === "ended" && seat.reason === "disconnected") {
+      const { starting: _starting, ...rest } = seat;
+      this.seat = rest;
+    }
+  }
+
+  private ownerWaitOver(session: Session): boolean {
+    return this.waitOf(session) !== "off" && !this.removingOf(session) && Date.now() - (session.ownerTouched ?? Date.now()) >= OWNER_WAIT_LIMIT_MS;
+  }
+
+  private wallOf(session: Session): { targetId: string; page: OwnerPage; reopen?: string } | undefined {
+    const wait = this.waitOf(session);
+    return wait !== "off" && wait !== "pending" ? wait : undefined;
+  }
+
+  private reopenOf(session: Session): string | undefined {
+    const wall = this.wallOf(session);
+    return wall ? wall.reopen : this.pageToReopen(session, session.page);
+  }
+
   queueClose(args: unknown = [], runId?: unknown): () => void {
     validateAgentBrowserCommand("close", args);
     if (this.session && (typeof runId === "string" ? runId.trim() : runId) !== this.session.recording.id) return () => undefined;
-    this.pendingCloses++;
-    return () => { this.pendingCloses--; };
+    this.seat.closes.n++;
+    return () => { this.seat.closes.n--; };
   }
 
   /**
@@ -308,6 +440,7 @@ export class AgentBrowserProxy {
     this.imports = [];
     this.moved = undefined as Moved | undefined;
     this.workflowOutcome = undefined;
+    if (command === "open" && this.seat.phase === "retained") this.releaseRetained();
     const claimed = typeof runId === "string" ? runId.trim() : undefined;
     if (runId !== undefined && (typeof runId !== "string" || !claimed)) {
       this.refusal = {};
@@ -340,9 +473,9 @@ export class AgentBrowserProxy {
     }
     if (foreign && command === "open") {
       try {
-        if (this.session && ownerWaitOver(this.session)) await this.endOwnerWait(this.session);
-        else if (this.session && !this.session.removing) await this.endForNewerTask(this.session);
-        else if (this.session?.removing) await this.session.removing;
+        if (this.session && this.ownerWaitOver(this.session)) await this.endOwnerWait(this.session);
+        else if (this.session && !this.removingOf(this.session!)) await this.endForNewerTask(this.session);
+        else if ((this.session && this.removingOf(this.session))) await this.removingOf(this.session!);
       } catch (error) {
         if (this.session) {
           const cause = error instanceof Error && error.cause !== undefined ? error.cause : error;
@@ -352,7 +485,7 @@ export class AgentBrowserProxy {
         process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
       }
       this.refusal = undefined;
-    } else if (this.session && ownerWaitOver(this.session)) await this.endOwnerWait(this.session);
+    } else if (this.session && this.ownerWaitOver(this.session)) await this.endOwnerWait(this.session);
     this.endedLine = this.staleWait;
     this.staleWait = undefined;
     this.workflowOutcome = undefined;
@@ -369,29 +502,29 @@ export class AgentBrowserProxy {
     if (this.session && named !== undefined && this.session.pick.route !== "extension" && named !== this.session.pick.profile?.directory) {
       throw new Error("close the current session before choosing a different Chrome profile");
     }
-    if (browser !== undefined && this.session?.removing) await this.session.removing;
+    if (browser !== undefined && (this.session && this.removingOf(this.session))) await this.removingOf(this.session!);
     if (this.session?.kind === "current" && this.session.chrome.isClosed()) await this.remove(this.session);
     if (browser !== undefined && this.starting) throw new Error("choose the browser only on the first open of a session");
     if (this.session && browser !== undefined && browser !== this.session.browser) {
       throw new Error("close the current session before choosing a different browser");
     }
-    const leftOpen = command === "close" && this.currentEnded && !this.taskTabEnded;
+    const leftOpen = command === "close" && this.isCurrentEnded() && !this.taskTabEnded;
     const endedClose: AgentBrowserCommandResult[] = [{ stdout: leftOpen ? `${CURRENT_CHROME_LEFT_OPEN}\n` : "", stderr: "", exitCode: 0 }];
-    this.closedCurrent = command === "close" && (this.currentEnded || this.taskTabEnded);
+    this.closedCurrent = command === "close" && (this.isCurrentEnded() || this.taskTabEnded);
     if (command === "close") {
-      this.currentEnded = false;
+      this.clearCurrentEnded();
       this.taskTabEnded = false;
-      if (this.session) this.session.closing = true;
-      if (this.disconnected) {
+      if (this.session) this.requestClose(this.session);
+      if (this.gone()) {
         await this.end(true);
         return endedClose;
       }
     }
-    if (this.session?.removing) await this.session.removing;
-    if (this.disconnected) throw new Error(AGENT_DISCONNECTED);
+    if ((this.session && this.removingOf(this.session))) await this.removingOf(this.session!);
+    if (this.gone()) throw new Error(AGENT_DISCONNECTED);
     if (!this.session && command === "close") return endedClose;
     if (!this.session && this.taskTabEnded && (command !== "open" || browser === undefined)) throw new Error(TASK_TAB_CLOSED);
-    if (!this.session && this.currentEnded && (command !== "open" || browser === undefined)) throw new Error(CURRENT_CHROME_ENDED);
+    if (!this.session && this.isCurrentEnded() && (command !== "open" || browser === undefined)) throw new Error(CURRENT_CHROME_ENDED);
     if (!this.session && command !== "open") throw new Error("start agent-browser with open before sending commands");
     if (this.session?.abort.signal.aborted) {
       const session = this.session;
@@ -406,9 +539,9 @@ export class AgentBrowserProxy {
     if (step) this.latest = { runId: recording.id, step, steps: recording.steps };
     if (!this.session) {
       try {
-        const session = await (this.starting = this.start(recording, plan!, webSite(args[0])));
-        this.session = session;
-        this.currentEnded = false;
+        const session = await this.start(recording, plan!, webSite(args[0]));
+        this.adopt(session);
+        this.clearCurrentEnded();
         this.taskTabEnded = false;
         if ("signIn" in session.chrome && session.chrome.signIn) this.imported(session, session.chrome.signIn);
         this.watch(session);
@@ -420,11 +553,11 @@ export class AgentBrowserProxy {
         recording.finish();
         throw error;
       } finally {
-        this.starting = undefined;
-        this.startAbort = undefined;
+        this.clearStart();
       }
     }
     const session = this.session;
+    if (!session) throw new Error("start agent-browser with open before sending commands");
     this.shown = { session, command: command as string };
     if (session.pick.route === "current" && !session.pick.background && opensTab(command as string, args)) {
       throw new Error(`Chrome would open a new tab in the profile you used last, not necessarily "${session.pick.profile.directory}". Stay in Bao's task tab and use open there.`);
@@ -436,18 +569,18 @@ export class AgentBrowserProxy {
     const context: StepContext = {};
     let failure: unknown;
     try {
-      if (this.disconnected) throw new Error(AGENT_DISCONNECTED);
+      if (this.gone()) throw new Error(AGENT_DISCONNECTED);
       if (continuing && command !== "close" && command !== "wait_for_owner") {
         await this.detectOwnerWall(session);
-        const opened = session.ownerWait ? await this.moveAway(session, this.wallWords(session), session.ownerWait !== "pending" ? session.ownerWait.reopen : this.pageToReopen(session, session.page)) : undefined;
+        const opened = this.waitOf(session) !== "off" ? await this.moveAway(session, this.wallWords(session), this.reopenOf(session)) : undefined;
         // Refs from Bao's browser do not hold in the new tab, so an action waits for a fresh snapshot.
-        if (opened && (session.ownerWait || command !== "snapshot" && command !== "open")) {
+        if (opened && (this.waitOf(session) !== "off" || command !== "snapshot" && command !== "open")) {
           step = recording.begin("open", [this.moved!.site!]);
           this.latest = { runId: recording.id, step, steps: recording.steps };
-          results.push(...session.ownerWait ? this.ownerResult("halted", session) : [opened]);
+          results.push(...this.waitOf(session) !== "off" ? this.ownerResult("halted", session) : [opened]);
           return results;
         }
-        if (session.ownerWait) {
+        if (this.waitOf(session) !== "off") {
           results.push(...this.ownerResult("halted", session));
           return results;
         }
@@ -460,7 +593,7 @@ export class AgentBrowserProxy {
         if (continuing && site && this.bound(session, site)) {
           const opened = await this.moveAway(session, BOUND_REASON, site, true);
           if (opened) {
-            results.push(...session.ownerWait ? this.ownerResult("halted", session) : [opened, await this.run(session, "tab", ["list"])]);
+            results.push(...this.waitOf(session) !== "off" ? this.ownerResult("halted", session) : [opened, await this.run(session, "tab", ["list"])]);
             return results;
           }
         } else if (continuing && site && "importLogin" in session.chrome) this.imported(session, await session.chrome.importLogin(site));
@@ -468,18 +601,23 @@ export class AgentBrowserProxy {
       if (command === "wait_for_owner") {
         const timeout = ownerWaitTimeout(args[0] === undefined ? undefined : Number(args[0]));
         const deadline = Date.now() + timeout;
-        const wall = session.ownerWait && session.ownerWait !== "pending" ? session.ownerWait : undefined;
+        const wall = this.wallOf(session);
         const read = !wall && this.movable(session, true) ? await this.activePage(session).catch(() => undefined) : undefined;
         const stop = wall ?? (read ? this.stopped(session, read) : undefined);
         const page = stop?.page;
         const opened = stop && await this.moveAway(session, this.wallWords(session), stop.reopen, true);
         if (opened) {
-          results.push(...session.ownerWait ? this.ownerResult("halted", session) : [opened]);
+          results.push(...this.waitOf(session) !== "off" ? this.ownerResult("halted", session) : [opened]);
           return results;
         }
-        if (stop && read && (!session.ownerWait || session.ownerWait === "pending")) {
-          if (!session.ownerWait) session.ownerSince = session.ownerTouched = Date.now();
-          session.ownerWait = stop;
+        if (stop && read && !ownerWall(read.page)) {
+          this.setWait(session, "off");
+          results.push(...this.ownerResult("ready", session));
+          return results;
+        }
+        if (stop && read && (this.waitOf(session) === "off" || this.waitOf(session) === "pending")) {
+          if (this.waitOf(session) === "off") session.ownerSince = session.ownerTouched = Date.now();
+          this.setWait(session, stop);
           session.ownerPage = read.page;
           await this.ownerBanner(session, read.targetId, true).catch(() => undefined);
         }
@@ -489,7 +627,7 @@ export class AgentBrowserProxy {
       }
       if ((command === "click" || command === "fill") && args[0]) {
         await this.captureTarget(session, step, args[0]);
-        if (session.ownerWait) { results.push(...this.ownerResult("halted", session)); return results; }
+        if (this.waitOf(session) !== "off") { results.push(...this.ownerResult("halted", session)); return results; }
       }
       await session.workflow.record(command as string, args, step.id, async () => {
         const result = command === "close" && (session.kind === "current" || session.chrome.isClosed())
@@ -498,15 +636,15 @@ export class AgentBrowserProxy {
         results.push(result);
         if (command !== "close" && result.exitCode === 0) await this.detectOwnerWall(session, command === "open" ? webSite(args[0]) : undefined);
         return result;
-      }, () => !!session.ownerWait);
+      }, () => this.waitOf(session) !== "off");
       if (command !== "close" && results[0]?.exitCode === 0) {
-        const inPage = !session.ownerWait && command === "snapshot" && this.movable(session) && pageWall(results[0].stdout);
-        const opened = session.ownerWait ? await this.moveAway(session, this.wallWords(session), session.ownerWait !== "pending" ? session.ownerWait.reopen : this.pageToReopen(session, session.page))
+        const inPage = this.waitOf(session) === "off" && command === "snapshot" && this.movable(session) && pageWall(results[0].stdout);
+        const opened = this.waitOf(session) !== "off" ? await this.moveAway(session, this.wallWords(session), this.reopenOf(session))
           : inPage && session.page ? await this.moveAway(session, "a sign-in or verification prompt", session.page.url) : undefined;
-        if (opened) results.splice(0, results.length, command === "snapshot" && !session.ownerWait ? await this.run(session, "snapshot", args) : opened);
+        if (opened) results.splice(0, results.length, command === "snapshot" && this.waitOf(session) === "off" ? await this.run(session, "snapshot", args) : opened);
       }
       // A close during an owner wait ends the session; it reports the close, not the wait.
-      if (session.ownerWait && command !== "close") {
+      if (this.waitOf(session) !== "off" && command !== "close") {
         results.splice(0, results.length, ...this.ownerResult("halted", session));
         return results;
       }
@@ -540,7 +678,7 @@ export class AgentBrowserProxy {
         if (step) {
           try {
             await session.recording.complete(step, results, session.stateDir, () => this.screenshot(session, step!.native.command, visual), failure,
-              !!session.ownerWait || command === "wait_for_owner", { ...context, page: session.page, owner: this.ownerPage, current: session.kind === "current",
+              this.waitOf(session) !== "off" || command === "wait_for_owner", { ...context, page: session.page, owner: this.ownerPage, current: session.kind === "current",
                 ...this.moved?.pick ? { moved: this.moved.line } : {} });
           } catch (completeError) {
             // A hung command already failed with AbortError. The completion
@@ -551,7 +689,7 @@ export class AgentBrowserProxy {
         }
       } finally {
         commandDone();
-        if (command === "close" || session.kind === "current" && session.abort.signal.aborted && !session.removing && !this.disconnected) await this.remove(session);
+        if (command === "close" || session.kind === "current" && session.abort.signal.aborted && !this.removingOf(session) && !this.gone()) await this.remove(session);
         else this.armIdle(session);
       }
     }
@@ -562,9 +700,19 @@ export class AgentBrowserProxy {
   }
 
   disconnect(): void {
-    this.disconnected = true;
-    this.startAbort?.abort();
-    this.session?.abort.abort();
+    const seat = this.seat;
+    if (seat.phase === "starting") seat.abort.abort();
+    else this.session?.abort.abort();
+    if (seat.phase === "ended" && seat.reason === "disconnected") return;
+    const session = seat.phase === "live" || seat.phase === "closing" || seat.phase === "retained" ? seat.session : undefined;
+    const starting = seat.phase === "starting" ? seat.promise : undefined;
+    const completion = seat.phase === "closing" && seat.started ? seat.completion : undefined;
+    this.seat = {
+      phase: "ended", reason: "disconnected", closes: seat.closes,
+      ...(session ? { session } : {}),
+      ...(starting ? { starting } : {}),
+      ...(completion ? { completion } : {}),
+    };
   }
 
   async end(closeRequested = false): Promise<void> {
@@ -572,7 +720,7 @@ export class AgentBrowserProxy {
     await new Promise<void>((resolve) => setImmediate(resolve));
     await this.starting?.catch(() => undefined);
     if (this.session) {
-      if (closeRequested) this.session.closing = true;
+      if (closeRequested) this.requestClose(this.session);
       await this.remove(this.session, this.options.keepOpen?.() === true);
     }
   }
@@ -587,6 +735,15 @@ export class AgentBrowserProxy {
     this.notOpened = undefined;
     this.refusal = undefined;
     this.shown = undefined;
+    if (this.isRetained()) {
+      const kept = this.session;
+      if (!kept || runId !== kept.recording.id) {
+        this.refusal = runId === undefined ? {} : { runId };
+        if (runId === undefined) throw new Error(runIdNeeded("finish_task"));
+        return undefined;
+      }
+      return undefined;
+    }
     const session = this.session;
     if (runId !== undefined && this.endedByNewer.has(runId)) {
       this.refusal = { runId };
@@ -599,7 +756,7 @@ export class AgentBrowserProxy {
     }
     this.endedLine = this.staleWait;
     this.staleWait = undefined;
-    this.currentEnded = false;
+    this.clearCurrentEnded();
     this.taskTabEnded = false;
     this.shown = session && { session, command: "finish_task" };
     if (!session) return undefined;
@@ -607,19 +764,19 @@ export class AgentBrowserProxy {
     try {
       await this.remove(session, this.options.keepOpen?.() === true);
       session.recording.finish(outcome);
-      if (this.session === session) this.session = undefined;
+      if (!this.isRetained()) this.drop(session);
       return session.recording.id;
     } finally {
       this.endedRuns.delete(session.recording.id);
-      this.currentEnded = false;
+      this.clearCurrentEnded();
       this.taskTabEnded = false;
     }
   }
 
   async close(): Promise<void> {
     if (!this.session) return;
-    this.session.closing = true;
-    if (this.disconnected || this.session.removing || this.session.abort.signal.aborted) {
+    this.requestClose(this.session);
+    if (this.gone() || this.removingOf(this.session!) || this.session.abort.signal.aborted) {
       await this.remove(this.session);
       return;
     }
@@ -705,13 +862,21 @@ export class AgentBrowserProxy {
 
   private async start(recording: AgentBrowserRun, plan: BrowserPlan, site?: string): Promise<Session> {
     const executable = agentBrowserExecutable(this.options.executable);
-    const abort = this.startAbort = new AbortController();
+    const abort = new AbortController();
+    const seat = this.seat;
+    let settle!: (value: Session) => void;
+    let fail!: (error: unknown) => void;
+    const promise = new Promise<Session>((resolve, reject) => { settle = resolve; fail = reject; });
+    promise.catch(() => undefined);
+    if (seat.phase === "ended" && seat.reason === "disconnected") this.seat = { ...seat, starting: promise };
+    else this.seat = { phase: "starting", promise, abort, closes: seat.closes };
     let missed: string | undefined;
-    const browser = await openOrFallBack(plan, (next) => {
-      missed = "missed" in next ? next.missed : undefined;
-      return this.open(next, abort.signal, site);
-    }, () => abort.signal.aborted);
+    let browser: Opened | undefined;
     try {
+      browser = await openOrFallBack(plan, (next) => {
+        missed = "missed" in next ? next.missed : undefined;
+        return this.open(next, abort.signal, site);
+      }, () => abort.signal.aborted);
       const wired = await this.wire(browser);
       recording.pickBrowser(browser.pick);
       const session: Session = {
@@ -724,9 +889,11 @@ export class AgentBrowserProxy {
         }, abort.signal),
       };
       if (session.kind === "current" && !session.relay) await recording.recordTab(session.chrome.cdp, session.targetId);
+      settle(session);
       return session;
     } catch (error) {
-      await this.discard(browser);
+      if (browser) await this.discard(browser);
+      fail(error);
       throw error;
     }
   }
@@ -774,8 +941,8 @@ export class AgentBrowserProxy {
   private watch(session: Session): void {
     const chrome = session.chrome;
     void chrome.closed.then(() => {
-      if (session.closing || session.chrome !== chrome) return;
-      if (!this.disconnected && !session.removing) session.workflow.unavailable("the owner closed the window before the task finished");
+      if (this.closingOf(session) || session.chrome !== chrome) return;
+      if (!this.gone() && !this.removingOf(session)) session.workflow.unavailable("the owner closed the window before the task finished");
       return this.remove(session);
     }).catch(() => undefined);
   }
@@ -786,7 +953,7 @@ export class AgentBrowserProxy {
    */
   private movable(session: Session, retry = false, bound = false): boolean {
     return session.kind === "copy" && (session.pick.route === "bao" || bound && session.pick.route === "copy")
-      && (retry || session.moveError === undefined) && !session.closing && !this.disconnected;
+      && (retry || session.moveError === undefined) && !this.closingOf(session) && !this.gone();
   }
 
   /** The site ties its sign-in to the owner's Chrome, so a Bao profile or copy does not open it. */
@@ -818,7 +985,7 @@ export class AgentBrowserProxy {
   }
 
   private wallWords(session: Session): string {
-    const page = session.ownerWait && session.ownerWait !== "pending" ? session.ownerWait.page : session.page;
+    const page = this.wallOf(session)?.page ?? session.page;
     const wall = page && ownerWall(page);
     if (wall === "bot_wall") return "a human check";
     if (wall === "login_wall") return "a sign-in page";
@@ -834,7 +1001,7 @@ export class AgentBrowserProxy {
   private async moveAway(session: Session, what: string, url: string | undefined, retry = false): Promise<AgentBrowserCommandResult | undefined> {
     const bound = what === BOUND_REASON;
     if (!this.movable(session, retry, bound) || session.kind !== "copy" || session.pick.route === "extension" || session.pick.route === "current") return undefined;
-    const wall = session.ownerWait && session.ownerWait !== "pending" ? session.ownerWait.page : undefined;
+    const wall = this.wallOf(session)?.page;
     const site = url !== undefined ? httpPage(url) : httpPage(wall?.url) ?? httpPage(session.page?.url);
     const named = bound ? site : httpPage(wall?.url ?? session.page?.url) ?? site;
     let host = named ?? "this site";
@@ -871,10 +1038,10 @@ export class AgentBrowserProxy {
       return fail(error);
     }
     const old = { chrome: session.chrome, background: session.background, stateDir: session.stateDir };
-    const waiting = !!session.ownerWait;
-    Object.assign(session, next, wired, { browser: openedChoice(next.pick), missed: undefined, ownerWait: undefined, page: undefined });
+    const waiting = this.waitOf(session) !== "off";
+    Object.assign(session, next, wired, { browser: openedChoice(next.pick), missed: undefined, page: undefined });
     session.recording.pickBrowser(next.pick);
-    if (waiting) session.recording.ownerWaiting(false);
+    if (waiting) this.setWait(session, "off");
     this.watch(session);
     session.moveError = undefined;
     this.moved = { line: `${stopped}; continued in your running Chrome (Chrome profile "${profile.directory}", ${profile.name}) over remote debugging. Take a fresh snapshot before acting.`, pick: next.pick, site };
@@ -899,7 +1066,7 @@ export class AgentBrowserProxy {
     const current = session.kind === "current";
     const instruction = kind === "ready" ? "The page left the sign-in/check state. Take a fresh snapshot and continue in this same session. This is not proof of authentication."
       : kind === "closed" ? current ? CURRENT_CHROME_ENDED : "The owner closed the Bao window. Report that this session cannot continue."
-        : ownerWaitInstruction(current, session.raised === true, session.recording.id, ownerWaitPage(session));
+        : ownerWaitInstruction(current, session.raised === true, session.recording.id, ownerWaitPage(this.waitOf(session), session.ownerPage));
     return [{ stdout: JSON.stringify({ outcome: kind, instruction: `${instruction}${this.fallback(session)}` }), stderr: "", exitCode: 0 }];
   }
 
@@ -910,7 +1077,7 @@ export class AgentBrowserProxy {
   private fallback(session: Session): string {
     if (session.kind !== "copy" || session.pick.route === "extension") return "";
     if (session.pick.route === "bao" && session.moveError === undefined) return "";
-    const site = session.ownerWait && session.ownerWait !== "pending" ? session.ownerWait.reopen : undefined;
+    const site = this.wallOf(session)?.reopen;
     const profile = session.pick.profile?.directory;
     const open = { command: "open", ...(site ? { args: [site] } : {}), browser: "current", ...profile ? { profile } : {} };
     const bao = session.pick.route === "bao";
@@ -1030,12 +1197,12 @@ export class AgentBrowserProxy {
   private async endTaskTab(session: Session): Promise<AgentBrowserCommandResult[]> {
     this.taskTabEnded = true;
     this.endedRuns.set(session.recording.id, TASK_TAB_CLOSED);
-    session.closing = true;
+    this.requestClose(session);
     session.outcome = { outcome: "failed", reason: "Bao's task tab was closed" };
     session.workflow.unavailable("Bao's task tab was closed before the task finished");
-    if (session.ownerWait) {
-      session.ownerWait = undefined;
+    if (this.waitOf(session) !== "off") {
       await session.recording.endVideoCapture();
+      this.setWait(session, "off");
       session.recording.ownerWaiting(false);
     }
     session.abort.abort();
@@ -1081,7 +1248,7 @@ export class AgentBrowserProxy {
   }
 
   private async detectOwnerWall(session: Session, openedSite?: string): Promise<void> {
-    if (session.ownerWait) return;
+    if (this.waitOf(session) !== "off") return;
     let active = await this.activePage(session);
     if (!active) throw new Error("no active Bao page metadata");
     if (!ownerWall(active.page)) return;
@@ -1097,7 +1264,7 @@ export class AgentBrowserProxy {
         if (!ownerWall(active.page)) return;
       }
     }
-    session.ownerWait = this.stopped(session, active, openedSite);
+    this.setWait(session, this.stopped(session, active, openedSite));
     session.ownerPage = active.page;
     session.ownerSince = session.ownerTouched = Date.now();
     session.recording.ownerWaiting(true);
@@ -1130,7 +1297,7 @@ export class AgentBrowserProxy {
         document.getElementById('bao-owner-wait')?.remove();
         const banner = document.createElement('div');
         banner.id = 'bao-owner-wait'; banner.setAttribute('role', 'status');
-        banner.textContent = ${JSON.stringify(`Bao is waiting for you to ${ownerTask(ownerWaitPage(session))}. The agent will continue in this window. Only URL and title are read while waiting.`)};
+        banner.textContent = ${JSON.stringify(`Bao is waiting for you to ${ownerTask(ownerWaitPage(this.waitOf(session), session.ownerPage))}. The agent will continue in this window. Only URL and title are read while waiting.`)};
         banner.style.cssText = 'position:fixed;bottom:16px;left:16px;right:16px;padding:16px 20px;background:#fff3dd;color:#492800;border:2px solid #e88600;border-radius:12px;font:600 15px/1.5 system-ui;box-shadow:0 4px 20px #0003;z-index:2147483647;pointer-events:none';
         document.documentElement.append(banner);
       })()` : `document.getElementById('bao-owner-wait')?.remove()`;
@@ -1151,13 +1318,17 @@ export class AgentBrowserProxy {
     return result;
   }
 
+  private stillWaiting(session: Session): AgentBrowserCommandResult[] {
+    if (this.waitOf(session) === "off") {
+      session.ownerSince ??= Date.now();
+      session.ownerTouched = Date.now();
+      this.setWait(session, "pending");
+    }
+    return this.ownerResult("waiting", session);
+  }
+
   private async waitForOwner(session: Session, deadline: number): Promise<AgentBrowserCommandResult[]> {
     if (session.abort.signal.aborted) return this.ownerClosed(session);
-    if (!session.ownerWait) {
-      session.ownerWait = "pending";
-      session.ownerSince = session.ownerTouched = Date.now();
-    }
-    session.recording.ownerWaiting(true);
     let cdp: CdpSocket | undefined;
     const onAbort = () => { if (session.kind === "copy") cdp?.close(); };
     session.abort.signal.addEventListener("abort", onAbort, { once: true });
@@ -1167,14 +1338,20 @@ export class AgentBrowserProxy {
       while (Date.now() < deadline) {
         if (session.abort.signal.aborted || cdp && !cdp.isOpen) return this.ownerClosed(session);
         try {
-          if (!session.ownerWait || session.ownerWait === "pending") {
+          if (this.waitOf(session) === "off" || this.waitOf(session) === "pending") {
             const active = await this.activePage(session);
             if (!active) return this.ownerClosed(session);
-            session.ownerWait = this.stopped(session, active);
+            if (!ownerWall(active.page)) {
+              this.setWait(session, "off");
+              return this.ownerResult("ready", session);
+            }
+            if (this.waitOf(session) === "off") session.ownerSince = session.ownerTouched = Date.now();
+            this.setWait(session, this.stopped(session, active));
             session.ownerPage = active.page;
             await this.ownerBanner(session, active.targetId, true);
           }
-          const waiting = session.ownerWait;
+          const waiting = this.wallOf(session);
+          if (!waiting) return this.ownerClosed(session);
           if (!cdp) {
             cdp = await this.connectSession(session, { timeoutMs: 2000, signal: session.abort.signal });
           }
@@ -1195,7 +1372,7 @@ export class AgentBrowserProxy {
             await this.ownerBanner(session, waiting.targetId, false);
             if (session.abort.signal.aborted || !cdp.isOpen) return this.ownerClosed(session);
             const result = this.ownerResult("ready", session);
-            session.ownerWait = undefined;
+            this.setWait(session, "off");
             session.page = { url: page.url, title: page.title };
             session.recording.ownerWaiting(false);
             return result;
@@ -1207,7 +1384,7 @@ export class AgentBrowserProxy {
         }
         await new Promise((resolve) => setTimeout(resolve, Math.min(250, Math.max(1, deadline - Date.now()))));
       }
-      return session.abort.signal.aborted || cdp && !cdp.isOpen ? this.ownerClosed(session) : this.ownerResult("waiting", session);
+      return session.abort.signal.aborted || cdp && !cdp.isOpen ? this.ownerClosed(session) : this.stillWaiting(session);
     } finally {
       session.ownerTouched = Date.now();
       session.abort.signal.removeEventListener("abort", onAbort);
@@ -1251,7 +1428,7 @@ export class AgentBrowserProxy {
   }
 
   private async screenshot(session: Session, command: string, visual = false): Promise<{ bytes: Buffer; viewport?: { width: number; height: number }; note?: string }> {
-    if (command === "close" || this.disconnected || session.abort.signal.aborted) throw new Error("page closed");
+    if (command === "close" || this.gone() || session.abort.signal.aborted) throw new Error("page closed");
     const taskId = session.kind === "current" ? session.targetId : undefined;
     try {
       await this.detectOwnerWall(session);
@@ -1259,7 +1436,7 @@ export class AgentBrowserProxy {
       if (session.kind !== "current" || session.abort.signal.aborted || !(error instanceof ActiveTargetMiss)) throw error;
       return this.taskTabPicture(session, session.targetId, visual);
     }
-    if (session.ownerWait) throw new Error(OWNER_PRIVATE);
+    if (this.waitOf(session) !== "off") throw new Error(OWNER_PRIVATE);
     const tabs = await this.run(session, "tab", ["list", "--json"], 3000);
     if (tabs.exitCode !== 0) throw new Error(`Native tab list failed (exit ${tabs.exitCode}): ${tabs.stderr || tabs.stdout}`);
     const parsed = JSON.parse(tabs.stdout) as { data?: { tabs?: { active?: boolean; targetId?: string }[] } };
@@ -1339,7 +1516,7 @@ export class AgentBrowserProxy {
   }
 
   private async run(session: Session, command: string, args: string[], readTimeoutMs?: number, bound?: AbortSignal): Promise<AgentBrowserCommandResult> {
-    if (this.disconnected) throw new Error(AGENT_DISCONNECTED);
+    if (this.gone()) throw new Error(AGENT_DISCONNECTED);
     // The session's first call starts the native daemon, which takes seconds on a copy that restores many tabs. Only the session's end bounds it.
     if (!session.daemonStarted) {
       readTimeoutMs = undefined;
@@ -1384,9 +1561,9 @@ export class AgentBrowserProxy {
   /** Ends a session's owner wait and the session, so no later request inherits it. */
   private async endOwnerWait(session: Session, why = `nobody continued it for ${OWNER_WAIT_LIMIT_MS / 60_000} minutes`): Promise<void> {
     this.staleWait = this.waitEndedLine(session, why);
-    session.closing = true;
+    this.requestClose(session);
     await this.remove(session);
-    if (this.session === session) this.session = undefined;
+    this.drop(session);
   }
 
   endedByNewerTask(runId: string | undefined): boolean {
@@ -1396,23 +1573,23 @@ export class AgentBrowserProxy {
   /** Ends the open run because a newer open started, and closes its task tab. */
   private async endForNewerTask(session: Session): Promise<void> {
     this.endedByNewer.add(session.recording.id);
-    if (session.ownerWait) {
+    if (this.waitOf(session) !== "off") {
       this.staleWait = this.waitEndedLine(session, "a new open starts a new task");
       await session.recording.endVideoCapture();
       session.recording.ownerWaiting(false);
     }
     session.outcome = { outcome: "failed", reason: NEWER_TASK_REASON };
     session.workflow.unavailable(NEWER_TASK_REASON);
-    session.closing = true;
+    this.requestClose(session);
     await this.remove(session);
-    if (this.session === session) this.session = undefined;
+    this.drop(session);
   }
 
   private armIdle(session: Session): void {
     clearTimeout(session.idleTimer);
-    if (this.session !== session || session.removing || this.disconnected) return;
+    if (this.session !== session || this.removingOf(session) || this.gone()) return;
     // A closed wait still names its page, but the session expires on the idle timer.
-    if (session.ownerWait && !session.abort.signal.aborted) {
+    if (this.waitOf(session) !== "off" && !session.abort.signal.aborted) {
       session.idleTimer = setTimeout(() => {
         void this.endOwnerWait(session).catch((error: unknown) => process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`));
       }, Math.max(0, (session.ownerTouched ?? Date.now()) + OWNER_WAIT_LIMIT_MS - Date.now()));
@@ -1425,7 +1602,7 @@ export class AgentBrowserProxy {
       session.workflow.unavailable(session.outcome.reason);
       void this.remove(session, this.options.keepOpen?.() === true, false)
         .then(() => {
-          if (this.session === session) this.session = undefined;
+          this.drop(session);
         })
         .catch((error: unknown) => process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`));
     }, SESSION_IDLE_MS);
@@ -1458,60 +1635,94 @@ export class AgentBrowserProxy {
 
   private async remove(session: Session, keepOpen = false, closeTaskTabs = true): Promise<void> {
     clearTimeout(session.idleTimer);
-    if (!session.removing) this.afterWall = session.kind === "copy" && !!session.ownerWait;
+    const existing = this.cleanups.get(session);
+    if (existing) {
+      await existing;
+      await this.afterCleanup(session);
+      return;
+    }
+    if (session.kind === "copy" && this.waitOf(session) !== "off") this.afterWall = true;
+    const endedCurrent = session.kind === "current" && !this.closingOf(session) && !this.gone();
+    if (endedCurrent) this.endedRuns.set(session.recording.id, CURRENT_CHROME_ENDED);
+    let resolveCleanup!: () => void;
+    let rejectCleanup!: (error: unknown) => void;
+    const completion = new Promise<void>((done, fail) => { resolveCleanup = done; rejectCleanup = fail; });
+    completion.catch(() => undefined);
+    this.cleanups.set(session, completion);
+    this.armCleanup(session);
     try {
-      if (session.kind === "current" && !session.closing && !this.disconnected) {
-        this.currentEnded = true;
-        this.endedRuns.set(session.recording.id, CURRENT_CHROME_ENDED);
-      }
-      await (session.removing ??= (async () => {
-        session.abort.abort();
-        await session.commandDone;
-        await session.recording.endVideoCapture();
-        session.recording.finish(session.outcome);
-        if (session.ownerWait) session.workflow.unavailable("the owner wait did not finish");
-        try {
-          try { await this.stopDaemon(session.stateDir); }
-          finally {
-            if (session.kind === "copy") session.background.close();
-            if (session.kind === "current" && session.relay) {
-              // The lease holds every tab Bao opened in the owner's Chrome, including the agent's tab new and popups.
-              // Detaching without closing hands them to the owner.
-              try {
-                if (closeTaskTabs && session.chrome.cdp.isOpen) await session.chrome.cdp.send("Bao.closeTabs", {}, undefined, 10_000);
-              } finally { session.chrome.detach(); }
-            } else if (session.kind === "current") {
-              try {
-                if (closeTaskTabs && session.taskTabs.size && session.chrome.cdp.isOpen) {
-                  const { targetInfos } = await session.chrome.cdp.send<{ targetInfos: { targetId: string }[] }>("Target.getTargets", {}, undefined, 5000);
-                  for (const target of targetInfos.filter((target) => session.taskTabs.has(target.targetId))) {
-                    await session.chrome.cdp.send("Target.closeTarget", { targetId: target.targetId }, undefined, 5000).catch(() => undefined);
-                  }
-                }
-              } finally { session.chrome.detach(); }
-            } else if (keepOpen && !session.closing && this.pendingCloses === 0 && !session.chrome.isClosed()) await session.chrome.keepOpen();
-            else await session.chrome.close();
-          }
-          await rm(session.stateDir, { recursive: true, force: true });
-        } finally {
-          await session.recording.encodeVideo();
-          this.workflowOutcome = session.workflow.finish(session.outcome?.outcome === "failed");
-        }
-      })());
-      if (session.kind === "copy" && (session.closing || this.pendingCloses > 0) && !session.chrome.isClosed()) {
-        session.closing = true;
-        await session.chrome.close();
-      }
-      if (this.session === session && session.chrome.isClosed()) this.session = undefined;
+      await this.cleanupBody(session, keepOpen, closeTaskTabs);
+      resolveCleanup();
+      await this.afterCleanup(session, endedCurrent);
     } catch (error) {
+      rejectCleanup(error);
+      this.cleanups.set(session, Promise.resolve());
       // The call that owns the run throws this named error. A newer open writes it to stderr and starts. The session and its run end here, so later calls start fresh.
       const message = error instanceof Error ? error.message : String(error);
-      session.removing = Promise.resolve();
       session.recording.cleanupFailed(message);
-      if (this.session === session) this.session = undefined;
+      this.drop(session, endedCurrent ? "current-ended" : "closed");
       throw new Error(`Bao could not clean up the browser session of run ${session.recording.id}: ${message}`, { cause: error });
     } finally {
-      if (this.session === session && session.kind === "current" && session.chrome.isClosed()) this.session = undefined;
+      if (this.session === session && session.kind === "current" && session.chrome.isClosed()) this.drop(session, endedCurrent ? "current-ended" : "closed");
     }
+  }
+
+  private armCleanup(session: Session): void {
+    const seat = this.seat;
+    if (seat.phase === "ended" && seat.reason === "disconnected") return;
+    if ((seat.phase !== "live" && seat.phase !== "closing" && seat.phase !== "retained") || seat.session !== session) return;
+    const ownerWait = seat.phase === "live" || seat.phase === "closing" ? seat.ownerWait : "off";
+    const keep = seat.phase === "closing" ? seat.keep : true;
+    const completion = this.cleanups.get(session) ?? Promise.resolve();
+    this.seat = { phase: "closing", session, ownerWait, completion, keep, started: true, resolve() {}, reject() {}, closes: seat.closes };
+  }
+
+  private async cleanupBody(session: Session, keepOpen: boolean, closeTaskTabs: boolean): Promise<void> {
+    session.abort.abort();
+    await session.commandDone;
+    await session.recording.endVideoCapture();
+    session.recording.finish(session.outcome);
+    if (this.waitOf(session) !== "off") session.workflow.unavailable("the owner wait did not finish");
+    try {
+      try { await this.stopDaemon(session.stateDir); }
+      finally {
+        if (session.kind === "copy") session.background.close();
+        if (session.kind === "current" && session.relay) {
+          // The lease holds every tab Bao opened in the owner's Chrome, including the agent's tab new and popups.
+          // Detaching without closing hands them to the owner.
+          try {
+            if (closeTaskTabs && session.chrome.cdp.isOpen) await session.chrome.cdp.send("Bao.closeTabs", {}, undefined, 10_000);
+          } finally { session.chrome.detach(); }
+        } else if (session.kind === "current") {
+          try {
+            if (closeTaskTabs && session.taskTabs.size && session.chrome.cdp.isOpen) {
+              const { targetInfos } = await session.chrome.cdp.send<{ targetInfos: { targetId: string }[] }>("Target.getTargets", {}, undefined, 5000);
+              for (const target of targetInfos.filter((target) => session.taskTabs.has(target.targetId))) {
+                await session.chrome.cdp.send("Target.closeTarget", { targetId: target.targetId }, undefined, 5000).catch(() => undefined);
+              }
+            }
+          } finally { session.chrome.detach(); }
+        } else if (keepOpen && !this.closingOf(session) && this.seat.closes.n === 0 && !session.chrome.isClosed()) await session.chrome.keepOpen();
+        else await session.chrome.close();
+      }
+      await rm(session.stateDir, { recursive: true, force: true });
+    } finally {
+      await session.recording.encodeVideo();
+      this.workflowOutcome = session.workflow.finish(session.outcome?.outcome === "failed");
+    }
+  }
+
+  private async afterCleanup(session: Session, endedCurrent = false): Promise<void> {
+    if (session.kind === "copy" && (this.closingOf(session) || this.seat.closes.n > 0) && !session.chrome.isClosed()) {
+      this.requestClose(session);
+      await session.chrome.close();
+    }
+    if (this.session !== session) return;
+    if (session.chrome.isClosed()) {
+      this.drop(session, endedCurrent ? "current-ended" : "closed");
+      return;
+    }
+    if (session.kind !== "copy" || this.closingOf(session) || this.seat.closes.n > 0 || this.gone()) return;
+    this.seat = { phase: "retained", session, closes: this.seat.closes };
   }
 }
