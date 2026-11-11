@@ -77,8 +77,10 @@ function durableTarget(node: DomDump, page: PageDump): AgentBrowserReplayTarget 
   const { handle: _handle, bbox: _bbox, value: _value, checked: _checked, enabled: _enabled, hidden: _hidden, overlay: _overlay, inDialog: _dialog, ...identity } = node;
   if (identity.cssPath?.includes(":nth-of-type(")) delete identity.cssPath;
   if (identity.xpath && /\[\d+\]/.test(identity.xpath)) delete identity.xpath;
-  const locators = buildLocators(identity, page.nodes).filter((locator) => {
-    const hit = matchLocator(locator, page.nodes);
+  const boxes = page.nodes.map((node) => node.bbox || { x: 0, y: 0, w: 0, h: 0 });
+  const targetIndex = page.nodes.findIndex((candidate) => candidate.handle === node.handle);
+  const locators = buildLocators(identity, page.nodes, boxes, targetIndex).filter((locator) => {
+    const hit = matchLocator(locator, page.nodes, boxes);
     return hit !== undefined && page.nodes[hit.index]?.handle === node.handle;
   });
   const priority = ["testid", "css", "xpath", "role", "text", "anchor"];

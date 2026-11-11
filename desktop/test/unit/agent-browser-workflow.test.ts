@@ -34,6 +34,10 @@ async function fixture(ui = false) {
   let ownerReady = false;
   const server = createServer((req, res) => {
     const url = new URL(req.url!, "http://fixture");
+    if (url.pathname === "/unnamed") {
+      res.end(`<!doctype html><title>Account room</title><h1>Account room</h1><button id="continue">Continue</button> <button id="unnamed" style="width:36px;height:20px" onclick="document.querySelector('#result').textContent='Done'"></button><p id="result">Ready</p>`);
+      return;
+    }
     if (url.pathname === "/stores") {
       const content = url.searchParams.has("interactive")
         ? '<button data-testid="store-button" onclick="document.querySelector(\'#selected\').textContent=\'Selected B\'"><span id="store-b">Store B</span></button>'
@@ -166,6 +170,40 @@ test("a failed action with only viewport movement stays saveable after retry", {
     const saved = f.library.list().workflows[0]!;
     assert.deepEqual(saved.steps.map((step) => step.action), ["click"]);
     assert.equal(locatorValue(stepTarget(saved.steps[0]), "testid"), "chosen");
+  } finally {
+    await context.close();
+    await f.close();
+  }
+});
+
+test("an unnamed recorded click names its nearby visible control without citing it as the target", { timeout: 30_000 }, async () => {
+  const f = await fixture();
+  const profile = path.join(f.root, "unnamed-profile");
+  const context = await launchOwnedChrome({ userDataDir: profile, headless: true });
+  try {
+    const page = context.pages()[0]!;
+    const endpoint = await readDevToolsActivePort(path.join(profile, "DevToolsActivePort"));
+    const session = await context.newCDPSession(page);
+    const { targetInfo } = await session.send("Target.getTargetInfo");
+    await session.detach();
+    const workflow = new AgentBrowserWorkflow(f.home, "run-unnamed", async () => ({
+      ...endpoint, targetId: targetInfo.targetId, targetIds: [targetInfo.targetId],
+    }));
+    const success = { stdout: "", stderr: "", exitCode: 0 };
+    await workflow.record("open", [f.url + "unnamed"], "open", async () => {
+      await page.goto(f.url + "unnamed");
+      return success;
+    }, () => false);
+    await workflow.record("click", ["#unnamed"], "click", async () => {
+      await page.locator("#unnamed").click();
+      return success;
+    }, () => false);
+    assert.match(workflow.finish(), /Saved workflow:/);
+    const saved = f.library.list().workflows[0]!;
+    assert.equal(saved.steps[0]!.caption.text, 'Click the button after "Continue"');
+    assert.equal(saved.steps[0]!.caption.citation, undefined);
+    assert.equal(locatorValue(stepTarget(saved.steps[0]), "css"), "#unnamed");
+    assert.equal(await page.locator("#result").innerText(), "Done");
   } finally {
     await context.close();
     await f.close();
