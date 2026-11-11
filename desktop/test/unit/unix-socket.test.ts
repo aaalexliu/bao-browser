@@ -123,11 +123,14 @@ test("CLI serve and the MCP client bind short sockets from a deep TMPDIR", { tim
     await stop(app, true);
     client = spawn(process.execPath, [path.resolve(__dirname, "../../src/mcp/client.js"), "serve"], { env, detached: true });
     await started(client, /mcp client listening/);
-    assert.ok((await lstat(path.join(socketRoot(home), "mcp.sock"))).isSocket());
+    const mcpSock = "/tmp/bao-mcp.sock";
+    assert.ok((await lstat(mcpSock)).isSocket());
+    assert.ok(Buffer.byteLength(mcpSock) <= 103);
     assert.equal((await lstat(socketRoot(home))).mode & 0o777, 0o700);
   } finally {
     await stop(app, true);
     if (client) await stop(client, true);
+    await rm("/tmp/bao-mcp.sock", { force: true });
     await rm(socketRoot(home), { recursive: true, force: true });
     await rm(root, { recursive: true, force: true });
   }
@@ -186,9 +189,14 @@ test("native and JS socket paths match, bind and clean with deep TMPDIR", { skip
 int bao_window_run(const char *url, int pid) { (void)url; (void)pid; return 1; }
 int main(int argc, char **argv) {
   if (argc != 3) return 1;
-  char root[64], sock[104];
-  notify_paths(argv[1], root, sizeof root, sock, sizeof sock);
+  char sock[104];
+  notify_paths(argv[1], sock, sizeof sock);
   if (strcmp(sock, argv[2]) != 0 || strlen(sock) > 103) return 2;
+  char root[104];
+  snprintf(root, sizeof root, "%s", sock);
+  char *slash = strrchr(root, '/');
+  if (!slash || slash == root) return 2;
+  *slash = 0;
   rmdir(root);
   if (bao_notify_prepare(sock) != 0) return 3;
   struct stat st;

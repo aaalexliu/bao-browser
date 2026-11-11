@@ -5,7 +5,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { unlinkSync, writeFileSync } from "node:fs";
 import { resolveHome } from "../home";
-import { assertSocketPath, prepareSocketPath, socketRoot } from "../unix-socket";
+import { assertSocketPath } from "../unix-socket";
 import { createConnection, createServer } from "node:net";
 import path from "node:path";
 import { frameRpc, takeRpcChunk } from "./frame";
@@ -20,7 +20,7 @@ interface Rpc {
 }
 
 function socketPath(): string {
-  const sock = process.env.BAO_MCP_SOCK || path.join(socketRoot(resolveHome()), "mcp.sock");
+  const sock = process.env.BAO_MCP_SOCK || "/tmp/bao-mcp.sock";
   assertSocketPath(sock);
   return sock;
 }
@@ -43,7 +43,6 @@ async function serve(): Promise<void> {
   const home = resolveHome();
   process.env.BAO_HOME = home;
   const sock = socketPath();
-  if (!process.env.BAO_MCP_SOCK) prepareSocketPath(home, "mcp.sock");
   try { unlinkSync(sock); } catch { /* first start */ }
   const cli = path.join(process.cwd(), "desktop/dist/desktop/src/app/cli.js");
   const child = spawn(process.execPath, [cli, "mcp"], {

@@ -36,15 +36,12 @@ static const char kBrowserBody[] = "This copy of Bao is missing its browser. Ins
 static const char kSplitTitle[] = "Two libraries";
 static const char kHomeTitle[] = "Bao needs a home directory";
 
-static void notify_paths(const char *home, char *root, size_t root_n, char *sock, size_t sock_n) {
+static void notify_paths(const char *home, char *sock, size_t sock_n) {
   unsigned char digest[CC_SHA256_DIGEST_LENGTH];
   CC_SHA256(home, (CC_LONG)strlen(home), digest);
   char hash[17];
   for (int i = 0; i < 8; i++) snprintf(hash + i * 2, 3, "%02x", digest[i]);
-  char built[64];
-  snprintf(built, sizeof built, "/tmp/bao-%s", hash);
-  if (root && root_n) snprintf(root, root_n, "%s", built);
-  snprintf(sock, sock_n, "%s/notify.sock", built);
+  snprintf(sock, sock_n, "/tmp/bao-%s/notify.sock", hash);
 }
 
 static void dirname_inplace(char *path) {
@@ -224,7 +221,7 @@ int main(int argc, char *argv[]) {
   if (!port || !port[0]) port = "4787";
   mkdir(bao_home, 0700);
   char notify_sock[104];
-  notify_paths(bao_home, NULL, 0, notify_sock, sizeof notify_sock);
+  notify_paths(bao_home, notify_sock, sizeof notify_sock);
 
   int other = -1;
   int inst = bao_instance_acquire(bao_home, &other);

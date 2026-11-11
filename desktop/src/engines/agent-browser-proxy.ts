@@ -864,9 +864,7 @@ export class AgentBrowserProxy {
     } catch (error) {
       try { if (wired) await this.stopDaemon(wired.stateDir); }
       finally {
-        if (wired) {
-          await rm(wired.stateDir, { recursive: true, force: true });
-        }
+        if (wired) await rm(wired.stateDir, { recursive: true, force: true });
         await this.discard(next);
       }
       return fail(error);
