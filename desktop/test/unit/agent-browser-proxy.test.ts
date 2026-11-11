@@ -1101,6 +1101,32 @@ test("a copy session reads the wall snapshot before the run needs the owner, and
   } finally { await f.close(); }
 });
 
+test("closing the window during the wall snapshot returns closed, not an error", { timeout: 4000 }, async (t) => {
+  const f = await fixture(t);
+  try {
+    await writeFile(path.join(f.root, "page.txt"), `- dialog "Verify it's you"\n  - StaticText "Enter the verification code we sent"\n  - textbox "Enter code" [ref=e1]\n`);
+    await f.proxy.execute("open", ["http://127.0.0.1/"], "copy");
+    const runId = f.proxy.activeRunId!;
+    await writeFile(path.join(f.root, "hold-snapshot"), "");
+    const waiting = f.proxy.execute("wait_for_owner", ["5000"], undefined, false, undefined, {}, runId);
+    const until = Date.now() + 1500;
+    let pending = false;
+    while (Date.now() < until) {
+      const calls = await f.calls().catch(() => []);
+      if (calls.some((call) => call.args[call.args.indexOf("--idle-timeout") + 2] === "snapshot")) { pending = true; break; }
+      await delay(5);
+    }
+    assert.equal(pending, true, "the wall snapshot is still running");
+    f.closeWindow();
+    const [closed] = await waiting;
+    assert.equal((JSON.parse(closed!.stdout) as { outcome: string }).outcome, "closed");
+    assert.match(closed!.stdout, /The owner closed the Bao window/);
+    const saved = new Library(path.join(f.root, "home")).readRun(runId);
+    assert.equal(saved.status, "failed");
+    assert.equal(saved.envelope?.reason, "session_closed");
+  } finally { await f.close(); }
+});
+
 test("a snapshot sign-in dialog stays waiting at the deadline, with the fallback, and the next click does not run", async (t) => {
   const f = await fixture(t);
   try {

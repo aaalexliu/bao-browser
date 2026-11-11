@@ -972,8 +972,7 @@ export class AgentBrowserProxy {
     try {
       const read = await this.run(session, "snapshot", [], 2000);
       return read.exitCode === 0 && pageWall(read.stdout);
-    } catch (error) {
-      if (session.abort.signal.aborted) throw error;
+    } catch {
       return false;
     }
   }
