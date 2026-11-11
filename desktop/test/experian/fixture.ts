@@ -27,7 +27,11 @@ export async function startExperianFixture(options: { loopbackHttp?: boolean } =
       res.writeHead(302, { location: url.searchParams.get("check") === "captcha" ? "/owner/check" : "/owner/sign-in" });
       res.end();
     } else if (url.pathname === "/owner/sign-in") {
-      send("Sign in", '<form method="post" action="/owner/complete"><label>Email <input name="email" autocomplete="username"></label><label>Password <input name="password" type="password" autocomplete="current-password"></label><button>Sign in</button></form>');
+      const action = url.searchParams.has("two-factor") ? "/owner/verify" : "/owner/complete";
+      send("Sign in", `<form method="post" action="${action}"><label>Email <input name="email" autocomplete="username"></label><label>Password <input name="password" type="password" autocomplete="current-password"></label><button>Sign in</button></form>`);
+    } else if (url.pathname === "/owner/verify") {
+      req.resume();
+      send("Two-factor authentication", '<form method="post" action="/owner/complete"><label>Verification code <input name="code" autocomplete="one-time-code"></label><button>Verify</button></form>');
     } else if (url.pathname === "/owner/check") {
       send("hCaptcha: verify you are human", '<p>Stand-in human check. No external requests.</p><form method="post" action="/owner/complete"><label><input type="checkbox" required> I am human</label><button>Continue</button></form>');
     } else if (url.pathname === "/owner/complete" && req.method === "POST") {

@@ -204,11 +204,11 @@ export function textToolResult(results: readonly AgentBrowserCommandResult[], se
   };
 }
 
-const MODEL_RECEIPT_KEYS = ["run_id", "outcome", "status", "reason", "link", "workflow"] as const;
+const MODEL_RECEIPT_KEYS = ["run_id", "outcome", "status", "reason", "link", "workflow", "endedWait"] as const;
 
 /**
  * What the model reads. Codex and Claude Code hand structuredContent back in place of the text blocks.
- * Those blocks are the sentence, the run line, the workflow line, and the browser lines.
+ * Those blocks are the sentence, the run line, the ended-wait line when present, the workflow line, and the browser lines.
  * The card holds a FinishSummary. Only get_run keeps the full receipt.
  */
 function modelReceipt(sentence: string, receipt: Record<string, unknown>, browser: readonly string[]): Record<string, unknown> {
@@ -220,13 +220,13 @@ function modelReceipt(sentence: string, receipt: Record<string, unknown>, browse
   return short;
 }
 
-/** finish_task: the sentence, the run line, the workflow outcome in words, and the session's browser line. structuredContent is the short model receipt. */
+/** finish_task: the sentence, the run line, the ended-wait line when present, the workflow outcome in words, and the session's browser line. structuredContent is the short model receipt. */
 export function finishToolResult(card: BrowserToolCard | undefined, receipt: Record<string, unknown>, ui: boolean, browser: readonly string[] = []) {
   const sentence = card?.caption ?? (receipt.outcome === "no_session" && typeof receipt.reason === "string" ? receipt.reason : "No browser task was open.");
   const run = typeof receipt.run_id === "string"
     ? [textBlock([`Run ${receipt.run_id}`, receipt.status, receipt.link].filter((part) => typeof part === "string" && part.length > 0).join(" · "))] : [];
   return {
-    content: [textBlock(sentence), ...run, ...(typeof receipt.workflow === "string" ? [textBlock(receipt.workflow)] : []), ...browser.map(textBlock), ...(ui && card ? [cardKey(card)] : [])],
+    content: [textBlock(sentence), ...run, ...(typeof receipt.endedWait === "string" ? [textBlock(receipt.endedWait)] : []), ...(typeof receipt.workflow === "string" ? [textBlock(receipt.workflow)] : []), ...browser.map(textBlock), ...(ui && card ? [cardKey(card)] : [])],
     structuredContent: modelReceipt(sentence, receipt, browser),
     isError: false,
   };
