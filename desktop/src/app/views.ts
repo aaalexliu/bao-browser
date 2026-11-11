@@ -4,6 +4,7 @@
 import { importErrorView } from "./import-error";
 import type { inspectRunView } from "../mcp/run-view";
 import type { BrowserPick } from "../engines/browser-pick";
+import { ROUTE_LABELS } from "../engines/route-labels";
 import { shellPlaces, shellScreen, shellScreens, type Screen } from "./shell-navigation";
 import type { ImportLoginError } from "../v1/import-login-error";
 import { ownerWaitTimeout } from "../cdp-live/owner-wait";
@@ -2048,12 +2049,7 @@ export function runReceipt(view: ReturnType<typeof inspectRunView>, name: string
   const at = view.run.at === null ? "Time unknown" : formatWhen(view.run.at);
   const calls = view.run.modelCalls;
   const browser = run.browser;
-  const browserLabel = browser && ({
-    bao: "Bao profile",
-    copy: "Chrome copy",
-    current: "Running Chrome",
-    extension: "Running Chrome through the Bao extension",
-  } satisfies Record<BrowserPick["route"], string>)[browser.route];
+  const browserLabel = browser && { ...ROUTE_LABELS, current: "Running Chrome" }[browser.route];
   const spoken = plainAgentReason(run);
   const ask = spoken ? undefined : view.handoff?.ask || run.envelope?.ask;
   return `<section id="run-receipt" aria-label="Run receipt"><p class="receipt-kicker"><span class="run-state ${esc(kind)}">${esc(statusLabel(kind))}</span> · ${esc(at)}</p><h2>${esc(name)}</h2>

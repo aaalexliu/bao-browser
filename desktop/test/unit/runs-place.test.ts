@@ -10,7 +10,7 @@ import { testChromium } from "../../src/test-browser";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import type { inspectRunView } from "../../src/mcp/run-view";
 import { makeAsk } from "../../src/v1/human-ask";
-import type { BrowserPick } from "../../src/engines/browser-pick";
+import { ROUTE_LABELS, type BrowserPick } from "../../src/engines/browser-pick";
 
 test("Runs receipts name the saved browser and reason without guessing for older runs", { timeout: 60_000 }, async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-runs-browser-"));
@@ -46,6 +46,7 @@ test("Runs receipts name the saved browser and reason without guessing for older
           const expected = `Browser: ${label}\nWhy: ${pick.why}.`;
           await page.waitForFunction((text) => document.querySelector<HTMLElement>(".receipt-browser")?.innerText === text, expected);
           assert.equal(await page.locator(".receipt-browser").innerText(), expected);
+          if (pick.route === "copy") assert.equal((await page.locator(".receipt-browser").innerText()).split("\n")[0], `Browser: ${ROUTE_LABELS[pick.route]}`);
           await page.reload();
           await page.locator(`[data-open-run="${id}"]`).first().click();
           await page.waitForFunction((text) => document.querySelector<HTMLElement>(".receipt-browser")?.innerText === text, expected);
