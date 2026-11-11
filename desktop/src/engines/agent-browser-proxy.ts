@@ -590,7 +590,7 @@ export class AgentBrowserProxy {
         const timeout = ownerWaitTimeout(args[0] === undefined ? undefined : Number(args[0]));
         const deadline = Date.now() + timeout;
         const wall = this.wallOf(session);
-        const read = !wall && this.movable(session, true) ? await this.activePage(session).catch(() => undefined) : undefined;
+        const read = !wall ? await this.activePage(session).catch((error: unknown) => { if (error instanceof TaskTabClosed) throw error; return undefined; }) : undefined;
         const stop = wall ?? (read ? this.stopped(session, read) : undefined);
         const page = stop?.page;
         const opened = stop && await this.moveAway(session, this.wallWords(session), stop.reopen, true);
@@ -1343,7 +1343,7 @@ export class AgentBrowserProxy {
             const active = await this.activePage(session);
             if (!active) return this.ownerClosed(session);
             if (this.waitOf(session) === "off") session.ownerSince = session.ownerTouched = Date.now();
-            this.setWait(session, await this.withWall(session, this.stopped(session, active)));
+            this.setWait(session, this.stopped(session, active));
             session.ownerPage = active.page;
             await this.ownerBanner(session, active.targetId, true);
           }

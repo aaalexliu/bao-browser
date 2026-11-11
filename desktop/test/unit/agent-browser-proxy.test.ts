@@ -59,6 +59,7 @@ const fs = require('node:fs');
 const args = process.argv.slice(2);
 fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify({args, env: process.env}) + '\\n');
 const command = args[args.indexOf('--idle-timeout') + 2];
+if (command === 'snapshot' && fs.existsSync(${JSON.stringify(path.join(root, "hold-snapshot"))})) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 400);
 if (args.includes('hang') || args.includes('daemon-fail')) {
   const daemon = require('node:child_process').spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { detached: true, stdio: 'ignore' });
   daemon.unref();
@@ -1067,6 +1068,36 @@ test("a wait_for_owner on a normal page shows needs_human while it waits, then r
     assert.equal(await f.proxy.finishTask({ outcome: "passed", reason: "The page was already open." }, runId), runId);
     assert.equal(library.readRun(runId).status, "passed");
     assert.equal(library.readRun(runId).envelope?.reason, "The page was already open.");
+  } finally { await f.close(); }
+});
+
+test("a copy session reads the wall snapshot before the run needs the owner, and none during the wait", { timeout: 4000 }, async (t) => {
+  const f = await fixture(t);
+  try {
+    await writeFile(path.join(f.root, "page.txt"), `- dialog "Verify it's you"\n  - StaticText "Enter the verification code we sent"\n  - textbox "Enter code" [ref=e1]\n`);
+    await f.proxy.execute("open", ["http://127.0.0.1/"], "copy");
+    const runId = f.proxy.activeRunId!;
+    await writeFile(path.join(f.root, "hold-snapshot"), "");
+    const library = new Library(path.join(f.root, "home"));
+    const snapshots = async () => (await f.calls()).filter((call) => call.args[call.args.indexOf("--idle-timeout") + 2] === "snapshot").length;
+    const before = await snapshots();
+    const waiting = f.proxy.execute("wait_for_owner", ["80"], undefined, false, undefined, {}, runId);
+    const until = Date.now() + 1500;
+    let seenBeforeNeeds = false;
+    let duringSnaps = before;
+    while (Date.now() < until) {
+      const status = library.readRun(runId).status;
+      const snaps = await snapshots();
+      if (snaps > before && status === "recording") seenBeforeNeeds = true;
+      if (status === "needs_human") { duringSnaps = snaps; break; }
+      await delay(5);
+    }
+    assert.equal(seenBeforeNeeds, true, "the wall snapshot runs while the run is still recording");
+    assert.equal(library.readRun(runId).status, "needs_human");
+    assert.equal(duringSnaps, before + 1, "the wait starts after that one snapshot");
+    const [waited] = await waiting;
+    assert.equal((JSON.parse(waited!.stdout) as { outcome: string }).outcome, "waiting");
+    assert.equal(await snapshots(), duringSnaps, "no native snapshot runs during the wait");
   } finally { await f.close(); }
 });
 
