@@ -16,6 +16,7 @@ import { Library } from "../../src/v1/store";
 import type { WorkflowStep } from "../../src/v1/schema";
 import { targetFor, testWorkflow } from "../support/workflow";
 import { ownerChrome, stripWhen, type Strip } from "../support/owner-chrome";
+import { scaledMs } from "../runtime";
 
 pinTestBrowser();
 
@@ -36,7 +37,7 @@ async function evaluate<T>(cdp: CdpSocket, targetId: string, expression: string,
 const active = (strip: Strip) => strip.tabs.find((tab) => tab.active);
 const group = (strip: Strip) => strip.groups[0];
 
-test("Bao's tabs open in the background in one collapsed Bao group, and only they are in reach", { timeout: 60_000 }, async (t) => {
+test("Bao's tabs open in the background in one collapsed Bao group, and only they are in reach", { timeout: scaledMs(60_000) }, async (t) => {
   const chrome = await ownerChrome(t, PAGES);
   const before = await chrome.strip();
   assert.deepEqual(before.groups, []);
@@ -111,7 +112,7 @@ test("Bao's tabs open in the background in one collapsed Bao group, and only the
   assert.equal(active(strip)?.id, chrome.ownerTabId);
 });
 
-test("a lease whose connections all close hands its open tabs to the owner", { timeout: 60_000 }, async (t) => {
+test("a lease whose connections all close hands its open tabs to the owner", { timeout: scaledMs(60_000) }, async (t) => {
   const chrome = await ownerChrome(t, PAGES);
   const running = await openRunningChrome({ home: chrome.home });
   await running.cdp.send("Target.createTarget", { url: `${chrome.base}/task` });
@@ -123,7 +124,7 @@ test("a lease whose connections all close hands its open tabs to the owner", { t
   assert.equal(active(strip)?.id, chrome.ownerTabId);
 });
 
-test("Running Chrome through the extension is refused with the gate off and explains a missing app or extension", { timeout: 30_000 }, async (t) => {
+test("Running Chrome through the extension is refused with the gate off and explains a missing app or extension", { timeout: scaledMs(30_000) }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-running-chrome-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   await assert.rejects(openRunningChrome({ home: root }), { message: RUNNING_CHROME_NEEDS_APP });
@@ -134,7 +135,7 @@ test("Running Chrome through the extension is refused with the gate off and expl
   await assert.rejects(openRunningChrome({ home: root }), { message: EXTENSION_NOT_LINKED });
 });
 
-test("Running Chrome refuses a workflow that downloads or uploads a file before it opens a tab", { timeout: 30_000 }, async (t) => {
+test("Running Chrome refuses a workflow that downloads or uploads a file before it opens a tab", { timeout: scaledMs(30_000) }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-running-files-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const app = await startApp({ home: root, port: 0, extensionHost: true, extensionConfigHome: path.join(root, "native-host") });
@@ -164,7 +165,7 @@ test("Running Chrome refuses a workflow that downloads or uploads a file before 
   }
 });
 
-for (const ending of ["close", "finish", "disconnect"] as const) test(`the agent route drives a grouped background task tab and closes only Bao's tabs on ${ending}`, { timeout: 60_000 }, async (t) => {
+for (const ending of ["close", "finish", "disconnect"] as const) test(`the agent route drives a grouped background task tab and closes only Bao's tabs on ${ending}`, { timeout: scaledMs(60_000) }, async (t) => {
   const chrome = await ownerChrome(t, PAGES);
   const root = await mkdtemp(path.join(tmpdir(), "bao-running-proxy-"));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -238,7 +239,7 @@ const bound = JSON.parse(fs.readFileSync('bao.target', 'utf8')).targetId;
   }
 });
 
-test("a workflow on Running Chrome runs in a grouped background tab, opens the group for a handoff, and closes it", { timeout: 60_000 }, async (t) => {
+test("a workflow on Running Chrome runs in a grouped background tab, opens the group for a handoff, and closes it", { timeout: scaledMs(60_000) }, async (t) => {
   const chrome = await ownerChrome(t, PAGES);
   const session = await openWorkflowBrowser({ browser: "current", home: chrome.home, site: `${chrome.base}/task`, extensionRoute: true });
   t.after(() => session.close());

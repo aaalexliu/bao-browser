@@ -20,6 +20,7 @@ import { Library } from "../../src/v1/store";
 import { MemoryJobStore } from "../../../web/src/lib/relay-job";
 import { createRelay, listenRelay, MemoryDirectory } from "../../../web/src/lib/relay";
 import { openWebSocket, type LiteSocket } from "../../../web/src/lib/ws-lite";
+import { scaledMs } from "../runtime";
 
 const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ";
 
@@ -616,7 +617,7 @@ test("the relay answers 404 when the flag is off, including the websocket upgrad
   }
 });
 
-test("Settings pairs and revokes without putting the token in /api/state", { timeout: 60_000 }, async () => {
+test("Settings pairs and revokes without putting the token in /api/state", { timeout: scaledMs(60_000) }, async () => {
   const previous = process.env.BAO_REMOTE_MCP;
   const previousChrome = process.env.BAO_CHROME_USER_DATA;
   delete process.env.BAO_REMOTE_MCP;

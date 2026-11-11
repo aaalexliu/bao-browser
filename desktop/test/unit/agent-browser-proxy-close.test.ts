@@ -15,6 +15,7 @@ import { Library } from "../../src/v1/store";
 import { chromeProfiles, fakeTaskTab } from "../support/chrome-profiles";
 import { LIST_TARGETS } from "../support/fake-agent-browser";
 import { trapPort } from "../support/trap-port";
+import { scaledMs } from "../runtime";
 
 launch.pinTestBrowser();
 
@@ -24,7 +25,7 @@ for (const { mode, force, deny } of [
   { mode: "stop", force: false, deny: false },
   { mode: "close", force: true, deny: false },
   { mode: "close", force: false, deny: true },
-] as const) test(deny ? "current close preserves native state when shutdown fails" : `current ${mode} waits for native daemon exit after ${force ? "SIGKILL" : "a second SIGTERM"}`, { timeout: 30_000 }, async (t) => {
+] as const) test(deny ? "current close preserves native state when shutdown fails" : `current ${mode} waits for native daemon exit after ${force ? "SIGKILL" : "a second SIGTERM"}`, { timeout: scaledMs(30_000) }, async (t) => {
   let daemon: ReturnType<typeof spawn> | undefined;
   let exited: Promise<unknown> | undefined;
   let proxy: AgentBrowserProxy | undefined;
@@ -115,7 +116,7 @@ ${LIST_TARGETS}
   assert.equal(detached, true);
 });
 
-test("a close after the owner's Chrome ended still names the owner's Chrome", { timeout: 30_000 }, async (t) => {
+test("a close after the owner's Chrome ended still names the owner's Chrome", { timeout: scaledMs(30_000) }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-current-ended-"));
   let detached = false;
   let resolveClosed!: () => void;
@@ -147,7 +148,7 @@ test("a close after the owner's Chrome ended still names the owner's Chrome", { 
   assert.equal(proxy.currentChrome, false, "a later close has no ended route left");
 });
 
-test("window close awaits owned cleanup before browser choice and reopening", { timeout: 30_000 }, async (t) => {
+test("window close awaits owned cleanup before browser choice and reopening", { timeout: scaledMs(30_000) }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-proxy-close-"));
   const sourceRoot = path.join(root, "source");
   const home = path.join(root, "home");
@@ -253,7 +254,7 @@ if (command === 'tab' && args.includes('--json')) {
   }
 });
 
-test("a stalled copied browser exits before the proxy deletes its profile and reopens", { timeout: 60_000, skip: process.platform === "win32" }, async (t) => {
+test("a stalled copied browser exits before the proxy deletes its profile and reopens", { timeout: scaledMs(60_000), skip: process.platform === "win32" }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-proxy-slow-close-"));
   const sourceRoot = path.join(root, "source");
   const home = path.join(root, "home");
@@ -321,7 +322,7 @@ if (command === 'tab' && args.includes('--json')) {
       await chrome.close().catch(() => undefined);
     }
     for (const copy of copies) {
-      const deadline = Date.now() + 5000;
+      const deadline = Date.now() + scaledMs(5000);
       while (launch.pidsForDataDir(copy).length && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
     }
     assert.ok(copies.every((copy) => launch.pidsForDataDir(copy).length === 0), "all real browsers must exit before profiles are removed");

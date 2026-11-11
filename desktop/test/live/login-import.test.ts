@@ -16,7 +16,7 @@ import { encryptCookieValue, LINUX_ITERATIONS, LINUX_PEANUTS, plaintextForCookie
 import { indexedDbIdentifier } from "../../src/login-import/storage";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { testArtifacts } from "../artifacts";
-import { cookieKeys } from "../runtime";
+import { cookieKeys, scaledMs } from "../runtime";
 import { assertNoValue, chromeExpiry, tempDir, TINY_PNG, writeCookieDb, writeLocalState } from "../unit/login-import-fixture";
 
 const SESSION = "session-secret-9f3c";
@@ -39,7 +39,7 @@ async function setTheme(page: Page, theme: "light" | "dark"): Promise<void> {
   await page.waitForFunction((next) => document.documentElement.dataset.theme === next, theme);
 }
 
-test("import cookies, localStorage, and IndexedDB, then block a dead session", { timeout: 180_000 }, async () => {
+test("import cookies, localStorage, and IndexedDB, then block a dead session", { timeout: scaledMs(180_000) }, async () => {
   mkdirSync(ARTIFACTS, { recursive: true });
   for (const stale of ["login-picker.png", "login-signed-in.png", "login-signed-out-bot.png", "login-keychain-missed.png"]) {
     rmSync(path.join(ARTIFACTS, stale), { force: true });
@@ -86,7 +86,7 @@ test("import cookies, localStorage, and IndexedDB, then block a dead session", {
     await ui.fill("#login-site", `${origin}/account`);
     await ui.click("#show-profiles");
     try {
-      await ui.waitForSelector("[data-import-profile=Default]", { timeout: 30_000 });
+      await ui.waitForSelector("[data-import-profile=Default]", { timeout: scaledMs(30_000) });
     } catch {
       const text = await ui.locator("body").innerText();
       throw new Error(`profile picker did not open\n${text.slice(0, 800)}`);
@@ -205,7 +205,7 @@ test("import cookies, localStorage, and IndexedDB, then block a dead session", {
   }
 });
 
-test("a session cookie survives relaunching bao's Chrome", { timeout: 120_000 }, async () => {
+test("a session cookie survives relaunching bao's Chrome", { timeout: scaledMs(120_000) }, async () => {
   const server = await startSite();
   const port = (server.address() as { port: number }).port;
   const origin = `http://127.0.0.1:${port}`;
@@ -235,7 +235,7 @@ test("a session cookie survives relaunching bao's Chrome", { timeout: 120_000 },
   }
 });
 
-test("import a public demo login, then block the run after the cookie is cleared", { timeout: 180_000 }, async () => {
+test("import a public demo login, then block the run after the cookie is cleared", { timeout: scaledMs(180_000) }, async () => {
   const userData = tempDir("bao-public-chrome-");
   const home = tempDir("bao-public-home-");
   const baoProfile = path.join(home, "chrome-profile");
@@ -266,7 +266,7 @@ test("import a public demo login, then block the run after the cookie is cleared
     if (!picker.includes("Tom Smith")) throw new Error("public profile picker missed the throwaway profile");
     if (picker.includes("SuperSecretPassword")) throw new Error("the demo password was shown");
     await ui.click("#import-selected");
-    await ui.waitForFunction(() => (document.querySelector("#login-result")?.textContent || "").includes("Signed in: yes"), undefined, { timeout: 60_000 });
+    await ui.waitForFunction(() => (document.querySelector("#login-result")?.textContent || "").includes("Signed in: yes"), undefined, { timeout: scaledMs(60_000) });
     if (await ui.locator("#act-bar").count() !== 0) throw new Error("act bar stayed after the public import");
     await ui.waitForFunction(() => (document.querySelector("#saved-logins")?.textContent || "").includes("Live"));
     const signedIn = await ui.locator("body").innerText();
@@ -303,7 +303,7 @@ test("import a public demo login, then block the run after the cookie is cleared
     await ui.waitForSelector("#wf");
     await ui.selectOption("#wf", workflow.id);
     await ui.click("#run");
-    await ui.waitForFunction(() => (document.querySelector("#run-status")?.textContent || "").includes("Needs sign-in"), undefined, { timeout: 60_000 });
+    await ui.waitForFunction(() => (document.querySelector("#run-status")?.textContent || "").includes("Needs sign-in"), undefined, { timeout: scaledMs(60_000) });
     const gate = await ui.locator("#live").innerText();
     if (!gate.includes("Needs sign-in")) throw new Error("the pre-run gate did not block");
     if (!gate.includes("The session is not live")) throw new Error("needs sign-in copy was missing");
@@ -327,7 +327,7 @@ test("import a public demo login, then block the run after the cookie is cleared
   }
 });
 
-test("a public page's localStorage and IndexedDB come back in bao's profile", { timeout: 180_000 }, async () => {
+test("a public page's localStorage and IndexedDB come back in bao's profile", { timeout: scaledMs(180_000) }, async () => {
   const stored = "storage-secret-9f3c";
   const userData = tempDir("bao-public-storage-");
   const home = tempDir("bao-public-storage-home-");
@@ -336,7 +336,7 @@ test("a public page's localStorage and IndexedDB come back in bao's profile", { 
   const writer = await launchLevelDbProfile(userData);
   try {
     const page = writer.pages()[0] || await writer.newPage();
-    await page.goto(`${origin}/`, { waitUntil: "domcontentloaded", timeout: 30_000 });
+    await page.goto(`${origin}/`, { waitUntil: "domcontentloaded", timeout: scaledMs(30_000) });
     const wrote = await page.evaluate(({ key, value, db }) => {
       localStorage.setItem(key, value);
       return new Promise((resolve) => {
@@ -375,7 +375,7 @@ test("a public page's localStorage and IndexedDB come back in bao's profile", { 
     await ui.click("#show-profiles");
     await ui.waitForSelector("[data-import-profile=Default]");
     await ui.click("#import-selected");
-    await ui.waitForFunction(() => (document.querySelector("#login-result")?.textContent || "").includes("localStorage"), undefined, { timeout: 90_000 });
+    await ui.waitForFunction(() => (document.querySelector("#login-result")?.textContent || "").includes("localStorage"), undefined, { timeout: scaledMs(90_000) });
     const text = await ui.locator("#login-result").innerText();
     if (!text.includes(STORAGE_KEY)) throw new Error("localStorage name was not shown");
     if (!text.includes(STORAGE_DB)) throw new Error("IndexedDB name was not shown");
@@ -395,7 +395,7 @@ async function readBackPublicStorage(baoProfile: string, origin: string, expecte
   const ctx = await launchLevelDbProfile(baoProfile);
   try {
     const page = ctx.pages()[0] || await ctx.newPage();
-    await page.goto(`${origin}/`, { waitUntil: "domcontentloaded", timeout: 30_000 });
+    await page.goto(`${origin}/`, { waitUntil: "domcontentloaded", timeout: scaledMs(30_000) });
     const ok = await page.evaluate(({ key, db, expected: want }) => {
       if (localStorage.getItem(key) !== want) return false;
       return new Promise((resolve) => {
@@ -426,17 +426,17 @@ async function signIntoDemo(userData: string): Promise<void> {
     const page = ctx.pages()[0] || await ctx.newPage();
     let reached = false;
     for (let attempt = 0; attempt < 2 && !reached; attempt++) {
-      await page.goto("https://the-internet.herokuapp.com/login", { waitUntil: "domcontentloaded", timeout: 45_000 });
+      await page.goto("https://the-internet.herokuapp.com/login", { waitUntil: "domcontentloaded", timeout: scaledMs(45_000) });
       const user = page.locator("#username");
       try {
-        await user.waitFor({ state: "visible", timeout: 20_000 });
+        await user.waitFor({ state: "visible", timeout: scaledMs(20_000) });
       } catch {
         continue;
       }
       await user.fill("tomsmith");
       await page.locator("#password").fill("SuperSecretPassword!");
       await Promise.all([
-        page.waitForURL(/\/secure/, { timeout: 30_000 }),
+        page.waitForURL(/\/secure/, { timeout: scaledMs(30_000) }),
         page.click("button[type=submit]"),
       ]);
       reached = page.url().includes("/secure");

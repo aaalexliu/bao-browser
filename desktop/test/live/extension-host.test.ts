@@ -17,6 +17,7 @@ import { TEST_MEDIA_ARGS } from "../../src/test-browser.js";
 import { EXTENSION_ID } from "../../src/extension/protocol";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { testArtifacts } from "../artifacts";
+import { scaledMs } from "../runtime";
 
 process.env.BAO_CHROME_NO_SANDBOX = process.env.BAO_CHROME_NO_SANDBOX || "1";
 process.env.BAO_HEAL_CURSOR_ACCOUNT = "0";
@@ -71,7 +72,7 @@ function workflow(id: string, name: string, steps: WorkflowV2["steps"], startUrl
   });
 }
 
-test("extension replay asks for one origin and does not error with no host permission", { timeout: 300_000 }, async () => {
+test("extension replay asks for one origin and does not error with no host permission", { timeout: scaledMs(300_000) }, async () => {
   const root = mkdtempSync(path.join(tmpdir(), "bao-ext-host-"));
   const home = path.join(root, "bao");
   const chromeHome = path.join(root, "home");
@@ -143,14 +144,14 @@ test("extension replay asks for one origin and does not error with no host permi
     const context = browser.contexts()[0];
     assert.ok(context, "cdp context");
     const page = context.pages()[0] || await context.newPage();
-    await page.goto("chrome://extensions/", { waitUntil: "domcontentloaded", timeout: 20_000 });
+    await page.goto("chrome://extensions/", { waitUntil: "domcontentloaded", timeout: scaledMs(20_000) });
     const fresh = await extensionInfo(page);
     assertClean(fresh, "fresh load");
     const quiet = await link.command("net-state", {}, 10_000) as { listening?: boolean; urls?: string[]; allowUrl?: string };
     assert.equal(quiet.listening, false, JSON.stringify(quiet));
     assert.deepEqual(quiet.urls || [], []);
     await page.screenshot({ path: path.join(shotDir, "card.png"), fullPage: true });
-    await page.goto(`chrome://extensions/?errors=${EXTENSION_ID}`, { waitUntil: "domcontentloaded", timeout: 20_000 });
+    await page.goto(`chrome://extensions/?errors=${EXTENSION_ID}`, { waitUntil: "domcontentloaded", timeout: scaledMs(20_000) });
     await page.screenshot({ path: path.join(shotDir, "errors.png"), fullPage: true });
 
     app.library.save(workflow("wf-host-deny", "Host deny", []));
@@ -201,7 +202,7 @@ test("extension replay asks for one origin and does not error with no host permi
     assert.equal((listening.urls || []).includes("<all_urls>"), false);
     assert.equal((listening.urls || []).includes("https://*/*"), false);
     assert.equal((listening.urls || []).includes("http://*/*"), false);
-    await page.goto("chrome://extensions/", { waitUntil: "domcontentloaded", timeout: 20_000 });
+    await page.goto("chrome://extensions/", { waitUntil: "domcontentloaded", timeout: scaledMs(20_000) });
     assertClean(await extensionInfo(page), "after grant");
 
     fixture = await startFixture();
@@ -216,7 +217,7 @@ test("extension replay asks for one origin and does not error with no host permi
     const trust = await link.command("measure-debugger", {}, 20_000) as { clickAfter?: boolean; typeAfter?: boolean };
     assert.equal(trust.clickAfter, true, JSON.stringify(trust));
     assert.equal(trust.typeAfter, true, JSON.stringify(trust));
-    await page.goto("chrome://extensions/", { waitUntil: "domcontentloaded", timeout: 20_000 });
+    await page.goto("chrome://extensions/", { waitUntil: "domcontentloaded", timeout: scaledMs(20_000) });
     assertClean(await extensionInfo(page), "after debugger");
 
     await closeAllowPages(browser);
@@ -248,7 +249,7 @@ test("extension replay asks for one origin and does not error with no host permi
     let promptedAgain = false;
     const watchPrompt = (async () => {
       const start = Date.now();
-      while (Date.now() - start < 10_000) {
+      while (Date.now() - start < scaledMs(10_000)) {
         const state = await link.command("net-state", {}, 3_000).catch(() => ({})) as { allowUrl?: string };
         if (String(state.allowUrl || "").includes("allow.html")) {
           promptedAgain = true;
@@ -266,15 +267,15 @@ test("extension replay asks for one origin and does not error with no host permi
     const ui = browser.contexts()[0];
     assert.ok(ui, "cdp context");
     const settings = await ui.newPage();
-    await settings.goto(`http://127.0.0.1:${app.port}/`, { waitUntil: "domcontentloaded", timeout: 20_000 });
+    await settings.goto(`http://127.0.0.1:${app.port}/`, { waitUntil: "domcontentloaded", timeout: scaledMs(20_000) });
     await settings.locator("#rail button[data-place='settings']").click();
     await settings.locator("#settings-advanced > summary").click();
-    await settings.locator("#host-access-status").waitFor({ timeout: 10_000 });
-    await settings.waitForFunction(() => (document.getElementById("host-access-status")?.textContent || "").includes("all sites"), undefined, { timeout: 10_000 });
+    await settings.locator("#host-access-status").waitFor({ timeout: scaledMs(10_000) });
+    await settings.waitForFunction(() => (document.getElementById("host-access-status")?.textContent || "").includes("all sites"), undefined, { timeout: scaledMs(10_000) });
     await settings.locator("#host-access").screenshot({ path: path.join(shotDir, "settings-host.png") });
     await settings.screenshot({ path: path.join(shotDir, "settings.png") });
     await settings.locator("#revoke-hosts").click();
-    await settings.waitForFunction(() => (document.getElementById("host-access-status")?.textContent || "").includes("none"), undefined, { timeout: 10_000 });
+    await settings.waitForFunction(() => (document.getElementById("host-access-status")?.textContent || "").includes("none"), undefined, { timeout: scaledMs(10_000) });
     const revokedAccess = await fetch(`http://127.0.0.1:${app.port}/api/extension/host-access`).then((res) => res.json()) as { hostAccess?: string };
     assert.equal(revokedAccess.hostAccess, "none", JSON.stringify(revokedAccess));
     const quietAgain = await link.command("net-state", {}, 10_000) as { listening?: boolean; urls?: string[] };
@@ -295,9 +296,9 @@ test("extension replay asks for one origin and does not error with no host permi
     assert.match(String(again.body.message || ""), /not granted in time/);
     assert.equal(hostsSeen.has("example.org"), false, `navigated before a grant: ${[...hostsSeen].join(" ")}`);
 
-    await page.goto("chrome://extensions/?errors=" + EXTENSION_ID, { waitUntil: "domcontentloaded", timeout: 20_000 });
+    await page.goto("chrome://extensions/?errors=" + EXTENSION_ID, { waitUntil: "domcontentloaded", timeout: scaledMs(20_000) });
     await page.screenshot({ path: path.join(shotDir, "errors.png"), fullPage: true });
-    await page.goto("chrome://extensions/", { waitUntil: "domcontentloaded", timeout: 20_000 });
+    await page.goto("chrome://extensions/", { waitUntil: "domcontentloaded", timeout: scaledMs(20_000) });
     assertClean(await extensionInfo(page), "after revoke");
     await page.screenshot({ path: path.join(shotDir, "card.png"), fullPage: true });
 
@@ -318,7 +319,7 @@ test("extension replay asks for one origin and does not error with no host permi
       const exited = new Promise<void>(resolve => chrome!.once("exit", () => resolve()));
       chrome.kill("SIGTERM");
       const start = Date.now();
-      while (chrome.exitCode === null && chrome.signalCode === null && Date.now() - start < 5000) await sleep(200);
+      while (chrome.exitCode === null && chrome.signalCode === null && Date.now() - start < scaledMs(5000)) await sleep(200);
       if (chrome.exitCode === null && chrome.signalCode === null) chrome.kill("SIGKILL");
       await exited;
     }
@@ -385,7 +386,7 @@ async function waitForAllow(
 ): Promise<{ origins: string; url: string }> {
   const start = Date.now();
   let last = "";
-  while (Date.now() - start < timeoutMs) {
+  while (Date.now() - start < scaledMs(timeoutMs)) {
     const listed = await listTargets(debugPort).catch(() => [] as Target[]);
     for (const item of listed) {
       const url = item.url || "";
@@ -553,14 +554,14 @@ async function openAllowPage(browser: Browser, origin: string): Promise<Page> {
   assert.ok(context, "cdp context");
   const page = await context.newPage();
   const url = `chrome-extension://${EXTENSION_ID}/allow.html?origins=${encodeURIComponent(origin)}`;
-  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 15_000 });
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout: scaledMs(15_000) });
   return page;
 }
 
 async function pressAllow(): Promise<void> {
   const start = Date.now();
   let id = "";
-  while (Date.now() - start < 6000) {
+  while (Date.now() - start < scaledMs(6000)) {
     const out = spawnSync("xdotool", ["search", "--name", "Allow Bao"], { encoding: "utf8" });
     const ids = (out.stdout || "").split("\n").map((line) => line.trim()).filter((line) => /^\d+$/.test(line));
     id = ids[ids.length - 1] || "";
@@ -627,7 +628,7 @@ async function grantHost(
   }
   if (page) {
     await page.bringToFront().catch(() => undefined);
-    await page.click(button, { timeout: 8000 });
+    await page.click(button, { timeout: scaledMs(8000) });
   } else {
     await cdpClickAllow(socket, button);
   }
@@ -635,7 +636,7 @@ async function grantHost(
   await pressAllow();
   const start = Date.now();
   let outcome: boolean | "denied" = false;
-  while (Date.now() - start < 8000) {
+  while (Date.now() - start < scaledMs(8000)) {
     outcome = await originGranted(browser, debugPort, page, check);
     if (outcome === true || outcome === "denied") break;
     await sleep(200);

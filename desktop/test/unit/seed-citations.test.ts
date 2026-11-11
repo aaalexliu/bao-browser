@@ -4,6 +4,7 @@ import path from "node:path";
 import test from "node:test";
 import { testChromium as chromium } from "../../src/test-browser.js";
 import { SEED_WORKFLOWS } from "../../../web/src/lib/seeds";
+import { scaledMs } from "../runtime";
 
 type SeedLocator = { kind: string; value?: string; role?: string; name?: string };
 type SeedStep = {
@@ -15,7 +16,7 @@ type SeedStep = {
 
 const steps = (seed: (typeof SEED_WORKFLOWS)[number]) => seed.document.steps as SeedStep[];
 
-test("seed citations quote a string the targeted fixture element carries, and the password step cites nothing", { timeout: 60000 }, async () => {
+test("seed citations quote a string the targeted fixture element carries, and the password step cites nothing", { timeout: scaledMs(60000) }, async () => {
   const browser = await chromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
   try {
     const page = await browser.newPage();

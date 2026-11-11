@@ -3,9 +3,16 @@ import { randomBytes } from "node:crypto";
 import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { createRequire } from "node:module";
 import { pinTestBrowser } from "../src/launch";
 import { swapTestHome } from "../src/playwright-cache.js";
 import type { KeySources } from "../src/login-import/keys";
+
+const { testTimeScale, scaledMs } = createRequire(__filename)(path.resolve("desktop/test/time-scale.cjs")) as {
+  testTimeScale: (env?: NodeJS.ProcessEnv) => number;
+  scaledMs: (ms: number, env?: NodeJS.ProcessEnv) => number;
+};
+export { testTimeScale, scaledMs };
 
 const SECRET_KEYS = [
   "OPENAI_API_KEY",
@@ -32,6 +39,7 @@ export interface CompiledPlan {
 }
 
 function laneEnv(lane: TestLane, parent: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const scale = parent.BAO_TEST_TIME_SCALE;
   const env: NodeJS.ProcessEnv = { ...parent };
   for (const key of Object.keys(env)) {
     if (/^bao/i.test(key)) delete env[key];
@@ -44,6 +52,7 @@ function laneEnv(lane: TestLane, parent: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   env.BAO_HEADED = "0";
   env.BAO_TEST_RUN_ID = `${Date.now().toString(36)}-${randomBytes(3).toString("hex")}`;
   if (lane === "live") env.BAO_LIVE_TESTS = "1";
+  if (scale !== undefined && String(scale).trim() !== "") env.BAO_TEST_TIME_SCALE = scale;
   return env;
 }
 

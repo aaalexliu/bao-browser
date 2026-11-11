@@ -18,11 +18,12 @@ import { Library } from "../../src/v1/store";
 import { loadState, pairDevice, syncAll } from "../../src/v1/sync";
 
 import { testArtifacts } from "../artifacts";
+import { scaledMs } from "../runtime";
 
 const shots = testArtifacts("sync-conflict");
 const TEST_BROWSER = pinTestBrowser();
 
-test("two Macs conflict on one workflow, and an offline edit pushes on reconnect", { timeout: 600_000 }, async () => {
+test("two Macs conflict on one workflow, and an offline edit pushes on reconnect", { timeout: scaledMs(600_000) }, async () => {
   process.env.TZ = "America/New_York";
   const root = mkdtempSync(path.join(tmpdir(), "bao-conflict-"));
   const port = await freePort();
@@ -263,7 +264,7 @@ async function pairCode(origin: string, cookie: string): Promise<string> {
 async function waitHealth(origin: string, logs: string[]): Promise<{ ok?: boolean; driver?: string }> {
   const start = Date.now();
   let last = "";
-  while (Date.now() - start < 300_000) {
+  while (Date.now() - start < scaledMs(300_000)) {
     try {
       const res = await fetch(`${origin}/api/health`);
       last = await res.text();

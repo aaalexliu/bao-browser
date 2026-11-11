@@ -10,6 +10,7 @@ import path from "node:path";
 import test from "node:test";
 import { startApp } from "../../src/app/server";
 import { loadTeachIntentCases } from "../../src/eval/intent/teach-cases";
+import { scaledMs } from "../runtime";
 
 process.env.BAO_DRIVE = "1";
 
@@ -58,7 +59,7 @@ async function readState(port: number): Promise<{
 async function until<T>(read: () => Promise<T>, pred: (value: T) => boolean, label: string): Promise<T> {
   const start = Date.now();
   let last = "";
-  while (Date.now() - start < 8000) {
+  while (Date.now() - start < scaledMs(8000)) {
     const value = await read();
     if (pred(value)) return value;
     last = JSON.stringify(value);
@@ -67,7 +68,7 @@ async function until<T>(read: () => Promise<T>, pred: (value: T) => boolean, lab
   throw new Error(`timed out waiting for ${label}: ${last}`);
 }
 
-test("a note lands on the step within a second and a fix is a labelled correction", { timeout: 120000 }, async () => {
+test("a note lands on the step within a second and a fix is a labelled correction", { timeout: scaledMs(120000) }, async () => {
   delete process.env.OPENAI_API_KEY;
   delete process.env.ANTHROPIC_API_KEY;
   delete process.env.BAO_TEACH_FIXTURE;
@@ -139,7 +140,7 @@ test("a note lands on the step within a second and a fix is a labelled correctio
 });
 
 for (const driver of ["playwright", "extension"] as const) {
-test(`old-engine guide me highlights the ${driver} fixture without an extension link`, { timeout: 120000 }, async () => {
+test(`old-engine guide me highlights the ${driver} fixture without an extension link`, { timeout: scaledMs(120000) }, async () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-guide-"));
   const app = await startApp({ home, port: 0 });
   try {

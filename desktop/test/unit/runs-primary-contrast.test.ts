@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { startApp } from "../../src/app/server";
 import { testChromium } from "../../src/test-browser";
+import { scaledMs } from "../runtime";
 
 function luminance(color: string): number {
   const channels = color.match(/[\d.]+/g)!.map(Number).slice(0, 3).map((value) => {
@@ -14,7 +15,7 @@ function luminance(color: string): number {
   return 0.2126 * channels[0]! + 0.7152 * channels[1]! + 0.0722 * channels[2]!;
 }
 
-test("Runs primary Keep and Import controls retain AA contrast in both themes", { timeout: 30_000 }, async () => {
+test("Runs primary Keep and Import controls retain AA contrast in both themes", { timeout: scaledMs(30_000) }, async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-primary-contrast-"));
   const previousHome = process.env.HOME;
   process.env.HOME = home;

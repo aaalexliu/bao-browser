@@ -16,6 +16,7 @@ import { formatClock } from "../../src/v1/time";
 import { replay, type Driver } from "../../src/v1/replay";
 import { clearPendingPrompt, readPendingPrompt, writePendingPrompt } from "../../src/v1/pending-prompt";
 import type { WorkflowV2 } from "../../src/v1/schema";
+import { scaledMs } from "../runtime";
 
 const PASSWORD = "BaoSecretFixture9kQ7m";
 const ZONE = /(?:AM|PM)\s+(?:[A-Z]{2,5}|GMT[+-]?\d{0,2}|UTC)/;
@@ -118,7 +119,7 @@ test("the run viewer shows the sign-in envelope and the handoff clock", () => {
   assert.equal(ISO_Z.test(html), false);
 });
 
-test("scripted driver on the sign-in fixture resumes the same run", { timeout: 60_000 }, async () => {
+test("scripted driver on the sign-in fixture resumes the same run", { timeout: scaledMs(60_000) }, async () => {
   process.env.BAO_CHROME_NO_SANDBOX = "1";
   const home = mkdtempSync(path.join(tmpdir(), "bao-envelope-"));
   const app = await startApp({ home, port: 0 });
@@ -153,7 +154,7 @@ test("scripted driver on the sign-in fixture resumes the same run", { timeout: 6
       await page.locator("#continue").click();
       await page.locator("#password").fill(PASSWORD);
       await page.locator("#signin").click();
-      await page.waitForURL((url) => url.pathname === "/freeze", { timeout: 15_000 });
+      await page.waitForURL((url) => url.pathname === "/freeze", { timeout: scaledMs(15_000) });
     });
     const done = await runWorkflow(app.library, { resume: token });
     token = "";
@@ -175,7 +176,7 @@ test("scripted driver on the sign-in fixture resumes the same run", { timeout: 6
   }
 });
 
-test("a human step past its deadline ends stopped, timed out", { timeout: 60_000 }, async () => {
+test("a human step past its deadline ends stopped, timed out", { timeout: scaledMs(60_000) }, async () => {
   process.env.BAO_CHROME_NO_SANDBOX = "1";
   const home = mkdtempSync(path.join(tmpdir(), "bao-envelope-timeout-"));
   const app = await startApp({ home, port: 0 });
@@ -200,7 +201,7 @@ test("a human step past its deadline ends stopped, timed out", { timeout: 60_000
   }
 });
 
-test("cancel and resume leave the confirm button unpressed", { timeout: 60_000 }, async () => {
+test("cancel and resume leave the confirm button unpressed", { timeout: scaledMs(60_000) }, async () => {
   process.env.BAO_CHROME_NO_SANDBOX = "1";
   const home = mkdtempSync(path.join(tmpdir(), "bao-envelope-confirm-"));
   const app = await startApp({ home, port: 0 });
@@ -241,7 +242,7 @@ test("cancel and resume leave the confirm button unpressed", { timeout: 60_000 }
   }
 });
 
-test("clearing a wall at a recorded confirm asks for the confirm instead of completing it", { timeout: 60_000 }, async () => {
+test("clearing a wall at a recorded confirm asks for the confirm instead of completing it", { timeout: scaledMs(60_000) }, async () => {
   process.env.BAO_CHROME_NO_SANDBOX = "1";
   const home = mkdtempSync(path.join(tmpdir(), "bao-wall-confirm-"));
   const app = await startApp({ home, port: 0 });
@@ -292,7 +293,7 @@ test("clearing a wall at a recorded confirm asks for the confirm instead of comp
 });
 
 for (const ending of ["complete", "cancel", "timeout"] as const) {
-  test(`held ${ending} clears its persisted prompt`, { timeout: 60_000 }, async () => {
+  test(`held ${ending} clears its persisted prompt`, { timeout: scaledMs(60_000) }, async () => {
     process.env.BAO_CHROME_NO_SANDBOX = "1";
     const home = mkdtempSync(path.join(tmpdir(), "bao-held-prompt-"));
     const app = await startApp({ home, port: 0 });

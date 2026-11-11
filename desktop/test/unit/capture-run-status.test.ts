@@ -9,6 +9,7 @@ import { launchOwnedChrome } from "../../src/launch";
 import { getRun } from "../../src/mcp/catalog";
 import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
 import { Library, type StoredRun } from "../../src/v1/store";
+import { scaledMs } from "../runtime";
 
 const command: RecordedAgentBrowserCommand = {
   id: "command-1", label: 'click "@e7"', caption: { text: "Click Milk" }, status: "passed", startedAt: 1, endedAt: 2,
@@ -118,7 +119,7 @@ test("get_run bounds every native output stream without changing stored evidence
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-test("bao open receipt routes to the exact existing Runs receipt without a workflow", { timeout: 30_000 }, async () => {
+test("bao open receipt routes to the exact existing Runs receipt without a workflow", { timeout: scaledMs(30_000) }, async () => {
   const root = mkdtempSync(path.join(tmpdir(), "bao-open-receipt-"));
   const home = path.join(root, "user");
   mkdirSync(home);
@@ -135,7 +136,7 @@ test("bao open receipt routes to the exact existing Runs receipt without a workf
     const cli = path.resolve(__dirname, "../../src/app/cli.js");
     const opened = await new Promise<{ status: number | null; stdout: string; stderr: string }>((resolve, reject) => {
       const child = spawn(process.execPath, [cli, "open", `bao://receipt/${capture.id}`, "--home", app.library.root], {
-        env: { ...process.env, HOME: home, BAO_HOME: app.library.root, BAO_HEAL_CURSOR_ACCOUNT: "0" }, timeout: 10_000,
+        env: { ...process.env, HOME: home, BAO_HOME: app.library.root, BAO_HEAL_CURSOR_ACCOUNT: "0" }, timeout: scaledMs(10_000),
       });
       let stdout = "";
       let stderr = "";

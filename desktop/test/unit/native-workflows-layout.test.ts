@@ -5,9 +5,9 @@ import path from "node:path";
 import test from "node:test";
 import { startApp } from "../../src/app/server";
 import { testChromium } from "../../src/test-browser.js";
-import { applyHermeticApp } from "../runtime";
+import { applyHermeticApp, scaledMs } from "../runtime";
 
-test("Workflows reserves native titlebar space and keeps narrow navigation above scrolling rows", { timeout: 60_000 }, async () => {
+test("Workflows reserves native titlebar space and keeps narrow navigation above scrolling rows", { timeout: scaledMs(60_000) }, async () => {
   const dirs = applyHermeticApp("native-workflows-layout");
   const app = await startApp({ home: dirs.home, extensionHost: false, chromeProfilesRoot: path.join(dirs.home, "profiles") });
   let browser: Awaited<ReturnType<typeof testChromium.launch>> | undefined;

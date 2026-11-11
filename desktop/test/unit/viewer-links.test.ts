@@ -11,8 +11,9 @@ import { startApp } from "../../src/app/server";
 import { makeAsk } from "../../src/v1/human-ask";
 import { writePendingPrompt } from "../../src/v1/pending-prompt";
 import type { WorkflowV2 } from "../../src/v1/schema";
+import { scaledMs } from "../runtime";
 
-test("the runs list opens failed receipts while an active login owns its live detail", { timeout: 60000 }, async () => {
+test("the runs list opens failed receipts while an active login owns its live detail", { timeout: scaledMs(60000) }, async () => {
   process.env.BAO_HEAL_CURSOR_ACCOUNT = "0";
   delete process.env.BAO_HEAL_FIXTURE;
   const home = mkdtempSync(path.join(tmpdir(), "bao-links-"));

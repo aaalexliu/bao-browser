@@ -15,6 +15,7 @@ import { NEEDS_SECRET_VALUE, STRIPPED_SECRET } from "../../../shared/saved-secre
 import { scrubSaved } from "../../../shared/outbound-secrets";
 import { Library } from "../../src/v1/store";
 import { guideShotName, workflowShotName } from "../../src/v1/shots";
+import { scaledMs } from "../runtime";
 
 const SECRET = "BaoSecretFixture9kQ7m";
 process.env.BAO_HEAL_CURSOR_ACCOUNT = "0";
@@ -378,7 +379,7 @@ test("an imported stripped password reaches sign-in handoff, and the person cont
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: workflow.id, args: { username: "ada" } }),
     });
-    const deadline = Date.now() + 15000;
+    const deadline = Date.now() + scaledMs(15000);
     let detail = "";
     while (Date.now() < deadline) {
       const state = await (await fetch(`${base}/api/state`)).json() as { loginWait?: { detail?: string } };

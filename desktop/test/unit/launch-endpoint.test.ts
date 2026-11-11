@@ -9,12 +9,12 @@ import { chromium } from "playwright";
 import * as sockets from "../../src/cdp-live/socket";
 import { closeRetainedChrome, launchOwnedChromeEndpoint, pidsForDataDir, pinTestBrowser } from "../../src/launch";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
-import { laneChildEnv } from "../runtime";
+import { laneChildEnv, scaledMs } from "../runtime";
 
 pinTestBrowser();
 
 for (const signal of ["SIGHUP", "SIGINT", "SIGTERM"] as const) {
-  test(`endpoint preserves a persistent cookie after process-group ${signal}`, { timeout: 30_000, skip: process.platform === "win32" }, async () => {
+  test(`endpoint preserves a persistent cookie after process-group ${signal}`, { timeout: scaledMs(30_000), skip: process.platform === "win32" }, async () => {
     const browserCache = process.env.PLAYWRIGHT_BROWSERS_PATH ?? (process.platform === "darwin"
       ? path.join(homedir(), "Library", "Caches", "ms-playwright")
       : path.join(process.env.XDG_CACHE_HOME ?? path.join(homedir(), ".cache"), "ms-playwright"));
@@ -64,7 +64,7 @@ for (const signal of ["SIGHUP", "SIGINT", "SIGTERM"] as const) {
         worker.kill("SIGKILL");
         await exited;
       }
-      const deadline = Date.now() + 5000;
+      const deadline = Date.now() + scaledMs(5000);
       while (pidsForDataDir(userDataDir).length && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
       assert.deepEqual(pidsForDataDir(userDataDir), [], "test must leave no owned Chrome processes");
       await rm(root, { recursive: true, force: true });
@@ -72,7 +72,7 @@ for (const signal of ["SIGHUP", "SIGINT", "SIGTERM"] as const) {
   });
 }
 
-test("startup keeps its original error when graceful cleanup times out", { timeout: 15_000 }, async (t) => {
+test("startup keeps its original error when graceful cleanup times out", { timeout: scaledMs(15_000) }, async (t) => {
   const userDataDir = await mkdtemp(path.join(tmpdir(), "bao-startup-error-"));
   const startupError = new Error("discovery rejected during startup");
   const connect = sockets.connectCdp;
@@ -113,7 +113,7 @@ test("startup keeps its original error when graceful cleanup times out", { timeo
   }
 });
 
-test("retained reclaim lets Chrome save a cookie before sending signals", { timeout: 20_000 }, async (t) => {
+test("retained reclaim lets Chrome save a cookie before sending signals", { timeout: scaledMs(20_000) }, async (t) => {
   const userDataDir = await mkdtemp(path.join(tmpdir(), "bao-reclaim-cookie-"));
   const connect = sockets.connectCdp;
   const kill = process.kill.bind(process);
@@ -168,7 +168,7 @@ test("retained reclaim lets Chrome save a cookie before sending signals", { time
   }
 });
 
-test("a late close cannot kill the replacement of a retained browser", { timeout: 20_000 }, async () => {
+test("a late close cannot kill the replacement of a retained browser", { timeout: scaledMs(20_000) }, async () => {
   const userDataDir = await mkdtemp(path.join(tmpdir(), "bao-late-close-"));
   let original: Awaited<ReturnType<typeof launchOwnedChromeEndpoint>> | undefined;
   let replacement: Awaited<ReturnType<typeof launchOwnedChromeEndpoint>> | undefined;
@@ -192,7 +192,7 @@ test("a late close cannot kill the replacement of a retained browser", { timeout
 });
 
 for (const mode of ["close", "retained-close", "failed-close", "disconnect", "process-exit", "startup-failure"] as const) {
-  test(`endpoint-only launch releases its owned Chrome after ${mode}`, { timeout: 20_000 }, async (t) => {
+  test(`endpoint-only launch releases its owned Chrome after ${mode}`, { timeout: scaledMs(20_000) }, async (t) => {
     const userDataDir = await mkdtemp(path.join(tmpdir(), "bao-endpoint-"));
     const connect = sockets.connectCdp;
     const spawn = childProcess.spawn;

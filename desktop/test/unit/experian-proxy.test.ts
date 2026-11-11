@@ -9,11 +9,11 @@ import { McpClient, type McpResult } from "../../src/eval/mcp-client";
 import { testChromium as chromium } from "../../src/test-browser.js";
 import { Library } from "../../src/v1/store";
 import { startExperianFixture } from "../experian/fixture";
-import { laneChildEnv } from "../runtime";
+import { laneChildEnv, scaledMs } from "../runtime";
 
 const binary = process.env.AGENT_BROWSER_PROXY_BINARY;
 
-test("Experian-shaped pass-through hands sign-in and bot walls to the owner and follows redirects", { skip: !binary, timeout: 60_000 }, async (t) => {
+test("Experian-shaped pass-through hands sign-in and bot walls to the owner and follows redirects", { skip: !binary, timeout: scaledMs(60_000) }, async (t) => {
   const started = performance.now();
   const root = await mkdtemp(path.join(tmpdir(), "bao-experian-proxy-"));
   const fixture = await startExperianFixture({ loopbackHttp: true });

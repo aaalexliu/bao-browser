@@ -18,6 +18,7 @@ import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { pairDevice, syncAll } from "../../src/v1/sync";
 import { testArtifacts } from "../artifacts";
+import { scaledMs } from "../runtime";
 
 pinTestBrowser();
 
@@ -25,7 +26,7 @@ const WORKFLOW_ID = "span-from-a";
 const LOCAL_ID = "span-here";
 const LISTING_ID = "span-listing";
 
-test("device B searches and runs a workflow saved on device A", { timeout: 600_000 }, async () => {
+test("device B searches and runs a workflow saved on device A", { timeout: scaledMs(600_000) }, async () => {
   process.env.TZ = "America/New_York";
   const root = mkdtempSync(path.join(tmpdir(), "bao-span-"));
   const port = await freePort();
@@ -322,7 +323,7 @@ function mcpClient(child: ChildProcess | undefined) {
   const call = async (msg: { id: number; jsonrpc?: string; method?: string; params?: unknown }) => {
     send(msg);
     const start = Date.now();
-    while (Date.now() - start < 120_000) {
+    while (Date.now() - start < scaledMs(120_000)) {
       const found = messages.find((item) => item.id === msg.id);
       if (found) return found;
       if (child.exitCode !== null) break;
@@ -374,7 +375,7 @@ async function pairCode(origin: string, cookie: string): Promise<string> {
 async function waitHealth(origin: string, logs: string[]): Promise<{ ok?: boolean; driver?: string }> {
   const start = Date.now();
   let last = "";
-  while (Date.now() - start < 300_000) {
+  while (Date.now() - start < scaledMs(300_000)) {
     try {
       const res = await fetch(`${origin}/api/health`);
       last = await res.text();

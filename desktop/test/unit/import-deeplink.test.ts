@@ -14,6 +14,7 @@ import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { applyImportAnswers, importQuestions, markImported, missingAnswers, prepareImport, publicSamples } from "../../../web/src/lib/import-sheet";
 import { plainReplayReason } from "../../../web/src/lib/review-gate";
+import { scaledMs } from "../runtime";
 
 function workflow(id: string, name: string): WorkflowV2 {
   return testWorkflow({
@@ -121,7 +122,7 @@ test("a workflow with no public site does not launch a browser", async () => {
   assert.match(result.reason || "", /public site/);
 });
 
-test("bao open round trip", { timeout: 30_000 }, async () => {
+test("bao open round trip", { timeout: scaledMs(30_000) }, async () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-open-"));
   const app = await startApp({ home, port: 0 });
   try {
@@ -188,7 +189,7 @@ test("markImported drops a previous owner's saved flag and keeps only this answe
   assert.equal(marked.inputs.find((input) => input.name === "note")?.default, "mine");
 });
 
-test("bao open round trip fills non-secret inputs", { timeout: 30_000 }, async () => {
+test("bao open round trip fills non-secret inputs", { timeout: scaledMs(30_000) }, async () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-open-run-"));
   const app = await startApp({ home, port: 0 });
   try {
@@ -213,7 +214,7 @@ test("bao open round trip fills non-secret inputs", { timeout: 30_000 }, async (
   }
 });
 
-test("a secret input in a run link prefills the local form", { timeout: 30_000 }, async () => {
+test("a secret input in a run link prefills the local form", { timeout: scaledMs(30_000) }, async () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-open-secret-"));
   const app = await startApp({ home, port: 0 });
   try {

@@ -13,6 +13,7 @@ import { compareSearchHits, describeWorkflow, getRun, greenLabel, originLabel, r
 import { Library } from "../../src/v1/store";
 import { validateWorkflow, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import { loadState, saveState } from "../../src/v1/sync";
+import { scaledMs } from "../runtime";
 
 test("search returns at most five hits and each hit has an input schema", async () => {
   const library = new Library(mkdtempSync(path.join(tmpdir(), "bao-cat-")));
@@ -495,7 +496,7 @@ for (const [driver, reason] of [["extension", EXTENSION_NOT_CONNECTED]] as const
   });
 }
 
-test("run_workflow still replays a Playwright workflow in Bao's Chrome", { timeout: 60_000 }, async () => {
+test("run_workflow still replays a Playwright workflow in Bao's Chrome", { timeout: scaledMs(60_000) }, async () => {
   process.env.BAO_CHROME_NO_SANDBOX = "1";
   const server = createServer((_req, res) => {
     res.setHeader("content-type", "text/html");
@@ -518,7 +519,7 @@ test("run_workflow still replays a Playwright workflow in Bao's Chrome", { timeo
 });
 
 for (const replaceOnResume of [false, true]) {
-  test(`a live MCP run retains fresh OTP input across repeated pauses${replaceOnResume ? " and accepts a replacement" : ""}`, { timeout: 60_000 }, async (t) => {
+  test(`a live MCP run retains fresh OTP input across repeated pauses${replaceOnResume ? " and accepts a replacement" : ""}`, { timeout: scaledMs(60_000) }, async (t) => {
     const home = mkdtempSync(path.join(tmpdir(), "bao-otp-live-"));
     t.after(() => rmSync(home, { recursive: true, force: true }));
     const library = new Library(home);
@@ -586,7 +587,7 @@ for (const replaceOnResume of [false, true]) {
   });
 }
 
-test("a stopped run keeps the saved-values receipt", { timeout: 60_000 }, async (t) => {
+test("a stopped run keeps the saved-values receipt", { timeout: scaledMs(60_000) }, async (t) => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-cat-stop-saved-"));
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const server = createServer((_req, res) => {
@@ -683,7 +684,7 @@ function workflow(id: string, name: string): WorkflowV2 {
   });
 }
 
-test("a run that stops on a password or Log in step asks the agent to send the owner to sign in", { timeout: 60_000 }, async (t) => {
+test("a run that stops on a password or Log in step asks the agent to send the owner to sign in", { timeout: scaledMs(60_000) }, async (t) => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-cat-signin-"));
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const server = createServer((_req, res) => {

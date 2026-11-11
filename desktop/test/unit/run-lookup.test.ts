@@ -17,6 +17,7 @@ import { shotFile } from "../../src/v1/shots";
 import { Library, type StoredRun } from "../../src/v1/store";
 import { MemoryJobStore } from "../../../web/src/lib/relay-job";
 import { createRelay, listenRelay, MemoryDirectory } from "../../../web/src/lib/relay";
+import { scaledMs } from "../runtime";
 
 const cli = path.resolve(__dirname, "../../src/app/cli.js");
 const outputs = [{ name: "result", type: "table" as const, columns: [{ name: "value", type: "text" as const }], rows: [{ value: "Imported cloud run" }] }];
@@ -38,7 +39,7 @@ function mcp(home: string, user: string, id: string): WorkflowOutcome {
   const call = spawnSync(process.execPath, [cli, "mcp", "--home", home], {
     env: { ...process.env, HOME: user, BAO_HOME: home, BAO_HEAL_CURSOR_ACCOUNT: "0" },
     input: `${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "get_run", arguments: { run_id: id } } })}\n`,
-    encoding: "utf8", timeout: 10_000,
+    encoding: "utf8", timeout: scaledMs(10_000),
   });
   assert.equal(call.status, 0, call.stderr);
   const reply = JSON.parse(call.stdout.trim()) as { result: { isError: boolean; content: { text: string }[] } };

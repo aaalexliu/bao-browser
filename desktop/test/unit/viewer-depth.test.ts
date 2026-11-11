@@ -13,6 +13,7 @@ import { actWaitMs, DEFAULT_ACT_TIMEOUT_MS } from "../../src/v1/human-ask";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
 import { validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import { circuitOpen, classifyFailure } from "../../src/v1/triage";
+import { scaledMs } from "../runtime";
 
 const schema = JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow.schema.json"), "utf8"));
 const ajv = new Ajv({ allErrors: true, strict: false });
@@ -278,7 +279,7 @@ test("a step shot frames the control, not the result text, and outlines it", asy
   }
 });
 
-test("step crops skip hidden controls and still scroll visible controls into view", { timeout: 10000 }, async () => {
+test("step crops skip hidden controls and still scroll visible controls into view", { timeout: scaledMs(10000) }, async () => {
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });

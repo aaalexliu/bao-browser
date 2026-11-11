@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { launchOwnedChrome, navigateOwned, testLaneBrowser } from "../../src/launch";
+import { scaledMs } from "../runtime";
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -35,7 +36,7 @@ function commandLine(userDataDir: string): string {
   return "";
 }
 
-test("the first replay after a fresh launch is not interrupted by a restored tab", { timeout: 90_000 }, async () => {
+test("the first replay after a fresh launch is not interrupted by a restored tab", { timeout: scaledMs(90_000) }, async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "bao-startup-nav-"));
   const server = createServer((req, res) => {
     res.writeHead(200, { "content-type": "text/html; charset=utf-8" });

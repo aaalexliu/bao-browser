@@ -6,8 +6,9 @@ import test from "node:test";
 import { testChromium as chromium } from "../../src/test-browser.js";
 import { startApp } from "../../src/app/server";
 import { desktopMcpFile } from "../../src/app/desktop-mcp-config";
+import { scaledMs } from "../runtime";
 
-test("Settings previews and confirms desktop config changes on an isolated HOME", { timeout: 90_000 }, async () => {
+test("Settings previews and confirms desktop config changes on an isolated HOME", { timeout: scaledMs(90_000) }, async () => {
   assert.ok(process.env.BAO_TEST_BROWSER, "Run with laneChildEnv so Chromium is pinned");
   const home = realpathSync(mkdtempSync(path.join(tmpdir(), "bao-install-ui-")));
   const previousHome = process.env.HOME;

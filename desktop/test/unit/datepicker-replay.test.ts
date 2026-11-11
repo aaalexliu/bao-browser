@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { testChromium as chromium } from "../../src/test-browser.js";
 import { BrowserDriver } from "../../src/v1/browser-driver";
+import { scaledMs } from "../runtime";
 
 const html = `<!doctype html>
 <input id="dob" readonly value="22 Oct 2026">
@@ -57,7 +58,7 @@ const html = `<!doctype html>
   render();
 </script>`;
 
-test("pickDate uses the month and year selects for a far date of birth", { timeout: 60000 }, async () => {
+test("pickDate uses the month and year selects for a far date of birth", { timeout: scaledMs(60000) }, async () => {
   const browser = await chromium.launch({ headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage"] });
   try {
     const page = await browser.newPage();
@@ -74,7 +75,7 @@ test("pickDate uses the month and year selects for a far date of birth", { timeo
   }
 });
 
-test("pickDate fills an editable text date and leaves a popup calendar alone", { timeout: 60000 }, async () => {
+test("pickDate fills an editable text date and leaves a popup calendar alone", { timeout: scaledMs(60000) }, async () => {
   const browser = await chromium.launch({ headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage"] });
   try {
     const page = await browser.newPage();

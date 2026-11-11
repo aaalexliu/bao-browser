@@ -15,7 +15,7 @@ import { blankPng } from "../../src/v1/redacted-png";
 import { saveRelay } from "../../src/v1/relay-link";
 import { MemoryJobStore } from "../../../web/src/lib/relay-job";
 import { createRelay, listenRelay, MemoryDirectory } from "../../../web/src/lib/relay";
-import { applyHermeticApp } from "../runtime";
+import { applyHermeticApp, scaledMs } from "../runtime";
 
 function workflow(startUrl: string): WorkflowV2 {
   return testWorkflow({
@@ -121,7 +121,7 @@ test("live-run output shows recorded progress, local screens and an honest missi
   } finally { await browser.close(); }
 });
 
-test("Runs opens its exact active handoff, keeps progress stable, and confirms Stop", { timeout: 60000 }, async () => {
+test("Runs opens its exact active handoff, keeps progress stable, and confirms Stop", { timeout: scaledMs(60000) }, async () => {
   const dirs = applyHermeticApp("live-detail");
   const app = await startApp({ home: dirs.home, port: 0 });
   const browser = await testChromium.launch();
@@ -192,7 +192,7 @@ test("Runs opens its exact active handoff, keeps progress stable, and confirms S
   } finally { await browser.close(); await app.close(); rmSync(dirs.home, { recursive: true, force: true }); }
 });
 
-test("a returned-paused confirm does not block the next Run", { timeout: 60000 }, async () => {
+test("a returned-paused confirm does not block the next Run", { timeout: scaledMs(60000) }, async () => {
   const dirs = applyHermeticApp("paused-rerun");
   const app = await startApp({ home: dirs.home, port: 0 });
   const base = `http://127.0.0.1:${app.port}`;
@@ -228,7 +228,7 @@ test("a returned-paused confirm does not block the next Run", { timeout: 60000 }
   }
 });
 
-test("a relay extension run leaves a waiting local run controllable", { timeout: 60000 }, async () => {
+test("a relay extension run leaves a waiting local run controllable", { timeout: scaledMs(60000) }, async () => {
   const dirs = applyHermeticApp("overlap");
   const directory = new MemoryDirectory();
   directory.addDevice("overlap-device", "overlap-user");
@@ -344,7 +344,7 @@ test("a relay extension run leaves a waiting local run controllable", { timeout:
   }
 });
 
-test("a relay clear does not remove a local hold or its pending prompt", { timeout: 60000 }, async () => {
+test("a relay clear does not remove a local hold or its pending prompt", { timeout: scaledMs(60000) }, async () => {
   const dirs = applyHermeticApp("rclr");
   const directory = new MemoryDirectory();
   directory.addDevice("clear-hold-device", "clear-hold-user");
@@ -443,7 +443,7 @@ test("a relay clear does not remove a local hold or its pending prompt", { timeo
   }
 });
 
-test("a passed extension rerun drops the earlier host-grant hold", { timeout: 60000 }, async () => {
+test("a passed extension rerun drops the earlier host-grant hold", { timeout: scaledMs(60000) }, async () => {
   const dirs = applyHermeticApp("grant");
   const app = await startApp({
     home: dirs.home,
@@ -489,7 +489,7 @@ test("a passed extension rerun drops the earlier host-grant hold", { timeout: 60
   }
 });
 
-test("Guide me during an owned wait says the run is waiting", { timeout: 60000 }, async () => {
+test("Guide me during an owned wait says the run is waiting", { timeout: scaledMs(60000) }, async () => {
   const dirs = applyHermeticApp("gwait");
   const app = await startApp({
     home: dirs.home,
@@ -540,7 +540,7 @@ test("Guide me during an owned wait says the run is waiting", { timeout: 60000 }
   }
 });
 
-test("a refused Guide me shows the owned-wait sentence on screen", { timeout: 60000 }, async () => {
+test("a refused Guide me shows the owned-wait sentence on screen", { timeout: scaledMs(60000) }, async () => {
   const dirs = applyHermeticApp("gvis");
   const app = await startApp({
     home: dirs.home,
@@ -595,7 +595,7 @@ test("a refused Guide me shows the owned-wait sentence on screen", { timeout: 60
   }
 });
 
-test("a refused Guide me shows the still-going sentence on screen", { timeout: 60000 }, async () => {
+test("a refused Guide me shows the still-going sentence on screen", { timeout: scaledMs(60000) }, async () => {
   const dirs = applyHermeticApp("gstl");
   const app = await startApp({
     home: dirs.home,
@@ -652,7 +652,7 @@ test("a refused Guide me shows the still-going sentence on screen", { timeout: 6
   }
 });
 
-test("a closed guide window does not open the Run form", { timeout: 60000 }, async () => {
+test("a closed guide window does not open the Run form", { timeout: scaledMs(60000) }, async () => {
   const dirs = applyHermeticApp("gcls");
   const app = await startApp({ home: dirs.home, port: 0 });
   const browser = await testChromium.launch();
@@ -697,7 +697,7 @@ test("a closed guide window does not open the Run form", { timeout: 60000 }, asy
   }
 });
 
-test("delayed R1 Stop and Continue cannot act on R2 before the client polls", { timeout: 60000 }, async () => {
+test("delayed R1 Stop and Continue cannot act on R2 before the client polls", { timeout: scaledMs(60000) }, async () => {
   const dirs = applyHermeticApp("live-run-identity");
   process.env.BAO_DRIVE = "1";
   const app = await startApp({ home: dirs.home, port: 0 });
@@ -786,7 +786,7 @@ test("delayed R1 Stop and Continue cannot act on R2 before the client polls", { 
   }
 });
 
-test("a continuing run row opens live detail after navigation and reload, until its final receipt", { timeout: 60000 }, async () => {
+test("a continuing run row opens live detail after navigation and reload, until its final receipt", { timeout: scaledMs(60000) }, async () => {
   const dirs = applyHermeticApp("live-continuation");
   process.env.BAO_DRIVE = "1";
   const app = await startApp({ home: dirs.home, port: 0 });
@@ -897,7 +897,7 @@ test("a continuing run row opens live detail after navigation and reload, until 
   }
 });
 
-test("the Needs-you row becomes Running as soon as its server run continues", { timeout: 60000 }, async () => {
+test("the Needs-you row becomes Running as soon as its server run continues", { timeout: scaledMs(60000) }, async () => {
   const dirs = applyHermeticApp("live-row-phase");
   process.env.BAO_DRIVE = "1";
   const app = await startApp({ home: dirs.home, port: 0 });
@@ -953,7 +953,7 @@ test("the Needs-you row becomes Running as soon as its server run continues", { 
   }
 });
 
-test("live confirmation checks the site without pressing its final action", { timeout: 60000 }, async () => {
+test("live confirmation checks the site without pressing its final action", { timeout: scaledMs(60000) }, async () => {
   const dirs = applyHermeticApp("live-handoff");
   let releaseDetails!: () => void;
   const detailsGate = new Promise<void>((resolve) => { releaseDetails = resolve; });
@@ -1035,7 +1035,7 @@ test("live confirmation checks the site without pressing its final action", { ti
     });
     await post(`${base}/api/replay/press`, { name: "Apply" });
     await page.waitForResponse(async (response) => response.url() === `${base}/api/state` && ((await response.json()) as ShellState).activeAsk?.kind === "login");
-    await page.getByRole("button", { name: "I’m signed in, continue" }).waitFor({ timeout: 5000 });
+    await page.getByRole("button", { name: "I’m signed in, continue" }).waitFor({ timeout: scaledMs(5000) });
     assert.equal(await page.getByRole("button", { name: "I pressed Apply" }).count(), 0, "the old confirmation control must disappear before delayed detail reads finish");
     releaseDetails();
     await page.unrouteAll({ behavior: "wait" });

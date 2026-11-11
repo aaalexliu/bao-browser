@@ -6,6 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import { resolveCaptureUrl } from "../../src/app/capture-url";
 import { fixtureStartValue, productWindowTitle, teachHome } from "../../src/app/views";
+import { scaledMs } from "../runtime";
 
 function macCompileSkip(): string | false {
   const cc = spawnSync("cc", ["--version"], { encoding: "utf8" });
@@ -26,8 +27,8 @@ test("node discovery and the single-instance lock", { skip: macCompileSkip() }, 
       path.join(process.cwd(), "desktop/packaging/macos/bao-launch-test.c"),
       "-o",
       bin,
-    ], { stdio: "inherit", timeout: 60_000 });
-    const out = execFileSync(bin, { encoding: "utf8", timeout: 20_000 });
+    ], { stdio: "inherit", timeout: scaledMs(60_000) });
+    const out = execFileSync(bin, { encoding: "utf8", timeout: scaledMs(20_000) });
     assert.match(out, /^ok \d+\n$/);
     const count = Number(out.match(/^ok (\d+)/)?.[1]);
     assert.ok(count >= 40, out);
@@ -37,7 +38,7 @@ test("node discovery and the single-instance lock", { skip: macCompileSkip() }, 
 });
 
 test("the launcher recovers an orphan server and preserves unrelated listeners", { skip: launcherSkip() }, () => {
-  execFileSync(process.execPath, ["--test", "desktop/test/native-recovery.test.mjs"], { stdio: "inherit", timeout: 30_000 });
+  execFileSync(process.execPath, ["--test", "desktop/test/native-recovery.test.mjs"], { stdio: "inherit", timeout: scaledMs(30_000) });
 });
 
 function launcherSkip(): string | false {
@@ -55,10 +56,10 @@ test("the native URL handler excludes imports and forwards receipt, workflow and
       "-fobjc-arc", "-Wall", "-Wextra", "-Werror",
       "-framework", "Foundation", "-framework", "AppKit", "-framework", "WebKit", "-framework", "UserNotifications",
       path.join(MACOS, "bao-open-links-test.m"), path.join(MACOS, "bao-notify.m"), "-o", bin,
-    ], { stdio: "inherit", timeout: 60_000 });
+    ], { stdio: "inherit", timeout: scaledMs(60_000) });
     const env: NodeJS.ProcessEnv = { ...process.env, HOME: root, CFFIXED_USER_HOME: root, BAO_HOME: root, BAO_HEAL_CURSOR_ACCOUNT: "0" };
     for (const key of ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GROQ_API_KEY", "XAI_API_KEY", "CURSOR_API_KEY"]) delete env[key];
-    const out = execFileSync(bin, { env, encoding: "utf8", timeout: 20_000 });
+    const out = execFileSync(bin, { env, encoding: "utf8", timeout: scaledMs(20_000) });
     assert.equal(out, "ok native URL import exclusion and receipt, workflow, run forwarding\n");
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -73,10 +74,10 @@ test("the native window keeps navigation, reopen, editing, downloads and server 
       "-fobjc-arc", "-Wall", "-Wextra", "-Werror",
       "-framework", "Foundation", "-framework", "AppKit", "-framework", "WebKit", "-framework", "UserNotifications",
       path.join(MACOS, "bao-window-test.m"), path.join(MACOS, "bao-notify.m"), "-o", bin,
-    ], { stdio: "inherit", timeout: 60_000 });
+    ], { stdio: "inherit", timeout: scaledMs(60_000) });
     const env: NodeJS.ProcessEnv = { ...process.env, HOME: root, CFFIXED_USER_HOME: root, BAO_HOME: root, BAO_HEAL_CURSOR_ACCOUNT: "0" };
     for (const key of ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GROQ_API_KEY", "XAI_API_KEY", "CURSOR_API_KEY"]) delete env[key];
-    const out = execFileSync(bin, [path.join(process.cwd(), "desktop/src/app/public/index.html")], { env, encoding: "utf8", timeout: 20_000 });
+    const out = execFileSync(bin, [path.join(process.cwd(), "desktop/src/app/public/index.html")], { env, encoding: "utf8", timeout: scaledMs(20_000) });
     assert.match(out, /^ok native window policy, reopen, menus, downloads and server cleanup\n$/);
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -104,9 +105,9 @@ test("bao-mcp becomes node cli.js mcp inside the bundle, with the app's browser 
     mkdirSync(path.join(resources, "BaoOSHelper.app"));
     writeFileSync(browser, "#!/bin/sh\n");
     chmodSync(browser, 0o755);
-    execFileSync("cc", ["-Wall", "-Wextra", "-Werror", path.join(MACOS, "bao-mcp.c"), path.join(MACOS, "bao-launch.c"), "-o", launcher], { stdio: "inherit", timeout: 60_000 });
+    execFileSync("cc", ["-Wall", "-Wextra", "-Werror", path.join(MACOS, "bao-mcp.c"), path.join(MACOS, "bao-launch.c"), "-o", launcher], { stdio: "inherit", timeout: scaledMs(60_000) });
 
-    const missing = spawnSync(launcher, [], { env: launcherEnv(root), encoding: "utf8", timeout: 10_000 });
+    const missing = spawnSync(launcher, [], { env: launcherEnv(root), encoding: "utf8", timeout: scaledMs(10_000) });
     assert.equal(missing.status, 1);
     assert.equal(missing.stdout, "");
     assert.equal(missing.stderr, `bao-mcp: ${cli} is missing. Install Bao again.\n`);
@@ -120,7 +121,7 @@ test("bao-mcp becomes node cli.js mcp inside the bundle, with the app's browser 
     ].join("\n"));
     const agentDir = path.join(root, "agent");
     mkdirSync(agentDir);
-    const ran = spawnSync(launcher, ["--home", "/srv/bao lib"], { cwd: agentDir, env: launcherEnv(root), input: "{\"jsonrpc\":\"2.0\"}\n", encoding: "utf8", timeout: 10_000 });
+    const ran = spawnSync(launcher, ["--home", "/srv/bao lib"], { cwd: agentDir, env: launcherEnv(root), input: "{\"jsonrpc\":\"2.0\"}\n", encoding: "utf8", timeout: scaledMs(10_000) });
     assert.equal(ran.status, 0, ran.stderr);
     assert.equal(ran.stderr, "");
     const [first, echoed] = ran.stdout.split("\n");
@@ -145,7 +146,7 @@ test("bao-mcp built into a Bao.app answers MCP from the app's library, not the a
     symlinkSync(path.join(process.cwd(), "desktop/dist/desktop"), path.join(app, "Contents/Resources/bao"));
     // The build script runs node itself. The launcher it proves gets PATH without node.
     const env = { ...launcherEnv(root), PATH: `${path.dirname(process.execPath)}:/usr/bin:/bin` };
-    const out = execFileSync("bash", [path.join(MACOS, "build-mcp-launcher.sh"), app], { cwd: root, env, encoding: "utf8", timeout: 90_000 });
+    const out = execFileSync("bash", [path.join(MACOS, "build-mcp-launcher.sh"), app], { cwd: root, env, encoding: "utf8", timeout: scaledMs(90_000) });
     assert.match(out, /^MCP_LAUNCHER ok .*Bao\.app\/Contents\/MacOS\/bao-mcp initialize \d+ ms, \d+ tools\n$/);
   } finally {
     rmSync(root, { recursive: true, force: true });

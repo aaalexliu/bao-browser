@@ -6,6 +6,7 @@ import { runWorkflow } from "../../src/mcp/catalog";
 import type { WorkflowStep } from "../../src/v1/schema";
 import { targetFor, testWorkflow } from "../support/workflow";
 import { ownerChrome, stripWhen, type OwnerChrome, type Strip } from "../support/owner-chrome";
+import { scaledMs } from "../runtime";
 
 pinTestBrowser();
 
@@ -27,7 +28,7 @@ const HOLD: WorkflowStep = { id: "apply", index: 0, action: "handoff", reason: "
 const shown = (chrome: OwnerChrome) => (strip: Strip) => strip.tabs.find((tab) => tab.active)?.id === chrome.ownerTabId
   && strip.tabs.some((tab) => tab.url.endsWith("/task") && strip.groups.some((group) => group.id === tab.groupId && !group.collapsed));
 
-test("agent-browser drives a folded Bao tab in the owner's Chrome while he keeps his own tab", { skip: !binary, timeout: 90_000 }, async (t) => {
+test("agent-browser drives a folded Bao tab in the owner's Chrome while he keeps his own tab", { skip: !binary, timeout: scaledMs(90_000) }, async (t) => {
   const chrome = await ownerChrome(t, { "/task": TASK });
   const proxy = new AgentBrowserProxy({ home: chrome.home, executable: binary, extensionRoute: () => true });
   t.after(() => proxy.end());
@@ -55,7 +56,7 @@ test("agent-browser drives a folded Bao tab in the owner's Chrome while he keeps
   assert.deepEqual(await chrome.ownerEvents(), []);
 });
 
-test("run_workflow on the owner's Chrome works in a folded Bao tab, opens the group when it holds for the owner, and closes it", { skip: replaySkip, timeout: 90_000 }, async (t) => {
+test("run_workflow on the owner's Chrome works in a folded Bao tab, opens the group when it holds for the owner, and closes it", { skip: replaySkip, timeout: scaledMs(90_000) }, async (t) => {
   const chrome = await ownerChrome(t, { "/task": TASK });
   const library = chrome.app.library;
   const workflow = (steps: WorkflowStep[]): string => {
@@ -79,7 +80,7 @@ test("run_workflow on the owner's Chrome works in a folded Bao tab, opens the gr
   assert.deepEqual((await stripWhen(chrome, (s) => s.tabs.length === 1)).groups, [], "cancelling the held run closes its tab");
 });
 
-test("app Replay on the owner's Chrome works in a folded Bao tab, opens the group when it holds for the owner, and closes it", { skip: replaySkip, timeout: 90_000 }, async (t) => {
+test("app Replay on the owner's Chrome works in a folded Bao tab, opens the group when it holds for the owner, and closes it", { skip: replaySkip, timeout: scaledMs(90_000) }, async (t) => {
   const chrome = await ownerChrome(t, { "/task": TASK });
   const url = (route: string) => `http://127.0.0.1:${chrome.app.port}${route}`;
   const replay = (id: string) => fetch(url("/api/replay"), { method: "POST", headers: { "content-type": "application/json" },
@@ -104,7 +105,7 @@ test("app Replay on the owner's Chrome works in a folded Bao tab, opens the grou
   }
 });
 
-test("replay on the owner's Chrome starts and finishes while another owner tab never answers, and reaches none of the owner's tabs", { skip: replaySkip, timeout: 60_000 }, async (t) => {
+test("replay on the owner's Chrome starts and finishes while another owner tab never answers, and reaches none of the owner's tabs", { skip: replaySkip, timeout: scaledMs(60_000) }, async (t) => {
   let blocked!: () => void;
   const stuckPage = new Promise<void>((resolve) => { blocked = resolve; });
   const chrome = await ownerChrome(t, {

@@ -5,6 +5,7 @@ import { BrowserDriver } from "../../src/v1/browser-driver";
 import { condense } from "../../src/v1/condense";
 import type { TrailEvent } from "../../src/v1/interpret";
 import { recorderSource, smallestChange } from "../../src/v1/recorder";
+import { scaledMs } from "../runtime";
 
 test("a new leaf outranks a longer change", () => {
   const change = smallestChange(
@@ -40,7 +41,7 @@ test("a password cover does not become the text that appeared", async () => {
       document.body.appendChild(cover);
     });
     await page.locator("#apply").click();
-    await page.waitForTimeout(50);
+    await page.waitForTimeout(scaledMs(50));
     const click = events.find((event) => event.op === "click");
     assert.equal(click?.subtreeAfter, "Applied");
     assert.equal(click?.afterText, "Applied");
@@ -72,7 +73,7 @@ test("the recorder stores the dialog and the text that appears after it closes",
         };
       </script>`));
     await page.locator("#go").click();
-    await page.waitForTimeout(50);
+    await page.waitForTimeout(scaledMs(50));
     const click = events.find((event) => event.op === "click");
     assert.ok(click);
     assert.equal(click.dialogType, "alert");
@@ -93,7 +94,7 @@ test("the recorder stores the dialog and the text that appears after it closes",
     await page.goto(htmlPage(`<button id="ask">Ask</button>
       <script>document.getElementById("ask").onclick = () => { confirm("Leave?"); };</script>`));
     await page.locator("#ask").click();
-    await page.waitForTimeout(50);
+    await page.waitForTimeout(scaledMs(50));
     const confirm = events.find((event) => event.op === "click");
     assert.equal(confirm?.dialogType, "confirm");
     assert.equal(confirm?.dialogDecision, "dismiss");

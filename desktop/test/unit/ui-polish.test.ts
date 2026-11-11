@@ -7,9 +7,9 @@ import { startApp } from "../../src/app/server";
 import type { LiveSessionRecord } from "../../src/cdp-live/live-record";
 import { testChromium as chromium } from "../../src/test-browser.js";
 import type { WorkflowV2 } from "../../src/v1/schema";
-import { applyHermeticApp } from "../runtime";
+import { applyHermeticApp, scaledMs } from "../runtime";
 
-test("historical sessions, Runs and Capture keep their content aligned in the app", { timeout: 60_000 }, async () => {
+test("historical sessions, Runs and Capture keep their content aligned in the app", { timeout: scaledMs(60_000) }, async () => {
   const dirs = applyHermeticApp("ui-polish");
   const app = await startApp({ home: dirs.home, port: 0, chromeProfilesRoot: path.join(dirs.home, "profiles") });
   const browser = await chromium.launch({ headless: true, executablePath: process.env.BAO_TEST_BROWSER });

@@ -24,6 +24,7 @@ import { replay, type RunResult } from "../../src/v1/replay";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { testArtifacts } from "../artifacts";
+import { scaledMs } from "../runtime";
 
 process.env.BAO_CHROME_NO_SANDBOX = "1";
 process.env.BAO_HEAL_CURSOR_ACCOUNT = "0";
@@ -119,7 +120,7 @@ async function play(page: Page, startUrl: string): Promise<{ result: RunResult; 
   const driver = new BrowserDriver(page);
   if (startUrl.endsWith("/member")) {
     await page.goto(startUrl, { waitUntil: "domcontentloaded" });
-    await page.waitForURL(/\/login\/index/, { timeout: 8000 });
+    await page.waitForURL(/\/login\/index/, { timeout: scaledMs(8000) });
   } else {
     await page.goto(startUrl, { waitUntil: "domcontentloaded" });
   }
@@ -136,7 +137,7 @@ async function play(page: Page, startUrl: string): Promise<{ result: RunResult; 
   return { result, proposed };
 }
 
-test("local fixtures classify each wall and dismiss clutter with no heal", { timeout: 120_000 }, async () => {
+test("local fixtures classify each wall and dismiss clutter with no heal", { timeout: scaledMs(120_000) }, async () => {
   const server = createServer((req, res) => serve(new URL(req.url || "/", "http://127.0.0.1").pathname, res));
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
@@ -213,27 +214,27 @@ test("local fixtures classify each wall and dismiss clutter with no heal", { tim
   }
 });
 
-test("the-internet modals classify as clutter and a public challenge is reported as it loads", { timeout: 90_000 }, async () => {
+test("the-internet modals classify as clutter and a public challenge is reported as it loads", { timeout: scaledMs(90_000) }, async () => {
   const notes: { site: string; class?: string; vendor?: string; url?: string; detail?: string; error?: string }[] = [];
   const profile = await mkdtemp(path.join(tmpdir(), "bao-public-"));
   const context = await launchOwnedChrome({ userDataDir: profile, headless: true });
   const page = context.pages()[0] || await context.newPage();
   try {
-    await page.goto("https://the-internet.herokuapp.com/entry_ad", { waitUntil: "domcontentloaded", timeout: 20_000 });
-    await page.waitForTimeout(800);
+    await page.goto("https://the-internet.herokuapp.com/entry_ad", { waitUntil: "domcontentloaded", timeout: scaledMs(20_000) });
+    await page.waitForTimeout(scaledMs(800));
     const entry = classifyPage(await page.evaluate(readPageMarkers));
     assert.equal(entry.class, "clutter", JSON.stringify(entry));
     assert.equal(await page.evaluate(clickKnownClose), true);
     notes.push({ site: "the-internet entry_ad", class: entry.class, detail: entry.reason, url: page.url() });
 
-    await page.goto("https://the-internet.herokuapp.com/exit_intent", { waitUntil: "domcontentloaded", timeout: 20_000 });
+    await page.goto("https://the-internet.herokuapp.com/exit_intent", { waitUntil: "domcontentloaded", timeout: scaledMs(20_000) });
     await page.mouse.move(400, 300);
     await page.mouse.move(400, 0);
     await page.evaluate(() => {
       document.documentElement.dispatchEvent(new MouseEvent("mouseleave", { bubbles: true, clientY: 0 }));
       document.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, clientY: -1 }));
     });
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(scaledMs(500));
     const exit = classifyPage(await page.evaluate(readPageMarkers));
     assert.equal(exit.class, "clutter", JSON.stringify(exit));
     assert.equal(await page.evaluate(clickKnownClose), true);
@@ -241,8 +242,8 @@ test("the-internet modals classify as clutter and a public challenge is reported
 
     for (const site of ["https://practicesoftwaretesting.com/", "https://usa.experian.com/", "https://nowsecure.nl/"]) {
       try {
-        await page.goto(site, { waitUntil: "domcontentloaded", timeout: 20_000 });
-        await page.waitForTimeout(2500);
+        await page.goto(site, { waitUntil: "domcontentloaded", timeout: scaledMs(20_000) });
+        await page.waitForTimeout(scaledMs(2500));
         const decision = classifyPage(await page.evaluate(readPageMarkers));
         notes.push({ site, class: decision.class, vendor: decision.vendor, detail: decision.reason, url: page.url() });
       } catch (err) {
@@ -261,7 +262,7 @@ test("the-internet modals classify as clutter and a public challenge is reported
   }
 });
 
-test("the needs_human run page and act prompt render in light and dark", { timeout: 90_000 }, async () => {
+test("the needs_human run page and act prompt render in light and dark", { timeout: scaledMs(90_000) }, async () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-shot-"));
   const library = new Library(home);
   library.save(testWorkflow({
@@ -342,7 +343,7 @@ test("the needs_human run page and act prompt render in light and dark", { timeo
     assert.match(await page.locator("#why-stopped").innerText(), /stopped at an Imperva bot check/);
     await page.screenshot({ path: path.join(shotDir, "needs-human-run-light.png") });
     await page.locator("#act-bar").screenshot({ path: path.join(shotDir, "needs-human-act-light.png") });
-    await page.waitForTimeout(900);
+    await page.waitForTimeout(scaledMs(900));
     await page.evaluate(() => localStorage.setItem("bao-theme", "dark"));
     await page.reload();
     await page.waitForSelector("#act-bar");
@@ -353,12 +354,12 @@ test("the needs_human run page and act prompt render in light and dark", { timeo
     assert.equal(await page.locator("#act-bar .instruction").innerText(), LINE);
     await page.screenshot({ path: path.join(shotDir, "needs-human-run-dark.png") });
     await page.locator("#act-bar").screenshot({ path: path.join(shotDir, "needs-human-act-dark.png") });
-    await page.waitForTimeout(700);
+    await page.waitForTimeout(scaledMs(700));
     await page.keyboard.press("Meta+k");
     await page.locator("#palette-input").fill("Heals");
     await page.locator('#palette-list [data-command="heals"]').click();
     await page.waitForSelector("[data-page-class=bot_wall]");
-    await page.waitForTimeout(900);
+    await page.waitForTimeout(scaledMs(900));
     assert.match(await page.locator("[data-page-class=bot_wall]").innerText(), /bot check/);
     assert.match(await page.locator("[data-page-class=bot_wall]").innerText(), /0 heals · 0 model calls/);
     await server.close();

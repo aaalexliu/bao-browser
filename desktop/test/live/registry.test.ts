@@ -20,6 +20,7 @@ import { Library } from "../../src/v1/store";
 import { pairDevice, syncAll } from "../../src/v1/sync";
 import { SEED_WORKFLOWS } from "../../../web/src/lib/seeds";
 import { testArtifacts } from "../artifacts";
+import { scaledMs } from "../runtime";
 
 process.env.TZ = "America/New_York";
 const TEST_BROWSER = pinTestBrowser();
@@ -27,7 +28,7 @@ const TEST_BROWSER = pinTestBrowser();
 const planted = "SuperSecretValue99";
 const fixturePassword = "fixture-pass-value";
 
-test("two devices, review gate, agent, and the web app", { timeout: 720_000 }, async () => {
+test("two devices, review gate, agent, and the web app", { timeout: scaledMs(720_000) }, async () => {
   process.env.BAO_CHROME_NO_SANDBOX = "1";
   const root = mkdtempSync(path.join(tmpdir(), "bao-live-"));
   const port = await freePort();
@@ -370,10 +371,10 @@ test("two devices, review gate, agent, and the web app", { timeout: 720_000 }, a
         ];
         libB.save(secretDoc);
         libB.noteHealPromotion("secret-push", { args: { password: planted } });
-        const syncResponse = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/sync" && response.request().method() === "POST", { timeout: 30_000 });
+        const syncResponse = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/sync" && response.request().method() === "POST", { timeout: scaledMs(30_000) });
         await page.getByRole("button", { name: "Push" }).click();
         assert.equal((await syncResponse).ok(), true);
-        await page.waitForFunction(() => /pushed \d+/.test(document.querySelector('[data-testid="sync-result"]')?.textContent || ""), undefined, { timeout: 30_000 });
+        await page.waitForFunction(() => /pushed \d+/.test(document.querySelector('[data-testid="sync-result"]')?.textContent || ""), undefined, { timeout: scaledMs(30_000) });
         assert.equal(await page.getByTestId("sync-error").count(), 0);
         const hidden = await fetch(`${origin}/api/workflows/secret-push`, { headers: { authorization: `Bearer ${tokenB}` } });
         assert.equal(hidden.status, 200);
@@ -424,7 +425,7 @@ async function agentExchange(home: string, origin: string, ownerCookie: string) 
   const send = (msg: unknown) => child.stdin.write(frame(msg));
   const waitFor = async (id: number) => {
     const start = Date.now();
-    while (Date.now() - start < 90_000) {
+    while (Date.now() - start < scaledMs(90_000)) {
       if (messages.some((msg) => msg.id === id)) return messages.find((msg) => msg.id === id);
       await new Promise((resolve) => setTimeout(resolve, 30));
     }
@@ -514,7 +515,7 @@ async function pairCode(origin: string, cookie: string): Promise<string> {
 async function waitHealth(origin: string, logs: string[]): Promise<void> {
   const start = Date.now();
   let last = "";
-  while (Date.now() - start < 180_000) {
+  while (Date.now() - start < scaledMs(180_000)) {
     try {
       const res = await fetch(`${origin}/api/health`);
       last = await res.text();
@@ -538,13 +539,13 @@ async function clickTheme(page: Page): Promise<void> {
       before = await page.evaluate(() => document.documentElement.getAttribute("data-theme") || "light");
       break;
     } catch {
-      await page.waitForTimeout(500);
+      await page.waitForTimeout(scaledMs(500));
     }
   }
   const next = before === "dark" ? "light" : "dark";
   await page.evaluate((theme) => localStorage.setItem("bao-theme", theme), next);
-  await page.reload({ waitUntil: "domcontentloaded", timeout: 60_000 });
-  await page.waitForFunction((theme) => document.documentElement.getAttribute("data-theme") === theme, next, { timeout: 15_000 });
+  await page.reload({ waitUntil: "domcontentloaded", timeout: scaledMs(60_000) });
+  await page.waitForFunction((theme) => document.documentElement.getAttribute("data-theme") === theme, next, { timeout: scaledMs(15_000) });
 }
 
 async function openPage(
@@ -555,7 +556,7 @@ async function openPage(
   let last = "";
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const res = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
+      const res = await page.goto(url, { waitUntil: "domcontentloaded", timeout: scaledMs(60_000) });
       const status = res?.status() ?? 0;
       if (status > 0 && status < 500) return;
       last = `status ${status}`;

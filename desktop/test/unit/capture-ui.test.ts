@@ -6,6 +6,7 @@ import test from "node:test";
 import { startApp } from "../../src/app/server";
 import { captureStream, captureView, recordBar, type ShellState, type TeachView } from "../../src/app/views";
 import { testChromium } from "../../src/test-browser";
+import { scaledMs } from "../runtime";
 
 type CaptureTestState = ShellState & {
   capture: NonNullable<ShellState["capture"]>;
@@ -29,7 +30,7 @@ test("capture renders the recording name, ordered stream, controls and paused st
   assert.equal(recordBar({}, true), "");
 });
 
-test("capture routes a pending Teach review back to Teach without changing its steps", { timeout: 30_000 }, async () => {
+test("capture routes a pending Teach review back to Teach without changing its steps", { timeout: scaledMs(30_000) }, async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-capture-teach-review-"));
   const oldHome = process.env.HOME;
   const oldDrive = process.env.BAO_DRIVE;
@@ -81,7 +82,7 @@ test("capture routes a pending Teach review back to Teach without changing its s
   }
 });
 
-test("an empty Teach review can be discarded from capture to allow a new recording", { timeout: 60_000 }, async () => {
+test("an empty Teach review can be discarded from capture to allow a new recording", { timeout: scaledMs(60_000) }, async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-capture-empty-teach-"));
   const oldHome = process.env.HOME;
   process.env.HOME = home;
@@ -130,7 +131,7 @@ test("an empty Teach review can be discarded from capture to allow a new recordi
     assert.equal(app.library.list().workflows.length, 0);
     await page.locator("#start-url").fill(`${url}/fixture`);
     await Promise.all([
-      page.waitForResponse((response) => response.url() === `${url}/api/sessions` && response.request().method() === "POST", { timeout: 30_000 }).then((response) => response.finished()),
+      page.waitForResponse((response) => response.url() === `${url}/api/sessions` && response.request().method() === "POST", { timeout: scaledMs(30_000) }).then((response) => response.finished()),
       page.locator("#start").click(),
     ]);
     await page.locator("#stop:not([disabled])").waitFor();
@@ -146,7 +147,7 @@ test("an empty Teach review can be discarded from capture to allow a new recordi
   }
 });
 
-test("offscreen capture saves keep the typed name and clear drafts after save or discard", { timeout: 60_000 }, async () => {
+test("offscreen capture saves keep the typed name and clear drafts after save or discard", { timeout: scaledMs(60_000) }, async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-capture-offscreen-save-"));
   const oldHome = process.env.HOME;
   process.env.HOME = home;
@@ -197,7 +198,7 @@ test("offscreen capture saves keep the typed name and clear drafts after save or
   }
 });
 
-test("the running capture saves its name and steps, pauses, recovers errors and discards", { timeout: 90_000 }, async () => {
+test("the running capture saves its name and steps, pauses, recovers errors and discards", { timeout: scaledMs(90_000) }, async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-capture-ui-"));
   const oldHome = process.env.HOME;
   const oldDrive = process.env.BAO_DRIVE;

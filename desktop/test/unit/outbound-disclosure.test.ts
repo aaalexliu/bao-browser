@@ -12,6 +12,7 @@ import { Library } from "../../src/v1/store";
 import { buildPushBody as push, stripUnsafe as strip } from "../../../web/src/lib/guard";
 import { applyImportAnswers, applyRegistryImportAnswers } from "../../../web/src/lib/import-sheet";
 import { redactForRelease } from "../../../web/src/lib/publish";
+import { scaledMs } from "../runtime";
 
 const secret = "fixture-outbound-password";
 const stripped = "[secret stripped]";
@@ -254,7 +255,7 @@ for (const damage of ["missing", "invalid JSON", "invalid structure", "unreadabl
   });
 }
 
-test("MCP replay scrubs its public receipt and report but retains raw local run inputs", { timeout: 60_000 }, async (t) => {
+test("MCP replay scrubs its public receipt and report but retains raw local run inputs", { timeout: scaledMs(60_000) }, async (t) => {
   const root = mkdtempSync(path.join(tmpdir(), "bao-outbound-replay-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const server = createServer((_req, res) => {

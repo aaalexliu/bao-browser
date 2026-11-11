@@ -12,6 +12,7 @@ import { TOOLS } from "../../src/mcp/server";
 import { testChromium } from "../../src/test-browser";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
+import { scaledMs } from "../runtime";
 
 const closed = "The session ended while Bao was waiting for you, so the agent could not go on.";
 const idle = "The agent sent nothing for 10 minutes and never finished the task, so Bao ended the session.";
@@ -240,7 +241,7 @@ test("a waiting agent session receipt shows the sign-in ask and not a stop sente
   assert.doesNotMatch(receipt, /Bao stopped\. Open Chrome to check the page before continuing\./);
 });
 
-test("Runs names agent sessions, shows the failure reason, and leaves ended sessions out of Needs you", { timeout: 60_000 }, async () => {
+test("Runs names agent sessions, shows the failure reason, and leaves ended sessions out of Needs you", { timeout: scaledMs(60_000) }, async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-agent-runs-"));
   const previousHome = process.env.HOME;
   process.env.HOME = home;

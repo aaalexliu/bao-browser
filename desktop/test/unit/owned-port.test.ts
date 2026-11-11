@@ -11,6 +11,7 @@ import path from "node:path";
 import test from "node:test";
 import type { BrowserContext } from "playwright";
 import { launchOwnedChrome } from "../../src/launch";
+import { scaledMs } from "../runtime";
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -35,7 +36,7 @@ async function profileDir(context: BrowserContext): Promise<string> {
   }
 }
 
-test("owned launches that overlap each drive their own Chrome", { timeout: 90_000 }, async () => {
+test("owned launches that overlap each drive their own Chrome", { timeout: scaledMs(90_000) }, async () => {
   const dirs = await Promise.all([0, 1, 2].map(() => mkdtemp(path.join(tmpdir(), "bao-owned-port-"))));
   // Each launch starts before the Chrome before it has opened its port.
   const settled = await Promise.allSettled(dirs.map(async (dir, index) => {
@@ -60,7 +61,7 @@ test("owned launches that overlap each drive their own Chrome", { timeout: 90_00
   }
 });
 
-test("a browser that binds port 9222 is refused and stopped", { timeout: 30_000 }, async () => {
+test("a browser that binds port 9222 is refused and stopped", { timeout: scaledMs(30_000) }, async () => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-owned-9222-"));
   const userDataDir = path.join(root, "profile");
   const exe = path.join(root, "fake-chrome.sh");
@@ -77,7 +78,7 @@ test("a browser that binds port 9222 is refused and stopped", { timeout: 30_000 
     await assert.rejects(launchOwnedChrome({ userDataDir, executablePath: exe, headless: true }), /remote-debugging-port 9222/);
     const pid = Number((await readFile(pidFile, "utf8")).trim());
     assert.ok(pid > 0);
-    const deadline = Date.now() + 5000;
+    const deadline = Date.now() + scaledMs(5000);
     while (alive(pid) && Date.now() < deadline) await delay(50);
     assert.equal(alive(pid), false);
   } finally {

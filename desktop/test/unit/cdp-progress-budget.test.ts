@@ -12,6 +12,7 @@ import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import { AgentBrowserWorkflow } from "../../src/engines/agent-browser-workflow";
 import { Library } from "../../src/v1/store";
 import { chromeProfiles, fakeTaskTab } from "../support/chrome-profiles";
+import { scaledMs } from "../runtime";
 
 const SWITCH = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n";
 
@@ -81,7 +82,7 @@ function fakeCdp(opts: {
   });
 }
 
-test("a focus-emulation wait survives a reply slower than 5s while the peer answers", { timeout: 15_000 }, async () => {
+test("a focus-emulation wait survives a reply slower than 5s while the peer answers", { timeout: scaledMs(15_000) }, async () => {
   const fake = await fakeCdp({ delay: () => 5_500, answerPings: true, result: () => ({ enabled: true }) });
   const cdp = await connectCdp(fake.port, fake.browserPath);
   const started = Date.now();
@@ -95,7 +96,7 @@ test("a focus-emulation wait survives a reply slower than 5s while the peer answ
   }
 });
 
-test("a progress wait ends when the peer goes quiet, not after a long hang", { timeout: 45_000 }, async () => {
+test("a progress wait ends when the peer goes quiet, not after a long hang", { timeout: scaledMs(45_000) }, async () => {
   const fake = await fakeCdp({ answerPings: false, delay: () => 60_000 });
   const cdp = await connectCdp(fake.port, fake.browserPath);
   const started = Date.now();
@@ -109,7 +110,7 @@ test("a progress wait ends when the peer goes quiet, not after a long hang", { t
   }
 });
 
-test("a progress wait keeps going past its silence budget while pongs arrive", { timeout: 30_000 }, async () => {
+test("a progress wait keeps going past its silence budget while pongs arrive", { timeout: scaledMs(30_000) }, async () => {
   const fake = await fakeCdp({ answerPings: true, delay: () => 5_000 });
   const cdp = await connectCdp(fake.port, fake.browserPath);
   const started = Date.now();
@@ -122,7 +123,7 @@ test("a progress wait keeps going past its silence budget while pongs arrive", {
   }
 });
 
-test("an aborted progress wait stops without waiting out the silence", { timeout: 20_000 }, async () => {
+test("an aborted progress wait stops without waiting out the silence", { timeout: scaledMs(20_000) }, async () => {
   const fake = await fakeCdp({ answerPings: true, delay: () => 60_000 });
   const cdp = await connectCdp(fake.port, fake.browserPath);
   const signal = AbortSignal.timeout(150);
@@ -134,7 +135,7 @@ test("an aborted progress wait stops without waiting out the silence", { timeout
   }
 });
 
-test("workflow capture still records when attach takes longer than 3s", { timeout: 15_000 }, async () => {
+test("workflow capture still records when attach takes longer than 3s", { timeout: scaledMs(15_000) }, async () => {
   const observation = { page: { url: "http://fixture.test/", title: "Fixture", nodes: [], texts: [], values: [] }, leaves: {} };
   let evaluates = 0;
   const fake = await fakeCdp({
@@ -167,7 +168,7 @@ test("workflow capture still records when attach takes longer than 3s", { timeou
   }
 });
 
-test("opening the owner's Chrome waits out a slow attach reply", { timeout: 20_000 }, async (t: TestContext) => {
+test("opening the owner's Chrome waits out a slow attach reply", { timeout: scaledMs(20_000) }, async (t: TestContext) => {
   const fake = await fakeCdp({
     answerPings: true,
     delay: (method) => method === "Target.attachToTarget" ? 5_500 : 0,
@@ -200,7 +201,7 @@ test("opening the owner's Chrome waits out a slow attach reply", { timeout: 20_0
   }
 });
 
-test("opening the owner's Chrome waits out a slow focus-emulation reply", { timeout: 20_000 }, async (t: TestContext) => {
+test("opening the owner's Chrome waits out a slow focus-emulation reply", { timeout: scaledMs(20_000) }, async (t: TestContext) => {
   const fake = await fakeCdp({
     answerPings: true,
     delay: (method) => method === "Emulation.setFocusEmulationEnabled" ? 5_500 : 0,
@@ -233,7 +234,7 @@ test("opening the owner's Chrome waits out a slow focus-emulation reply", { time
   }
 });
 
-test("a stuck page that keeps answering pings skips capture at the ceiling and the next command still runs", { timeout: 90_000 }, async () => {
+test("a stuck page that keeps answering pings skips capture at the ceiling and the next command still runs", { timeout: scaledMs(90_000) }, async () => {
   let released = false;
   const fake = await fakeCdp({
     answerPings: true,
@@ -270,7 +271,7 @@ test("a stuck page that keeps answering pings skips capture at the ceiling and t
   }
 });
 
-test("quit during a stuck capture returns without waiting out the ceiling", { timeout: 45_000 }, async (t: TestContext) => {
+test("quit during a stuck capture returns without waiting out the ceiling", { timeout: scaledMs(45_000) }, async (t: TestContext) => {
   let hang = false;
   let evaluates = 0;
   let sawStuck!: () => void;
@@ -333,7 +334,7 @@ else process.stdout.write('ok');
   }
 });
 
-test("the session's first native call is not killed at the capture ceiling", { timeout: 50_000 }, async (t: TestContext) => {
+test("the session's first native call is not killed at the capture ceiling", { timeout: scaledMs(50_000) }, async (t: TestContext) => {
   let evaluates = 0;
   const observation = { page: { url: "http://fixture.test/", title: "Fixture", nodes: [], texts: [], values: [] }, leaves: {} };
   const fake = await fakeCdp({
@@ -395,7 +396,7 @@ else process.stdout.write('ok');
   }
 });
 
-test("shared-endpoint join waits past 10s while the peer answers", { timeout: 60_000 }, async () => {
+test("shared-endpoint join waits past 10s while the peer answers", { timeout: scaledMs(60_000) }, async () => {
   const fake = await fakeCdp({
     answerPings: true,
     delay: (method) => method === "Target.attachToBrowserTarget" ? 11_000 : 0,
@@ -415,7 +416,7 @@ test("shared-endpoint join waits past 10s while the peer answers", { timeout: 60
   }
 });
 
-test("shared-endpoint join stops at the capture ceiling while pings continue", { timeout: 120_000 }, async () => {
+test("shared-endpoint join stops at the capture ceiling while pings continue", { timeout: scaledMs(120_000) }, async () => {
   const fake = await fakeCdp({ answerPings: true, delay: () => 120_000 });
   const bao = await connectCdp(fake.port, fake.browserPath);
   const shared = await shareConnection(bao);
@@ -431,7 +432,7 @@ test("shared-endpoint join stops at the capture ceiling while pings continue", {
   }
 });
 
-test("shared-endpoint join stops when the client closes", { timeout: 30_000 }, async () => {
+test("shared-endpoint join stops when the client closes", { timeout: scaledMs(30_000) }, async () => {
   let pings = 0;
   let sawAttach!: () => void;
   const attached = new Promise<void>((resolve) => { sawAttach = resolve; });
@@ -449,14 +450,14 @@ test("shared-endpoint join stops when the client closes", { timeout: 30_000 }, a
   try {
     await attached;
     const pinging = Date.now();
-    while (pings < 1 && Date.now() - pinging < 5_000) await new Promise((resolve) => setTimeout(resolve, 50));
+    while (pings < 1 && Date.now() - pinging < scaledMs(5_000)) await new Promise((resolve) => setTimeout(resolve, 50));
     assert.ok(pings >= 1, "join was waiting on the peer");
     socket.destroy();
     const started = Date.now();
     let last = pings;
     let quietSince = Date.now();
     let stopped = false;
-    while (Date.now() - started < 15_000) {
+    while (Date.now() - started < scaledMs(15_000)) {
       await new Promise((resolve) => setTimeout(resolve, 200));
       if (pings !== last) {
         last = pings;

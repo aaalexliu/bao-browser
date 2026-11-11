@@ -11,6 +11,7 @@ import { chromium, type BrowserContext } from "playwright";
 import { launchOwnedChrome } from "../../src/launch";
 import { copyChromeProfile, listChromeProfiles, openCopiedChrome, openCopiedChromeForProxy } from "../../src/engines/chrome-profile-copy";
 import { startApp } from "../../src/app/server";
+import { scaledMs } from "../runtime";
 
 interface TestPreferences {
   profile: { exit_type: string; name: string; using_default_name: boolean; avatar_index: number; using_default_avatar: boolean; using_gaia_avatar: boolean };
@@ -694,7 +695,7 @@ test("copied Chrome restores two tabs through delayed product startup while sour
       preserveRestoredTabs: true, loadExtensions: false });
     const values = async (context: BrowserContext) => Promise.all(context.pages().filter((page) => page.url() === url)
       .map((page) => page.evaluate(() => sessionStorage.getItem("tabToken"))));
-    const sourceDeadline = Date.now() + 15000;
+    const sourceDeadline = Date.now() + scaledMs(15000);
     let sourcePrefs: TestPreferences;
     do {
       sourcePrefs = JSON.parse(await readFile(file, "utf8")) as TestPreferences;
@@ -713,7 +714,7 @@ test("copied Chrome restores two tabs through delayed product startup while sour
       const browser = await connect(...args);
       restored = browser.contexts()[0]!;
       const pages = restored.pages.bind(restored);
-      const visibleAt = Date.now() + 6000;
+      const visibleAt = Date.now() + scaledMs(6000);
       t.mock.method(restored, "pages", () => {
         if (Date.now() >= visibleAt) return pages();
         emptyReads++;
@@ -728,7 +729,7 @@ test("copied Chrome restores two tabs through delayed product startup while sour
     const { targetInfos } = await selected.send("Target.getTargets");
     assert.ok(targetInfos.some((target) => target.targetId === opened!.parkedTargetId && target.url === url));
     await selected.detach();
-    const deadline = Date.now() + 5000;
+    const deadline = Date.now() + scaledMs(5000);
     while ((await values(restored)).length < 2 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
     assert.deepEqual((await values(restored)).sort(), ["alpha", "beta"]);
     assert.equal(restored.pages().length, 2);
@@ -736,7 +737,7 @@ test("copied Chrome restores two tabs through delayed product startup while sour
     sourcePrefs = JSON.parse(await readFile(file, "utf8")) as TestPreferences;
     assert.equal(sourcePrefs.profile.exit_type, "Crashed");
     assert.equal(sourcePrefs.session?.restore_on_startup ?? 5, 5, "Chrome may omit the default new-tab startup preference");
-    const browserClosed = restored.waitForEvent("close", { timeout: 5000 });
+    const browserClosed = restored.waitForEvent("close", { timeout: scaledMs(5000) });
     await Promise.all(restored.pages().map((page) => page.close()));
     await browserClosed;
     await opened.closed;

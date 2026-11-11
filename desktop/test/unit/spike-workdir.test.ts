@@ -4,6 +4,7 @@ import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { scaledMs } from "../runtime";
 
 test("an unset spike throws before it creates a temp work directory", () => {
   const scratch = mkdtempSync(path.join(tmpdir(), "bao-spike-order-"));
@@ -15,7 +16,7 @@ test("an unset spike throws before it creates a temp work directory", () => {
       cwd: process.cwd(),
       env,
       encoding: "utf8",
-      timeout: 15000,
+      timeout: scaledMs(15000),
     });
     assert.equal(ran.status, 1, ran.stderr);
     assert.match(ran.stderr, /Set BAO_SPIKE_ARTIFACTS or BAO_AGENT_STORE_DIR/);
@@ -42,7 +43,7 @@ test("an unset live spike throws before it creates a temp work directory", () =>
       cwd: process.cwd(),
       env,
       encoding: "utf8",
-      timeout: 15000,
+      timeout: scaledMs(15000),
     });
     assert.equal(ran.status, 1, ran.stderr);
     assert.match(ran.stderr, /Set BAO_SPIKE_ARTIFACTS or BAO_AGENT_STORE_DIR/);

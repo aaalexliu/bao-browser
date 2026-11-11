@@ -13,9 +13,9 @@ import { testChromium as chromium } from "../../src/test-browser";
 import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import { recorderSource } from "../../src/v1/recorder";
 import { Library } from "../../src/v1/store";
-import { laneChildEnv } from "../runtime";
+import { laneChildEnv, scaledMs } from "../runtime";
 
-test("describe omits a generated token check while retaining local data and explicit checks", { timeout: 30_000 }, async () => {
+test("describe omits a generated token check while retaining local data and explicit checks", { timeout: scaledMs(30_000) }, async () => {
   const token = "sk-DerivedFixtureToken123456789";
   const explicit = "sk-ExplicitFixtureToken987654321";
   const home = mkdtempSync(path.join(tmpdir(), "bao-describe-derived-"));

@@ -9,6 +9,7 @@ import { createServer, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 import type { TestContext } from "node:test";
+import { scaledMs } from "../runtime";
 import { startApp } from "../../src/app/server";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { connectCdp, type CdpSocket } from "../../src/cdp-live/socket";
@@ -138,7 +139,7 @@ export async function ownerChrome(t: TestContext, pages: Record<string, string |
 
 /** Polls the strip until `ready` holds, so a check waits for Chrome's own tab and group events. */
 export async function stripWhen(chrome: OwnerChrome, ready: (strip: Strip) => boolean, timeoutMs = 5000): Promise<Strip> {
-  const deadline = Date.now() + timeoutMs;
+  const deadline = Date.now() + scaledMs(timeoutMs);
   for (;;) {
     const strip = await chrome.strip();
     if (ready(strip) || Date.now() > deadline) return strip;

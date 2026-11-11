@@ -7,6 +7,7 @@ import test from "node:test";
 import { startApp } from "../../src/app/server";
 import { testChromium } from "../../src/test-browser.js";
 import type { WorkflowV2 } from "../../src/v1/schema";
+import { scaledMs } from "../runtime";
 
 const fileBytes = `{
   "createdAt": 1,
@@ -27,7 +28,7 @@ const fileBytes = `{
   ]
 }`
 
-test("Share, guide, editor export, and import preserve saved evidence", { timeout: 60_000 }, async () => {
+test("Share, guide, editor export, and import preserve saved evidence", { timeout: scaledMs(60_000) }, async () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-share-download-"));
   const app = await startApp({ home, port: 0 });
   let browser: Awaited<ReturnType<typeof testChromium.launch>> | undefined;

@@ -6,6 +6,7 @@ import path from "node:path";
 import test, { type TestContext } from "node:test";
 import { allowBaoTools, CLAUDE_BAO_RULE } from "../../src/app/claude-settings";
 import { CODEX_APPROVAL_MODE, CODEX_TOOL_TIMEOUT_SEC, codexServerBlock, upsertCodexServer } from "../../src/app/codex-config";
+import { scaledMs } from "../runtime";
 
 const cli = path.join(process.cwd(), "desktop/dist/desktop/src/app/cli.js");
 
@@ -63,7 +64,7 @@ function run(l: Lab, args: string[], extra: Record<string, string | undefined> =
     if (value === undefined) delete env[key];
     else env[key] = value;
   }
-  const result = spawnSync(process.execPath, [cli, "agent", ...args], { cwd: l.root, env, encoding: "utf8", timeout: 30_000 });
+  const result = spawnSync(process.execPath, [cli, "agent", ...args], { cwd: l.root, env, encoding: "utf8", timeout: scaledMs(30_000) });
   return { status: result.status ?? 1, stdout: result.stdout, stderr: result.stderr };
 }
 

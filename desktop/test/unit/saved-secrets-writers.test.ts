@@ -18,6 +18,7 @@ import { validateWorkflow, type Identity, type ReplayArgs, type WorkflowV2 } fro
 import { Library } from "../../src/v1/store";
 import { projectTeach, teachIntentCase } from "../../src/v1/teach";
 import { draftVersion, listVersions, restoreVersion } from "../../src/v1/versions";
+import { scaledMs } from "../runtime";
 
 const PASSWORD = "Bao-local-password-742!";
 function fixture(t: TestContext): Library {
@@ -160,7 +161,7 @@ test("secret defaults can be edited and supplied by run links", () => {
   assert.equal(doc.inputs[0]!.default, PASSWORD);
 });
 
-test("running app saves and replays a password default without fresh input", { timeout: 30_000 }, async (t) => {
+test("running app saves and replays a password default without fresh input", { timeout: scaledMs(30_000) }, async (t) => {
   const library = fixture(t);
   const seen: string[] = [];
   const server = createServer((req, res) => {

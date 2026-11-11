@@ -8,6 +8,7 @@ import { after, before, test } from "node:test";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 import { launchAccountChrome, launchOwnedChrome, needsLinuxNoSandbox, pinTestBrowser } from "../../src/launch";
 import { launchTestBrowser, launchTestContext, TEST_MEDIA_ARGS } from "../../src/test-browser.js";
+import { scaledMs } from "../runtime";
 
 const headless = process.env.BAO_MEDIA_HEADED !== "1";
 const root = mkdtempSync(path.join(tmpdir(), "bao-test-media-"));
@@ -83,7 +84,7 @@ async function assertContextMedia(context: BrowserContext, legacyScreenshot = fa
   await assertDeniedRequests(other);
 }
 
-test("idle throwaway Chrome baseline does not use page media APIs", { timeout: 60_000 }, async () => {
+test("idle throwaway Chrome baseline does not use page media APIs", { timeout: scaledMs(60_000) }, async () => {
   const browser = await launchTestBrowser({ headless, executablePath: pinTestBrowser() });
   try {
     await assertMediaFlags(browser, true);
@@ -93,7 +94,7 @@ test("idle throwaway Chrome baseline does not use page media APIs", { timeout: 6
   } finally { await browser.close(); }
 });
 
-test("throwaway Playwright browser rejects media in implicit and explicit contexts", { timeout: 60_000 }, async () => {
+test("throwaway Playwright browser rejects media in implicit and explicit contexts", { timeout: scaledMs(60_000) }, async () => {
   // Headless shell has no media support; use full Chromium to exercise denial.
   const browser = await launchTestBrowser({ headless, executablePath: pinTestBrowser(), args: ["--lang=en-US"] });
   try {
@@ -108,7 +109,7 @@ test("throwaway Playwright browser rejects media in implicit and explicit contex
 });
 
 for (const kind of ["extension", "owned", "video", "account"] as const) {
-  test(`${kind} test browser rejects camera and microphone`, { timeout: 60_000 }, async () => {
+  test(`${kind} test browser rejects camera and microphone`, { timeout: scaledMs(60_000) }, async () => {
     const profile = path.join(root, kind);
     const context = kind === "extension" ? await launchTestContext(profile, { headless, executablePath: pinTestBrowser() })
       : kind === "account" ? await launchAccountChrome({ userDataDir: profile, headless })
@@ -118,7 +119,7 @@ for (const kind of ["extension", "owned", "video", "account"] as const) {
   });
 }
 
-test("manually spawned fixture Chrome rejects media", { timeout: 60_000 }, async () => {
+test("manually spawned fixture Chrome rejects media", { timeout: scaledMs(60_000) }, async () => {
   const profile = path.join(root, "spawned");
   const child = spawn(pinTestBrowser(), [
     `--user-data-dir=${profile}`, "--remote-debugging-port=0", "--no-first-run", "--no-default-browser-check",
@@ -128,7 +129,7 @@ test("manually spawned fixture Chrome rejects media", { timeout: 60_000 }, async
   ], { stdio: "ignore" });
   try {
     const file = path.join(profile, "DevToolsActivePort");
-    const deadline = Date.now() + 15_000;
+    const deadline = Date.now() + scaledMs(15_000);
     let port = "";
     while (Date.now() < deadline) {
       try { port = readFileSync(file, "utf8").split("\n")[0]; } catch { /* Chrome has not written the port yet. */ }
@@ -146,7 +147,7 @@ test("manually spawned fixture Chrome rejects media", { timeout: 60_000 }, async
   }
 });
 
-test("public CreepJS and sannysoft media probes still load with denial", { skip: process.env.BAO_MEDIA_PUBLIC !== "1", timeout: 150_000 }, async () => {
+test("public CreepJS and sannysoft media probes still load with denial", { skip: process.env.BAO_MEDIA_PUBLIC !== "1", timeout: scaledMs(150_000) }, async () => {
   const browser = await launchTestBrowser({ headless, executablePath: pinTestBrowser() });
   try {
     await assertMediaFlags(browser, true);
@@ -155,7 +156,7 @@ test("public CreepJS and sannysoft media probes still load with denial", { skip:
       ["https://abrahamjuliot.github.io/creepjs/", 40_000, /CreepJS/],
       ["https://bot.sannysoft.com/", 12_000, /Antibot/],
     ] as const) {
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45_000 });
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: scaledMs(45_000) });
       await page.waitForTimeout(wait);
       assert.match(await page.title(), title);
       const text = await page.locator("body").innerText();

@@ -7,6 +7,7 @@ import ts from "typescript";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { connectCdp, type CdpSocket } from "../../src/cdp-live/socket";
 import { launchOwnedChrome, launchOwnedChromeEndpoint, pidsForDataDir, pinTestBrowser } from "../../src/launch";
+import { scaledMs } from "../runtime";
 
 pinTestBrowser();
 
@@ -39,7 +40,7 @@ test("endpoint lifecycle rejects retained completion and closing without complet
   assert.ok((await appendedLaunchDiagnostics('const value: OwnedEndpointState = { phase: "closing" }; void value;')).includes(2322));
 });
 
-test("retaining the endpoint keeps Chrome alive after its control socket disconnects", { timeout: 20_000 }, async () => {
+test("retaining the endpoint keeps Chrome alive after its control socket disconnects", { timeout: scaledMs(20_000) }, async () => {
   const userDataDir = await mkdtemp(path.join(tmpdir(), "bao-lifetime-retain-"));
   let chrome: Awaited<ReturnType<typeof launchOwnedChromeEndpoint>> | undefined;
   try {
@@ -64,7 +65,7 @@ test("retaining the endpoint keeps Chrome alive after its control socket disconn
   }
 });
 
-test("concurrent close callers share completion before and after shutdown", { timeout: 20_000 }, async () => {
+test("concurrent close callers share completion before and after shutdown", { timeout: scaledMs(20_000) }, async () => {
   const userDataDir = await mkdtemp(path.join(tmpdir(), "bao-lifetime-close-"));
   let chrome: Awaited<ReturnType<typeof launchOwnedChromeEndpoint>> | undefined;
   try {
@@ -84,7 +85,7 @@ test("concurrent close callers share completion before and after shutdown", { ti
   }
 });
 
-test("closing an owned context finishes when Chrome disconnects before it answers Browser.close", { timeout: 20_000 }, async (t) => {
+test("closing an owned context finishes when Chrome disconnects before it answers Browser.close", { timeout: scaledMs(20_000) }, async (t) => {
   const userDataDir = await mkdtemp(path.join(tmpdir(), "bao-lifetime-unanswered-"));
   const context = await launchOwnedChrome({ userDataDir, headless: true });
   try {
@@ -108,7 +109,7 @@ test("closing an owned context finishes when Chrome disconnects before it answer
   }
 });
 
-test("closing the last page releases the endpoint's owned Chrome", { timeout: 20_000 }, async () => {
+test("closing the last page releases the endpoint's owned Chrome", { timeout: scaledMs(20_000) }, async () => {
   const userDataDir = await mkdtemp(path.join(tmpdir(), "bao-lifetime-page-"));
   let chrome: Awaited<ReturnType<typeof launchOwnedChromeEndpoint>> | undefined;
   let cdp: CdpSocket | undefined;

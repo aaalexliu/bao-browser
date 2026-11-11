@@ -15,7 +15,7 @@ import { explain, interpret, type TrailEvent } from "../../src/v1/interpret";
 import { replay, withInputDefaults, type Driver, type ReplayOptions } from "../../src/v1/replay";
 import { checkMatch, stepTarget, stepLocators, stepInputName, stepCheck, validateWorkflow, type Identity, type Target, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import { testChromium } from "../../src/test-browser";
-import { applyHermeticApp } from "../runtime";
+import { applyHermeticApp, scaledMs } from "../runtime";
 
 const secret = "BaoSecretFixture9kQ7m";
 const field: Identity = { surface: "dom", role: "textbox", id: "credential", nameAttr: "credential", path: [] };
@@ -35,7 +35,7 @@ const entries: { name: string; identity?: Partial<Identity>; event?: Partial<Tra
   { name: "live field naming", event: { sensitive: true, source: { agent: "live-model", vendor: "bao", adapter: "cdp-live" } } },
 ];
 
-test("secret slots keep typed values and replay beside an unchanged ordinary field", { timeout: 60_000 }, async (t) => {
+test("secret slots keep typed values and replay beside an unchanged ordinary field", { timeout: scaledMs(60_000) }, async (t) => {
   const server = createServer((_req, res) => res.end(`<!doctype html><html><body>
     <label>Credential <input id="credential" name="credential" type="password" autocomplete="current-password"></label>
     <label>Display name <input id="display" name="display" oninput="document.querySelector('output').textContent='Saved display name'"></label>
@@ -142,7 +142,7 @@ test("OTP history never supplies defaults or past-run inputs, while fresh input 
   }
 });
 
-test("past-input route filters current OTP fields without changing saved history or explicit run-link values", { timeout: 30_000 }, async () => {
+test("past-input route filters current OTP fields without changing saved history or explicit run-link values", { timeout: scaledMs(30_000) }, async () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-otp-inputs-"));
   const app = await startApp({ home, port: 0 });
   try {
@@ -207,7 +207,7 @@ test("past-input route filters current OTP fields without changing saved history
   }
 });
 
-test("plain Replay uses the current saved secret while pinned and run-link inputs stay explicit", { timeout: 90_000 }, async () => {
+test("plain Replay uses the current saved secret while pinned and run-link inputs stay explicit", { timeout: scaledMs(90_000) }, async () => {
   const envKeys = ["BAO_HOME", "BAO_CHROME_USER_DATA", "BAO_HEADED", "BAO_HEAL_CURSOR_ACCOUNT", "BAO_OS_HELPER", "BAO_EXTENSION_HOST", "BAO_CURSOR_AGENT", "BAO_BROWSER"];
   const previousEnv = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
   const dirs = applyHermeticApp("replay-secret-default");

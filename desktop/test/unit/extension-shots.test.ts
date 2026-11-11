@@ -9,9 +9,9 @@ import type { BrowserContext } from "playwright";
 import { startApp } from "../../src/app/server";
 import { testChromium } from "../../src/test-browser.js";
 import { shotFormat } from "../../src/v1/shots";
-import { applyHermeticApp } from "../runtime";
+import { applyHermeticApp, scaledMs } from "../runtime";
 
-test("an extension Library run saves six rapid page pictures without a captureVisibleTab rate limit", { timeout: 90_000 }, async (t) => {
+test("an extension Library run saves six rapid page pictures without a captureVisibleTab rate limit", { timeout: scaledMs(90_000) }, async (t) => {
   const started = Date.now();
   const stage = (label: string) => t.diagnostic(`${label} after ${Date.now() - started}ms`);
   const dirs = applyHermeticApp("ext-shots");

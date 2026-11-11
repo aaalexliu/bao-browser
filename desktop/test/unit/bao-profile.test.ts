@@ -19,10 +19,11 @@ import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browse
 import { browserToolResult } from "../../src/mcp/tool-card";
 import { chromeProfiles } from "../support/chrome-profiles";
 import { LIST_TARGETS } from "../support/fake-agent-browser";
+import { scaledMs } from "../runtime";
 
 launches.pinTestBrowser();
 
-test("Bao imports one site's cookies and localStorage and keeps its renewed login after a new session", { timeout: 120_000 }, async (t) => {
+test("Bao imports one site's cookies and localStorage and keeps its renewed login after a new session", { timeout: scaledMs(120_000) }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-lasting-profile-"));
   const sourceRoot = path.join(root, "source");
   const home = path.join(root, "home");
@@ -64,7 +65,7 @@ test("Bao imports one site's cookies and localStorage and keeps its renewed logi
       const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId: targetInfos.find((target) => target.type === "page")!.targetId, flatten: true });
       const evaluate = async <T>(expression: string) => (await cdp.send<{ result: { value: T } }>("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true }, sessionId)).result.value;
       await cdp.send("Page.navigate", { url: site }, sessionId);
-      const deadline = Date.now() + 5000;
+      const deadline = Date.now() + scaledMs(5000);
       while (await evaluate("document.querySelector('h1')?.textContent") !== "Signed in") {
         if (Date.now() >= deadline) throw new Error("site did not receive the imported login");
         await new Promise((resolve) => setTimeout(resolve, 20));
@@ -129,7 +130,7 @@ test("Bao imports one site's cookies and localStorage and keeps its renewed logi
   }
 });
 
-test("Bao open skips error frames for storage and survives seed failures", { timeout: 60_000 }, async (t) => {
+test("Bao open skips error frames for storage and survives seed failures", { timeout: scaledMs(60_000) }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-error-frame-"));
   const sourceRoot = path.join(root, "source");
   const server = createServer((request, response) => {
@@ -158,7 +159,7 @@ const endpoint=new URL(args[args.indexOf('--cdp')+1]);
   const loaded=new Set();cdp.on('Page.lifecycleEvent',sessionId,e=>{if(e.name==='load')loaded.add(e.loaderId);});
   await cdp.send('Page.setLifecycleEventsEnabled',{enabled:true},sessionId);
   const {loaderId}=await cdp.send('Page.navigate',{url:args.at(-1)},sessionId);
-  const deadline=Date.now()+5000;
+  const deadline=Date.now()+${scaledMs(5000)};
   while(loaderId&&!loaded.has(loaderId)){if(Date.now()>=deadline)throw new Error('fixture navigation timed out');await new Promise(r=>setTimeout(r,20));}
   fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command})+'\\n');console.log('Opened');
  }finally{cdp.close();}
@@ -265,7 +266,7 @@ const endpoint=new URL(args[args.indexOf('--cdp')+1]);
   }
 });
 
-test("Bao reclaims dead owners and slow closes but refuses a live owner", { timeout: 60_000 }, async (t) => {
+test("Bao reclaims dead owners and slow closes but refuses a live owner", { timeout: scaledMs(60_000) }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-profile-owner-"));
   const home = path.join(root, "home");
   const profile = baoAgentProfileDir(home);
@@ -322,7 +323,7 @@ test("Bao reclaims dead owners and slow closes but refuses a live owner", { time
   }
 });
 
-test("a releasing Bao lease refuses reclaim and keepOpen until shutdown finishes", { timeout: 30_000 }, async (t) => {
+test("a releasing Bao lease refuses reclaim and keepOpen until shutdown finishes", { timeout: scaledMs(30_000) }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-profile-releasing-"));
   const home = path.join(root, "home");
   const marker = path.join(baoAgentProfileDir(home), "bao-kept-window");
@@ -393,7 +394,7 @@ test("a failed Bao shutdown restores a retained lease so the next open can recla
   }
 });
 
-test("a losing concurrent Bao open cannot alter the opening owner's profile or lease", { timeout: 60_000 }, async (t) => {
+test("a losing concurrent Bao open cannot alter the opening owner's profile or lease", { timeout: scaledMs(60_000) }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-concurrent-profile-"));
   const home = path.join(root, "home");
   const sourceRoot = path.join(root, "source");
@@ -443,7 +444,7 @@ test("a losing concurrent Bao open cannot alter the opening owner's profile or l
   }
 });
 
-for (const scenario of ["stale SSO", "signed-out home", "signed-out wall", "newer anonymous wall", "unavailable source", "unavailable SSO source", "native same-origin wall", "native SSO wall", "failed wall retry"] as const) test(`Bao refreshes ${scenario} from the selected source without repeating an origin`, { timeout: 90_000 }, async (t) => {
+for (const scenario of ["stale SSO", "signed-out home", "signed-out wall", "newer anonymous wall", "unavailable source", "unavailable SSO source", "native same-origin wall", "native SSO wall", "failed wall retry"] as const) test(`Bao refreshes ${scenario} from the selected source without repeating an origin`, { timeout: scaledMs(90_000) }, async (t) => {
   const native = scenario === "native same-origin wall" || scenario === "native SSO wall";
   if (native && !process.env.AGENT_BROWSER_PROXY_BINARY) { t.skip("set AGENT_BROWSER_PROXY_BINARY to exercise the real native daemon"); return; }
   const root = await mkdtemp(path.join(tmpdir(), "bao-source-refresh-"));
@@ -501,7 +502,7 @@ fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,args})+'\\n');
   cdp.on('Page.lifecycleEvent',sessionId,event=>{if(event.name==='load')loaded.add(event.loaderId);});
   await cdp.send('Page.setLifecycleEventsEnabled',{enabled:true},sessionId);
   const {loaderId}=await cdp.send('Page.navigate',{url:args.at(-1)},sessionId);
-  const deadline=Date.now()+5000;
+  const deadline=Date.now()+${scaledMs(5000)};
   while(loaderId&&!loaded.has(loaderId)){if(Date.now()>=deadline)throw new Error('fixture navigation timed out');await new Promise(resolve=>setTimeout(resolve,20));}
   console.log('Opened');
  }finally{cdp.close();}
@@ -647,7 +648,7 @@ test("only an explicit mock-keychain launch permits mock flags outside a test la
   assert.equal(launches.ownedChromeLaunchArgs([], {}, "darwin").includes("--use-mock-keychain"), false);
 });
 
-test("a sign-in import that cannot read the Chrome profile says why in the open result and the run file", { timeout: 60_000 }, async (t) => {
+test("a sign-in import that cannot read the Chrome profile says why in the open result and the run file", { timeout: scaledMs(60_000) }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-import-error-"));
   const sourceRoot = await chromeProfiles(path.join(root, "source"));
   const cookies = path.join(sourceRoot, "Default", "Cookies");
@@ -679,7 +680,7 @@ if (args.includes('--json')) {
   assert.match(run.signInImports![0]!.error!, /^macOS did not let Bao read Google Chrome's folder \(EACCES on /);
 });
 
-test("without Chrome's profiles, an open that names no browser opens the Bao profile and says why, and a copy or a named profile stops", { timeout: 60_000 }, async (t) => {
+test("without Chrome's profiles, an open that names no browser opens the Bao profile and says why, and a copy or a named profile stops", { timeout: scaledMs(60_000) }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-no-chrome-"));
   const sourceRoot = path.join(root, "no-chrome");
   const home = path.join(root, "home");
@@ -706,7 +707,7 @@ if (args.includes('--json')) {
   await assert.rejects(proxy.execute("open", ["https://news.example.test/article"], "bao", false, "Default", {}, proxy.activeRunId), /^Error: Bao could not read Chrome's profiles in /);
 });
 
-test("with Chrome's folder refused, the Bao profile still opens and says why it imported nothing, and a copy stops", { timeout: 60_000 }, async (t) => {
+test("with Chrome's folder refused, the Bao profile still opens and says why it imported nothing, and a copy stops", { timeout: scaledMs(60_000) }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-folder-refused-"));
   const sourceRoot = await chromeProfiles(path.join(root, "source"), { Default: { name: "Owner" }, "Profile 2": { name: "Work" } });
   await chmod(sourceRoot, 0o000);

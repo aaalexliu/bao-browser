@@ -20,6 +20,7 @@ import * as profiles from "../../src/engines/chrome-profile-copy";
 import { consolePane, runConsoleLines, type RunSummary } from "../../src/app/views";
 import { chromeProfiles } from "../support/chrome-profiles";
 import { LIST_TARGETS } from "../support/fake-agent-browser";
+import { scaledMs } from "../runtime";
 
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a6S8AAAAASUVORK5CYII=", "base64");
 const native = [{ stdout: '- button "Add blueberries" [ref=e280]\n', stderr: "", exitCode: 0 }];
@@ -212,7 +213,7 @@ test("close can use an earlier step picture when later captures fail without car
   } finally { await f.close(); }
 });
 
-test("live proxy keeps run identity across validation and owner-wall returns and clips both screenshot axes", { timeout: 30000 }, async (t) => {
+test("live proxy keeps run identity across validation and owner-wall returns and clips both screenshot axes", { timeout: scaledMs(30000) }, async (t) => {
   pinTestBrowser();
   const home = await mkdtemp(path.join(tmpdir(), "bao-card-proxy-"));
   let chrome: Awaited<ReturnType<typeof launchOwnedChromeEndpoint>> | undefined;
@@ -595,7 +596,7 @@ test("a host that forwards only content and isError still draws each step's card
   await page.locator(".browser-done").getByText("Added blueberries", { exact: true }).waitFor();
   assert.equal(await page.locator(".browser-status").textContent(), "Passed");
 
-  await page.waitForTimeout(700);
+  await page.waitForTimeout(scaledMs(700));
   const names = (await hostRequests(page, 4)).map((request) => request.params.name);
   assert.deepEqual(names, ["open_browser_card", "open_browser_card", "open_browser_card", "open_browser_card"]);
   assert.equal(await page.getByRole("heading", { name: "Run history" }).count(), 0);

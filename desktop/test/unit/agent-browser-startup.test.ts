@@ -12,12 +12,13 @@ import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import * as launches from "../../src/launch";
 import { Library } from "../../src/v1/store";
 import { LIST_TARGETS } from "../support/fake-agent-browser";
+import { scaledMs } from "../runtime";
 
 launches.pinTestBrowser();
 
 const binary = process.env.AGENT_BROWSER_PROXY_BINARY;
 
-test("a copy that restores 20 tabs opens a timer-heavy page in its own tab, keeps every restored tab, and saves the task as a workflow", { skip: !binary, timeout: 120_000 }, async (t) => {
+test("a copy that restores 20 tabs opens a timer-heavy page in its own tab, keeps every restored tab, and saves the task as a workflow", { skip: !binary, timeout: scaledMs(120_000) }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-restored-start-"));
   const sourceRoot = path.join(root, "source");
   const loads: string[] = [];
@@ -84,7 +85,7 @@ test("a copy that restores 20 tabs opens a timer-heavy page in its own tab, keep
 // The 20-tab case can pass when the real daemon starts under 5 s. `activePage` leaves its first tab read without a timer, so removing only the daemonStarted clear does not fail it. With both first-call guards removed, the 30 s progress ceiling bounds that read, and a 6 s sleep still passes. A first-call limit under 6 s, like the old 5 s tab read, fails it.
 const SLOW_NATIVE_MS = 6_000;
 
-test("a copy capture still saves as a workflow when the first native call sleeps past 5 seconds", { timeout: 60_000 }, async (t) => {
+test("a copy capture still saves as a workflow when the first native call sleeps past 5 seconds", { timeout: scaledMs(60_000) }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-slow-native-"));
   const sourceRoot = path.join(root, "source");
   const home = path.join(root, "home");
@@ -158,7 +159,7 @@ async function main() {
       const { sessionId } = await send('Target.attachToTarget', { targetId: bound(), flatten: true });
       await send('Emulation.setDeviceMetricsOverride', { width: 800, height: 600, deviceScaleFactor: 1, mobile: false }, sessionId);
       await send('Page.navigate', { url }, sessionId);
-      const deadline = Date.now() + 10000;
+      const deadline = Date.now() + scaledMs(10000);
       while (Date.now() < deadline) {
         const { result } = await send('Runtime.evaluate', { expression: 'document.querySelector("[data-testid=go]") ? location.href : ""', returnByValue: true }, sessionId);
         if (result.value) return;
@@ -174,7 +175,7 @@ async function main() {
       if (!result.value || result.value.w <= 0 || result.value.h <= 0) throw new Error('button has no box');
       await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: result.value.x, y: result.value.y, button: 'left', clickCount: 1 }, sessionId);
       await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: result.value.x, y: result.value.y, button: 'left', clickCount: 1 }, sessionId);
-      const deadline = Date.now() + 2000;
+      const deadline = Date.now() + scaledMs(2000);
       let text = '';
       while (Date.now() < deadline) {
         text = (await send('Runtime.evaluate', { expression: 'document.querySelector("[data-testid=go]").textContent', returnByValue: true }, sessionId)).result.value;
@@ -214,7 +215,7 @@ main().catch((error) => { console.error(error); process.exitCode = 1; });
   }
 });
 
-test("pass-through open lists every restored tab even when an unrelated renderer never answers", { timeout: 30_000 }, async (t) => {
+test("pass-through open lists every restored tab even when an unrelated renderer never answers", { timeout: scaledMs(30_000) }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-stalled-start-"));
   const sourceRoot = path.join(root, "source");
   let block = false;
@@ -270,7 +271,7 @@ if (command === 'tab') {
     const tabs = parsed.data.tabs;
     assert.equal(tabs.length, 3, "both restored tabs stay beside the agent's new tab");
     for (const url of [`${base}/blocked`, `${base}/ready`]) assert.ok(tabs.some(tab => tab.url === url), url);
-    const deadline = Date.now() + 5000;
+    const deadline = Date.now() + scaledMs(5000);
     while (blockedRequests === 0 && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 20));
     assert.ok(blockedRequests > 0, "the restored blocked renderer must have started");
     const endpoint = await readDevToolsActivePort(path.join(copyDir, "DevToolsActivePort"));

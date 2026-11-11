@@ -7,8 +7,9 @@ import { startApp } from "../../src/app/server";
 import type { HelperStatus } from "../../src/helper-capabilities";
 import { MacOsHelper } from "../../src/proxy/os-macos";
 import { testChromium } from "../../src/test-browser";
+import { scaledMs } from "../runtime";
 
-test("app status and UI never ask for retired Chrome helper permissions", { timeout: 60_000 }, async (t) => {
+test("app status and UI never ask for retired Chrome helper permissions", { timeout: scaledMs(60_000) }, async (t) => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-permissions-"));
   const previousHome = process.env.HOME;
   const previousHelper = process.env.BAO_OS_HELPER;
@@ -96,7 +97,7 @@ test("app status and UI never ask for retired Chrome helper permissions", { time
   }
 });
 
-test("Settings shows whether Bao can read Google Chrome's folder and opens Files & Folders", { timeout: 60_000, skip: process.platform !== "darwin" && "Files & Folders is a macOS setting" }, async (t) => {
+test("Settings shows whether Bao can read Google Chrome's folder and opens Files & Folders", { timeout: scaledMs(60_000), skip: process.platform !== "darwin" && "Files & Folders is a macOS setting" }, async (t) => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-chrome-folder-"));
   const profiles = path.join(home, "profiles");
   await mkdir(path.join(profiles, "Default"), { recursive: true });

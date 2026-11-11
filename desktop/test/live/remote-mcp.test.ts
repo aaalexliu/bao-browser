@@ -19,6 +19,7 @@ import { Library } from "../../src/v1/store";
 import { pairDevice } from "../../src/v1/sync";
 import { saveRelay } from "../../src/v1/relay-link";
 import { testArtifacts } from "../artifacts";
+import { scaledMs } from "../runtime";
 
 const PASSWORD = "fixture-pass-value";
 const COOKIE = "session=super-secret-cookie";
@@ -34,7 +35,7 @@ function oneAtATime<T>(run: () => Promise<T>): Promise<T> {
   return result;
 }
 
-test("remote MCP stays closed without BAO_REMOTE_MCP", { timeout: 720_000 }, async () => oneAtATime(async () => {
+test("remote MCP stays closed without BAO_REMOTE_MCP", { timeout: scaledMs(720_000) }, async () => oneAtATime(async () => {
   const root = mkdtempSync(path.join(tmpdir(), "bao-remote-off-"));
   const logs: string[] = [];
   const registry = await startRegistry(root, logs, false);
@@ -76,7 +77,7 @@ test("remote MCP stays closed without BAO_REMOTE_MCP", { timeout: 720_000 }, asy
   }
 }));
 
-test("remote MCP runs a workflow on one Mac", { timeout: 720_000 }, async () => oneAtATime(async () => {
+test("remote MCP runs a workflow on one Mac", { timeout: scaledMs(720_000) }, async () => oneAtATime(async () => {
   process.env.BAO_CHROME_NO_SANDBOX = "1";
   process.env.BAO_HEAL_CURSOR_ACCOUNT = "0";
   mkdirSync(SHOTS, { recursive: true });
@@ -148,8 +149,8 @@ test("remote MCP runs a workflow on one Mac", { timeout: 720_000 }, async () => 
       recordVideo: { dir: videoDir, size: { width: 1280, height: 800 } },
     });
     page = await context.newPage();
-    await page.goto(`http://127.0.0.1:${appA.port}/`, { waitUntil: "domcontentloaded", timeout: 60_000 });
-    await page.waitForSelector("#rail", { timeout: 20_000 });
+    await page.goto(`http://127.0.0.1:${appA.port}/`, { waitUntil: "domcontentloaded", timeout: scaledMs(60_000) });
+    await page.waitForSelector("#rail", { timeout: scaledMs(20_000) });
 
     const method = await fetch(`${origin}/mcp`);
     assert.equal(method.status, 405, await method.text());
@@ -190,7 +191,7 @@ test("remote MCP runs a workflow on one Mac", { timeout: 720_000 }, async () => 
       copyFileSync(video, path.join(ARTIFACTS, "remote-run.webm"));
     }
     page = await context.newPage();
-    await page.goto(`http://127.0.0.1:${appA.port}/`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+    await page.goto(`http://127.0.0.1:${appA.port}/`, { waitUntil: "domcontentloaded", timeout: scaledMs(60_000) });
 
     const wall = await tool(origin, tokenA.token, "run_workflow", { id: "bot-wall" });
     assert.equal(wall.json.outcome, "needs_human", JSON.stringify(wall.json));
@@ -212,7 +213,7 @@ test("remote MCP runs a workflow on one Mac", { timeout: 720_000 }, async () => 
         assert.ok(sitePage, "held site page missing");
         await sitePage.click(selector);
         if (selector !== "#place-order") await sitePage.waitForURL(`${site.origin}/ready`);
-        else await page!.waitForSelector("#remote-agent", { state: "hidden", timeout: 30_000 });
+        else await page!.waitForSelector("#remote-agent", { state: "hidden", timeout: scaledMs(30_000) });
         const resumed = await tool(origin, tokenA.token, "resume_workflow", { resume: token });
         assert.equal(resumed.json.outcome, "ok", JSON.stringify(resumed.json));
         if (selector === "#place-order") assert.equal(resumed.json.runId, paused.json.runId);
@@ -223,7 +224,7 @@ test("remote MCP runs a workflow on one Mac", { timeout: 720_000 }, async () => 
 
     const beforePlace = (await site.state()).placed;
     const paused = await tool(origin, tokenA.token, "run_workflow", { id: "place-order" });
-    await page.waitForSelector("[data-testid=remote-waiting]", { timeout: 30_000 });
+    await page.waitForSelector("[data-testid=remote-waiting]", { timeout: scaledMs(30_000) });
     await shot(page, "remote-waiting.png");
     assert.equal(paused.json.outcome, "needs_human", JSON.stringify(paused.json));
     const resumeToken = String(paused.json.resume || paused.json.resume_token || "");
@@ -236,7 +237,7 @@ test("remote MCP runs a workflow on one Mac", { timeout: 720_000 }, async () => 
     assert.equal((await site.state()).placed, beforePlace + 1);
 
     const killing = tool(origin, tokenA.token, "run_workflow", { id: "slow-bao" });
-    await page.waitForSelector("[data-testid=remote-kill]", { timeout: 20_000 });
+    await page.waitForSelector("[data-testid=remote-kill]", { timeout: scaledMs(20_000) });
     await waitFor(async () => (await site.state()).phase === "working", 20_000, "slow run did not start");
     await shot(page, "remote-running.png");
     await page.click("[data-testid=remote-kill]");
@@ -412,7 +413,7 @@ function workflow(id: string, name: string, startUrl: string, steps: WorkflowV2[
 async function waitOnline(origin: string, token: string): Promise<void> {
   const start = Date.now();
   let last = "";
-  while (Date.now() - start < 20_000) {
+  while (Date.now() - start < scaledMs(20_000)) {
     const hit = await tool(origin, token, "search_workflows", { query: "Hello" });
     last = JSON.stringify(hit.json);
     if (hit.json.outcome === "ok") return;
@@ -469,7 +470,7 @@ async function uiState(port: number): Promise<{ remote?: { phase?: string } }> {
 
 async function waitFor(check: () => Promise<boolean>, timeoutMs: number, message: string): Promise<void> {
   const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
+  while (Date.now() - start < scaledMs(timeoutMs)) {
     if (await check()) return;
     await new Promise((resolve) => setTimeout(resolve, 150));
   }
@@ -581,7 +582,7 @@ async function startRegistry(root: string, logs: string[], enabled: boolean): Pr
   child.stderr?.on("data", (chunk: Buffer) => logs.push(chunk.toString()));
   const start = Date.now();
   let last = "";
-  while (Date.now() - start < 180_000) {
+  while (Date.now() - start < scaledMs(180_000)) {
     try {
       const res = await fetch(`${origin}/api/health`);
       last = await res.text();

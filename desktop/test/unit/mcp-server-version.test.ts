@@ -7,6 +7,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { scaledMs } from "../runtime";
 
 const dist = path.resolve(__dirname, "../../..");
 const root = path.resolve(dist, "../..");
@@ -156,7 +157,7 @@ test("a Bao.app reports the version in its Info.plist", async () => {
   } finally { rmSync(scratch, { recursive: true, force: true }); }
 });
 
-test("the eval live MCP server reports the Info.plist version", { timeout: 60_000 }, async () => {
+test("the eval live MCP server reports the Info.plist version", { timeout: scaledMs(60_000) }, async () => {
   const scratch = mkdtempSync(path.join(tmpdir(), "bao-mcp-version-"));
   try {
     const cli = stageApp(scratch, template);

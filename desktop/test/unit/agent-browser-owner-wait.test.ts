@@ -18,6 +18,7 @@ import { socketRoot } from "../../src/unix-socket";
 import { startExperianFixture } from "../experian/fixture";
 import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
 import { LIST_TARGETS } from "../support/fake-agent-browser";
+import { scaledMs } from "../runtime";
 
 pinTestBrowser();
 
@@ -143,7 +144,7 @@ for (const { browser, check, bare } of [
   { browser: "copy", check: "signin", bare: false }, { browser: "copy", check: "captcha", bare: false },
   { browser: "bao", check: "signin", bare: false }, { browser: "bao", check: "captcha", bare: false },
   { browser: "bao", check: "signin", bare: true },
-] as const) test(`pass-through ${browser} ${check} ${bare ? "bare open" : "URL"} waits privately then continues in the same window and Library run`, { timeout: 30_000 }, async (t) => {
+] as const) test(`pass-through ${browser} ${check} ${bare ? "bare open" : "URL"} waits privately then continues in the same window and Library run`, { timeout: scaledMs(30_000) }, async (t) => {
   const h = await ownerProxy(t);
   const { fixture, home, proxy, log, importCalls } = h;
   let observer: Awaited<ReturnType<typeof chromium.connectOverCDP>> | undefined;
@@ -227,7 +228,7 @@ for (const { browser, check, bare } of [
   } finally { await h.cleanup(browser, observer); }
 });
 
-test("an owner wait follows a later wall in its card, instruction, banner, and ready baseline", { timeout: 30_000 }, async (t) => {
+test("an owner wait follows a later wall in its card, instruction, banner, and ready baseline", { timeout: scaledMs(30_000) }, async (t) => {
   const h = await ownerProxy(t);
   const { proxy, fixture } = h;
   let observer: Awaited<ReturnType<typeof chromium.connectOverCDP>> | undefined;
@@ -264,7 +265,7 @@ test("an owner wait follows a later wall in its card, instruction, banner, and r
   } finally { await h.cleanup("copy", observer); }
 });
 
-test("a later wall re-injects its banner without activating or raising the window", { timeout: 45_000 }, async (t) => {
+test("a later wall re-injects its banner without activating or raising the window", { timeout: scaledMs(45_000) }, async (t) => {
   const front: string[] = [];
   const send = CdpSocket.prototype.send;
   t.mock.method(CdpSocket.prototype, "send", function (this: CdpSocket, ...args: Parameters<typeof send>) {
@@ -314,7 +315,7 @@ test("a later wall re-injects its banner without activating or raising the windo
   } finally { await h.cleanup("copy", observer); }
 });
 
-test("finish_task reports a wait the timer ended once, not on the next browser call", { timeout: 30_000 }, async (t) => {
+test("finish_task reports a wait the timer ended once, not on the next browser call", { timeout: scaledMs(30_000) }, async (t) => {
   const h = await ownerProxy(t);
   const { proxy, fixture } = h;
   let offset = 0;
@@ -337,7 +338,7 @@ test("finish_task reports a wait the timer ended once, not on the next browser c
   } finally { await h.cleanup("copy"); }
 });
 
-test("an owner wait nobody continues ends by itself at its limit, and a later open starts a new task that names the wait Bao ended", { timeout: 60_000 }, async (t) => {
+test("an owner wait nobody continues ends by itself at its limit, and a later open starts a new task that names the wait Bao ended", { timeout: scaledMs(60_000) }, async (t) => {
   const h = await ownerProxy(t);
   const { fixture, home, proxy } = h;
   const library = new Library(home);
@@ -393,7 +394,7 @@ test("an owner wait nobody continues ends by itself at its limit, and a later op
   } finally { await h.cleanup("copy"); }
 });
 
-test("a wait_for_owner, close, or finish_task that names a run a newer open ended leaves the newer chat's session alone, in either order", { timeout: 90_000 }, async (t) => {
+test("a wait_for_owner, close, or finish_task that names a run a newer open ended leaves the newer chat's session alone, in either order", { timeout: scaledMs(90_000) }, async (t) => {
   for (const order of ["chat A first", "chat B waits first"] as const) await t.test(order, async (t) => {
     const h = await ownerProxy(t);
     const { fixture, proxy } = h;
@@ -466,7 +467,7 @@ test("a wait_for_owner, close, or finish_task that names a run a newer open ende
   });
 });
 
-test("a first wait_for_owner on a check Bao did not recognize sends back the open's run id, and a later command needs that run id", { timeout: 60_000 }, async (t) => {
+test("a first wait_for_owner on a check Bao did not recognize sends back the open's run id, and a later command needs that run id", { timeout: scaledMs(60_000) }, async (t) => {
   const h = await ownerProxy(t);
   const { fixture, proxy } = h;
   try {
@@ -490,7 +491,7 @@ function traceStderr(t: TestContext): string[] {
   return traced;
 }
 
-test("a cleanup failure while a newer open ends a wait names no ended run and still starts", { timeout: 60_000 }, async (t) => {
+test("a cleanup failure while a newer open ends a wait names no ended run and still starts", { timeout: scaledMs(60_000) }, async (t) => {
   let fail = true;
   const failed: string[] = [];
   const remove = fsp.rm;
@@ -527,7 +528,7 @@ test("a cleanup failure while a newer open ends a wait names no ended run and st
   }
 });
 
-test("a cleanup failure while a newer open ends a wait past its limit still starts and names no ended run", { timeout: 60_000 }, async (t) => {
+test("a cleanup failure while a newer open ends a wait past its limit still starts and names no ended run", { timeout: scaledMs(60_000) }, async (t) => {
   let fail = true;
   const failed: string[] = [];
   const remove = fsp.rm;
@@ -570,7 +571,7 @@ function isProxyStateDir(file: unknown): boolean {
   return path.basename(name).startsWith("proxy-") && path.basename(path.dirname(name)).startsWith("bao-");
 }
 
-test("a same-chat open during an owner wait continues that task and keeps the wait", { timeout: 60_000 }, async (t) => {
+test("a same-chat open during an owner wait continues that task and keeps the wait", { timeout: scaledMs(60_000) }, async (t) => {
   const h = await ownerProxy(t);
   const { fixture, home, proxy } = h;
   const library = new Library(home);

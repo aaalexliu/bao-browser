@@ -4,16 +4,17 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, 
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { scaledMs } from "../runtime";
 
 const root = path.resolve(__dirname, "../../../../..");
 const source = path.join(root, "desktop/packaging/mcpb/server.cjs");
 
-test("official MCPB tooling validates and packs the install artifact", { timeout: 30_000 }, () => {
+test("official MCPB tooling validates and packs the install artifact", { timeout: scaledMs(30_000) }, () => {
   const home = realpathSync(mkdtempSync(path.join(tmpdir(), "bao-mcpb-test-")));
   try {
     const output = path.join(home, "bao.mcpb");
     const built = spawnSync(process.execPath, [path.join(root, "desktop/packaging/build-mcpb.mjs"), output], {
-      cwd: home, env: { ...process.env, HOME: home, BAO_HEAL_CURSOR_ACCOUNT: "0" }, encoding: "utf8", timeout: 25_000,
+      cwd: home, env: { ...process.env, HOME: home, BAO_HEAL_CURSOR_ACCOUNT: "0" }, encoding: "utf8", timeout: scaledMs(25_000),
     });
     assert.equal(built.status, 0, built.stdout + built.stderr);
     assert.match(built.stdout, /Manifest schema validation passes/);
@@ -57,12 +58,12 @@ cp.spawn = (command, args, options) => {
   assert.equal(command, "/Applications/Bao.app/Contents/MacOS/bao-mcp");
   return spawn(${JSON.stringify(launcher)}, args, options);
 };\n`);
-    const relayed = spawnSync(process.execPath, ["--require", preload, source], { cwd: home, env, input, encoding: "utf8", timeout: 10_000 });
+    const relayed = spawnSync(process.execPath, ["--require", preload, source], { cwd: home, env, input, encoding: "utf8", timeout: scaledMs(10_000) });
     assert.equal(relayed.status, 0, relayed.stderr);
     assert.equal(relayed.stdout, input);
     assert.equal(relayed.stderr, 'launcher fixture\n');
     rmSync(launcher);
-    const missing = spawnSync(process.execPath, ["--require", preload, source], { cwd: home, env, encoding: "utf8", timeout: 10_000 });
+    const missing = spawnSync(process.execPath, ["--require", preload, source], { cwd: home, env, encoding: "utf8", timeout: scaledMs(10_000) });
     assert.equal(missing.status, 1);
     assert.equal(missing.stdout, "");
     assert.equal(missing.stderr, "Cannot start Bao. Install Bao.app.\n");

@@ -18,6 +18,7 @@ import { connectCdp } from "../../src/cdp-live/socket";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { testChromium } from "../../src/test-browser";
 import type { WorkflowV2 } from "../../src/v1/schema";
+import { scaledMs } from "../runtime";
 
 const workflow = (startUrl: string, id = "choice"): WorkflowV2 => (testWorkflow({ schema: "bao.workflow/v4", id, name: "Read account", startUrl, inputs: [], createdAt: 1,
   steps: [{
@@ -77,7 +78,7 @@ test("replay copies drop only saved tabs in the selected profile; agent copies k
   }
 });
 
-test("the running app marks Running Chrome default, keeps the chosen browser, and replays with lasting sign-ins", { timeout: 150_000 }, async (t) => {
+test("the running app marks Running Chrome default, keeps the chosen browser, and replays with lasting sign-ins", { timeout: scaledMs(150_000) }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-choice-ui-"));
   const sourceRoot = path.join(root, "source");
   await mkdir(path.join(sourceRoot, "Default"), { recursive: true });
@@ -127,7 +128,7 @@ test("the running app marks Running Chrome default, keeps the chosen browser, an
   assert.equal(await choices.getByRole("radio").count(), 3);
   assert.equal(await choices.getByRole("radio", { name: "Running Chrome (default)" }).isChecked(), true);
   await choices.getByRole("radio", { name: "Fresh Chrome copy" }).check();
-  await page.waitForTimeout(1100);
+  await page.waitForTimeout(scaledMs(1100));
   assert.equal(await choices.getByRole("radio", { name: "Fresh Chrome copy" }).isChecked(), true);
   await choices.getByRole("radio", { name: "Bao profile", exact: true }).check();
   const request = page.waitForRequest((request) => request.url().endsWith("/api/replay") && request.method() === "POST");
@@ -200,7 +201,7 @@ test("the running app marks Running Chrome default, keeps the chosen browser, an
   await rm(root, { recursive: true, force: true });
 });
 
-test("a retained Bao session closes gracefully before reopening its saved sign-in", { timeout: 30_000 }, async (t) => {
+test("a retained Bao session closes gracefully before reopening its saved sign-in", { timeout: scaledMs(30_000) }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-retained-reopen-"));
   const profile = path.join(root, "agent-browser-profile");
   await chromeProfiles(path.join(root, "source"));
@@ -227,7 +228,7 @@ test("a retained Bao session closes gracefully before reopening its saved sign-i
       const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
       try { await cdp.send("Browser.close").catch(() => undefined); }
       finally { cdp.close(); }
-      const deadline = Date.now() + 5000;
+      const deadline = Date.now() + scaledMs(5000);
       while (pidsForDataDir(profile).length && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
     }
     await session.close();
@@ -236,7 +237,7 @@ test("a retained Bao session closes gracefully before reopening its saved sign-i
   }
 });
 
-test("copy and current runs leave the app Sign in window open", { timeout: 60_000 }, async (t) => {
+test("copy and current runs leave the app Sign in window open", { timeout: scaledMs(60_000) }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-choice-signin-"));
   const home = path.join(root, "bao");
   const sourceRoot = path.join(root, "source");
@@ -304,7 +305,7 @@ test("copy and current runs leave the app Sign in window open", { timeout: 60_00
   }
 });
 
-test("current workflow replay closes its task tab and leaves the attached Chrome and the owner's tabs open", { timeout: 30_000 }, async (t) => {
+test("current workflow replay closes its task tab and leaves the attached Chrome and the owner's tabs open", { timeout: scaledMs(30_000) }, async (t) => {
   const root = await chromeProfiles(await realpath(await mkdtemp(path.join(tmpdir(), "bao-choice-current-"))));
   const owner = await launchOwnedChromeEndpoint({ userDataDir: root, headless: true, args: ["--no-startup-window"] });
   t.after(async () => { await owner.close(); await rm(root, { recursive: true, force: true }); });
@@ -324,7 +325,7 @@ test("current workflow replay closes its task tab and leaves the attached Chrome
   await session.close();
   // Target.closeTarget answers before Chrome destroys the tab.
   let pages: string[] = [];
-  for (const deadline = Date.now() + 3000; Date.now() < deadline; await new Promise((resolve) => setTimeout(resolve, 50))) {
+  for (const deadline = Date.now() + scaledMs(3000); Date.now() < deadline; await new Promise((resolve) => setTimeout(resolve, 50))) {
     pages = (await cdp.send<{ targetInfos: { targetId: string; type: string }[] }>("Target.getTargets")).targetInfos.filter((target) => target.type === "page").map((target) => target.targetId);
     if (pages.length === 1) break;
   }

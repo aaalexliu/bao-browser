@@ -15,6 +15,7 @@ import { releaseHash } from "../../../web/src/lib/publish";
 import { testArtifacts } from "../artifacts";
 import type { Identity, WorkflowStep, WorkflowV2 } from "../../src/v1/schema";
 import { targetFor, testWorkflow } from "../support/workflow";
+import { scaledMs } from "../runtime";
 
 process.env.TZ = "America/New_York";
 process.env.BAO_CHROME_NO_SANDBOX = "1";
@@ -22,7 +23,7 @@ const TEST_BROWSER = pinTestBrowser();
 
 const shots = testArtifacts("import-gate");
 
-test("import sheet and a blocked publish", { timeout: 300_000 }, async () => {
+test("import sheet and a blocked publish", { timeout: scaledMs(300_000) }, async () => {
   const root = mkdtempSync(path.join(tmpdir(), "bao-gate-live-"));
   const port = await freePort();
   const origin = `http://127.0.0.1:${port}`;
@@ -248,7 +249,7 @@ async function signIn(origin: string, email: string): Promise<string> {
 async function waitHealth(origin: string, logs: string[]): Promise<void> {
   const start = Date.now();
   let last = "";
-  while (Date.now() - start < 120_000) {
+  while (Date.now() - start < scaledMs(120_000)) {
     try {
       const res = await fetch(`${origin}/api/health`);
       last = await res.text();

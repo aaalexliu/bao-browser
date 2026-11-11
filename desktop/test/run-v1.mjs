@@ -1,7 +1,11 @@
-import { spawn, execFileSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { rmSync } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { compiledTestPlan, laneChildEnv, playwrightVersionError } from "../dist/desktop/test/runtime.js";
+import { runWithFileRetry } from "./retry-run.mjs";
+
+const { scaledMs } = createRequire(import.meta.url)("./time-scale.cjs");
 
 const versionError = playwrightVersionError();
 if (versionError) {
@@ -26,11 +30,11 @@ if (plan.missing.length) {
 
 const files = plan.run.map((name) => path.join(distDir, name));
 const env = laneChildEnv("hermetic", process.env);
-const child = spawn(process.execPath, ["--test", isolationArg(), "--test-concurrency=2", "--test-timeout=120000", ...process.argv.slice(2), ...files], {
+const result = await runWithFileRetry({
+  execPath: process.execPath,
+  args: ["--test", isolationArg(), "--test-concurrency=2", `--test-timeout=${scaledMs(120_000)}`, ...process.argv.slice(2)],
+  files,
   env,
-  stdio: "inherit",
 });
-child.on("exit", (code, signal) => {
-  if (signal) process.kill(process.pid, signal);
-  process.exit(code ?? 1);
-});
+if (result.signal) process.kill(process.pid, result.signal);
+process.exit(result.code);

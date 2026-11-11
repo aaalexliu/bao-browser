@@ -17,6 +17,7 @@ import type { WorkflowStep } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { chromeProfiles } from "../support/chrome-profiles";
 import { targetFor, testWorkflow } from "../support/workflow";
+import { scaledMs } from "../runtime";
 
 pinTestBrowser();
 
@@ -34,7 +35,7 @@ const MISS: WorkflowStep = { id: "miss", index: 0, action: "verify", caption: { 
 const HOLD: WorkflowStep = { id: "apply", index: 0, action: "handoff", reason: "owner-press", caption: { text: "Confirm before Save" }, target: target("b", "button"),
   check: { kind: "text", match: "never", timeoutMs: 1000 }, timeoutMs: 1000 };
 
-test("a workflow run on the owner's Chrome closes its own tab, and leaves it when Keep window open is on", { skip: replaySkip, timeout: 120_000 }, async (t) => {
+test("a workflow run on the owner's Chrome closes its own tab, and leaves it when Keep window open is on", { skip: replaySkip, timeout: scaledMs(120_000) }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-workflow-tab-close-"));
   const server = createServer((_request, response) => {
     response.setHeader("content-type", "text/html");
@@ -78,7 +79,7 @@ test("a workflow run on the owner's Chrome closes its own tab, and leaves it whe
     const before = new Set((await pages()).map((item) => item.targetId));
     let found = "";
     const watching = (async () => {
-      for (const deadline = Date.now() + 20_000; !found && Date.now() < deadline; await new Promise((resolve) => setTimeout(resolve, 20))) {
+      for (const deadline = Date.now() + scaledMs(20_000); !found && Date.now() < deadline; await new Promise((resolve) => setTimeout(resolve, 20))) {
         found = (await pages()).find((item) => !before.has(item.targetId) && item.url === taskUrl)?.targetId ?? "";
       }
     })();
@@ -88,13 +89,13 @@ test("a workflow run on the owner's Chrome closes its own tab, and leaves it whe
     return found;
   };
   const stayed = async (targetId: string): Promise<void> => {
-    for (const deadline = Date.now() + 1500; Date.now() < deadline; await new Promise((resolve) => setTimeout(resolve, 50))) {
+    for (const deadline = Date.now() + scaledMs(1500); Date.now() < deadline; await new Promise((resolve) => setTimeout(resolve, 50))) {
       assert.ok((await pages()).some((item) => item.targetId === targetId), "the run's tab must stay open");
     }
     assert.equal(closedTargets.includes(targetId), false);
   };
   const gone = async (targetId: string): Promise<void> => {
-    for (const deadline = Date.now() + 3000; Date.now() < deadline; await new Promise((resolve) => setTimeout(resolve, 50))) {
+    for (const deadline = Date.now() + scaledMs(3000); Date.now() < deadline; await new Promise((resolve) => setTimeout(resolve, 50))) {
       if (!(await pages()).some((item) => item.targetId === targetId)) {
         assert.equal(closedTargets.includes(targetId), true, "release closes the run's own tab");
         return;

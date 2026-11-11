@@ -5,6 +5,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, sy
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { scaledMs } from "../runtime";
 
 // macOS asks the app responsible for a process before it reads Google Chrome's folder.
 // These tests build a Bao.app from the real launchers and check which process macOS would ask.
@@ -46,7 +47,7 @@ function bundle(root: string, cert: boolean): { bao: string; mcp: string; cli: s
     "int bao_notify_prepare(const char *path) { (void)path; return -1; }",
     "int bao_window_run(const char *url, int pid) { (void)url; (void)pid; return 1; }",
   ].join("\n"));
-  const compile = (args: string[]) => execFileSync("cc", [...C_FLAGS, ...args], { stdio: "inherit", timeout: 60_000 });
+  const compile = (args: string[]) => execFileSync("cc", [...C_FLAGS, ...args], { stdio: "inherit", timeout: scaledMs(60_000) });
   const bao = path.join(macos, "bao");
   compile([...cert ? ["-DBAO_CERT_SIGNED"] : [], path.join(MACOS, "bao-main.c"), path.join(MACOS, "bao-launch.c"), path.join(MACOS, "bao-run-node.c"), stub, "-o", bao]);
   compile([path.join(MACOS, "bao-mcp.c"), path.join(MACOS, "bao-launch.c"), "-o", path.join(macos, "bao-mcp")]);
@@ -101,7 +102,7 @@ function host(root: string): string {
     "  return WIFEXITED(status) ? WEXITSTATUS(status) : 1;",
     "}",
   ].join("\n"));
-  execFileSync("cc", [...C_FLAGS, `${file}.c`, "-o", file], { stdio: "inherit", timeout: 60_000 });
+  execFileSync("cc", [...C_FLAGS, `${file}.c`, "-o", file], { stdio: "inherit", timeout: scaledMs(60_000) });
   return file;
 }
 
@@ -127,7 +128,7 @@ function env(root: string, extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
 
 /** Runs the launcher under an agent app and returns what the agent and the stand-in server saw. */
 function underAgent(root: string, launcher: string, args: string[] = [], input = "ping\n") {
-  const ran = spawnSync(host(root), [process.execPath, agent(root), launcher, ...args], { env: env(root), input, encoding: "utf8", timeout: 20_000 });
+  const ran = spawnSync(host(root), [process.execPath, agent(root), launcher, ...args], { env: env(root), input, encoding: "utf8", timeout: scaledMs(20_000) });
   const [first, second, ...rest] = ran.stdout.split("\n");
   return { status: ran.status, stderr: ran.stderr, agent: JSON.parse(first!) as { agent: number; launcher: number }, seen: JSON.parse(second!) as Seen, rest };
 }
@@ -153,7 +154,7 @@ test("in an ad-hoc build, macOS asks the agent's app for bao-mcp and asks Bao fo
     assert.equal(cli.rest[0], "ping");
 
     // Claude Desktop starts bao-mcp through a helper that makes it answer for itself. Bao, not Node, then answers.
-    const direct = spawnSync(host(root), [app.mcp], { env: env(root), input: "", encoding: "utf8", timeout: 20_000 });
+    const direct = spawnSync(host(root), [app.mcp], { env: env(root), input: "", encoding: "utf8", timeout: scaledMs(20_000) });
     assert.equal(direct.status, 0, direct.stderr);
     const seen = JSON.parse(direct.stdout.split("\n")[0]!) as Seen;
     assert.deepEqual(seen.responsible, { pid: seen.ppid, exe: app.bao });
@@ -207,18 +208,18 @@ test("bao --run-node runs only the bundle's cli.js, with Bao's own Node and no c
     const app = bundle(root, true);
     const bad = intruders(root);
     const shell = spawnSync(app.bao, ["--run-node", "--own", "/bin/sh", "-c", `touch ${JSON.stringify(path.join(root, "ran-shell"))}`],
-      { env: env(root), encoding: "utf8", timeout: 20_000 });
+      { env: env(root), encoding: "utf8", timeout: scaledMs(20_000) });
     assert.equal(shell.status, 2);
     assert.match(shell.stderr, /^bao: --run-node runs only .+\/Bao\.app\/Contents\/Resources\/bao\/src\/app\/cli\.js, not \/bin\/sh\n$/);
 
     const other = path.join(root, "other.js");
     writeFileSync(other, `require("node:fs").writeFileSync(${JSON.stringify(path.join(root, "ran-shell"))}, "");\n`);
-    const script = spawnSync(app.bao, ["--run-node", other], { env: env(root), encoding: "utf8", timeout: 20_000 });
+    const script = spawnSync(app.bao, ["--run-node", other], { env: env(root), encoding: "utf8", timeout: scaledMs(20_000) });
     assert.equal(script.status, 2);
     assert.match(script.stderr, /runs only .+cli\.js, not .+other\.js/);
 
     // An agent that names its own Node and preload gets Bao's Node, without the preload.
-    const mcp = spawnSync(app.mcp, [], { env: env(root, { BAO_NODE: bad.node, NODE_OPTIONS: `--require ${bad.preload}` }), input: "ping\n", encoding: "utf8", timeout: 20_000 });
+    const mcp = spawnSync(app.mcp, [], { env: env(root, { BAO_NODE: bad.node, NODE_OPTIONS: `--require ${bad.preload}` }), input: "ping\n", encoding: "utf8", timeout: scaledMs(20_000) });
     assert.equal(mcp.status, 0, mcp.stderr);
     const [first, echoed] = mcp.stdout.split("\n");
     const seen = JSON.parse(first!) as Seen;

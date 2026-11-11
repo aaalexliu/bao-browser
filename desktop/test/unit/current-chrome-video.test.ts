@@ -18,6 +18,7 @@ import { launchOwnedChromeEndpoint, pinTestBrowser } from "../../src/launch";
 import { Library } from "../../src/v1/store";
 import { ffmpegBin } from "../../src/v1/replay-video";
 import { chromeProfiles } from "../support/chrome-profiles";
+import { scaledMs } from "../runtime";
 
 pinTestBrowser();
 const ffmpeg = ffmpegBin();
@@ -71,13 +72,13 @@ function frames(file: string): Buffer[] {
   return pixels;
 }
 
-for (const end of ["tab closes", "CDP disconnects"] as const) test(`tab video follows the agent target and survives when ${end}`, { skip: !ffmpeg, timeout: 30_000 }, async () => {
+for (const end of ["tab closes", "CDP disconnects"] as const) test(`tab video follows the agent target and survives when ${end}`, { skip: !ffmpeg, timeout: scaledMs(30_000) }, async () => {
   const f = await fixture();
   const run = new AgentBrowserRun(path.join(f.root, "home"));
   try {
     const open = async (url: string) => {
       const { targetId } = await f.cdp.send<{ targetId: string }>("Target.createTarget", { url });
-      const deadline = Date.now() + 5000;
+      const deadline = Date.now() + scaledMs(5000);
       while (!await evaluate(f.cdp, targetId, `document.readyState === 'complete' && location.href === ${JSON.stringify(url)}`)) {
         assert.ok(Date.now() < deadline, "fixture page loaded");
         await wait(20);
@@ -110,13 +111,13 @@ for (const end of ["tab closes", "CDP disconnects"] as const) test(`tab video fo
   } finally { await run.endVideoCapture(); await run.encodeVideo(); await f.close(); }
 });
 
-test("tab video omits frames painted during an owner wait", { skip: !ffmpeg, timeout: 30_000 }, async () => {
+test("tab video omits frames painted during an owner wait", { skip: !ffmpeg, timeout: scaledMs(30_000) }, async () => {
   const f = await fixture();
   const run = new AgentBrowserRun(path.join(f.root, "home"));
   try {
     const url = `${f.base}/red`;
     const { targetId } = await f.cdp.send<{ targetId: string }>("Target.createTarget", { url });
-    const deadline = Date.now() + 5000;
+    const deadline = Date.now() + scaledMs(5000);
     while (!await evaluate(f.cdp, targetId, `document.readyState === 'complete' && location.href === ${JSON.stringify(url)}`)) {
       assert.ok(Date.now() < deadline, "fixture page loaded");
       await wait(20);
@@ -143,13 +144,13 @@ test("tab video omits frames painted during an owner wait", { skip: !ffmpeg, tim
   } finally { await run.endVideoCapture(); await run.encodeVideo(); await f.close(); }
 });
 
-test("a capture started during an owner wait omits the wait and resumes after it", { skip: !ffmpeg, timeout: 30_000 }, async () => {
+test("a capture started during an owner wait omits the wait and resumes after it", { skip: !ffmpeg, timeout: scaledMs(30_000) }, async () => {
   const f = await fixture();
   const run = new AgentBrowserRun(path.join(f.root, "home"));
   try {
     const url = `${f.base}/red`;
     const { targetId } = await f.cdp.send<{ targetId: string }>("Target.createTarget", { url });
-    const deadline = Date.now() + 5000;
+    const deadline = Date.now() + scaledMs(5000);
     while (!await evaluate(f.cdp, targetId, `document.readyState === 'complete' && location.href === ${JSON.stringify(url)}`)) {
       assert.ok(Date.now() < deadline, "fixture page loaded");
       await wait(20);
@@ -173,7 +174,7 @@ test("a capture started during an owner wait omits the wait and resumes after it
   } finally { await run.endVideoCapture(); await run.encodeVideo(); await f.close(); }
 });
 
-test("unavailable tab recording does not fail commands or their receipt", { timeout: 30_000 }, async (t) => {
+test("unavailable tab recording does not fail commands or their receipt", { timeout: scaledMs(30_000) }, async (t) => {
   const f = await fixture();
   const home = path.join(f.root, "home");
   const run = new AgentBrowserRun(home);
@@ -202,7 +203,7 @@ test("unavailable tab recording does not fail commands or their receipt", { time
   } finally { await f.close(); }
 });
 
-test("Running Chrome records the background task without changing the owner tab, and saves video on finish, close and disconnect", { skip: !binary || !ffmpeg, timeout: 90_000 }, async (t) => {
+test("Running Chrome records the background task without changing the owner tab, and saves video on finish, close and disconnect", { skip: !binary || !ffmpeg, timeout: scaledMs(90_000) }, async (t) => {
   const f = await fixture();
   const probe = await connectCdp(f.endpoint.port, f.endpoint.browserPath);
   t.mock.method(currentChrome, "openCurrentChrome", async () => {
@@ -214,7 +215,7 @@ test("Running Chrome records the background task without changing the owner tab,
   });
   try {
     const { targetId: owner } = await probe.send<{ targetId: string }>("Target.createTarget", { url: `${f.base}/owner` });
-    const ownerReady = Date.now() + 5000;
+    const ownerReady = Date.now() + scaledMs(5000);
     while (!await evaluate(probe, owner, `document.readyState === 'complete' && location.href === ${JSON.stringify(`${f.base}/owner`)}`)) {
       assert.ok(Date.now() < ownerReady, "owner fixture page loaded");
       await wait(20);
@@ -244,7 +245,7 @@ test("Running Chrome records the background task without changing the owner tab,
         assert.ok((await readFile(path.join(home, "videos", run.video!))).length > 1000);
         assert.deepEqual(await evaluate(probe, owner, "({visibility:document.visibilityState,events:ownerEvents})"), { visibility: "visible", events: [] });
         let pages: string[] = [];
-        const deadline = Date.now() + 2000;
+        const deadline = Date.now() + scaledMs(2000);
         do {
           const { targetInfos } = await probe.send<{ targetInfos: { type: string; targetId: string }[] }>("Target.getTargets");
           pages = targetInfos.filter(target => target.type === "page").map(target => target.targetId);
@@ -296,7 +297,7 @@ setInterval(() => {}, 1000);
     const videos = path.join(home, "videos");
     assert.equal((await readdir(videos)).filter((name) => name.includes(".frames-")).length, 1);
     const encoding = run.encodeVideo();
-    const started = Date.now() + 5000;
+    const started = Date.now() + scaledMs(5000);
     while (!existsSync(pidFile)) {
       assert.ok(Date.now() < started, "encoder started");
       await wait(20);
@@ -306,7 +307,7 @@ setInterval(() => {}, 1000);
     assert.equal(existsSync(path.join(videos, `${run.id}.mp4`)), true);
     assert.doesNotThrow(() => process.kill(pid, 0));
     abandonVideoOnHostStop();
-    const gone = Date.now() + 2000;
+    const gone = Date.now() + scaledMs(2000);
     while (Date.now() < gone) {
       try { process.kill(pid, 0); }
       catch { break; }
@@ -428,7 +429,7 @@ setInterval(() => {}, 1000);
     await live.recordTab(socket(), "tab");
     await live.endVideoCapture();
     const encoding = live.encodeVideo();
-    const started = Date.now() + 5000;
+    const started = Date.now() + scaledMs(5000);
     while (!existsSync(pidFile)) {
       assert.ok(Date.now() < started, "encoder started");
       await wait(20);
@@ -436,7 +437,7 @@ setInterval(() => {}, 1000);
     pid = Number(await readFile(pidFile, "utf8"));
     assert.doesNotThrow(() => process.kill(pid, 0));
     abandonVideoOnHostStop();
-    const gone = Date.now() + 2000;
+    const gone = Date.now() + scaledMs(2000);
     while (Date.now() < gone) {
       try { process.kill(pid, 0); }
       catch { break; }

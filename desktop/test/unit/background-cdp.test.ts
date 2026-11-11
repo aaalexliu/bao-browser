@@ -8,6 +8,7 @@ import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { connectCdp } from "../../src/cdp-live/socket";
 import { keepBehind, openBackgroundCdp } from "../../src/engines/background-cdp";
 import { launchOwnedChromeEndpoint, pinTestBrowser } from "../../src/launch";
+import { scaledMs } from "../runtime";
 
 pinTestBrowser();
 
@@ -20,7 +21,7 @@ test("agent commands that would bring Bao's Chrome forward are answered in place
   assert.deepEqual(keepBehind(navigate), { forward: navigate });
 });
 
-test("a refused Chrome debugging connection is retried before the agent gets a gateway error", { timeout: 5_000 }, async () => {
+test("a refused Chrome debugging connection is retried before the agent gets a gateway error", { timeout: scaledMs(5_000) }, async () => {
   const chrome = net.createServer();
   let attempts = 0;
   chrome.on("connection", (socket) => {
@@ -50,7 +51,7 @@ test("a refused Chrome debugging connection is retried before the agent gets a g
   }
 });
 
-test("the agent's endpoint keeps Chrome behind, gives each page focus, and hides Bao's own replies", { timeout: 60_000 }, async () => {
+test("the agent's endpoint keeps Chrome behind, gives each page focus, and hides Bao's own replies", { timeout: scaledMs(60_000) }, async () => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-background-cdp-"));
   const chrome = await launchOwnedChromeEndpoint({ userDataDir: path.join(root, "chrome"), headless: true, background: "window" });
   const endpoint = await readDevToolsActivePort(chrome.portFile);

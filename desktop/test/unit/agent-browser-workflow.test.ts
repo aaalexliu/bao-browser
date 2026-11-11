@@ -17,6 +17,7 @@ import { connectCdp } from "../../src/cdp-live/socket";
 import { launchOwnedChrome } from "../../src/launch";
 import { AgentBrowserWorkflow } from "../../src/engines/agent-browser-workflow";
 import { replayRefusal, CDP_LIVE_SERVER_REFUSAL } from "../../src/cdp-live/launch-guard";
+import { scaledMs } from "../runtime";
 
 const binary = process.env.AGENT_BROWSER_PROXY_BINARY;
 interface Result { content: { type: string; text?: string }[]; isError: boolean; structuredContent?: { command: string; run_id: string; step_id: string } }
@@ -116,7 +117,7 @@ async function passed(f: Awaited<ReturnType<typeof fixture>>, command: string, a
   return text(result);
 }
 
-test("a failed action with only viewport movement stays saveable after retry", { timeout: 30_000 }, async () => {
+test("a failed action with only viewport movement stays saveable after retry", { timeout: scaledMs(30_000) }, async () => {
   const f = await fixture();
   const profile = path.join(f.root, "effect-profile");
   const context = await launchOwnedChrome({ userDataDir: profile, headless: true });
@@ -157,7 +158,7 @@ test("a failed action with only viewport movement stays saveable after retry", {
   }
 });
 
-test("an unnamed recorded click keeps the plain caption", { timeout: 30_000 }, async () => {
+test("an unnamed recorded click keeps the plain caption", { timeout: scaledMs(30_000) }, async () => {
   const f = await fixture();
   const profile = path.join(f.root, "unnamed-profile");
   const context = await launchOwnedChrome({ userDataDir: profile, headless: true });
@@ -192,7 +193,7 @@ test("an unnamed recorded click keeps the plain caption", { timeout: 30_000 }, a
   }
 });
 
-test("an unnamed checkbox with only a nearby anchor is not saved", { timeout: 30_000 }, async () => {
+test("an unnamed checkbox with only a nearby anchor is not saved", { timeout: scaledMs(30_000) }, async () => {
   const f = await fixture();
   const profile = path.join(f.root, "checkbox-profile");
   const context = await launchOwnedChrome({ userDataDir: profile, headless: true });
@@ -224,7 +225,7 @@ test("an unnamed checkbox with only a nearby anchor is not saved", { timeout: 30
   }
 });
 
-test("native ref capture saves a discoverable workflow that replays with new inputs after DOM reordering", { skip: !binary, timeout: 120_000 }, async () => {
+test("native ref capture saves a discoverable workflow that replays with new inputs after DOM reordering", { skip: !binary, timeout: scaledMs(120_000) }, async () => {
   const f = await fixture();
   try {
     await passed(f, "open", [f.url]);
@@ -282,7 +283,7 @@ test("native ref capture saves a discoverable workflow that replays with new inp
   } finally { await f.close(); }
 });
 
-test("native clicks never substitute a structural ancestor for an unaddressable target", { skip: !binary, timeout: 60_000 }, async () => {
+test("native clicks never substitute a structural ancestor for an unaddressable target", { skip: !binary, timeout: scaledMs(60_000) }, async () => {
   const f = await fixture();
   try {
     for (const suffix of ["stores", "stores?testid"]) {
@@ -336,7 +337,7 @@ test("trial replay accepts only an explicit playwright driver and still refuses 
   }
 });
 
-test("trial engine finds and replays a saved search fill with a different result count", { skip: !binary, timeout: 60_000 }, async () => {
+test("trial engine finds and replays a saved search fill with a different result count", { skip: !binary, timeout: scaledMs(60_000) }, async () => {
   const f = await fixture();
   try {
     f.library.updateSettings({ pageEngine: "agent-browser", chromeProfile: "Default" });
@@ -361,7 +362,7 @@ test("trial engine finds and replays a saved search fill with a different result
   } finally { await f.close(); }
 });
 
-test("selecting the active native tab preserves workflow eligibility", { skip: !binary, timeout: 60_000 }, async () => {
+test("selecting the active native tab preserves workflow eligibility", { skip: !binary, timeout: scaledMs(60_000) }, async () => {
   const f = await fixture();
   try {
     await passed(f, "open", [f.url]);
@@ -379,7 +380,7 @@ test("selecting the active native tab preserves workflow eligibility", { skip: !
   } finally { await f.close(); }
 });
 
-test("harmless native failures preserve raw failed receipts and save only successful actions", { skip: !binary, timeout: 60_000 }, async () => {
+test("harmless native failures preserve raw failed receipts and save only successful actions", { skip: !binary, timeout: scaledMs(60_000) }, async () => {
   const f = await fixture();
   try {
     await passed(f, "open", [f.url]);
@@ -401,7 +402,7 @@ test("harmless native failures preserve raw failed receipts and save only succes
   } finally { await f.close(); }
 });
 
-test("completed owner handoffs save workflows but unfinished waits do not", { skip: !binary, timeout: 60_000 }, async () => {
+test("completed owner handoffs save workflows but unfinished waits do not", { skip: !binary, timeout: scaledMs(60_000) }, async () => {
   const f = await fixture();
   try {
     assert.match(await passed(f, "open", [f.url + "signin"]), /halted/);
@@ -419,7 +420,7 @@ test("completed owner handoffs save workflows but unfinished waits do not", { sk
   } finally { await f.close(); }
 });
 
-test("finished native captures explain why unsupported actions cannot become workflows", { skip: !binary, timeout: 120_000 }, async () => {
+test("finished native captures explain why unsupported actions cannot become workflows", { skip: !binary, timeout: scaledMs(120_000) }, async () => {
   const f = await fixture();
   try {
     const seen = new Set<string>();
@@ -452,7 +453,7 @@ test("finished native captures explain why unsupported actions cannot become wor
   } finally { await f.close(); }
 });
 
-test("native UI closing results retain capture receipt ids beside the workflow notice", { skip: !binary, timeout: 60_000 }, async () => {
+test("native UI closing results retain capture receipt ids beside the workflow notice", { skip: !binary, timeout: scaledMs(60_000) }, async () => {
   const f = await fixture(true);
   try {
     await passed(f, "open", [f.url]);
@@ -469,13 +470,13 @@ test("native UI closing results retain capture receipt ids beside the workflow n
   } finally { await f.close(); }
 });
 
-test("owner window close keeps an unfinished native task capture-only", { skip: !binary, timeout: 60_000 }, async () => {
+test("owner window close keeps an unfinished native task capture-only", { skip: !binary, timeout: scaledMs(60_000) }, async () => {
   const f = await fixture();
   try {
     await passed(f, "open", [f.url]);
     await passed(f, "click", ['[data-testid="chosen"]']);
     await f.closeWindow();
-    const deadline = Date.now() + 5000;
+    const deadline = Date.now() + scaledMs(5000);
     while (f.library.listRuns()[0]?.status === "recording" && Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
@@ -487,7 +488,7 @@ test("owner window close keeps an unfinished native task capture-only", { skip: 
   } finally { await f.close(); }
 });
 
-test("native disconnect finalizes the workflow without adding a close command to its capture", { skip: !binary, timeout: 60_000 }, async () => {
+test("native disconnect finalizes the workflow without adding a close command to its capture", { skip: !binary, timeout: scaledMs(60_000) }, async () => {
   const f = await fixture();
   try {
     await passed(f, "open", [f.url]);

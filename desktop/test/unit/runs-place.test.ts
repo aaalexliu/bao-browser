@@ -11,8 +11,9 @@ import type { WorkflowV2 } from "../../src/v1/schema";
 import type { inspectRunView } from "../../src/mcp/run-view";
 import { makeAsk } from "../../src/v1/human-ask";
 import { ROUTE_LABELS, type BrowserPick } from "../../src/engines/browser-pick";
+import { scaledMs } from "../runtime";
 
-test("Runs receipts name the saved browser and reason without guessing for older runs", { timeout: 60_000 }, async () => {
+test("Runs receipts name the saved browser and reason without guessing for older runs", { timeout: scaledMs(60_000) }, async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-runs-browser-"));
   const previousHome = process.env.HOME;
   process.env.HOME = home;
@@ -86,7 +87,7 @@ test("Runs receipts name the saved browser and reason without guessing for older
   }
 });
 
-test("Runs shows stored step reasons after workflow edits or deletion in both themes", { timeout: 30_000 }, async () => {
+test("Runs shows stored step reasons after workflow edits or deletion in both themes", { timeout: scaledMs(30_000) }, async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-runs-evidence-"));
   const previousHome = process.env.HOME;
   process.env.HOME = home;
@@ -226,7 +227,7 @@ test("attention separates waiting runs from items and keeps import and step revi
   assert.match(shellList("runs", { runs: [{ id: "done", workflowId: "wf", status: "passed" }] }), />Nothing needs you</);
 });
 
-test("footer follows replay start and end when no other state changes", { timeout: 30_000 }, async () => {
+test("footer follows replay start and end when no other state changes", { timeout: scaledMs(30_000) }, async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-runs-replay-footer-"));
   const previousHome = process.env.HOME;
   process.env.HOME = home;
@@ -279,7 +280,7 @@ test("footer follows replay start and end when no other state changes", { timeou
   }
 });
 
-test("Runs first load opens the top Needs-you run, else newest, without replacing a chosen run", { timeout: 60_000 }, async () => {
+test("Runs first load opens the top Needs-you run, else newest, without replacing a chosen run", { timeout: scaledMs(60_000) }, async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-runs-first-load-"));
   const previousHome = process.env.HOME;
   process.env.HOME = home;
@@ -335,7 +336,7 @@ test("Runs first load opens the top Needs-you run, else newest, without replacin
   }
 });
 
-test("Runs keeps current owner waits actionable and ended asks informational", { timeout: 30_000 }, async () => {
+test("Runs keeps current owner waits actionable and ended asks informational", { timeout: scaledMs(30_000) }, async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-runs-waits-"));
   const previousHome = process.env.HOME;
   process.env.HOME = home;
@@ -378,7 +379,7 @@ test("Runs keeps current owner waits actionable and ended asks informational", {
   }
 });
 
-test("running Runs groups history, opens shared receipts, survives polling and recovers failed loads", { timeout: 60_000 }, async () => {
+test("running Runs groups history, opens shared receipts, survives polling and recovers failed loads", { timeout: scaledMs(60_000) }, async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-runs-place-"));
   const previousHome = process.env.HOME;
   process.env.HOME = home;

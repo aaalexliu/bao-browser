@@ -5,6 +5,7 @@ import test from "node:test";
 import { existsSync, mkdtempSync, mkdirSync, readdirSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { scaledMs } from "../runtime";
 const localRequire = createRequire(__filename);
 const { acceptHelper, parseCodesign, helperCertHash, PINNED_CERT_HASH } = localRequire(path.join(process.cwd(), "desktop/packaging/helper-identity.js")) as {
   acceptHelper: (report: {
@@ -245,7 +246,7 @@ test("a staged package that loads from HOME or a symlink is rejected", () => {
   }
 });
 
-test("an installed bundle serves extension settings and imports synthetic localStorage", { timeout: 180_000 }, async () => {
+test("an installed bundle serves extension settings and imports synthetic localStorage", { timeout: scaledMs(180_000) }, async () => {
   const destParent = mkdtempSync(path.join(tmpdir(), "bao-installed-"));
   const dest = path.join(destParent, "Resources");
   mkdirSync(dest);

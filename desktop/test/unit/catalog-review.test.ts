@@ -13,8 +13,9 @@ import { pidsForDataDir } from "../../src/launch";
 import { reviewWorkflow, runWorkflow } from "../../src/mcp/catalog";
 import type { WorkflowStep, WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
+import { scaledMs } from "../runtime";
 
-test("marketplace review keeps all pictures local for private-input workflows and uploads ordinary workflows", { timeout: 60_000 }, async (t) => {
+test("marketplace review keeps all pictures local for private-input workflows and uploads ordinary workflows", { timeout: scaledMs(60_000) }, async (t) => {
   process.env.BAO_CHROME_NO_SANDBOX = "1";
   const root = mkdtempSync(path.join(tmpdir(), "bao-catalog-review-"));
   const library = new Library(root);

@@ -9,7 +9,7 @@ import { testChromium } from "../../src/test-browser";
 import { makeAsk } from "../../src/v1/human-ask";
 import { writePendingPrompt } from "../../src/v1/pending-prompt";
 import type { WorkflowV2 } from "../../src/v1/schema";
-import { applyHermeticApp } from "../runtime";
+import { applyHermeticApp, scaledMs } from "../runtime";
 
 function workflow(id: string, name: string, startUrl: string, steps: WorkflowV2["steps"]): WorkflowV2 {
   return testWorkflow({ schema: "bao.workflow/v4", id, name, createdAt: 1, startUrl, inputs: [], steps });
@@ -21,14 +21,14 @@ async function stateOf(base: string): Promise<ShellState> {
 
 async function until(read: () => Promise<boolean>, label: string): Promise<void> {
   const start = Date.now();
-  while (Date.now() - start < 20_000) {
+  while (Date.now() - start < scaledMs(20_000)) {
     if (await read()) return;
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   assert.fail(label);
 }
 
-test("an unsaved running replay is the only Now row and opens live", { timeout: 90_000 }, async () => {
+test("an unsaved running replay is the only Now row and opens live", { timeout: scaledMs(90_000) }, async () => {
   const previousHome = process.env.HOME;
   const dirs = applyHermeticApp("runs-now-running");
   process.env.HOME = dirs.home;
@@ -99,7 +99,7 @@ test("an unsaved running replay is the only Now row and opens live", { timeout: 
   }
 });
 
-test("a replay waiting in this process is under Needs you and Now, and opens live", { timeout: 90_000 }, async () => {
+test("a replay waiting in this process is under Needs you and Now, and opens live", { timeout: scaledMs(90_000) }, async () => {
   const previousHome = process.env.HOME;
   const dirs = applyHermeticApp("runs-now-waiting");
   process.env.HOME = dirs.home;
@@ -156,7 +156,7 @@ test("a replay waiting in this process is under Needs you and Now, and opens liv
   }
 });
 
-test("a returned paused run stays out of Now and opens live", { timeout: 90_000 }, async () => {
+test("a returned paused run stays out of Now and opens live", { timeout: scaledMs(90_000) }, async () => {
   const previousHome = process.env.HOME;
   const dirs = applyHermeticApp("runs-now-returned");
   process.env.HOME = dirs.home;
@@ -203,7 +203,7 @@ test("a returned paused run stays out of Now and opens live", { timeout: 90_000 
   }
 });
 
-test("a restored wait stays out of Now, in Needs you and its day group, and opens live", { timeout: 30_000 }, async () => {
+test("a restored wait stays out of Now, in Needs you and its day group, and opens live", { timeout: scaledMs(30_000) }, async () => {
   const previousHome = process.env.HOME;
   const dirs = applyHermeticApp("runs-now-restored");
   process.env.HOME = dirs.home;

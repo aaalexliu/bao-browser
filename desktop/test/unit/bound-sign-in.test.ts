@@ -23,6 +23,7 @@ import * as launches from "../../src/launch";
 import { withCookieDb } from "../../src/login-import/read";
 import { boundSessions, chromeProfiles } from "../support/chrome-profiles";
 import { chromeExpiry, writeCookieDb, writeLocalState } from "./login-import-fixture";
+import { scaledMs } from "../runtime";
 
 launches.pinTestBrowser();
 
@@ -90,7 +91,7 @@ test("a Chrome copy carries no Google sign-in, Times cookie, device-bound site c
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test("opening Bao's profile purges the Google sign-in and Times cookies it already holds and keeps the rest", { timeout: 60_000 }, async (t) => {
+test("opening Bao's profile purges the Google sign-in and Times cookies it already holds and keeps the rest", { timeout: scaledMs(60_000) }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-purge-"));
   const sourceRoot = await chromeProfiles(path.join(root, "source"));
   const home = path.join(root, "home");
@@ -223,7 +224,7 @@ test("a Chrome copy is not signed in to Chrome: no Google refresh token and no s
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test("the app's own Bao profile also drops the Google sign-in and Times cookies it holds before its Chrome starts", { timeout: 60_000 }, async () => {
+test("the app's own Bao profile also drops the Google sign-in and Times cookies it holds before its Chrome starts", { timeout: scaledMs(60_000) }, async () => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-app-purge-"));
   const offline = ["--host-resolver-rules=MAP * ~NOTFOUND"];
   const userDataDir = path.join(root, "home", "chrome-profile");
@@ -245,7 +246,7 @@ test("the app's own Bao profile also drops the Google sign-in and Times cookies 
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test("an app run of a Times page on the Bao profile tries running Chrome, then falls back to the app's own profile", { timeout: 90_000 }, async (t) => {
+test("an app run of a Times page on the Bao profile tries running Chrome, then falls back to the app's own profile", { timeout: scaledMs(90_000) }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-app-bound-"));
   const home = path.join(root, "home");
   const baoProfile = path.join(home, "chrome-profile");
@@ -345,7 +346,7 @@ test("an import that names a clean profile refuses a site bound in another owner
     assert.equal(created.status, 200, "a site bound only outside the Settings profile is not refused until a profile is chosen");
     assert.equal(created.body.phase, "confirm");
     await post("/api/import-login/answer", { id: created.body.id, accept: true, profile: "Profile 2" });
-    const deadline = Date.now() + 3000;
+    const deadline = Date.now() + scaledMs(3000);
     let settled: { phase?: string; error?: string; audit?: { count?: number } } = {};
     while (Date.now() < deadline) {
       settled = await (await fetch(`http://127.0.0.1:${app.port}/api/import-login?id=${created.body.id}`)).json() as typeof settled;
@@ -364,7 +365,7 @@ test("an import that names a clean profile refuses a site bound in another owner
   }
 });
 
-test("a Bao profile import skips a site on the purge list and says it ties its sign-in to Chrome", { timeout: 60_000 }, async () => {
+test("a Bao profile import skips a site on the purge list and says it ties its sign-in to Chrome", { timeout: scaledMs(60_000) }, async () => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-import-label-"));
   const sourceRoot = await chromeProfiles(path.join(root, "source"), {
     Default: { name: "Owner" },
@@ -437,7 +438,7 @@ test("a Bao profile open purges the owner list and the imported profile's device
   }
 });
 
-test("a lasting profile launch drops a device-bound site's cookies when the caller names that site", { timeout: 60_000 }, async () => {
+test("a lasting profile launch drops a device-bound site's cookies when the caller names that site", { timeout: scaledMs(60_000) }, async () => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-bound-purge-"));
   const userDataDir = path.join(root, "profile");
   const offline = ["--host-resolver-rules=MAP * ~NOTFOUND"];

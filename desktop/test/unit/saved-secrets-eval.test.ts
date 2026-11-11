@@ -7,6 +7,7 @@ import path from "node:path";
 import test from "node:test";
 import { McpClient } from "../../src/eval/mcp-client";
 import { pageApi } from "../../src/eval/page";
+import { scaledMs } from "../runtime";
 
 const fields = [
   { id: "native", type: "password", autocomplete: "off", value: "native-private", secret: true },
@@ -20,7 +21,7 @@ const fields = [
 ];
 const html = `<!doctype html>${fields.map((field) => `<input id="${field.id}" type="${field.type}" autocomplete="${field.autocomplete}">`).join("")}`;
 
-test("eval page identities retain native type and autocomplete on each lookup", { timeout: 30_000 }, async () => {
+test("eval page identities retain native type and autocomplete on each lookup", { timeout: scaledMs(30_000) }, async () => {
   const { testChromium: chromium } = await import("../../src/test-browser.js");
   const browser = await chromium.launch({ headless: true });
   try {
@@ -46,7 +47,7 @@ test("eval page identities retain native type and autocomplete on each lookup", 
   }
 });
 
-test("eval MCP retains typed secrets without changing tool replies or dispatched values", { timeout: 60_000 }, async (t) => {
+test("eval MCP retains typed secrets without changing tool replies or dispatched values", { timeout: scaledMs(60_000) }, async (t) => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-saved-secrets-eval-"));
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const dispatched: string[] = [];
