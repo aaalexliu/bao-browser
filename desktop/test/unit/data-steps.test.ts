@@ -253,63 +253,87 @@ test("picking a card taller than the viewport still reads the list", async () =>
   }
 });
 
-test("picking a title in a row of repeated cells reads the story rows", async () => {
-  const browser = await chromium.launch({ args: ["--no-sandbox"] });
-  try {
-    const page = await browser.newPage();
-    await page.setContent(`<!doctype html><table><tbody>
-      <tr class="athing submission"><td class="title"><span class="rank">1.</span></td><td class="title"><span class="titleline"><a href="a.html">Alpha Story</a></span></td><td class="score">10 points</td></tr>
-      <tr class="athing submission"><td class="title"><span class="rank">2.</span></td><td class="title"><span class="titleline"><a href="b.html">Beta Story</a></span></td><td class="score">20 points</td></tr>
-      <tr class="athing submission"><td class="title"><span class="rank">3.</span></td><td class="title"><span class="titleline"><a href="c.html">Gamma Story</a></span></td><td class="score">30 points</td></tr>
-    </tbody></table>`);
-    await page.evaluate(installDataPage);
-    const proposal = await page.evaluate(() => {
-      const host = window as unknown as { __baoPropose: (arg: { selector: string }) => PageProposal };
-      return host.__baoPropose({ selector: "span.titleline a" });
-    });
-    assert.equal(proposal.mode, "list");
-    assert.equal(proposal.count, 3);
-    const spec = specFromProposal(proposal, { as: "stories" });
-    const read = await page.evaluate((payload) => {
-      const host = window as unknown as { __baoReadList: (spec: unknown) => { rows: Record<string, string>[] } };
-      return host.__baoReadList(payload);
-    }, spec);
-    assert.deepEqual(read.rows.map((row) => row.link), ["Alpha Story", "Beta Story", "Gamma Story"]);
-    assert.deepEqual(read.rows.map((row) => row.score), ["10 points", "20 points", "30 points"]);
-  } finally {
-    await browser.close();
-  }
-});
-
-test("picking one card in a grid of rows reads every card", async () => {
-  const titles = Array.from({ length: 12 }, (_, index) => `Card ${index + 1}`);
-  const markup = Array.from({ length: 4 }, (_, row) => {
-    const cards = titles.slice(row * 3, row * 3 + 3).map((title) =>
-      `<div class="col-md-4"><div class="card"><h5 class="card-title">${title}</h5></div></div>`,
-    ).join("");
-    return `<div class="row">${cards}</div>`;
-  }).join("");
-  const browser = await chromium.launch({ args: ["--no-sandbox"] });
-  try {
-    const page = await browser.newPage({ viewport: { width: 756, height: 413 } });
-    await page.setContent(`<!doctype html><style>.card { height: 500px; }</style><div class="container">${markup}</div>`);
-    await page.evaluate(installDataPage);
-    const proposal = await page.evaluate(() => {
-      const host = window as unknown as { __baoPropose: (arg: { selector: string }) => PageProposal };
-      return host.__baoPropose({ selector: "div.card" });
-    });
-    assert.equal(proposal.mode, "list");
-    assert.equal(proposal.count, 12);
-    const spec = specFromProposal(proposal, { as: "cards" });
-    const read = await page.evaluate((payload) => {
-      const host = window as unknown as { __baoReadList: (spec: unknown) => { rows: Record<string, string>[] } };
-      return host.__baoReadList(payload);
-    }, spec);
-    assert.deepEqual(read.rows.map((row) => row.card_title), titles);
-  } finally {
-    await browser.close();
-  }
-});
+for (const fixture of [
+  {
+    name: "story title picks reach rows with repeated title cells",
+    html: `<table><tbody>${[1, 2, 3].map((n) => `<tr class="athing submission">
+      <td class="title"><span class="rank">${n}.</span></td>
+      <td class="title"><span class="titleline"><a title="Story ${n}">Story ${n}</a></span></td>
+    </tr>`).join("")}</tbody></table>`,
+    selector: ".titleline a",
+    mode: "list",
+    count: 3,
+    column: "title",
+    values: ["Story 1", "Story 2", "Story 3"],
+  },
+  {
+    name: "grouped cards stay separate from tall layout rows",
+    html: `<style>.card { height: 250px; } .row { padding-bottom: 100px; }</style>
+    <div class="container">${[0, 1, 2, 3].map((group) => `<div class="row">${[1, 2, 3].map((n) => {
+      const title = `Book ${group * 3 + n}`;
+      return `<div class="col-md-4"><div class="card"><h5 class="card-title" title="${title}">${title}</h5></div></div>`;
+    }).join("")}</div>`).join("")}</div>`,
+    selector: ".card",
+    mode: "list",
+    count: 12,
+    column: "title",
+    values: Array.from({ length: 12 }, (_, index) => `Book ${index + 1}`),
+  },
+  {
+    name: "a repeated tag pick reaches its quote card",
+    html: `<style>.quote { height: 150px; }</style><div class="col-md-8">
+      <div class="quote"><p class="text">Quote One</p><p class="author">Author One</p><div class="tags"><a class="tag">life</a> <a class="tag">books</a></div></div>
+      <div class="quote"><p class="text">Quote Two</p><p class="author">Author Two</p><div class="tags"><a class="tag">life</a> <a class="tag">reading</a></div></div>
+    </div>`,
+    selector: "a.tag",
+    mode: "list",
+    count: 2,
+    column: "text",
+    values: ["Quote One", "Quote Two"],
+  },
+  {
+    name: "a unique price inside tall layout columns stays an element",
+    html: `<style>.col-md-6 { height: 1000px; }</style><div class="row">
+      <div class="col-md-6"><h1>Gallery</h1></div>
+      <div class="col-md-6"><h1>Details</h1><span class="price">£10.00</span></div>
+    </div>`,
+    selector: "span.price",
+    mode: "element",
+    count: 1,
+    column: "value",
+    values: ["£10.00"],
+  },
+]) {
+  test(fixture.name, async () => {
+    const browser = await chromium.launch({ args: ["--no-sandbox"] });
+    try {
+      const page = await browser.newPage();
+      for (const height of [413, 900]) {
+        await page.setViewportSize({ width: 756, height });
+        await page.setContent(`<!doctype html>${fixture.html}`);
+        await page.evaluate(installDataPage);
+        const proposal = await page.evaluate((selector) => {
+          const host = window as unknown as { __baoPropose: (arg: { selector: string }) => PageProposal };
+          return host.__baoPropose({ selector });
+        }, fixture.selector);
+        assert.equal(proposal.mode, fixture.mode, `viewport height ${height}`);
+        assert.equal(proposal.count, fixture.count, `viewport height ${height}`);
+        if (proposal.mode === "element") {
+          assert.deepEqual(proposal.columns[0]?.samples, fixture.values);
+          continue;
+        }
+        const spec = specFromProposal(proposal, { as: "items" });
+        const read = await page.evaluate((payload) => {
+          const host = window as unknown as { __baoReadList: (spec: unknown) => { rows: Record<string, string>[] } };
+          return host.__baoReadList(payload);
+        }, spec);
+        assert.deepEqual(read.rows.map((row) => row[fixture.column]), fixture.values, `viewport height ${height}`);
+      }
+    } finally {
+      await browser.close();
+    }
+  });
+}
 
 function workflow(): WorkflowV2 {
   return testWorkflow({

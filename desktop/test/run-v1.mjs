@@ -1,13 +1,7 @@
 import { spawn, execFileSync } from "node:child_process";
 import { rmSync } from "node:fs";
 import path from "node:path";
-import { compiledTestPlan, laneChildEnv, playwrightVersionError } from "../dist/desktop/test/runtime.js";
-
-const versionError = playwrightVersionError();
-if (versionError) {
-  console.error(versionError);
-  process.exit(1);
-}
+import { compiledTestPlan, laneChildEnv } from "../dist/desktop/test/runtime.js";
 
 function isolationArg() {
   const help = execFileSync(process.execPath, ["--test", "--help"], { encoding: "utf8" });

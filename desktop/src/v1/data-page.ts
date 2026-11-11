@@ -174,28 +174,10 @@ export function installDataPage(): void {
     return false;
   };
 
-  const rowAncestor = (css: string, innerCss: string): boolean => {
-    let rows: Element[] = [];
-    let inners: Element[] = [];
-    try {
-      rows = [...document.querySelectorAll(css)];
-      inners = [...document.querySelectorAll(innerCss)];
-    } catch {
-      return false;
-    }
-    if (!rows.length || !inners.length) return false;
-    let covered = 0;
-    for (const row of rows) {
-      const hits = inners.filter((inner) => inner !== row && row.contains(inner)).length;
-      if (hits === 1) covered += 1;
-    }
-    return covered * 2 > rows.length;
-  };
-
   const proposeElement = (start: Element): Record<string, unknown> => {
+    const viewH = Math.max(window.innerHeight, 800);
     let node: Element | null = start instanceof HTMLElement ? start : start.parentElement;
     let best: { row: Element; css: string; xpath: string; count: number } | undefined;
-    let anchorCss: string | undefined;
     let depth = 0;
     while (node && node !== document.body && depth < 10) {
       const built = rowSelector(node);
@@ -203,8 +185,7 @@ export function installDataPage(): void {
       try { count = document.querySelectorAll(built.css).length; } catch { count = 0; }
       const rect = node.getBoundingClientRect();
       const generic = !stableClasses(node).length && /^(a|span|div|p|li|ul|ol)$/i.test(node.tagName);
-      if (!generic && count >= 2 && count <= 80 && rect.height > 12 && (!anchorCss || rowAncestor(built.css, anchorCss))) {
-        anchorCss ??= built.css;
+      if (!generic && count >= 2 && count <= 80 && rect.height > 12 && rect.height < viewH * 0.85) {
         best = { row: node, css: built.css, xpath: built.xpath, count };
       }
       node = node.parentElement;
