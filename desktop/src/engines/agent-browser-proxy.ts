@@ -146,6 +146,8 @@ interface SessionData {
   missed?: string;
   /** Whether Bao brought the waiting window on top of the owner's apps for the latest handoff. */
   raised?: boolean;
+  /** Loader id of the wall document the banner was written for. A new id is a reload of that wall. */
+  wallLoader?: string;
   commandDone?: Promise<void>;
   closing?: boolean;
   removing?: Promise<void>;
@@ -1109,15 +1111,16 @@ export class AgentBrowserProxy {
   }
 
   /** Writes only Bao's status banner. Never reads the form, page text, or field values. */
-  private async ownerBanner(session: Session, targetId: string, waiting: boolean): Promise<void> {
-    if (waiting) session.raised = false;
+  private async ownerBanner(session: Session, targetId: string, waiting: boolean, options?: { raise?: boolean }): Promise<void> {
+    const raise = options?.raise !== false;
+    if (waiting && raise) session.raised = false;
     const cdp = await this.connectSession(session, { timeoutMs: 2000, signal: session.abort.signal });
     let attached: string | undefined;
     try {
       // The extension keeps the task tab folded in Bao's group and opens the group while the owner has to act in it.
       // Otherwise the tab and its window come to the front when the owner has to act in it. Bao's own Chrome stays behind until then.
-      if (session.kind === "current" && session.relay) await cdp.send(waiting ? "Bao.showTab" : "Bao.settleTab", { targetId }, undefined, 2000);
-      else if (waiting) {
+      if (raise && session.kind === "current" && session.relay) await cdp.send(waiting ? "Bao.showTab" : "Bao.settleTab", { targetId }, undefined, 2000);
+      else if (raise && waiting) {
         await cdp.send("Target.activateTarget", { targetId }, undefined, 2000);
         if (session.kind === "copy" && process.platform === "darwin") session.raised = await windowOnTop(cdp, targetId).catch(() => false);
       }
@@ -1156,10 +1159,27 @@ export class AgentBrowserProxy {
     }
     session.recording.ownerWaiting(true);
     let cdp: CdpSocket | undefined;
+    let frameSession: string | undefined;
     const onAbort = () => { if (session.kind === "copy") cdp?.close(); };
     session.abort.signal.addEventListener("abort", onAbort, { once: true });
     let candidate = "";
     let stableAt = 0;
+    const frameLoader = async (targetId: string): Promise<string | undefined> => {
+      if (!cdp?.isOpen) return undefined;
+      if (!frameSession) {
+        const attached = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true }, undefined, 2000);
+        frameSession = attached.sessionId;
+      }
+      try {
+        const tree = await cdp.send<{ frameTree?: { frame?: { loaderId?: string } } }>("Page.getFrameTree", {}, frameSession, 2000);
+        return tree.frameTree?.frame?.loaderId || undefined;
+      } catch (error) {
+        const sessionId = frameSession;
+        frameSession = undefined;
+        if (sessionId) await cdp.send("Target.detachFromTarget", { sessionId }, undefined, 2000).catch(() => undefined);
+        throw error;
+      }
+    };
     try {
       while (Date.now() < deadline) {
         if (session.abort.signal.aborted || cdp && !cdp.isOpen) return this.ownerClosed(session);
@@ -1180,10 +1200,18 @@ export class AgentBrowserProxy {
           const page = targetInfos.find((tab) => tab.targetId === waiting.targetId);
           if (!page && cdp.isOpen && this.noTaskTabLeft(session, targetInfos)) return this.endTaskTab(session);
           if (!page || session.abort.signal.aborted || !cdp.isOpen) return this.ownerClosed(session);
-          if (ownerWall(page) && (waiting.page.url !== page.url || waiting.page.title !== page.title)) {
-            waiting.page = { url: page.url, title: page.title };
-            session.ownerPage = session.page = waiting.page;
-            await this.ownerBanner(session, waiting.targetId, true);
+          if (ownerWall(page)) {
+            const loader = await frameLoader(waiting.targetId).catch(() => undefined);
+            const changed = waiting.page.url !== page.url || waiting.page.title !== page.title;
+            const reloaded = loader !== undefined && session.wallLoader !== undefined && loader !== session.wallLoader;
+            if (changed || reloaded) {
+              if (changed) {
+                waiting.page = { url: page.url, title: page.title };
+                session.ownerPage = session.page = waiting.page;
+              }
+              await this.ownerBanner(session, waiting.targetId, true, { raise: false });
+            }
+            if (loader) session.wallLoader = loader;
           }
           const ready = ownerCanResume(waiting.page, page);
           const signature = ready ? JSON.stringify([page.url, page.title]) : "";
@@ -1208,6 +1236,7 @@ export class AgentBrowserProxy {
     } finally {
       session.ownerTouched = Date.now();
       session.abort.signal.removeEventListener("abort", onAbort);
+      if (frameSession) await cdp?.send("Target.detachFromTarget", { sessionId: frameSession }, undefined, 2000).catch(() => undefined);
       if (session.kind === "copy") cdp?.close();
     }
   }

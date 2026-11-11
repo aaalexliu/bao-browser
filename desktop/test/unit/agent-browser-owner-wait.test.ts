@@ -11,6 +11,7 @@ import * as launches from "../../src/launch";
 import * as currentChrome from "../../src/cdp-live/current-chrome";
 import { launchOwnedChromeEndpoint, pinTestBrowser, pidsForDataDir } from "../../src/launch";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
+import { CdpSocket } from "../../src/cdp-live/socket";
 import { OWNER_WAIT_LIMIT_MS, ownerWall, ownerCanResume, ownerWaitInstruction, ownerWaitTimeout } from "../../src/cdp-live/owner-wait";
 import { Library } from "../../src/v1/store";
 import { startExperianFixture } from "../experian/fixture";
@@ -259,6 +260,65 @@ test("an owner wait follows a later wall in its card, instruction, banner, and r
     // Returning to an unrecognized wait's first page must count as a change from the later wall.
     await page.goto(fixture.url("/member"));
     assert.equal(outcome(await proxy.execute("wait_for_owner", ["2000"], undefined, false, undefined, {}, runId)), "ready");
+  } finally { await h.cleanup("copy", observer); }
+});
+
+test("a later wall re-injects its banner without activating or raising the window", { timeout: 45_000 }, async (t) => {
+  const front: string[] = [];
+  const send = CdpSocket.prototype.send;
+  t.mock.method(CdpSocket.prototype, "send", function (this: CdpSocket, ...args: Parameters<typeof send>) {
+    if (args[0] === "Target.activateTarget" || args[0] === "Browser.getWindowForTarget" || args[0] === "Browser.setWindowBounds") front.push(args[0]);
+    return send.apply(this, args);
+  });
+  const h = await ownerProxy(t);
+  const { proxy, fixture } = h;
+  let observer: Awaited<ReturnType<typeof chromium.connectOverCDP>> | undefined;
+  try {
+    const opened = await proxy.execute("open", [fixture.url("/owner/sign-in?two-factor")], "copy");
+    assert.ok(front.includes("Target.activateTarget"), "the first wall still brings the window forward");
+    const since = proxy.ownerPage!.since;
+    const broughtFront = /Bao brought this window to the front for the owner/;
+    const firstFront = broughtFront.test(instruction(opened));
+    const runId = proxy.activeRunId!;
+    const endpoint = await readDevToolsActivePort(path.join(h.copyDir, "DevToolsActivePort"));
+    observer = await chromium.connectOverCDP(`http://127.0.0.1:${endpoint.port}`);
+    const page = observer.contexts()[0]!.pages().find((item) => item.url().includes("/owner/sign-in"))!;
+    page.setDefaultTimeout(5000);
+    const quiet = async (result: Awaited<ReturnType<AgentBrowserProxy["execute"]>>, what: string) => {
+      assert.deepEqual(front, [], what);
+      assert.equal(broughtFront.test(instruction(result)), firstFront, what);
+      assert.equal(proxy.ownerPage!.since, since, what);
+      assert.equal(proxy.activeRunId, runId, what);
+      assert.equal(await page.locator("#bao-owner-wait").count(), 1, what);
+    };
+
+    front.length = 0;
+    const moving = proxy.execute("wait_for_owner", ["2500"], undefined, false, undefined, {}, runId);
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    const moved = await moving;
+    assert.equal(outcome(moved), "waiting");
+    assert.equal(proxy.ownerPage!.url, fixture.url("/owner/verify"));
+    assert.equal(proxy.ownerPage!.title, "Two-factor authentication");
+    assert.match(await page.locator("#bao-owner-wait").innerText(), /finish the check/);
+    await quiet(moved, "a later wall URL does not activate or raise");
+
+    await page.reload({ waitUntil: "load" });
+    assert.equal(await page.locator("#bao-owner-wait").count(), 0, "a reload removes the page banner");
+    front.length = 0;
+    const reloaded = await proxy.execute("wait_for_owner", ["1500"], undefined, false, undefined, {}, runId);
+    assert.equal(outcome(reloaded), "waiting");
+    assert.equal(proxy.ownerPage!.url, fixture.url("/owner/verify"));
+    assert.equal(proxy.ownerPage!.title, "Two-factor authentication");
+    await quiet(reloaded, "a reload of the same wall re-injects the banner without activating or raising");
+
+    await page.evaluate(() => document.getElementById("bao-owner-wait")?.remove());
+    await page.evaluate(() => { document.title = "Confirm your account"; });
+    front.length = 0;
+    const retitled = await proxy.execute("wait_for_owner", ["1500"], undefined, false, undefined, {}, runId);
+    assert.equal(outcome(retitled), "waiting");
+    assert.equal(proxy.ownerPage!.title, "Confirm your account");
+    assert.equal(proxy.ownerPage!.url, fixture.url("/owner/verify"));
+    await quiet(retitled, "a title-only change re-injects the banner without activating or raising");
   } finally { await h.cleanup("copy", observer); }
 });
 
