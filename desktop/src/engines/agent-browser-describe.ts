@@ -166,13 +166,13 @@ export const TASK_TAB_CLOSED = "Bao's task tab was closed. Reconnect with comman
 /** A command that names a run other than Bao's open session, which serves every chat on this MCP process. */
 export const RUN_ENDED = "This run's browser session ended and cannot continue. Report that to the owner.";
 
-export interface OwnerReply { outcome: "halted" | "waiting" | "ready" | "closed"; instruction: string }
+export interface OwnerReply { outcome: "halted" | "waiting" | "ready" | "closed" | "recording"; instruction: string }
 
 /** Bao's own reply while the owner has a turn, which stands in for native output. */
 export function ownerReply(results: readonly AgentBrowserCommandResult[]): OwnerReply | undefined {
   try {
     const value = JSON.parse(results[0]?.stdout || "") as { outcome?: unknown; instruction?: unknown };
-    return typeof value.outcome === "string" && ["halted", "waiting", "ready", "closed"].includes(value.outcome) && typeof value.instruction === "string"
+    return typeof value.outcome === "string" && ["halted", "waiting", "ready", "closed", "recording"].includes(value.outcome) && typeof value.instruction === "string"
       ? { outcome: value.outcome as OwnerReply["outcome"], instruction: value.instruction } : undefined;
   } catch { return undefined; }
 }
@@ -248,6 +248,7 @@ export function describeStep(facts: StepFacts): StepSummary {
     return page?.title ? done([`${back}: now on `, { cite: page.title }], page.url ? ` (${page.url}).` : ".")
       : done([back]);
   }
+  if (outcome === "recording") return done(["The wait is over. The run is recording"]);
   if (outcome === "closed") {
     const ended = reply?.instruction === CURRENT_CHROME_ENDED ? "Your Chrome session ended"
       : reply?.instruction === TASK_TAB_CLOSED ? "Bao's task tab was closed"

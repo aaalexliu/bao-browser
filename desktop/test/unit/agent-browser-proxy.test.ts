@@ -12,7 +12,8 @@ import { chromeProfiles, fakeTaskTab } from "../support/chrome-profiles";
 import { trapPort } from "../support/trap-port";
 import * as profiles from "../../src/engines/chrome-profile-copy";
 import * as sockets from "../../src/cdp-live/socket";
-import { pageShotLine } from "../../src/mcp/tool-card";
+import { describeStep } from "../../src/engines/agent-browser-describe";
+import { pageShotLine, textToolResult } from "../../src/mcp/tool-card";
 import { Library } from "../../src/v1/store";
 import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
 import { scaledMs } from "../runtime";
@@ -175,10 +176,11 @@ for (const failure of ["connect", "metadata", "poll"]) test(`owner wait keeps it
       return cdp;
     });
     const result = await f.proxy.execute("wait_for_owner", ["350"], undefined, false, undefined, {}, f.proxy.activeRunId);
-    assert.equal((JSON.parse(result[0]!.stdout) as { outcome: string }).outcome, "waiting");
-    assert.match((JSON.parse(result[0]!.stdout) as { instruction: string }).instruction, /wait_for_owner/);
-    const saved = new Library(path.join(f.root, "home")).listRuns()[0]!;
     const readWall = failure === "poll";
+    const reply = JSON.parse(result[0]!.stdout) as { outcome: string; instruction: string };
+    assert.equal(reply.outcome, readWall ? "waiting" : "recording");
+    assert.match(reply.instruction, readWall ? /wait_for_owner/ : /the run is recording/);
+    const saved = new Library(path.join(f.root, "home")).listRuns()[0]!;
     assert.equal(saved.status, readWall ? "needs_human" : "recording");
     assert.equal(saved.envelope?.reason, readWall ? "owner_signin" : undefined);
     const step = (saved.steps as RecordedAgentBrowserCommand[]).at(-1)!;
@@ -1047,16 +1049,52 @@ test("a wait_for_owner on a normal page shows needs_human while it waits, then r
       during = library.readRun(runId).status;
     }
     const [waiting] = await pending;
-    assert.equal((JSON.parse(waiting!.stdout) as { outcome: string }).outcome, "waiting");
+    const reply = JSON.parse(waiting!.stdout) as { outcome: string; instruction: string };
+    assert.equal(reply.outcome, "recording");
+    assert.match(reply.instruction, /the run is recording/);
+    const card = describeStep({ command: "wait_for_owner", args: ["250"], results: [waiting!] });
+    assert.match(card.text, /recording/);
+    const shown = textToolResult([waiting!], card.text, [], [], runId);
+    assert.match(shown.content.map((block) => block.text).join("\n"), new RegExp(`Run ${runId} · recording`));
     assert.equal(during, "needs_human", "the app shows the run as needing the owner while the agent waits");
     assert.equal(library.readRun(runId).status, "recording", "a page that is not a wall leaves needs_human when the wait ends");
+    const clicksBefore = (await f.calls()).filter((call) => call.args.at(-2) === "click").length;
     const [clicked] = await f.proxy.execute("click", ["@e1"], undefined, false, undefined, {}, runId);
     assert.equal(clicked!.stdout, "click unchanged\n");
     assert.equal(clicked!.exitCode, 0);
+    assert.equal((await f.calls()).filter((call) => call.args.at(-2) === "click").length, clicksBefore + 1);
     assert.equal(library.readRun(runId).status, "recording");
     assert.equal(await f.proxy.finishTask({ outcome: "passed", reason: "The page was already open." }, runId), runId);
     assert.equal(library.readRun(runId).status, "passed");
     assert.equal(library.readRun(runId).envelope?.reason, "The page was already open.");
+  } finally { await f.close(); }
+});
+
+test("a wall wait at its deadline still returns waiting and the next click does not run", async (t) => {
+  const f = await fixture(t);
+  try {
+    t.mock.method(sockets, "connectCdp", async () => {
+      const cdp = new sockets.CdpSocket(new Socket());
+      t.mock.method(cdp, "send", async (method: string) => {
+        const page = { targetId: "ABC123", url: "http://127.0.0.1/login", title: "Sign in" };
+        if (method === "Target.getTargetInfo") return { targetInfo: page };
+        if (method === "Target.getTargets") return { targetInfos: [page] };
+        if (method === "Target.attachToTarget") return { sessionId: "fixture" };
+        return { data: png.toString("base64") };
+      });
+      followSend(t, cdp);
+      return cdp;
+    });
+    await f.proxy.execute("open", ["http://127.0.0.1/login"], "copy");
+    const runId = f.proxy.activeRunId!;
+    const [waited] = await f.proxy.execute("wait_for_owner", ["40"], undefined, false, undefined, {}, runId);
+    const reply = JSON.parse(waited!.stdout) as { outcome: string };
+    assert.equal(reply.outcome, "waiting");
+    const sent = (await f.calls()).length;
+    const [blocked] = await f.proxy.execute("click", ["@e1"], undefined, false, undefined, {}, runId);
+    assert.equal((JSON.parse(blocked!.stdout) as { outcome: string }).outcome, "halted");
+    assert.equal((await f.calls()).length, sent, "a wall deadline does not let the next click run");
+    assert.equal(new Library(path.join(f.root, "home")).readRun(runId).status, "needs_human");
   } finally { await f.close(); }
 });
 

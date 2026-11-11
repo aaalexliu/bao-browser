@@ -256,7 +256,7 @@ test("an owner wait follows a later wall in its card, instruction, banner, and r
     assert.equal(outcome(await proxy.execute("wait_for_owner", ["2000"], undefined, false, undefined, {}, runId)), "ready");
     assert.equal(await page.locator("#bao-owner-wait").count(), 0);
     assert.equal(proxy.activeRunId, runId);
-    assert.equal(outcome(await proxy.execute("wait_for_owner", ["50"], undefined, false, undefined, {}, runId)), "waiting");
+    assert.equal(outcome(await proxy.execute("wait_for_owner", ["50"], undefined, false, undefined, {}, runId)), "recording");
     await page.goto(fixture.url("/owner/verify"));
     assert.equal(outcome(await proxy.execute("wait_for_owner", ["300"], undefined, false, undefined, {}, runId)), "waiting");
     // Returning to an unrecognized wait's first page must count as a change from the later wall.
@@ -484,7 +484,7 @@ test("a wait_for_owner on a check Bao did not recognize shows needs_human while 
       await new Promise((resolve) => setTimeout(resolve, 5));
       during = library.readRun(run).status;
     }
-    assert.equal(outcome(await pending), "waiting");
+    assert.equal(outcome(await pending), "recording");
     assert.equal(during, "needs_human", "the app shows the run as needing the owner while the agent waits");
     assert.equal(proxy.activeRunId, run);
     assert.equal(proxy.ownerPage?.url, fixture.url("/"));

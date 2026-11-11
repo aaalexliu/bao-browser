@@ -1033,12 +1033,14 @@ export class AgentBrowserProxy {
     return connectCdp(endpoint.port, endpoint.browserPath, options);
   }
 
-  private ownerResult(kind: "halted" | "waiting" | "ready" | "closed", session: Session): AgentBrowserCommandResult[] {
+  private ownerResult(kind: "halted" | "waiting" | "ready" | "closed" | "recording", session: Session): AgentBrowserCommandResult[] {
     const current = session.kind === "current";
     const instruction = kind === "ready" ? "The page left the sign-in/check state. Take a fresh snapshot and continue in this same session. This is not proof of authentication."
-      : kind === "closed" ? current ? CURRENT_CHROME_ENDED : "The owner closed the Bao window. Report that this session cannot continue."
-        : ownerWaitInstruction(current, session.raised === true, session.recording.id, ownerWaitPage(this.waitOf(session), session.ownerPage));
-    return [{ stdout: JSON.stringify({ outcome: kind, instruction: `${instruction}${this.fallback(session)}` }), stderr: "", exitCode: 0 }];
+      : kind === "recording" ? "The wait is over and the run is recording. Take a fresh snapshot and continue in this same session."
+        : kind === "closed" ? current ? CURRENT_CHROME_ENDED : "The owner closed the Bao window. Report that this session cannot continue."
+          : ownerWaitInstruction(current, session.raised === true, session.recording.id, ownerWaitPage(this.waitOf(session), session.ownerPage));
+    const shown = kind === "recording" ? instruction : `${instruction}${this.fallback(session)}`;
+    return [{ stdout: JSON.stringify({ outcome: kind, instruction: shown }), stderr: "", exitCode: 0 }];
   }
 
   /**
@@ -1289,14 +1291,14 @@ export class AgentBrowserProxy {
     return result;
   }
 
+  /** A non-wall deadline ends the wait and says recording. A recognized wall stays waiting. */
   private async stillWaiting(session: Session): Promise<AgentBrowserCommandResult[]> {
     const wait = this.waitOf(session);
     const wall = wait !== "off" && wait !== "pending" && ownerWall(wait.page) !== null;
-    const result = this.ownerResult("waiting", session);
     if (!wall && wait !== "off" && wait !== "pending") await this.ownerBanner(session, wait.targetId, false).catch(() => undefined);
     if (session.abort.signal.aborted) return this.ownerClosed(session);
     if (!wall) this.setWait(session, "off");
-    return result;
+    return this.ownerResult(wall ? "waiting" : "recording", session);
   }
 
   private async waitForOwner(session: Session, deadline: number): Promise<AgentBrowserCommandResult[]> {
