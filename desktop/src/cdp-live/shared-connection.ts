@@ -1,7 +1,7 @@
 // Chrome asks the owner to allow every new debugging connection to his running Chrome: in its approval mode each WebSocket
 // upgrade to /devtools/browser opens an "Allow remote debugging?" sheet (DevToolsHttpHandler::OnWebSocketRequest in
-// content/browser/devtools/devtools_http_handler.cc). Bao makes one connection. The native agent, workflow capture, and
-// replay connect to this local endpoint instead, so a session asks once.
+// content/browser/devtools/devtools_http_handler.cc). Bao makes one connection per running Chrome. The native agent, workflow
+// capture, replay, and every later session connect to this local endpoint instead, so a Chrome launch asks once.
 
 import { createHash, randomUUID } from "node:crypto";
 import { createServer } from "node:http";

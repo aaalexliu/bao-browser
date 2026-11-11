@@ -131,6 +131,74 @@ test("current Chrome enables debugging with the helper and approves the connecti
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
 
+test("a sheet that stays up is pressed again after a second, not on every poll", async () => {
+  const f = await fixture(true);
+  try {
+    const polls: string[][] = [];
+    f.deps.helper!.exec = async (args) => {
+      polls.push(args);
+      if (args[0] === "debug-allow") return { ok: true, found: true, pressed: args.includes("--press") };
+      return { ok: true };
+    };
+    f.deps.connect = async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1_600));
+      return {
+        get isOpen() { return true; },
+        disconnected: new Promise<void>(() => undefined),
+        close() {},
+        async send() { return { targetInfos: [] }; },
+        sendUntilProgress() { return Promise.resolve({}); },
+      } as unknown as CdpSocket;
+    };
+    const chrome = await currentChrome.openCurrentChrome(f.options, f.deps);
+    const allowPolls = polls.filter((call) => call[0] === "debug-allow");
+    assert.equal(allowPolls.filter((call) => call.includes("--press")).length, 2);
+    assert.ok(allowPolls.length > 2, "polls between the two presses see the sheet and do not press it");
+    chrome.detach();
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
+test("a leftover sheet does not block the next one, and a hold presses at most three times", async () => {
+  const f = await fixture(true);
+  try {
+    let polls = 0;
+    let presses = 0;
+    let firstPressAt = 0;
+    let approve: () => void = () => undefined;
+    const ready = new Promise<void>((resolve) => { approve = resolve; });
+    f.deps.helper!.exec = async (args) => {
+      if (args[0] !== "debug-allow") return { ok: true };
+      polls += 1;
+      if (polls <= 4) return { ok: true, found: false, pressed: false };
+      if (args.includes("--press")) {
+        presses += 1;
+        if (presses === 1) firstPressAt = Date.now();
+        else if (Date.now() - firstPressAt >= 1_000) approve();
+        return { ok: true, found: true, pressed: true };
+      }
+      return { ok: true, found: true, pressed: false };
+    };
+    f.deps.connect = async () => {
+      const opened = await Promise.race([
+        ready.then(() => true),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 4_000)),
+      ]);
+      if (!opened) throw new Error(`the connection stayed waiting behind the leftover sheet after ${presses} presses`);
+      return {
+        get isOpen() { return true; },
+        disconnected: new Promise<void>(() => undefined),
+        close() {},
+        async send() { return { targetInfos: [] }; },
+        sendUntilProgress() { return Promise.resolve({}); },
+      } as unknown as CdpSocket;
+    };
+    const chrome = await currentChrome.openCurrentChrome(f.options, f.deps);
+    assert.ok(presses >= 2, "the sheet that replaced the leftover one was pressed");
+    assert.ok(presses <= 3);
+    chrome.detach();
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
 test("current Chrome leaves an enabled switch and the owner's tabs alone", async () => {
   const f = await fixture(true);
   try {

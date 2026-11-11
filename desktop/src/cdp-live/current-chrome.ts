@@ -1,6 +1,7 @@
 // The owner's running Chrome over remote debugging. BaoOSHelper turns on Chrome's remote-debugging setting and presses
-// Chrome's Allow prompt with its Accessibility access. Chrome asks for every new connection, so Bao makes one and every other
-// client shares it. Bao's task tab opens in a window of the Chrome profile the call chose.
+// Chrome's Allow prompt with its Accessibility access. Chrome asks for every new connection, so one long-lived Bao process
+// holds one connection per user-data-dir and every session joins it. Bao's task tab opens in a window of the Chrome profile
+// the call chose.
 
 import { execFile, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -15,6 +16,7 @@ import { REMOTE_CHECKBOX } from "./consent";
 import type { AxNode } from "../proxy/os-macos";
 import { listenPid, readDevToolsActivePort, type DevToolsEndpoint } from "./endpoint";
 import { CHROME_APP_EXE, dailyChromePids } from "./remote-debugging";
+import { joinOrStartHold } from "./chrome-hold";
 import { shareConnection } from "./shared-connection";
 import { connectCdp, type CdpSocket } from "./socket";
 import { remoteDebuggingBlock } from "../helper-capabilities";
@@ -37,9 +39,9 @@ export interface CurrentChrome {
   executable: string;
   /** Chrome's user-data-dir. */
   root: string;
-  /** The endpoint for every other client of this Chrome. Its clients share `cdp`, so they raise no Allow prompt. */
+  /** The local endpoint for this Chrome. Every session and agent connects here, so Chrome is not asked again. */
   endpoint: DevToolsEndpoint;
-  /** Bao's one connection to this Chrome, the one the owner's Allow approved. */
+  /** This session's browser session on the shared connection. Closing it leaves the connection up. */
   cdp: CdpSocket;
   closed: Promise<void>;
   isClosed(): boolean;
@@ -52,14 +54,27 @@ async function withConsent<T>(helper: CurrentChromeDeps["helper"], pid: number, 
   signal.throwIfAborted();
   let finished = false;
   let pollError: unknown;
+  // One press when a sheet appears. While this connection is still waiting, a sheet still up 1s after the last press gets one more, and a hold stops at three.
+  let presses = 0;
+  let lastPressAt = 0;
+  let covered = false;
   const pending = operation(signal).finally(() => { finished = true; });
   void pending.catch(() => undefined);
   try {
     while (!finished) {
       signal.throwIfAborted();
+      const again = covered && Date.now() - lastPressAt >= 1_000;
+      const press = presses < 3 && (!covered || again);
+      const args = ["debug-allow", "--pid", String(pid)];
+      if (press) args.push("--press");
       try {
-        const hit = await helper.exec(["debug-allow", "--pid", String(pid), "--press"], 5000);
-        if (hit.pressed) await logAx(axLog, { what: "AXPress", role: "AXButton", name: "Allow", window: "Allow remote debugging?", at: new Date().toISOString(), via: "BaoOSHelper" });
+        const hit = await helper.exec(args, 5000);
+        if (hit.pressed) {
+          presses += 1;
+          lastPressAt = Date.now();
+          covered = true;
+          await logAx(axLog, { what: "AXPress", role: "AXButton", name: "Allow", window: "Allow remote debugging?", at: new Date().toISOString(), via: "BaoOSHelper" });
+        } else if (!hit.found) covered = false;
         pollError = undefined;
       } catch (error) { pollError = error; }
       if (!finished) await new Promise((resolve) => setTimeout(resolve, 250));
@@ -191,6 +206,17 @@ export async function startOwnerChrome(root: string, ownerRoot?: string, run: Ru
 }
 
 export async function openCurrentChrome(options: {
+  root: string;
+  axLog: string;
+  signal?: AbortSignal;
+}, overrides: Partial<CurrentChromeDeps> = {}): Promise<CurrentChrome> {
+  // A test injects the helper and the socket. Production sessions join the hold instead of opening their own.
+  if (Object.keys(overrides).length === 0) return joinOrStartHold(options);
+  return connectOwnedChrome(options, overrides);
+}
+
+/** The one Chrome socket. `bao chrome-hold` passes this into the hold. A session joins the endpoint it publishes. */
+export async function connectOwnedChrome(options: {
   root: string;
   axLog: string;
   signal?: AbortSignal;
