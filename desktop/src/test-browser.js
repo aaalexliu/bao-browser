@@ -7,9 +7,36 @@ const TEST_MEDIA_ARGS = Object.freeze([
   "--use-fake-device-for-media-stream",
 ]);
 
+// Chromium 149's new surface path copies immediately, retries five times with
+// no delay, and then returns the empty image behind "Unable to capture screenshot".
+// The feature is off unless this switch turns it on. The legacy path waits for the redraw.
+const SURFACE_SWITCH = "--enable-features=CDPScreenshotNewSurface";
+
+/** @param {string[]} args */
+function withoutSurfaceSwitch(args) {
+  return args.flatMap((arg) => {
+    const prefix = "--enable-features=";
+    if (!arg.startsWith(prefix)) return [arg];
+    const features = arg.slice(prefix.length).split(",").filter((name) => name !== "CDPScreenshotNewSurface");
+    return features.length ? [`${prefix}${features.join(",")}`] : [];
+  });
+}
+
+/** @param {import("playwright").LaunchOptions} options */
+function launchOptions(options) {
+  const args = [...withoutSurfaceSwitch(options.args ?? []), ...TEST_MEDIA_ARGS];
+  if (options.ignoreDefaultArgs === true) return { ...options, args };
+  const ignored = Array.isArray(options.ignoreDefaultArgs) ? options.ignoreDefaultArgs : [];
+  return {
+    ...options,
+    args,
+    ignoreDefaultArgs: ignored.includes(SURFACE_SWITCH) ? ignored : [...ignored, SURFACE_SWITCH],
+  };
+}
+
 /** @param {import("playwright").LaunchOptions} [options] */
 function launchTestBrowser(options = {}) {
-  return chromium.launch({ headless: true, ...options, args: [...(options.args ?? []), ...TEST_MEDIA_ARGS] });
+  return chromium.launch({ headless: true, ...launchOptions(options) });
 }
 
 /**
@@ -19,8 +46,7 @@ function launchTestBrowser(options = {}) {
 function launchTestContext(userDataDir, options = {}) {
   return chromium.launchPersistentContext(userDataDir, {
     headless: true,
-    ...options,
-    args: [...(options.args ?? []), ...TEST_MEDIA_ARGS],
+    ...launchOptions(options),
   });
 }
 
