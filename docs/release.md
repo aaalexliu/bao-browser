@@ -1,6 +1,6 @@
 # Release Bao
 
-Users install Bao with the one `npx` command in the [README](../README.md#install). This page covers how that release is built, signed, and checked. [Build Bao on a Mac](mac-build.md) stays the contributor path.
+Users install Bao with the command in the [README](../README.md#install). This page covers how that release is built, signed, and checked. [Build Bao on a Mac](mac-build.md) stays the contributor path.
 
 ## Pieces
 
