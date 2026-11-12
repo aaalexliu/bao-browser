@@ -1166,9 +1166,11 @@ export class AgentBrowserProxy {
     catch (error) { return fail(error); }
     let wired: Awaited<ReturnType<AgentBrowserProxy["wire"]>> | undefined;
     let opened: AgentBrowserCommandResult;
+    let moving: Session | undefined;
     try {
       wired = await this.wire(next);
-      opened = await this.run({ ...session, ...next, ...wired }, "open", [site]);
+      moving = { ...session, ...next, ...wired };
+      opened = await this.runNative(moving, "open", [site]);
       if (opened.exitCode !== 0) throw new Error(`the open in Bao's task tab failed: ${opened.stderr || opened.stdout || `exit ${opened.exitCode}`}`);
     } catch (error) {
       try { if (wired) await this.stopDaemon(wired.stateDir); }
@@ -1180,7 +1182,7 @@ export class AgentBrowserProxy {
     }
     const old = { chrome: session.chrome, background: session.background, stateDir: session.stateDir };
     const waiting = this.waitOf(session) !== "off";
-    Object.assign(session, next, wired, { browser: openedChoice(next.pick), missed: undefined, page: undefined });
+    Object.assign(session, moving, { browser: openedChoice(next.pick), missed: undefined, page: undefined });
     session.recording.pickBrowser(next.pick);
     if (waiting) this.setWait(session, "off");
     this.watch(session);

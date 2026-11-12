@@ -6,15 +6,17 @@
 import assert from "node:assert/strict";
 import childProcess from "node:child_process";
 import { EventEmitter } from "node:events";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer, type AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test, { type TestContext } from "node:test";
 import * as currentChrome from "../../src/cdp-live/current-chrome";
 import { shareConnection } from "../../src/cdp-live/shared-connection";
+import * as socket from "../../src/cdp-live/socket";
 import type { CdpMessage, CdpRoute, CdpSocket } from "../../src/cdp-live/socket";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
+import * as bao from "../../src/engines/bao-profile";
 import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
 import { pinTestBrowser } from "../../src/launch";
 import { stepSentence } from "../../src/mcp/tool-card";
@@ -127,6 +129,13 @@ async function fixture(t: TestContext) {
     callback: (error: childProcess.ExecFileException | null, stdout: string, stderr: string) => void) => {
     const at = argv.indexOf("--idle-timeout") + 2;
     const [command, ...args] = argv.slice(at) as [string, ...string[]];
+    if (!argv.includes("--pin-tab")) {
+      const stdout = command === "tab" && args.includes("--json")
+        ? JSON.stringify({ success: true, data: { tabs: [{ tabId: "t1", targetId: "bao-page", title: "Example", url: "https://example.com/", active: true }] } })
+        : "\u2713 Done\n";
+      void writeFile(path.join(String(options.cwd), "bao.pid"), String(process.pid)).then(() => callback(null, stdout, ""));
+      return new EventEmitter();
+    }
     const cdpAt = argv.indexOf("--cdp");
     if (cdpAt >= 0) daemon.cdp = argv[cdpAt + 1] ?? "";
     if (argv.includes("--pin-tab")) daemon.pinned = true;
@@ -354,6 +363,38 @@ test("a popup the agent follows from its task tab is a Bao task tab, and finish_
     "following a popup does not ask Chrome to raise it");
   assert.ok(await f.proxy.finishTask({ outcome: "passed", reason: "fixture" }, f.proxy.activeRunId));
   assert.deepEqual([...f.closed].sort(), ["popup", "popup2", "task"], "Bao closes the followed popups and the task tab, not the owner's tabs");
+});
+
+test("a sign-in popup opened while moving to Running Chrome is followed, and finish closes it", async (t) => {
+  const f = await fixture(t);
+  const portFile = path.join(f.home, "DevToolsActivePort");
+  await mkdir(f.home, { recursive: true });
+  await writeFile(portFile, "9222\n/devtools/browser/bao\n");
+  t.mock.method(bao, "openBaoChromeForProxy", async () => ({
+    target: { kind: "bao" as const, portFile }, targetId: "bao-page", closed: new Promise<void>(() => undefined),
+    isClosed: () => false, close: async () => undefined, keepOpen: async () => undefined,
+    importLogin: async () => ({ origin: "https://example.com", found: 0, cookies: 0, storage: 0 }),
+  }));
+  t.mock.method(socket, "connectCdp", async () => ({
+    async send() { return { targetInfo: { url: "https://example.com/", title: "Example" }, sessionId: "copy", result: { value: undefined } }; },
+    sendUntilProgress(this: { send: () => Promise<unknown> }) { return this.send(); },
+    close() {}, on() { return this; },
+  }) as unknown as CdpSocket);
+  await f.proxy.execute("open", ["https://example.com/"], "bao");
+  f.daemon.before = (command) => {
+    if (command === "open") f.targets.push({ targetId: "signin", type: "page", url: "https://accounts.google.com/o/oauth2/v2/auth", title: "Choose an account", openerId: "task", inWindow: true });
+  };
+  const [moved] = await f.proxy.execute("open", ["https://www.google.com/maps"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  assert.equal(moved!.exitCode, 0);
+  assert.equal(f.daemon.active, "signin", "the agent follows the popup the move's open created");
+  const listed = (await f.proxy.execute("tab", [], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout;
+  assert.match(listed, /→ \[[^\]]+\] \(Bao task tab\) Choose an account/);
+  assert.match(listed, /accounts\.google\.com\/o\/oauth2\/v2\/auth/);
+  assert.match(listed, /accounts\.google\.com\/o\/oauth2\/v2\/auth/);
+  assert.ok(await f.proxy.finishTask({ outcome: "passed", reason: "fixture" }, f.proxy.activeRunId));
+  assert.ok(f.closed.includes("signin"), "finish closes the popup the move opened");
+  assert.ok(f.closed.includes("task"));
+  assert.equal(f.closed.includes("owner"), false);
 });
 
 test("a popup opened by the popup a command opened is followed, and finish closes both", async (t) => {
