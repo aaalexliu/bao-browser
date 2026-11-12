@@ -1354,10 +1354,11 @@ export class AgentBrowserProxy {
         else await cdp.send("Target.activateTarget", { targetId }, undefined, 2000);
         // Focus emulation makes document.hasFocus() true on every connection, so the front app pid is the check.
         if (session.kind === "copy" && process.platform === "darwin" && !await chromeIsFront(session.chrome.pid)) {
-          if (copyHandoff) {
+          const pick = session.pick;
+          if (copyHandoff && pick.route === "copy") {
             await raiseCopyWindow(cdp, targetId);
             // The Dock cycle can succeed while macOS leaves the copy behind. Claim the raise only if this copy's own process comes forward.
-            session.raised = await copyFront.bringCopyFront(session.pick.chrome, session.pick.userDataDir);
+            session.raised = await copyFront.bringCopyFront(pick.chrome, pick.userDataDir);
           } else session.raised = await windowOnTop(cdp, targetId).catch(() => false);
         }
       }
