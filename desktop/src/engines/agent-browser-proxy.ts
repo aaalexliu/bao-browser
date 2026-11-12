@@ -260,12 +260,13 @@ function parseTabArgs(args: readonly string[]): ParsedTab {
   const head = cleaned[0];
   const action = head === undefined || head === "list" ? "list" : head === "new" ? "new" : head === "close" ? "close" : "switch";
   const flags = acceptedCliFlags(args);
-  const ref = action === "close" ? cleaned[1] : action === "switch" ? head : undefined;
+  const closeRef = action === "close" && cleaned.length > 1 ? cleaned[1] : undefined;
+  const ref = action === "switch" ? head : closeRef;
   const words = action === "list" ? head === "list" || json || flags.length > 0 ? ["list"] : []
     : action === "new" ? tabNewWords(cleaned)
-    : action === "close" ? ref ? ["close", ref] : ["close"]
+    : action === "close" ? closeRef !== undefined ? ["close", closeRef] : ["close"]
     : [head!];
-  return { action, ...(ref ? { ref } : {}), json, flags, forwarded: [...words, ...flags] };
+  return { action, ...(ref !== undefined ? { ref } : {}), json, flags, forwarded: [...words, ...flags] };
 }
 
 const opensTab = (command: string, args: readonly string[]) => (command === "tab" && parseTabArgs(args).action === "new") || (command === "click" && args.includes("--new-tab"));
@@ -1275,12 +1276,32 @@ export class AgentBrowserProxy {
       const { targetInfos } = await session.chrome.cdp.sendUntilProgress<{ targetInfos: ChromeTarget[] }>("Target.getTargets", {}, undefined, { signal: ceiling });
       const alive = new Set(targetInfos.map((info) => info.targetId));
       for (const targetId of [...session.pending]) if (!alive.has(targetId)) session.pending.delete(targetId);
-      for (const info of targetInfos) {
-        if (!session.pending.has(info.targetId) || info.openerId !== want || !session.taskTabs.has(want)) continue;
-        if (!listed(info.targetId)?.tabId) { waiting.add(info.targetId); continue; }
-        if (!await isChromeTab(session.chrome.cdp, info, ceiling)) continue;
-        adopt.push(info);
-        want = info.targetId;
+      const owned = (targetId: string) => session.taskTabs.has(targetId) || adopt.some((item) => item.targetId === targetId);
+      const skipped = new Set<string>();
+      let progressed = true;
+      while (progressed && !ceiling.aborted) {
+        progressed = false;
+        for (const info of targetInfos) {
+          if (!session.pending.has(info.targetId) || waiting.has(info.targetId) || skipped.has(info.targetId) || adopt.some((item) => item.targetId === info.targetId)) continue;
+          if (info.openerId && waiting.has(info.openerId)) {
+            waiting.add(info.targetId);
+            progressed = true;
+            continue;
+          }
+          if (info.openerId !== want || !owned(want)) continue;
+          if (!listed(info.targetId)?.tabId) {
+            waiting.add(info.targetId);
+            progressed = true;
+            continue;
+          }
+          if (!await isChromeTab(session.chrome.cdp, info, ceiling)) {
+            skipped.add(info.targetId);
+            continue;
+          }
+          adopt.push(info);
+          want = info.targetId;
+          progressed = true;
+        }
       }
       if (ceiling.aborted) throw new Error("cdp aborted Browser.getWindowForTarget");
       for (const targetId of [...session.pending]) {
@@ -1350,6 +1371,9 @@ export class AgentBrowserProxy {
    */
   private async forward(session: Session, command: string, args: string[]): Promise<AgentBrowserCommandResult> {
     const parsed = command === "tab" ? parseTabArgs(args) : undefined;
+    if (parsed?.action === "close" && parsed.ref !== undefined && !parsed.ref.trim()) {
+      return { stdout: "", stderr: "\u2717 Empty tab reference; expected `t<N>` (e.g. `t2`) or a label\n", exitCode: 1 };
+    }
     if (!parsed || session.kind !== "current" || session.relay || parsed.action === "new") return this.run(session, command, parsed ? parsed.forwarded : args);
     const tabs = await this.nativeTabs(session);
     const resolved = parsed.ref === undefined ? parsed.action === "close" ? tabs.find((tab) => tab.active) : undefined : resolveTabRef(parsed.ref, tabs);

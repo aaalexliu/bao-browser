@@ -356,6 +356,30 @@ test("a popup the agent follows from its task tab is a Bao task tab, and finish_
   assert.deepEqual([...f.closed].sort(), ["popup", "popup2", "task"], "Bao closes the followed popups and the task tab, not the owner's tabs");
 });
 
+test("a popup opened by the popup a command opened is followed, and finish closes both", async (t) => {
+  const f = await fixture(t);
+  await f.proxy.execute("open", [MAPS], "current");
+  f.daemon.clicked = () => {
+    f.targets.push({ targetId: "popup-a", type: "page", url: "https://example.com/a", title: "Nested A", openerId: "task", inWindow: true });
+    f.targets.push({ targetId: "popup-b", type: "page", url: "https://example.com/b", title: "Nested B", openerId: "popup-a", inWindow: true });
+  };
+  assert.equal((await f.proxy.execute("click", ["@e2"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.exitCode, 0);
+  assert.equal(f.daemon.active, "popup-b", "Bao follows the popup the new tab opened");
+  const listed = (await f.proxy.execute("tab", [], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout;
+  assert.match(listed, /\(Bao task tab\) Nested A/);
+  const child = /\[([^\]]+)\] \(Bao task tab\) Nested B/.exec(listed)?.[1];
+  assert.ok(child);
+  assert.equal((await f.proxy.execute("tab", ["t1"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.exitCode, 0);
+  const [back] = await f.proxy.execute("tab", [child!], undefined, false, undefined, {}, f.proxy.activeRunId);
+  assert.equal(back!.exitCode, 0);
+  assert.doesNotMatch(back!.stderr, /owner opened/);
+  assert.equal(f.daemon.active, "popup-b");
+  assert.ok(await f.proxy.finishTask({ outcome: "passed", reason: "fixture" }, f.proxy.activeRunId));
+  assert.ok(f.closed.includes("popup-a"));
+  assert.ok(f.closed.includes("popup-b"));
+  assert.equal(f.closed.includes("owner"), false);
+});
+
 test("an owner target=_blank from the task tab during a wait is not adopted and not closed", async (t) => {
   const f = await fixture(t);
   await f.proxy.execute("open", [MAPS], "current");
@@ -537,6 +561,21 @@ test("when the owner closes Bao's last task tab, the session ends and a new open
   const closed = await f.proxy.execute("close", [], undefined, false, undefined, {}, f.proxy.activeRunId);
   assert.equal(stepSentence("close", closed, undefined, undefined, { current: f.proxy.currentChrome }), "Closed Bao's task tab in your Chrome.");
   assert.equal((await f.proxy.execute("open", [MAPS], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.exitCode, 0, "an explicit close clears the ended session, so the next open takes the default");
+});
+
+test("tab close with an empty reference is refused, and a close with no reference still closes the task tab", async (t) => {
+  const f = await fixture(t);
+  await f.proxy.execute("open", [MAPS], "current");
+  const [empty] = await f.proxy.execute("tab", ["close", ""], undefined, false, undefined, {}, f.proxy.activeRunId);
+  assert.equal(empty!.exitCode, 1);
+  assert.match(empty!.stderr, /Empty tab reference/);
+  assert.equal(f.daemon.active, "task");
+  assert.ok(f.targets.some(item => item.targetId === "task"));
+  assert.equal(f.daemon.commands.some(entry => entry.command === "tab" && entry.args.includes("close")), false, "the empty close never reached the daemon");
+  const [closed] = await f.proxy.execute("tab", ["close"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  assert.equal(closed!.exitCode, 0);
+  assert.match(closed!.stdout, /Bao's task tab was closed/);
+  assert.ok(!f.targets.some(item => item.targetId === "task"));
 });
 
 test("the agent's close of its last task tab reports that the tab was closed, not a command failure", async (t) => {
