@@ -23,9 +23,15 @@ import { chromeProfiles, type ProfileNames } from "../support/chrome-profiles";
 import { testWorkflow } from "../support/workflow";
 import { scaledMs } from "../runtime";
 
-async function chromeRoot(t: TestContext, profiles: ProfileNames): Promise<string> {
+async function chromeRoot(t: TestContext, profiles: ProfileNames, beforeDelete?: { run?: () => Promise<void> }): Promise<string> {
   const root = await mkdtemp(path.join(tmpdir(), "bao-pick-"));
-  t.after(async () => { await chmod(root, 0o700).catch(() => undefined); await rm(root, { recursive: true, force: true }); });
+  t.after(async () => {
+    try { await beforeDelete?.run?.(); }
+    finally {
+      await chmod(root, 0o700).catch(() => undefined);
+      await rm(root, { recursive: true, force: true });
+    }
+  });
   return chromeProfiles(root, profiles);
 }
 
@@ -205,9 +211,9 @@ async function pageProfile(cdp: CdpSocket, targetId: string): Promise<string> {
   } finally { await cdp.send("Target.detachFromTarget", { sessionId }).catch(() => undefined); }
 }
 
-async function stopHold(root: string): Promise<void> {
+async function stopHold(dir: string): Promise<void> {
   try {
-    const record = JSON.parse(await readFile(path.join(holdDir(root), "hold.json"), "utf8")) as { holderPid?: number };
+    const record = JSON.parse(await readFile(path.join(dir, "hold.json"), "utf8")) as { holderPid?: number };
     if (record.holderPid && record.holderPid !== process.pid) process.kill(record.holderPid, "SIGTERM");
   } catch { /* the hold already ended */ }
 }
@@ -262,33 +268,39 @@ function approvalGate(upstreamPort: number, browserPath: string): Promise<{ port
 
 async function listeningFixture(t: TestContext, args: string[]): Promise<{ root: string; keeper: CdpSocket; homes: string[]; reported: string; accepted: () => number }> {
   pinTestBrowser();
-  const root = await chromeRoot(t, { Default: { name: "Alex" }, "Profile 1": { name: "Work" } });
-  const chrome = await launchOwnedChromeEndpoint({ userDataDir: root, headless: true, args: [...args, "--no-startup-window"] });
-  const endpoint = await readDevToolsActivePort(chrome.portFile);
-  const keeper = await connectCdp(endpoint.port, endpoint.browserPath);
-  const keeperTab = await keeper.send<{ targetId: string }>("Target.createTarget", { url: "about:blank", background: true });
-  const reported = await pageProfile(keeper, keeperTab.targetId);
+  const beforeDelete: { run?: () => Promise<void> } = {};
+  const root = await chromeRoot(t, { Default: { name: "Alex" }, "Profile 1": { name: "Work" } }, beforeDelete);
+  const held = holdDir(root);
   const previousFixture = process.env.BAO_CHROME_HOLD_FIXTURE;
-  const pid = chrome.pid ?? pidsForDataDir(root)[0];
-  if (!pid) throw new Error("fixture Chrome has no pid");
-  const gate = await approvalGate(endpoint.port, endpoint.browserPath);
-  process.env.BAO_CHROME_HOLD_FIXTURE = JSON.stringify({
-    port: gate.port, browserPath: endpoint.browserPath, chromePid: pid, executable: pinTestBrowser(),
-  });
   const homes = [await mkdtemp(path.join(tmpdir(), "bao-denied-workflow-")), await mkdtemp(path.join(tmpdir(), "bao-denied-agent-"))];
-  t.after(async () => {
+  let chrome: Awaited<ReturnType<typeof launchOwnedChromeEndpoint>> | undefined;
+  let keeper: CdpSocket | undefined;
+  let gate: Awaited<ReturnType<typeof approvalGate>> | undefined;
+  let pid: number | undefined;
+  beforeDelete.run = async () => {
     if (previousFixture === undefined) delete process.env.BAO_CHROME_HOLD_FIXTURE;
     else process.env.BAO_CHROME_HOLD_FIXTURE = previousFixture;
     await chmod(root, 0o700).catch(() => undefined);
-    await stopHold(root);
-    keeper.close();
-    const closed = chrome.close();
-    await Promise.race([closed, new Promise((resolve) => setTimeout(resolve, 3000))]);
+    await stopHold(held);
+    keeper?.close();
+    const closed = chrome?.close();
+    if (closed) await Promise.race([closed, new Promise((resolve) => setTimeout(resolve, 3000))]);
     if (pid) { try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ } }
-    await closed.catch(() => undefined);
-    gate.close();
-    await rm(holdDir(root), { recursive: true, force: true });
+    await closed?.catch(() => undefined);
+    gate?.close();
+    await rm(held, { recursive: true, force: true });
     for (const home of homes) await rm(home, { recursive: true, force: true });
+  };
+  chrome = await launchOwnedChromeEndpoint({ userDataDir: root, headless: true, args: [...args, "--no-startup-window"] });
+  const endpoint = await readDevToolsActivePort(chrome.portFile);
+  keeper = await connectCdp(endpoint.port, endpoint.browserPath);
+  const keeperTab = await keeper.send<{ targetId: string }>("Target.createTarget", { url: "about:blank", background: true });
+  const reported = await pageProfile(keeper, keeperTab.targetId);
+  pid = chrome.pid ?? pidsForDataDir(root)[0];
+  if (!pid) throw new Error("fixture Chrome has no pid");
+  gate = await approvalGate(endpoint.port, endpoint.browserPath);
+  process.env.BAO_CHROME_HOLD_FIXTURE = JSON.stringify({
+    port: gate.port, browserPath: endpoint.browserPath, chromePid: pid, executable: pinTestBrowser(),
   });
   return { root, keeper, homes, reported, accepted: gate.accepted };
 }
