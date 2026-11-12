@@ -9,6 +9,7 @@ import * as currentChrome from "../../src/cdp-live/current-chrome";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { pageWall } from "../../src/cdp-live/page-wall";
 import { connectCdp, type CdpSocket } from "../../src/cdp-live/socket";
+import * as sockets from "../../src/cdp-live/socket";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import { AgentBrowserRun, type RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
 import type { BrowserPick } from "../../src/engines/browser-pick";
@@ -143,9 +144,25 @@ async function harness(t: TestContext, initial: "works" | "refused") {
     await chrome.cdp.send("Target.detachFromTarget", { sessionId }, undefined, 30_000);
     return { targetId, background: true };
   });
+  const raises: { port: number; method: string }[] = [];
+  const order: string[] = [];
+  const realConnect = sockets.connectCdp;
+  t.mock.method(sockets, "connectCdp", async (port: number, browserPath: string, opts?: Parameters<typeof connectCdp>[2]) => {
+    const cdp = await realConnect(port, browserPath, opts);
+    const send = cdp.send.bind(cdp);
+    t.mock.method(cdp, "send", async (method: string, ...args: unknown[]) => {
+      if (method === "Target.activateTarget" || method === "Browser.setWindowBounds") {
+        raises.push({ port, method });
+        order.push(method);
+      }
+      return send(method, ...(args as []));
+    });
+    return cdp;
+  });
   let attaches = 0;
   t.mock.method(currentChrome, "openCurrentChrome", async () => {
     attaches++;
+    order.push("attach");
     await new Promise((resolve) => setTimeout(resolve, delay));
     if (attach === "refused") throw new Error("Chrome is not open. Open Google Chrome, then try again.");
     const cdp: CdpSocket = await connectCdp(endpoint.port, endpoint.browserPath);
@@ -200,6 +217,7 @@ ${LIST_TARGETS}
   const pages = async () => (await probe.send<{ targetInfos: { targetId: string; type: string; url: string }[] }>("Target.getTargets")).targetInfos.filter((target) => target.type === "page");
   const ownerTabs = (await pages()).map((target) => target.targetId).sort();
   return { proxy, site, home, sourceRoot, baoDir, endpoint, ownerTabs, calls, pages, attaches: () => attaches, launched: () => [...launched],
+    raises: () => raises, order: () => [...order],
     allow: () => { attach = "works"; }, slow: (ms: number) => { delay = ms; } };
 }
 
@@ -271,6 +289,7 @@ for (const { wall, page, before, after } of [
 
   const [snapshot] = await h.proxy.execute("snapshot", [], undefined, false, undefined, {}, h.proxy.activeRunId);
   assert.equal(snapshot!.stdout, after, `the snapshot is the owner's Chrome tab, past the wall: ${h.proxy.pickLines.join(" | ")}`);
+  assert.equal(h.raises().length, 0, "a successful move does not select or Dock-raise Bao's window");
   assert.doesNotMatch(snapshot!.stdout, before);
   assert.ok(h.proxy.lastCommand!.step.summary!.text.startsWith(`${MOVED} Read the page`), h.proxy.lastCommand!.step.summary!.text);
   assert.ok(savedSteps(h.home).at(-1)!.summary!.text.startsWith(MOVED), "the run keeps the move on the step where it happened");
@@ -319,6 +338,7 @@ test("an open that lands on a sign-in URL in a Bao profile continues in the owne
   assert.equal(opened!.stdout, `✓ Article\n  ${h.site}/gate\n`, "the requested page, opened in the owner's Chrome");
   assert.equal(tabs!.stdout, "→ [t1] Article\n");
   assert.ok(savedSteps(h.home)[0]!.summary!.text.startsWith(`Bao's own browser hit a sign-in page on 127.0.0.1; continued in your running Chrome (Chrome profile "Default", Owner) over remote debugging. Take a fresh snapshot before acting. Went to `));
+  assert.equal(h.raises().length, 0, "a successful move does not select or Dock-raise Bao's window");
   assert.match(h.proxy.pickLines[0]!, /^Browser: Running Chrome over remote debugging, fallback after a sign-in wall\./);
   assert.equal(new Library(h.home).listRuns()[0]!.status, "recording", "the owner wait in Bao's window ended with the move");
   assert.deepEqual(savedRoutes(h.home), [
@@ -359,6 +379,10 @@ test("when the owner's running Chrome does not attach, the wait stays in Bao's w
   const h = await harness(t, "refused");
   assert.equal((await h.proxy.execute("open", [`${h.site}/times`], "bao"))[0]!.exitCode, 0);
   assert.equal((await h.proxy.execute("snapshot", [], undefined, false, undefined, {}, h.proxy.activeRunId))[0]!.stdout, TIMES_CHECK, "the snapshot of Bao's window stands");
+  const raised = h.order().findIndex((item) => item === "Target.activateTarget" || item === "Browser.setWindowBounds");
+  assert.ok(h.order().indexOf("attach") < raised, "the raise follows the failed open, and does not come first");
+  const raises = h.order().filter((item) => item === "Target.activateTarget" || item === "Browser.setWindowBounds").length;
+  assert.ok(raises > 0, "a declined move raises once");
   assert.deepEqual(h.proxy.pickLines, ['Browser: Bao profile, Chrome profile "Default".', REFUSED]);
   const fallback = `To take it, call agent_browser with {"command":"close","run_id":"${h.proxy.activeRunId}"}, then with {"command":"open","args":["${h.site}/times"],"browser":"current","profile":"Default"}.`;
   const [waiting] = await h.proxy.execute("wait_for_owner", ["300"], undefined, false, undefined, {}, h.proxy.activeRunId);
@@ -368,6 +392,7 @@ test("when the owner's running Chrome does not attach, the wait stays in Bao's w
   assert.ok(reply.instruction.includes(fallback), reply.instruction);
   assert.deepEqual(h.proxy.pickLines, ['Browser: Bao profile, Chrome profile "Default".', REFUSED.replace("a sign-in or verification prompt", "a step that needs the owner")]);
   assert.equal(h.attaches(), 2, "the explicit wait tried the owner's running Chrome again");
+  assert.equal(h.order().filter((item) => item === "Target.activateTarget" || item === "Browser.setWindowBounds").length, raises, "a second command does not raise again");
   assert.equal(pidsForDataDir(h.baoDir).length > 0, true, "Bao's window stays open for the owner");
 
   const [halted] = await h.proxy.execute("click", ["@e1"], undefined, false, undefined, {}, h.proxy.activeRunId);
@@ -522,6 +547,7 @@ test("a command that meets a sign-in page between commands does not run; Bao rec
   assert.deepEqual({ command: step.native.command, args: step.native.args }, { command: "open", args: [`${h.site}/article`] });
   assert.ok(step.summary!.text.startsWith("Bao's own browser hit a sign-in page on 127.0.0.1; continued in your running Chrome"), step.summary!.text);
   assert.doesNotMatch(step.summary!.text, /Clicked/);
+  assert.equal(h.raises().length, 0, "the move closes Bao's window without selecting it or cycling the Dock");
   assert.ok(await baoClosed(h.baoDir));
 });
 
