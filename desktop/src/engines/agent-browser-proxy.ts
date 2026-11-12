@@ -5,6 +5,7 @@ import path from "node:path";
 import { readDevToolsActivePort } from "../cdp-live/endpoint";
 import { CDP_PROGRESS_CEILING_MS, connectCdp, type CdpSocket } from "../cdp-live/socket";
 import { openCurrentChrome, openTaskTab, type CurrentChrome } from "../cdp-live/current-chrome";
+import { DAEMON_BEHIND_QUERY } from "../cdp-live/shared-connection";
 import { isChromeTab, type ChromeTarget } from "../cdp-live/chrome-tabs";
 import { openRunningChrome, type RunningChrome } from "../extension/running-chrome";
 import { resolveNormalChrome } from "../launch";
@@ -155,14 +156,14 @@ interface SessionData {
 /** Whether a native command opens a new tab itself: `tab new`, or a click that opens its link in a new tab. */
 const opensTab = (command: string, args: readonly string[]) => (command === "tab" && args[0] === "new") || (command === "click" && args.includes("--new-tab"));
 
-/** A command that can open a tab while the native daemon is running it: open, click, tab new, or click --new-tab. */
-const canOpenTab = (command: string, args: readonly string[]) => command === "open" || command === "click" || (command === "tab" && args[0] === "new");
+/** A command that can open a tab while the native daemon is running it: open, click, press, tab new, or click --new-tab. */
+const canOpenTab = (command: string, args: readonly string[]) => command === "open" || command === "click" || command === "press" || (command === "tab" && args[0] === "new");
 
 /**
  * The owner's running Chrome over remote debugging. Bao closes only the tabs it opened. `targetId` is the tab the agent works in:
  * Bao's task tab, until a command that can open a tab follows a popup that command opened. That popup joins `taskTabs`.
- * `seen` holds every target the native tab list has shown. `pending` holds fresh targets from an opening command that were not
- * classified yet. `opening` is true only while such a command is in flight, and never during an owner wait.
+ * `seen` holds every target the native tab list has shown. `pending` holds targets noted while the native command was running and not
+ * classified yet. `opening` is true only while that daemon command runs, never during wall handling, workflow capture, or an owner wait.
  */
 type DebuggingChrome = { kind: "current"; relay?: undefined; chrome: CurrentChrome; taskTabs: Set<string>; targetId: string; seen: Set<string>; pending: Set<string>; opening?: boolean; justClosed?: string };
 
@@ -618,20 +619,14 @@ export class AgentBrowserProxy {
         await this.captureTarget(session, step, args[0]);
         if (this.waitOf(session) !== "off") { results.push(...this.ownerResult("halted", session)); return results; }
       }
-      const opening = session.kind === "current" && !session.relay && this.waitOf(session) === "off" && canOpenTab(command as string, args);
-      if (opening) session.opening = true;
-      try {
-        await session.workflow.record(command as string, args, step.id, async () => {
-          const result = command === "close" && (session.kind === "current" || session.chrome.isClosed())
-            ? { stdout: session.kind === "current" ? "Disconnected from the owner's own Chrome. Only Bao's task tabs close; the owner's tabs and windows stay open." : "", stderr: "", exitCode: 0 }
-            : await this.forward(session, command as string, args);
-          results.push(result);
-          if (command !== "close" && result.exitCode === 0) await this.detectOwnerWall(session, command === "open" ? webSite(args[0]) : undefined);
-          return result;
-        }, () => this.waitOf(session) !== "off");
-      } finally {
-        if (session.kind === "current" && !session.relay) session.opening = false;
-      }
+      await session.workflow.record(command as string, args, step.id, async () => {
+        const result = command === "close" && (session.kind === "current" || session.chrome.isClosed())
+          ? { stdout: session.kind === "current" ? "Disconnected from the owner's own Chrome. Only Bao's task tabs close; the owner's tabs and windows stay open." : "", stderr: "", exitCode: 0 }
+          : await this.runNative(session, command as string, args);
+        results.push(result);
+        if (command !== "close" && result.exitCode === 0) await this.detectOwnerWall(session, command === "open" ? webSite(args[0]) : undefined);
+        return result;
+      }, () => this.waitOf(session) !== "off");
       if (command !== "close" && results[0]?.exitCode === 0) {
         const inPage = this.waitOf(session) === "off" && command === "snapshot" && this.movable(session) && pageWall(results[0].stdout);
         const opened = this.waitOf(session) !== "off" ? await this.moveAway(session, this.wallWords(session), this.reopenOf(session))
@@ -897,11 +892,13 @@ export class AgentBrowserProxy {
       if (browser.targetId) await writeFile(path.join(stateDir, "bao.target"), JSON.stringify({ targetId: browser.targetId, url: "about:blank" }), { mode: 0o600 });
       const endpoint = browser.kind === "current" ? browser.chrome.endpoint : browser.background.endpoint;
       // On the owner's Chrome the native daemon stays on its bound tab. Without the pin it makes every target it discovers
-      // current, such as a tab the owner opens or Chrome's Gemini panel.
+      // current, such as a tab the owner opens or Chrome's Gemini panel. Only its URL carries background=1, so a later Bao
+      // process that joins for a handoff is forwarded and can still raise the task tab.
       const pin = browser.kind === "current" && !browser.relay ? ["--pin-tab"] : [];
+      const behind = browser.kind === "current" && !browser.relay ? `?${DAEMON_BEHIND_QUERY}` : "";
       return {
         stateDir,
-        flags: ["--session", "bao", "--config", config, ...pin, "--cdp", `ws://127.0.0.1:${endpoint.port}${endpoint.browserPath}`, "--idle-timeout", "0"],
+        flags: ["--session", "bao", "--config", config, ...pin, "--cdp", `ws://127.0.0.1:${endpoint.port}${endpoint.browserPath}${behind}`, "--idle-timeout", "0"],
         env: {
           HOME: stateDir, TMPDIR: stateDir, PATH: "/usr/bin:/bin", LANG: "en_US.UTF-8",
           AGENT_BROWSER_SOCKET_DIR: stateDir, AGENT_BROWSER_AUTOSAVE_INTERVAL_MS: "0", BAO_HEAL_CURSOR_ACCOUNT: "0",
@@ -1101,11 +1098,12 @@ export class AgentBrowserProxy {
   }
 
   /**
-   * Keeps the agent in its tab of the owner's Chrome. A fresh tab joins the task only when it appears while a command that can open
-   * one is in flight, and its opener is the agent's task tab. A tab that appears during an owner wait, or between commands, stays the
-   * owner's even when its opener is the task tab: Bao does not switch to it, mark it, or close it. When the daemon is anywhere else,
-   * Bao switches it back to the agent's tab. That switch's Page.bringToFront is answered on the shared connection, so Chrome does not
-   * rise. When no task tab remains, the caller ends the session instead of acting on an owner tab.
+   * Keeps the agent in its tab of the owner's Chrome. A fresh tab joins the task only when it was noted while the native daemon was
+   * running a command that can open one, and its opener is the agent's task tab. A tab that appears during wall handling, workflow
+   * capture, an owner wait, or between commands stays the owner's even when its opener is the task tab: Bao does not switch to it,
+   * mark it, or close it. When the daemon is anywhere else, Bao switches it back to the agent's tab. That switch's Page.bringToFront
+   * is answered on the daemon's connection, so Chrome does not rise. When no task tab remains, the caller ends the session instead of
+   * acting on an owner tab.
    */
   private async keepTab(session: Session & DebuggingChrome, tabs: NativeTab[], ceiling: AbortSignal): Promise<NativeTab[]> {
     const listed = (targetId: string | undefined) => tabs.find((tab) => tab.targetId === targetId);
@@ -1134,6 +1132,29 @@ export class AgentBrowserProxy {
     const back = await this.run(session, "tab", [tab.tabId], undefined, ceiling);
     if (back.exitCode !== 0) throw new Error(`Bao could not keep the agent in its tab ${tab.tabId}: ${back.stderr || back.stdout || `exit ${back.exitCode}`}`);
     return this.nativeTabs(session, ceiling);
+  }
+
+  /** Runs the agent's command. On the owner's Chrome, a new tab is queued as the agent's only while this native call runs. */
+  private async runNative(session: Session, command: string, args: string[]): Promise<AgentBrowserCommandResult> {
+    if (session.kind !== "current" || session.relay || this.waitOf(session) !== "off" || !canOpenTab(command, args)) {
+      return this.forward(session, command, args);
+    }
+    session.opening = true;
+    try {
+      const result = await this.forward(session, command, args);
+      await this.queueFresh(session);
+      return result;
+    } finally {
+      session.opening = false;
+    }
+  }
+
+  /** Notes targets Chrome has that this command has not classified, before wall handling or workflow capture can mark them seen. */
+  private async queueFresh(session: Session & DebuggingChrome): Promise<void> {
+    const { targetInfos } = await session.chrome.cdp.sendUntilProgress<{ targetInfos: ChromeTarget[] }>("Target.getTargets", {}, undefined, { signal: session.abort.signal });
+    for (const info of targetInfos) {
+      if (!session.seen.has(info.targetId) && !session.taskTabs.has(info.targetId)) session.pending.add(info.targetId);
+    }
   }
 
   /** Focus emulation keeps a background task tab painting and taking input. It lasts while this session stays attached. */
@@ -1572,6 +1593,7 @@ export class AgentBrowserProxy {
         if (!targetId) throw new Error("Native task tab has no target id");
         session.taskTabs.add(targetId);
         session.targetId = targetId;
+        await this.focusTab(session, targetId, bound ?? session.abort.signal);
       } catch (error) {
         process.stderr.write(`Bao task tab tracking unavailable: ${error instanceof Error ? error.message : String(error)}\n`);
       }
