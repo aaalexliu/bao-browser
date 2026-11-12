@@ -26,7 +26,26 @@ pinTestBrowser();
 const MAPS = "https://www.google.com/maps";
 const GLIC = "https://gemini.google.com/glic?hl=en-US";
 
-interface Target { targetId: string; type: string; url: string; title: string; openerId?: string; inWindow: boolean }
+interface Target { targetId: string; type: string; url: string; title: string; openerId?: string; inWindow: boolean; label?: string }
+
+function withoutJson(args: string[]): string[] {
+  const cleaned: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--json") {
+      if (args[i + 1] === "true" || args[i + 1] === "false") i += 1;
+      continue;
+    }
+    cleaned.push(args[i]!);
+  }
+  return cleaned;
+}
+
+function canonicalTabId(ref: string | undefined): string | undefined {
+  const digits = /^\s*[tT](0*[1-9]\d*)\s*$/u.exec(ref ?? "")?.[1];
+  if (!digits) return undefined;
+  const id = Number(digits);
+  return id > 0 && id <= 0xffff_ffff ? `t${id}` : undefined;
+}
 
 async function fixture(t: TestContext) {
   const root = await chromeProfiles(await mkdtemp(path.join(tmpdir(), "bao-current-tabs-")));
@@ -48,7 +67,11 @@ async function fixture(t: TestContext) {
     clicked: undefined as (() => void) | undefined,
     /** Runs when a press lands, like a key that opens a new tab. */
     pressed: undefined as (() => void) | undefined,
-    windowCheck: undefined as ((targetId: string) => void) | undefined };
+    windowCheck: undefined as ((targetId: string) => void) | undefined,
+    /** Runs as a command's reply is sent, after that list was built and before the next command. */
+    after: undefined as ((command: string, args: string[]) => void) | undefined,
+    /** Targets Chrome lists that this daemon has not numbered yet. */
+    untracked: new Set<string>() };
   // agent-browser's should_track_target lists page and webview targets, and skips chrome://, chrome-extension://, and devtools://.
   // It numbers them in the order it sees them. Before each command it takes in the targets Chrome reported since; without --pin-tab
   // it makes each new one current. A pinned daemon whose bound tab is gone marks no tab active (tab_gone).
@@ -57,12 +80,12 @@ async function fixture(t: TestContext) {
   const drain = () => {
     const attached = daemon.tabIds.size > 0;
     for (const target of tracked()) {
-      if (daemon.tabIds.has(target.targetId)) continue;
+      if (daemon.untracked.has(target.targetId) || daemon.tabIds.has(target.targetId)) continue;
       daemon.tabIds.set(target.targetId, `t${daemon.tabIds.size + 1}`);
       if (attached && !daemon.pinned) daemon.active = target.targetId;
     }
   };
-  const listed = () => tracked().map(target => ({ tabId: daemon.tabIds.get(target.targetId)!, targetId: target.targetId, label: null, title: target.title,
+  const listed = () => tracked().filter(target => !daemon.untracked.has(target.targetId)).map(target => ({ tabId: daemon.tabIds.get(target.targetId)!, targetId: target.targetId, label: target.label ?? null, title: target.title,
     url: target.url, type: target.type, active: target.targetId === daemon.active }));
   const closed: string[] = [];
   const sent: { method: string; params: Record<string, unknown> }[] = [];
@@ -115,12 +138,18 @@ async function fixture(t: TestContext) {
     drain();
     daemon.commands.push({ command, args, on: daemon.active });
     const tabs = listed();
-    const reply = (stdout: string, code = 0) => void writeFile(path.join(String(options.cwd), "bao.pid"), String(process.pid))
-      .then(() => callback(code ? Object.assign(new Error(stdout), { code }) : null, code ? "" : stdout, code ? stdout : ""));
-    if (command === "tab" && args.includes("--json")) reply(JSON.stringify({ success: true, data: { tabs } }));
+    const reply = (stdout: string, code = 0) => {
+      daemon.after?.(command, args);
+      return void writeFile(path.join(String(options.cwd), "bao.pid"), String(process.pid))
+        .then(() => callback(code ? Object.assign(new Error(stdout), { code }) : null, code ? "" : stdout, code ? stdout : ""));
+    };
+    const tabArgs = command === "tab" ? withoutJson(args) : args;
+    const named = (ref: string | undefined) => tabs.find(item => item.tabId === ref || item.tabId === canonicalTabId(ref) || item.label === ref?.trim() || (ref !== undefined && item.targetId.toLowerCase() === ref.trim().toLowerCase()));
+    const listing = command === "tab" && tabArgs[0] !== "close" && tabArgs[0] !== "new" && (!tabArgs[0] || tabArgs[0] === "list");
+    if (command === "tab" && listing && args.includes("--json")) reply(JSON.stringify({ success: true, data: { tabs } }));
     else if (command === "tab" && (!args[0] || args[0] === "list")) reply(tabs.map(tab => `${tab.active ? "→" : " "} [${tab.tabId}] ${tab.title} - ${tab.url}`).join("\n") + "\n");
-    else if (command === "tab" && args[0] === "close") {
-      const tab = tabs.find(item => item.tabId === args[1]);
+    else if (command === "tab" && tabArgs[0] === "close") {
+      const tab = named(tabArgs[1]);
       if (!tab) { reply(`✗ Tab ${args[1]} not found`, 1); return new EventEmitter(); }
       if (!daemon.holdClosedInChrome) {
         const index = targets.findIndex(item => item.targetId === tab.targetId);
@@ -129,8 +158,8 @@ async function fixture(t: TestContext) {
       daemon.tabIds.delete(tab.targetId);
       if (daemon.active === tab.targetId) daemon.active = daemon.pinned ? "" : tracked()[0]?.targetId ?? "";
       reply("✓ Closed\n");
-    } else if (command === "tab" && args[0] !== "new") {
-      const tab = tabs.find(item => item.tabId === args[0]);
+    } else if (command === "tab" && tabArgs[0] !== "new") {
+      const tab = named(tabArgs[0]);
       if (!tab) { reply(`✗ Tab ${args[0]} not found`, 1); return new EventEmitter(); }
       daemon.active = tab.targetId;
       reply(`✓ ${tab.title}\n  ${tab.url}\n`);
@@ -209,6 +238,89 @@ test("the agent cannot switch to or close Chrome's own panels, or a tab the owne
   assert.equal(f.daemon.active, "task");
   await f.proxy.execute("click", ["@e1"], undefined, false, undefined, {}, f.proxy.activeRunId);
   assert.equal(f.daemon.commands.at(-1)!.on, "task");
+});
+
+test("a tab command the pinned CLI would accept cannot close or switch to a tab the owner opened", async (t) => {
+  const f = await fixture(t);
+  const owner = f.targets.find(item => item.targetId === "owner")!;
+  owner.targetId = "4A0B7C4E1F2D3A4B5C6D7E8F90A1B2C3";
+  owner.label = "docs";
+  await f.proxy.execute("open", [MAPS], "current");
+  const acted = () => f.daemon.commands.filter(entry => entry.command === "tab" && entry.args.some(arg => arg === "close" || arg === "t2" || /^[tT]0*2$/u.test(arg) || /4a0b/iu.test(arg) || arg === "docs"));
+  for (const args of [["--json", "close", "t2"], ["--debug", "close", "t2"], ["close", "T2"], ["close", "t02"], ["close", "  t2  "], ["T2"], ["4A0B7C4E1F2D3A4B5C6D7E8F90A1B2C3"], ["4a0b7c4e1f2d3a4b5c6d7e8f90a1b2c3"], ["docs"]]) {
+    const before = acted().length;
+    const [refused] = await f.proxy.execute("tab", args, undefined, false, undefined, {}, f.proxy.activeRunId);
+    assert.equal(refused!.exitCode, 1, args.join(" "));
+    assert.match(refused!.stderr, /is a tab the owner opened/, args.join(" "));
+    assert.equal(acted().length, before, args.join(" "));
+  }
+  assert.ok(f.targets.some(item => item.label === "docs"), "the owner tab stays open");
+  const [panel] = await f.proxy.execute("tab", ["--json", "t4"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  assert.equal(panel!.exitCode, 1);
+  assert.match(panel!.stderr, /is not a tab in a Chrome window, such as the Gemini panel or a side panel\. Stay in Bao's task tab\./);
+  const [task] = await f.proxy.execute("tab", ["T1"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  assert.equal(task!.exitCode, 0);
+  assert.equal(f.daemon.active, "task");
+  assert.ok(f.daemon.commands.some(entry => entry.command === "tab" && entry.args[0] === "t1" && !entry.args.includes("T1")), "Bao forwards the canonical tab id");
+});
+
+test("a popup that appears after the tab read and before the native command stays the owner's", async (t) => {
+  const f = await fixture(t);
+  let firstTabSawGap: boolean | undefined;
+  f.daemon.after = (command, args) => {
+    if (command !== "tab" || !args.includes("--json") || f.targets.some(item => item.targetId === "gap")) return;
+    f.daemon.after = undefined;
+    f.targets.push({ targetId: "gap", type: "page", url: "https://example.com/gap", title: "Gap popup", openerId: "task", inWindow: true });
+  };
+  f.daemon.observe = (command) => {
+    if (command !== "tab" || firstTabSawGap !== undefined) return;
+    firstTabSawGap = f.targets.some(item => item.targetId === "gap");
+  };
+  await f.proxy.execute("open", [MAPS], "current");
+  assert.equal(firstTabSawGap, false, "the popup was not on the tab read that preceded the native command");
+  assert.ok(f.targets.some(item => item.targetId === "gap"));
+  const listed = (await f.proxy.execute("tab", [], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout;
+  assert.match(listed, /Gap popup/);
+  assert.doesNotMatch(listed, /\(Bao task tab\) Gap popup/);
+  assert.equal(f.daemon.active, "task");
+  assert.equal(f.sent.some(call => call.method === "Target.attachToTarget" && call.params.targetId === "gap"), false);
+  assert.ok(await f.proxy.finishTask({ outcome: "failed", reason: "fixture" }, f.proxy.activeRunId));
+  assert.equal(f.closed.includes("gap"), false);
+  assert.ok(f.closed.includes("task"));
+});
+
+test("a popup Chrome lists before the daemon does stays pending, and the next snapshot follows it", async (t) => {
+  const f = await fixture(t);
+  await f.proxy.execute("open", [MAPS], "current");
+  f.daemon.clicked = () => {
+    f.targets.push({ targetId: "late", type: "page", url: "https://www.google.com/maps/place/Ceres", title: "Ceres", openerId: "task", inWindow: true });
+    f.daemon.untracked.add("late");
+  };
+  assert.equal((await f.proxy.execute("click", ["@e2"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout, "\u2713 Done on task\n");
+  assert.equal(f.daemon.active, "task");
+  assert.equal(f.sent.some(call => call.method === "Target.attachToTarget" && call.params.targetId === "late"), false, "Bao does not follow a popup that has no native tab id yet");
+  f.daemon.untracked.delete("late");
+  await f.proxy.execute("snapshot", ["-i"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  assert.equal(f.daemon.commands.at(-1)!.on, "late", "the next snapshot lands on the popup once it has a native tab id");
+  assert.equal(f.daemon.commands.some(entry => entry.command === "tab" && entry.args[0] === "t2"), false, "Bao does not switch to the owner tab to follow the popup");
+  assert.ok(await f.proxy.finishTask({ outcome: "passed", reason: "fixture" }, f.proxy.activeRunId));
+  assert.ok(f.closed.includes("late"));
+  assert.equal(f.closed.includes("owner"), false);
+});
+
+test("a popup that disappears before it has a native tab id is not followed", async (t) => {
+  const f = await fixture(t);
+  await f.proxy.execute("open", [MAPS], "current");
+  f.daemon.clicked = () => {
+    f.targets.push({ targetId: "gone", type: "page", url: "https://accounts.example/gone", title: "Gone", openerId: "task", inWindow: true });
+    f.daemon.untracked.add("gone");
+  };
+  await f.proxy.execute("click", ["@e2"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  const index = f.targets.findIndex(item => item.targetId === "gone");
+  f.targets.splice(index, 1);
+  f.daemon.untracked.delete("gone");
+  assert.equal((await f.proxy.execute("snapshot", ["-i"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout, "\u2713 Done on task\n");
+  assert.equal(f.daemon.active, "task");
 });
 
 test("a tab Bao's task tab opens becomes the agent's tab, once", async (t) => {
