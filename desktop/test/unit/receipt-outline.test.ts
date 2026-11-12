@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 import { receiptOutline, type OutlineRun, type OutlineStep } from "../../src/app/receipt-outline";
 import { runReceipt } from "../../src/app/views";
-import type { inspectRunView } from "../../src/mcp/run-view";
+import { inspectRunView } from "../../src/mcp/run-view";
+import { Library } from "../../src/v1/store";
 
 function step(input: {
   label: string;
@@ -220,6 +224,40 @@ test("the same control on two query pages stays two fields", () => {
   assert.equal(outline.chapters[0]?.url, "https://fixture.test/apply?person=applicant");
   assert.equal(outline.chapters[1]?.url, "https://fixture.test/apply?person=reference#end");
   assert.deepEqual(outline.chapters.map((chapter) => chapter.fields.find((field) => field.label === "Name")?.value), ["Ada Lovelace", "Grace Hopper"]);
+});
+
+test("a long ten-place report appears once under Agent said", async () => {
+  const places = Array.from({ length: 10 }, (_, index) => `Place ${index + 1} at ${100 + index} Example Street, Springfield, Massachusetts`);
+  const report = `Added these 10 places: ${places.join("; ")}.`;
+  assert.ok(report.length > 500);
+  const root = await mkdtemp(path.join(tmpdir(), "bao-receipt-report-"));
+  try {
+    const library = new Library(root);
+    library.saveRun({
+      id: "ten-places",
+      workflowId: "agent-browser",
+      kind: "capture",
+      pageEngine: "agent-browser",
+      status: "passed",
+      at: 1_000,
+      heals: [],
+      steps: places.map((place, index) => ({
+        id: `command-${index + 1}`,
+        status: "passed",
+        label: `Click ${place}`,
+        native: { command: "click", args: [`@e${index + 1}`] },
+      })),
+      envelope: { status: "passed", reason: report },
+    } as never);
+    const html = runReceipt(inspectRunView(library, { run_id: "ten-places" }), "Ten places", library.readRun("ten-places") as never);
+    const said = html.match(/aria-label="Agent report"[\s\S]*?<\/section>/)?.[0] || "";
+    const head = report.slice(0, 80);
+    assert.equal(said.includes(report), true);
+    assert.equal(html.split(head).length - 1, 1);
+    assert.equal((html.split('aria-label="Outcome"')[0] || "").includes(head), false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("a replay read-back is shown as a read-back", () => {

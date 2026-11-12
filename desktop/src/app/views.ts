@@ -2186,7 +2186,7 @@ export function runReceipt(view: ReturnType<typeof inspectRunView>, name: string
   const ask = spoken ? undefined : view.handoff?.ask || run.envelope?.ask;
   const outline = receiptOutline(run as OutlineRun);
   const unlabeled = view.reason || run.failure?.reason || "";
-  const skipUnlabeled = Boolean(outline.claim && unlabeled === outline.claim);
+  const skipUnlabeled = Boolean(outline.claim);
   return `<section id="run-receipt" aria-label="Run receipt"><p class="receipt-kicker"><span class="run-state ${esc(kind)}">${esc(statusLabel(kind))}</span> · ${esc(at)}</p><h2>${esc(name)}</h2>
     <p class="receipt-meta">${view.run.stepCount} step${view.run.stepCount === 1 ? "" : "s"}${calls === null ? "" : ` · ${calls} model call${calls === 1 ? "" : "s"}`}</p>
     ${receiptBrowsers(run)}
