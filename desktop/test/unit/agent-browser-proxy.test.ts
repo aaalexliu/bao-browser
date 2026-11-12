@@ -12,7 +12,8 @@ import { chromeProfiles, fakeTaskTab } from "../support/chrome-profiles";
 import { trapPort } from "../support/trap-port";
 import * as profiles from "../../src/engines/chrome-profile-copy";
 import * as sockets from "../../src/cdp-live/socket";
-import { pageShotLine } from "../../src/mcp/tool-card";
+import { describeStep } from "../../src/engines/agent-browser-describe";
+import { pageShotLine, textToolResult } from "../../src/mcp/tool-card";
 import { Library } from "../../src/v1/store";
 import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
 import { scaledMs } from "../runtime";
@@ -58,6 +59,7 @@ const fs = require('node:fs');
 const args = process.argv.slice(2);
 fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify({args, env: process.env}) + '\\n');
 const command = args[args.indexOf('--idle-timeout') + 2];
+if (command === 'snapshot' && fs.existsSync(${JSON.stringify(path.join(root, "hold-snapshot"))})) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 400);
 if (args.includes('hang') || args.includes('daemon-fail')) {
   const daemon = require('node:child_process').spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { detached: true, stdio: 'ignore' });
   daemon.unref();
@@ -175,23 +177,61 @@ for (const failure of ["connect", "metadata", "poll"]) test(`owner wait keeps it
       return cdp;
     });
     const result = await f.proxy.execute("wait_for_owner", ["350"], undefined, false, undefined, {}, f.proxy.activeRunId);
-    assert.equal((JSON.parse(result[0]!.stdout) as { outcome: string }).outcome, "waiting");
-    assert.match((JSON.parse(result[0]!.stdout) as { instruction: string }).instruction, /wait_for_owner/);
+    const readWall = failure === "poll";
+    const reply = JSON.parse(result[0]!.stdout) as { outcome: string; instruction: string };
+    assert.equal(reply.outcome, readWall ? "waiting" : "recording");
+    assert.match(reply.instruction, readWall ? /wait_for_owner/ : /the run is recording/);
     const saved = new Library(path.join(f.root, "home")).listRuns()[0]!;
-    assert.equal(saved.status, "needs_human");
-    assert.equal(saved.envelope?.reason, "owner_signin");
+    assert.equal(saved.status, readWall ? "needs_human" : "recording");
+    assert.equal(saved.envelope?.reason, readWall ? "owner_signin" : undefined);
     const step = (saved.steps as RecordedAgentBrowserCommand[]).at(-1)!;
     assert.equal(step.status, "passed");
     assert.equal(step.afterShot, undefined);
     assert.deepEqual(step.native.screenshots, []);
-    const calls = await f.calls();
-    for (const command of ["snapshot", "screenshot", "fill", "click", "tab"]) {
-      const blocked = await f.proxy.execute(command, [], undefined, false, undefined, {}, f.proxy.activeRunId);
-      assert.equal((JSON.parse(blocked[0]!.stdout) as { outcome: string }).outcome, "halted");
+    if (readWall) {
+      const calls = await f.calls();
+      for (const command of ["snapshot", "screenshot", "fill", "click", "tab"]) {
+        const blocked = await f.proxy.execute(command, [], undefined, false, undefined, {}, f.proxy.activeRunId);
+        assert.equal((JSON.parse(blocked[0]!.stdout) as { outcome: string }).outcome, "halted");
+      }
+      assert.deepEqual(await f.calls(), calls);
+      await f.proxy.close();
+      const closed = new Library(path.join(f.root, "home")).readRun(saved.id);
+      assert.equal(closed.status, "failed");
+      assert.equal(closed.envelope?.reason, "session_closed");
     }
-    assert.deepEqual(await f.calls(), calls);
+  } finally { await f.close(); }
+});
+
+for (const failure of ["connect", "metadata"] as const) test(`a close during an unfinished ${failure} wait records session_closed`, { timeout: 4000 }, async (t) => {
+  const f = await fixture(t);
+  try {
+    await f.proxy.execute("open", [], "copy");
+    t.mock.method(sockets, "connectCdp", async () => {
+      if (failure === "connect") throw new Error("temporary connection failure");
+      const cdp = new sockets.CdpSocket(new Socket());
+      t.mock.method(cdp, "send", async (method: string) => {
+        if (method === "Target.getTargetInfo") throw new Error("temporary metadata failure");
+        return { sessionId: "fixture" };
+      });
+      followSend(t, cdp);
+      return cdp;
+    });
+    const runId = f.proxy.activeRunId!;
+    const library = new Library(path.join(f.root, "home"));
+    const pending = f.proxy.execute("wait_for_owner", ["5000"], undefined, false, undefined, {}, runId);
+    const until = Date.now() + 2_000;
+    let during = library.readRun(runId).status;
+    while (during !== "needs_human" && Date.now() < until) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      during = library.readRun(runId).status;
+    }
+    assert.equal(during, "needs_human");
     await f.proxy.close();
-    assert.equal(new Library(path.join(f.root, "home")).readRun(saved.id).status, "failed");
+    await pending;
+    const saved = library.readRun(runId);
+    assert.equal(saved.status, "failed");
+    assert.equal(saved.envelope?.reason, "session_closed");
   } finally { await f.close(); }
 });
 
@@ -993,5 +1033,171 @@ test("after the newer task finishes, a command that names the ended run stays cl
     assert.equal(other[0]!.exitCode, 0);
     assert.notEqual(f.proxy.activeRunId, older);
     assert.notEqual(f.proxy.activeRunId, "run-not-ended-by-newer");
+  } finally { await f.close(); }
+});
+
+test("a wait_for_owner on a normal page shows needs_human while it waits, then recording, so finish_task keeps the caller's outcome", async (t) => {
+  const f = await fixture(t);
+  try {
+    await f.proxy.execute("open", ["http://127.0.0.1/"], "copy");
+    const runId = f.proxy.activeRunId!;
+    const library = new Library(path.join(f.root, "home"));
+    const pending = f.proxy.execute("wait_for_owner", ["250"], undefined, false, undefined, {}, runId);
+    const deadline = Date.now() + 2_000;
+    let during = library.readRun(runId).status;
+    while (during !== "needs_human" && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      during = library.readRun(runId).status;
+    }
+    const [waiting] = await pending;
+    const reply = JSON.parse(waiting!.stdout) as { outcome: string; instruction: string };
+    assert.equal(reply.outcome, "recording");
+    assert.match(reply.instruction, /the run is recording/);
+    const card = describeStep({ command: "wait_for_owner", args: ["250"], results: [waiting!] });
+    assert.match(card.text, /recording/);
+    const shown = textToolResult([waiting!], card.text, [], [], runId);
+    assert.match(shown.content.map((block) => block.text).join("\n"), new RegExp(`Run ${runId} · recording`));
+    assert.equal(during, "needs_human", "the app shows the run as needing the owner while the agent waits");
+    assert.equal(library.readRun(runId).status, "recording", "a page that is not a wall leaves needs_human when the wait ends");
+    const clicksBefore = (await f.calls()).filter((call) => call.args.at(-2) === "click").length;
+    const [clicked] = await f.proxy.execute("click", ["@e1"], undefined, false, undefined, {}, runId);
+    assert.equal(clicked!.stdout, "click unchanged\n");
+    assert.equal(clicked!.exitCode, 0);
+    assert.equal((await f.calls()).filter((call) => call.args.at(-2) === "click").length, clicksBefore + 1);
+    assert.equal(library.readRun(runId).status, "recording");
+    assert.equal(await f.proxy.finishTask({ outcome: "passed", reason: "The page was already open." }, runId), runId);
+    assert.equal(library.readRun(runId).status, "passed");
+    assert.equal(library.readRun(runId).envelope?.reason, "The page was already open.");
+  } finally { await f.close(); }
+});
+
+test("a copy session reads the wall snapshot before the run needs the owner, and none during the wait", { timeout: 4000 }, async (t) => {
+  const f = await fixture(t);
+  try {
+    await writeFile(path.join(f.root, "page.txt"), `- dialog "Verify it's you"\n  - StaticText "Enter the verification code we sent"\n  - textbox "Enter code" [ref=e1]\n`);
+    await f.proxy.execute("open", ["http://127.0.0.1/"], "copy");
+    const runId = f.proxy.activeRunId!;
+    await writeFile(path.join(f.root, "hold-snapshot"), "");
+    const library = new Library(path.join(f.root, "home"));
+    const snapshots = async () => (await f.calls()).filter((call) => call.args[call.args.indexOf("--idle-timeout") + 2] === "snapshot").length;
+    const before = await snapshots();
+    const waiting = f.proxy.execute("wait_for_owner", ["80"], undefined, false, undefined, {}, runId);
+    const until = Date.now() + 1500;
+    let seenBeforeNeeds = false;
+    let duringSnaps = before;
+    while (Date.now() < until) {
+      const status = library.readRun(runId).status;
+      const snaps = await snapshots();
+      if (snaps > before && status === "recording") seenBeforeNeeds = true;
+      if (status === "needs_human") { duringSnaps = snaps; break; }
+      await delay(5);
+    }
+    assert.equal(seenBeforeNeeds, true, "the wall snapshot runs while the run is still recording");
+    assert.equal(library.readRun(runId).status, "needs_human");
+    assert.equal(duringSnaps, before + 1, "the wait starts after that one snapshot");
+    const [waited] = await waiting;
+    assert.equal((JSON.parse(waited!.stdout) as { outcome: string }).outcome, "waiting");
+    assert.equal(await snapshots(), duringSnaps, "no native snapshot runs during the wait");
+  } finally { await f.close(); }
+});
+
+test("closing the window during the wall snapshot returns closed, not an error", { timeout: 4000 }, async (t) => {
+  const f = await fixture(t);
+  try {
+    await writeFile(path.join(f.root, "page.txt"), `- dialog "Verify it's you"\n  - StaticText "Enter the verification code we sent"\n  - textbox "Enter code" [ref=e1]\n`);
+    await f.proxy.execute("open", ["http://127.0.0.1/"], "copy");
+    const runId = f.proxy.activeRunId!;
+    await writeFile(path.join(f.root, "hold-snapshot"), "");
+    const waiting = f.proxy.execute("wait_for_owner", ["5000"], undefined, false, undefined, {}, runId);
+    const until = Date.now() + 1500;
+    let pending = false;
+    while (Date.now() < until) {
+      const calls = await f.calls().catch(() => []);
+      if (calls.some((call) => call.args[call.args.indexOf("--idle-timeout") + 2] === "snapshot")) { pending = true; break; }
+      await delay(5);
+    }
+    assert.equal(pending, true, "the wall snapshot is still running");
+    f.closeWindow();
+    const [closed] = await waiting;
+    assert.equal((JSON.parse(closed!.stdout) as { outcome: string }).outcome, "closed");
+    assert.match(closed!.stdout, /The owner closed the Bao window/);
+    const saved = new Library(path.join(f.root, "home")).readRun(runId);
+    assert.equal(saved.status, "failed");
+    assert.equal(saved.envelope?.reason, "session_closed");
+  } finally { await f.close(); }
+});
+
+test("a snapshot sign-in dialog stays waiting at the deadline, with the fallback, and the next click does not run", async (t) => {
+  const f = await fixture(t);
+  try {
+    await writeFile(path.join(f.root, "page.txt"), `- dialog "Verify it's you"\n  - StaticText "Enter the verification code we sent"\n  - textbox "Enter code" [ref=e1]\n`);
+    await f.proxy.execute("open", ["http://127.0.0.1/"], "copy");
+    const runId = f.proxy.activeRunId!;
+    const [waited] = await f.proxy.execute("wait_for_owner", ["40"], undefined, false, undefined, {}, runId);
+    const reply = JSON.parse(waited!.stdout) as { outcome: string; instruction: string };
+    assert.equal(reply.outcome, "waiting");
+    assert.equal(f.proxy.ownerPage?.url, "http://127.0.0.1/");
+    assert.equal(f.proxy.ownerPage?.title, "Fixture", "the page URL and title are not a wall; the snapshot is");
+    assert.ok(reply.instruction.includes(`{"command":"close","run_id":"${runId}"}`), reply.instruction);
+    assert.ok(reply.instruction.includes('"browser":"current"'), reply.instruction);
+    assert.ok(reply.instruction.includes("Bao does not switch on its own."), reply.instruction);
+    const sent = (await f.calls()).length;
+    const [blocked] = await f.proxy.execute("click", ["@e1"], undefined, false, undefined, {}, runId);
+    assert.equal((JSON.parse(blocked!.stdout) as { outcome: string }).outcome, "halted");
+    assert.equal((await f.calls()).length, sent, "a snapshot dialog deadline does not let the next click run");
+    assert.equal(new Library(path.join(f.root, "home")).readRun(runId).status, "needs_human");
+  } finally { await f.close(); }
+});
+
+test("a wall wait at its deadline still returns waiting and the next click does not run", async (t) => {
+  const f = await fixture(t);
+  try {
+    t.mock.method(sockets, "connectCdp", async () => {
+      const cdp = new sockets.CdpSocket(new Socket());
+      t.mock.method(cdp, "send", async (method: string) => {
+        const page = { targetId: "ABC123", url: "http://127.0.0.1/login", title: "Sign in" };
+        if (method === "Target.getTargetInfo") return { targetInfo: page };
+        if (method === "Target.getTargets") return { targetInfos: [page] };
+        if (method === "Target.attachToTarget") return { sessionId: "fixture" };
+        return { data: png.toString("base64") };
+      });
+      followSend(t, cdp);
+      return cdp;
+    });
+    await f.proxy.execute("open", ["http://127.0.0.1/login"], "copy");
+    const runId = f.proxy.activeRunId!;
+    const [waited] = await f.proxy.execute("wait_for_owner", ["40"], undefined, false, undefined, {}, runId);
+    const reply = JSON.parse(waited!.stdout) as { outcome: string };
+    assert.equal(reply.outcome, "waiting");
+    const sent = (await f.calls()).length;
+    const [blocked] = await f.proxy.execute("click", ["@e1"], undefined, false, undefined, {}, runId);
+    assert.equal((JSON.parse(blocked!.stdout) as { outcome: string }).outcome, "halted");
+    assert.equal((await f.calls()).length, sent, "a wall deadline does not let the next click run");
+    assert.equal(new Library(path.join(f.root, "home")).readRun(runId).status, "needs_human");
+  } finally { await f.close(); }
+});
+
+test("finish_task with keep-open drops the session and a later close leaves the window open", async (t) => {
+  const f = await fixture(t, true);
+  try {
+    await f.proxy.execute("open", ["http://127.0.0.1/"], "copy");
+    const kept = f.proxy.activeRunId!;
+    assert.equal(await f.proxy.finishTask({ outcome: "passed", reason: "Keep the window." }, kept), kept);
+    assert.equal(f.proxy.hasSession(), false);
+    assert.equal(f.closeCount(), 0);
+    await assert.rejects(f.proxy.execute("snapshot", [], undefined, false, undefined, {}, kept), /start agent-browser with open/);
+    const [waited] = await f.proxy.execute("wait_for_owner", ["40"], undefined, false, undefined, {}, kept);
+    const reply = JSON.parse(waited!.stdout) as { outcome: string; instruction: string };
+    assert.equal(reply.outcome, "closed");
+    assert.equal(reply.instruction.includes("The owner closed the Bao window"), false);
+    assert.equal(await f.proxy.finishTask({ outcome: "passed", reason: "again" }), undefined);
+    const [closed] = await f.proxy.execute("close", [], undefined, false, undefined, {}, kept);
+    assert.equal(closed!.stdout, "");
+    assert.equal(closed!.exitCode, 0);
+    assert.equal(f.closeCount(), 0, "a close with the kept run id leaves the window open");
+    const [opened] = await f.proxy.execute("open", ["http://127.0.0.1/next"], "copy");
+    assert.equal(opened!.exitCode, 0);
+    assert.notEqual(f.proxy.activeRunId, kept);
+    assert.equal(f.closeCount(), 0, "a later open does not close the kept window");
   } finally { await f.close(); }
 });

@@ -256,7 +256,7 @@ test("an owner wait follows a later wall in its card, instruction, banner, and r
     assert.equal(outcome(await proxy.execute("wait_for_owner", ["2000"], undefined, false, undefined, {}, runId)), "ready");
     assert.equal(await page.locator("#bao-owner-wait").count(), 0);
     assert.equal(proxy.activeRunId, runId);
-    assert.equal(outcome(await proxy.execute("wait_for_owner", ["50"], undefined, false, undefined, {}, runId)), "waiting");
+    assert.equal(outcome(await proxy.execute("wait_for_owner", ["50"], undefined, false, undefined, {}, runId)), "recording");
     await page.goto(fixture.url("/owner/verify"));
     assert.equal(outcome(await proxy.execute("wait_for_owner", ["300"], undefined, false, undefined, {}, runId)), "waiting");
     // Returning to an unrecognized wait's first page must count as a change from the later wall.
@@ -411,7 +411,8 @@ test("a wait_for_owner, close, or finish_task that names a run a newer open ende
       observer = await chromium.connectOverCDP(`http://127.0.0.1:${endpoint.port}`);
       const page = observer.contexts()[0]!.pages().find((page) => page.url() === fixture.url("/"))!;
       if (order === "chat B waits first") {
-        assert.equal(outcome(await proxy.execute("wait_for_owner", ["40"], undefined, false, undefined, {}, proxy.activeRunId)), "waiting", "chat B starts a wait on a check Bao did not recognize");
+        await page.goto(fixture.url("/owner/sign-in"));
+        assert.equal(outcome(await proxy.execute("wait_for_owner", ["40"], undefined, false, undefined, {}, proxy.activeRunId)), "waiting", "chat B starts a wait on a sign-in page");
         assert.equal(await page.locator("#bao-owner-wait").count(), 1);
       }
       const owner = proxy.ownerPage;
@@ -467,7 +468,7 @@ test("a wait_for_owner, close, or finish_task that names a run a newer open ende
   });
 });
 
-test("a first wait_for_owner on a check Bao did not recognize sends back the open's run id, and a later command needs that run id", { timeout: scaledMs(60_000) }, async (t) => {
+test("a wait_for_owner on a check Bao did not recognize shows needs_human while it waits, then recording, and a later command still needs the open's run id", { timeout: scaledMs(60_000) }, async (t) => {
   const h = await ownerProxy(t);
   const { fixture, proxy } = h;
   try {
@@ -475,9 +476,21 @@ test("a first wait_for_owner on a check Bao did not recognize sends back the ope
     const run = proxy.activeRunId!;
     assert.equal((await proxy.execute("snapshot", [], undefined, false, undefined, {}, run))[0]!.stdout, "snapshot native output\n", "a snapshot that names the open run acts on it");
     await assert.rejects(proxy.execute("click", ["@e1"]), /run_id is required on click while a browser session is open/);
-    assert.equal(outcome(await proxy.execute("wait_for_owner", ["40"], undefined, false, undefined, {}, run)), "waiting");
+    const library = new Library(h.home);
+    const pending = proxy.execute("wait_for_owner", ["250"], undefined, false, undefined, {}, run);
+    const deadline = Date.now() + 2_000;
+    let during = library.readRun(run).status;
+    while (during !== "needs_human" && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      during = library.readRun(run).status;
+    }
+    assert.equal(outcome(await pending), "recording");
+    assert.equal(during, "needs_human", "the app shows the run as needing the owner while the agent waits");
     assert.equal(proxy.activeRunId, run);
     assert.equal(proxy.ownerPage?.url, fixture.url("/"));
+    assert.equal(library.readRun(run).status, "recording", "a page that is not a wall leaves needs_human when the wait ends");
+    assert.equal(await proxy.finishTask({ outcome: "passed", reason: "The page was already open." }, run), run);
+    assert.equal(library.readRun(run).envelope?.reason, "The page was already open.");
   } finally { await h.cleanup("copy"); }
 });
 
@@ -596,7 +609,10 @@ test("a same-chat open during an owner wait continues that task and keeps the wa
 test("the owner-wait instruction names the page's ask and sends the owner to the browser the session drives", () => {
   const current = ownerWaitInstruction(true, false, "run-fixture", { url: "https://www.amazon.com/ap/signin", title: "Amazon Sign-In" });
   assert.match(current, /Ask the owner to sign in to amazon\.com in Bao's task tab in their own Chrome,/);
+  assert.match(current, /Repeat a waiting reply only while the result still says waiting and this page is a recognized sign-in or check/);
   assert.match(current, /Bao ends the wait if no wait_for_owner call continues it for 30 minutes\./);
+  assert.match(current, /Once a result says recording, the wait is over and you continue\./);
+  assert.doesNotMatch(current, /If those do not change, it keeps waiting/);
   assert.match(current, /On closed, report that the owner's Chrome session ended\.$/);
   assert.doesNotMatch(current, /Bao window|brought/);
   const bao = ownerWaitInstruction(false, true, "run-fixture", { url: "https://myaccount.nytimes.com/auth/login", title: "Confirm your account" });

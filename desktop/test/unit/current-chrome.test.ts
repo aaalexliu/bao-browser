@@ -12,10 +12,10 @@ import { connectCdp, type CdpSocket } from "../../src/cdp-live/socket";
 import { INSPECT_URL } from "../../src/cdp-live/ax";
 import * as profileCopy from "../../src/engines/chrome-profile-copy";
 import * as baoProfile from "../../src/engines/bao-profile";
-import { CURRENT_CHROME_ENDED, TASK_TAB_CLOSED, RUN_ENDED } from "../../src/engines/agent-browser-describe";
+import { CURRENT_CHROME_ENDED, describeStep, TASK_TAB_CLOSED, RUN_ENDED } from "../../src/engines/agent-browser-describe";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import { getRun } from "../../src/mcp/catalog";
-import { browserToolResult, finishToolResult, pageShotLine, stepSentence } from "../../src/mcp/tool-card";
+import { browserToolResult, finishToolResult, pageShotLine, stepSentence, textToolResult } from "../../src/mcp/tool-card";
 import { LAUNCH_SERVICES_RESTART, launchOwnedChromeEndpoint, pinTestBrowser } from "../../src/launch";
 import { MacOsHelper, type AxHit, type AxNode } from "../../src/proxy/os-macos";
 import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
@@ -931,13 +931,27 @@ test("a first wait after finish_task waits on the new run only with the new run'
   const [stale] = await f.proxy.execute("wait_for_owner", ["40"], undefined, false, undefined, {}, runX);
   assert.equal((JSON.parse(stale!.stdout) as { outcome: string }).outcome, "closed", "the finished run's id starts no wait");
   assert.equal(f.library.listRuns().find((run) => run.id === runY)!.status, "recording");
-  const [waiting] = await f.proxy.execute("wait_for_owner", ["40"], undefined, false, undefined, {}, runY);
+  const pending = f.proxy.execute("wait_for_owner", ["250"], undefined, false, undefined, {}, runY);
+  const until = Date.now() + 2_000;
+  let during = f.library.readRun(runY).status;
+  while (during !== "needs_human" && Date.now() < until) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    during = f.library.readRun(runY).status;
+  }
+  const [waiting] = await pending;
   const reply = JSON.parse(waiting!.stdout) as { outcome: string; instruction: string };
-  assert.equal(reply.outcome, "waiting", "a check Bao did not recognize still waits on the open session");
-  assert.equal(reply.instruction.includes(`run_id="${runY}"`), true);
-  assert.equal(reply.instruction.includes(`run_id="${runX}"`), false);
+  assert.equal(reply.outcome, "recording", "a page that is not a wall returns recording at the deadline");
+  assert.match(reply.instruction, /The wait is over and the run is recording/);
+  assert.equal(during, "needs_human", "Running Chrome shows the run as needing the owner while the agent waits");
+  assert.equal(reply.instruction.includes(runY), false, "the recording instruction names no run");
+  assert.equal(reply.instruction.includes(runX), false);
+  const card = describeStep({ command: "wait_for_owner", args: ["250"], results: [waiting!] });
+  const shown = textToolResult([waiting!], card.text, [], [], runY).content.map((block) => block.text).join("\n");
+  assert.match(shown, new RegExp(`Run ${runY} · recording`));
+  assert.equal(shown.includes(runX), false, "the Run line names the open run, not the finished one");
+  assert.equal(f.library.readRun(runX).status, "passed");
   assert.equal(f.proxy.hasSession(), true);
-  assert.equal(f.library.listRuns().find((run) => run.id === runY)!.status, "needs_human");
+  assert.equal(f.library.readRun(runY).status, "recording", "a page that is not a wall leaves needs_human when the wait ends");
 });
 
 test("a wait for a Chrome-ended run does not tell that chat to reconnect onto a newer session", async (t) => {
@@ -1069,6 +1083,9 @@ for (const [windowState, raise] of [["normal", ["minimized", "normal"]], ["minim
     t.mock.method(socket, "connectCdp", async () => ({ ...f.cdp, close() {} }));
     f.state.windowState = windowState;
     await f.proxy.execute("open", [], "copy");
+    // A recognized sign-in stays waiting, which is the result that says the window came forward. A page that is not a wall returns recording at this deadline and does not.
+    f.state.taskUrl = "https://fixture.invalid/login";
+    f.state.taskTitle = "Sign in";
     const [result] = await f.proxy.execute("wait_for_owner", ["50"], undefined, false, undefined, {}, f.proxy.activeRunId);
     assert.deepEqual(f.state.windowStates, raise, "a window from the Dock lands on top; a zoomed one returns zoomed; a full-screen Space stays put");
     const { instruction } = JSON.parse(result!.stdout) as { instruction: string };

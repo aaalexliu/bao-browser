@@ -350,8 +350,8 @@ test("wait_for_owner on a Bao profile moves to the owner's running Chrome before
   const [waiting] = await h.proxy.execute("wait_for_owner", ["300"], undefined, false, undefined, {}, h.proxy.activeRunId);
   assert.ok(Date.now() - begin >= 250, "a wait in Running Chrome is a real wait");
   const reply = JSON.parse(waiting!.stdout) as { outcome: string; instruction: string };
-  assert.equal(reply.outcome, "waiting");
-  assert.match(reply.instruction, /Bao's task tab in their own Chrome/);
+  assert.equal(reply.outcome, "recording");
+  assert.match(reply.instruction, /The wait is over and the run is recording/);
   assert.equal(h.attaches(), 1);
 });
 

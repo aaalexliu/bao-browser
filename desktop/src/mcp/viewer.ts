@@ -310,7 +310,7 @@ function viewerMain(): void {
       if (card.owner.waitedMs !== undefined) line.append(` · waiting ${waited(card.owner.waitedMs)}`);
       body.append(line);
     } else if (card.page?.url) body.append(el("p", card.page.url, "mono"));
-    if (card.status === "waiting") body.append(el("p", "Bao keeps no picture of this page. It reads only the title and address until the page changes.", "muted"));
+    if (card.status === "waiting") body.append(el("p", "Bao keeps no picture of this page. It reads only the title and address while waiting.", "muted"));
     panel.append(ring, body); root.append(panel);
   }
   function finishBlock(card: BrowserToolCard): void {

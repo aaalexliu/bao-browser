@@ -166,13 +166,13 @@ export const TASK_TAB_CLOSED = "Bao's task tab was closed. Reconnect with comman
 /** A command that names a run other than Bao's open session, which serves every chat on this MCP process. */
 export const RUN_ENDED = "This run's browser session ended and cannot continue. Report that to the owner.";
 
-export interface OwnerReply { outcome: "halted" | "waiting" | "ready" | "closed"; instruction: string }
+export interface OwnerReply { outcome: "halted" | "waiting" | "ready" | "closed" | "recording"; instruction: string }
 
 /** Bao's own reply while the owner has a turn, which stands in for native output. */
 export function ownerReply(results: readonly AgentBrowserCommandResult[]): OwnerReply | undefined {
   try {
     const value = JSON.parse(results[0]?.stdout || "") as { outcome?: unknown; instruction?: unknown };
-    return typeof value.outcome === "string" && ["halted", "waiting", "ready", "closed"].includes(value.outcome) && typeof value.instruction === "string"
+    return typeof value.outcome === "string" && ["halted", "waiting", "ready", "closed", "recording"].includes(value.outcome) && typeof value.instruction === "string"
       ? { outcome: value.outcome as OwnerReply["outcome"], instruction: value.instruction } : undefined;
   } catch { return undefined; }
 }
@@ -241,13 +241,14 @@ export function describeStep(facts: StepFacts): StepSummary {
     const ask = `Your turn: ${ownerTask(owner)} in ${browser}`;
     const waiting = owner.waitedMs !== undefined ? `, waiting ${waited(owner.waitedMs)}` : "";
     const where = owner.title ? ` The page is "${owner.title}" (${owner.url})${waiting}.` : ` The page is ${owner.url}${waiting}.`;
-    return { parts: [ask], text: `${ask}.${where} Bao reads only the title and address until the page changes.`, owner };
+    return { parts: [ask], text: `${ask}.${where} Bao reads only the title and address while waiting.`, owner };
   }
   if (outcome === "ready") {
     const back = ownerHandoff(facts.owner)?.kind === "sign-in" ? "Back from sign-in" : "Back from the check";
     return page?.title ? done([`${back}: now on `, { cite: page.title }], page.url ? ` (${page.url}).` : ".")
       : done([back]);
   }
+  if (outcome === "recording") return done(["The wait is over. The run is recording"]);
   if (outcome === "closed") {
     const ended = reply?.instruction === CURRENT_CHROME_ENDED ? "Your Chrome session ended"
       : reply?.instruction === TASK_TAB_CLOSED ? "Bao's task tab was closed"
