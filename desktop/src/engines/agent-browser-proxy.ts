@@ -5,6 +5,7 @@ import path from "node:path";
 import { readDevToolsActivePort } from "../cdp-live/endpoint";
 import { CDP_PROGRESS_CEILING_MS, connectCdp, type CdpSocket } from "../cdp-live/socket";
 import { openCurrentChrome, openTaskTab, type CurrentChrome } from "../cdp-live/current-chrome";
+import { DAEMON_BEHIND_QUERY } from "../cdp-live/shared-connection";
 import { isChromeTab, type ChromeTarget } from "../cdp-live/chrome-tabs";
 import { openRunningChrome, type RunningChrome } from "../extension/running-chrome";
 import { resolveNormalChrome } from "../launch";
@@ -155,15 +156,155 @@ interface SessionData {
   daemonStarted?: boolean;
 }
 
-/** Whether a native command opens a new tab itself: `tab new`, or a click that opens its link in a new tab. */
-const opensTab = (command: string, args: readonly string[]) => (command === "tab" && args[0] === "new") || (command === "click" && args.includes("--new-tab"));
+/** Global flags pinned agent-browser 0.41.0 strips before it reads a command. A tab reference hidden behind one of them is still that command. */
+const GLOBAL_BOOL_FLAGS = new Set([
+  "--json", "--headed", "--webgpu", "--no-webmcp", "--debug", "--ignore-https-errors", "--allow-file-access", "--hide-scrollbars",
+  "--auto-connect", "--pin-tab", "--no-pin-tab", "--no-ca-cert", "--use-system-ca", "--annotate", "--content-boundaries", "--confirm-interactive",
+  "--no-auto-dialog", "-v", "--verbose", "-q", "--quiet", "--offline", "--quick", "--fix",
+]);
+const GLOBAL_VALUE_FLAGS = new Set([
+  "--session", "--restore-save", "--restore-check-url", "--restore-check-text", "--restore-check-fn", "--namespace", "--headers", "--executable-path",
+  "--cdp", "--extension", "--init-script", "--enable", "--profile", "--state", "--proxy", "--proxy-bypass", "--args", "--user-agent", "-p", "--provider",
+  "--device", "--session-name", "--color-scheme", "--download-path", "--max-output", "--allowed-domains", "--action-policy", "--confirm-actions", "--config",
+  "--engine", "--input-mode", "--screenshot-dir", "--screenshot-quality", "--screenshot-format", "--idle-timeout", "--ca-cert", "--model",
+]);
+/** The tab words left after pinned agent-browser 0.41.0 removes global flags, plus whether that command asked for JSON. */
+function stripGlobalFlags(args: readonly string[]): { args: string[]; json: boolean } {
+  const cleaned: string[] = [];
+  let json = false;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if (arg.startsWith("--restore=")) continue;
+    if (GLOBAL_VALUE_FLAGS.has(arg)) { i += 1; continue; }
+    if (arg === "--restore") continue;
+    if (GLOBAL_BOOL_FLAGS.has(arg)) {
+      const next = args[i + 1];
+      const valued = next === "true" || next === "false";
+      if (arg === "--json") json = valued ? next === "true" : true;
+      if (valued) i += 1;
+      continue;
+    }
+    cleaned.push(arg);
+  }
+  return { args: cleaned, json };
+}
+
+interface ParsedTab { action: "list" | "new" | "close" | "switch"; ref?: string; json: boolean; flags: string[]; forwarded: string[] }
+
+/** Global flags pinned agent-browser 0.41.0 accepts on any command, in the caller's order, including each flag's value. */
+function acceptedCliFlags(args: readonly string[]): string[] {
+  const flags: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if (arg.startsWith("--restore=")) { flags.push(arg); continue; }
+    if (GLOBAL_VALUE_FLAGS.has(arg)) {
+      flags.push(arg);
+      const next = args[i + 1];
+      if (next !== undefined) flags.push(next);
+      i += 1;
+      continue;
+    }
+    if (arg === "--restore") { flags.push(arg); continue; }
+    if (GLOBAL_BOOL_FLAGS.has(arg)) {
+      flags.push(arg);
+      const next = args[i + 1];
+      if (next === "true" || next === "false") { flags.push(next); i += 1; }
+      continue;
+    }
+  }
+  return flags;
+}
+
+/** `tab new` words the pinned CLI accepts: the url, and `--label` with its value. Other dash words are not forwarded. */
+function tabNewWords(cleaned: readonly string[]): string[] {
+  const words = ["new"];
+  for (let i = 1; i < cleaned.length; i++) {
+    const arg = cleaned[i]!;
+    if (arg === "--label") {
+      words.push(arg);
+      if (cleaned[i + 1] !== undefined) words.push(cleaned[++i]!);
+      continue;
+    }
+    if (arg.startsWith("-")) continue;
+    words.push(arg);
+  }
+  return words;
+}
+
+/** One parse of a tab command, matching the pinned CLI: flags first, then list, new, close, or a switch reference. */
+function parseTabArgs(args: readonly string[]): ParsedTab {
+  const { args: cleaned, json } = stripGlobalFlags(args);
+  const head = cleaned[0];
+  const action = head === undefined || head === "list" ? "list" : head === "new" ? "new" : head === "close" ? "close" : "switch";
+  const flags = acceptedCliFlags(args);
+  const closeRef = action === "close" && cleaned.length > 1 ? cleaned[1] : undefined;
+  const ref = action === "switch" ? head : closeRef;
+  const words = action === "list" ? head === "list" || json || flags.length > 0 ? ["list"] : []
+    : action === "new" ? tabNewWords(cleaned)
+    : action === "close" ? closeRef !== undefined ? ["close", closeRef] : ["close"]
+    : [head!];
+  return { action, ...(ref !== undefined ? { ref } : {}), json, flags, forwarded: [...words, ...flags] };
+}
+
+const opensTab = (command: string, args: readonly string[]) => (command === "tab" && parseTabArgs(args).action === "new") || (command === "click" && args.includes("--new-tab"));
+
+/** A command that can open a tab while the native daemon is running it: open, click, press, tab new, or click --new-tab. */
+const canOpenTab = (command: string, args: readonly string[]) => command === "open" || command === "click" || command === "press" || (command === "tab" && parseTabArgs(args).action === "new");
+
+type TabRef = { kind: "id"; id: number } | { kind: "label"; name: string } | { kind: "target"; id: string } | { kind: "invalid"; message: string };
+
+function looksLikeTargetId(value: string): boolean {
+  return value.length >= 16 && /^[0-9a-f]+$/iu.test(value);
+}
+
+function isValidLabel(value: string): boolean {
+  return /^[A-Za-z][A-Za-z0-9_-]*$/u.test(value);
+}
+
+/** A tab reference as the pinned CLI parses it: trimmed, `t` or `T` plus digits, a label, or a raw target id. */
+function parseTabRef(input: string): TabRef {
+  const trimmed = input.trim();
+  if (!trimmed) return { kind: "invalid", message: "Empty tab reference; expected `t<N>` (e.g. `t2`) or a label" };
+  const digits = trimmed.startsWith("t") || trimmed.startsWith("T") ? trimmed.slice(1) : "";
+  if (digits && /^[0-9]+$/u.test(digits)) {
+    const id = Number(digits);
+    if (!Number.isSafeInteger(id) || id > 0xffff_ffff) return { kind: "invalid", message: `Tab id \`${trimmed}\` out of range; ids are incrementing positive integers` };
+    if (id === 0) return { kind: "invalid", message: `Tab id \`${trimmed}\` is invalid; tab ids start at t1` };
+    return { kind: "id", id };
+  }
+  if (looksLikeTargetId(trimmed) && !isValidLabel(trimmed)) return { kind: "target", id: trimmed };
+  if (/^[0-9]+$/u.test(trimmed)) return { kind: "invalid", message: `Expected a tab id like \`t${trimmed}\` or a label; positional integers are not accepted` };
+  if (!isValidLabel(trimmed)) return { kind: "invalid", message: `Invalid tab label \`${trimmed}\`; labels must start with a letter and contain only letters, digits, -, and _` };
+  return { kind: "label", name: trimmed };
+}
+
+function sameTarget(left: string | undefined, right: string): boolean {
+  return left?.toLowerCase() === right.toLowerCase();
+}
+
+/** The native tab a reference names, or the refusal. An unknown reference is not forwarded. */
+function resolveTabRef(ref: string, tabs: readonly NativeTab[]): NativeTab | { message: string } {
+  const parsed = parseTabRef(ref);
+  if (parsed.kind === "invalid") return { message: parsed.message };
+  const canonical = parsed.kind === "id" ? `t${parsed.id}` : undefined;
+  const tab = parsed.kind === "id"
+    ? tabs.find((item) => item.tabId === canonical)
+    : parsed.kind === "label"
+      ? tabs.find((item) => item.label === parsed.name) ?? (looksLikeTargetId(parsed.name) ? tabs.find((item) => sameTarget(item.targetId, parsed.name)) : undefined)
+      : tabs.find((item) => sameTarget(item.targetId, parsed.id));
+  if (tab?.tabId) return tab;
+  if (parsed.kind === "id") return { message: `Tab ${canonical} not found; run \`agent-browser tab\` to list open tabs` };
+  if (parsed.kind === "label") return { message: `No tab with label \`${parsed.name}\`; run \`agent-browser tab\` to list open tabs` };
+  return { message: `No tab with target id \`${parsed.id}\`; run \`agent-browser tab list --json\` to list open tabs with their target ids` };
+}
 
 /**
  * The owner's running Chrome over remote debugging. Bao closes only the tabs it opened. `targetId` is the tab the agent works in:
- * Bao's task tab, until the agent switches tabs or its tab opens one. A popup followed from a task tab joins `taskTabs`.
- * `seen` holds every target the native tab list has shown.
+ * Bao's task tab, until a command that can open a tab follows a popup that command opened. That popup joins `taskTabs`.
+ * `pending` holds targets in the list taken when that native command returned and absent from the list taken when it started.
+ * `ended` is that return list, and only until the command queues it.
  */
-type DebuggingChrome = { kind: "current"; relay?: undefined; chrome: CurrentChrome; taskTabs: Set<string>; targetId: string; seen: Set<string>; justClosed?: string };
+type DebuggingChrome = { kind: "current"; relay?: undefined; chrome: CurrentChrome; taskTabs: Set<string>; targetId: string; pending: Set<string>; ended?: ReadonlySet<string>; justClosed?: string };
 
 /** An opened browser, what it runs on and why, and on the owner's Chrome the task tab the native daemon binds to. */
 type Opened = { pick: BrowserPick } & (
@@ -735,7 +876,7 @@ export class AgentBrowserProxy {
       await session.workflow.record(command as string, args, step.id, async () => {
         const result = command === "close" && (session.kind === "current" || session.chrome.isClosed())
           ? { stdout: session.kind === "current" ? "Disconnected from the owner's own Chrome. Only Bao's task tabs close; the owner's tabs and windows stay open." : "", stderr: "", exitCode: 0 }
-          : await this.forward(session, command as string, args);
+          : await this.runNative(session, command as string, args);
         results.push(result);
         if (command !== "close" && result.exitCode === 0) await this.detectOwnerWall(session, command === "open" ? webSite(args[0]) : undefined);
         return result;
@@ -766,7 +907,7 @@ export class AgentBrowserProxy {
       return results;
     } catch (error) {
       if (error instanceof TaskTabClosed) {
-        const agentClosedTab = command === "tab" && args[0] === "close" && results.some((result) => result.exitCode === 0);
+        const agentClosedTab = command === "tab" && parseTabArgs(args).action === "close" && results.some((result) => result.exitCode === 0);
         results.splice(0, results.length, ...await this.endTaskTab(session));
         step ??= recording.begin(command as string, args);
         this.latest = { runId: recording.id, step, steps: recording.steps };
@@ -933,7 +1074,7 @@ export class AgentBrowserProxy {
           // Focus emulation keeps a background tab painting, running timers, and taking input. It lasts while this session stays attached.
           const { sessionId } = await chrome.cdp.sendUntilProgress<{ sessionId: string }>("Target.attachToTarget", { targetId: tab.targetId, flatten: true }, undefined, { signal });
           await chrome.cdp.sendUntilProgress("Emulation.setFocusEmulationEnabled", { enabled: true }, sessionId, { signal });
-          return { kind: "current", chrome, taskTabs, targetId: tab.targetId, seen: new Set(),
+          return { kind: "current", chrome, taskTabs, targetId: tab.targetId, pending: new Set(),
             pick: { route: "current", why, chrome: chrome.executable, userDataDir: chrome.root, profile: plan.profile, background: tab.background } };
         } catch (error) {
           for (const targetId of taskTabs) await chrome.cdp.send("Target.closeTarget", { targetId }, undefined, 5000).catch(() => undefined);
@@ -1005,11 +1146,13 @@ export class AgentBrowserProxy {
       if (browser.targetId) await writeFile(path.join(stateDir, "bao.target"), JSON.stringify({ targetId: browser.targetId, url: "about:blank" }), { mode: 0o600 });
       const endpoint = browser.kind === "current" ? browser.chrome.endpoint : browser.background.endpoint;
       // On the owner's Chrome the native daemon stays on its bound tab. Without the pin it makes every target it discovers
-      // current, such as a tab the owner opens or Chrome's Gemini panel.
+      // current, such as a tab the owner opens or Chrome's Gemini panel. Only its URL carries background=1, so a later Bao
+      // process that joins for a handoff is forwarded and can still raise the task tab.
       const pin = browser.kind === "current" && !browser.relay ? ["--pin-tab"] : [];
+      const behind = browser.kind === "current" && !browser.relay ? `?${DAEMON_BEHIND_QUERY}` : "";
       return {
         stateDir,
-        flags: ["--session", "bao", "--config", config, ...pin, "--cdp", `ws://127.0.0.1:${endpoint.port}${endpoint.browserPath}`, "--idle-timeout", "0"],
+        flags: ["--session", "bao", "--config", config, ...pin, "--cdp", `ws://127.0.0.1:${endpoint.port}${endpoint.browserPath}${behind}`, "--idle-timeout", "0"],
         env: {
           HOME: stateDir, TMPDIR: stateDir, PATH: "/usr/bin:/bin", LANG: "en_US.UTF-8",
           AGENT_BROWSER_SOCKET_DIR: stateDir, AGENT_BROWSER_AUTOSAVE_INTERVAL_MS: "0", BAO_HEAL_CURSOR_ACCOUNT: "0",
@@ -1141,9 +1284,11 @@ export class AgentBrowserProxy {
     catch (error) { return fail(error); }
     let wired: Awaited<ReturnType<AgentBrowserProxy["wire"]>> | undefined;
     let opened: AgentBrowserCommandResult;
+    let moving: Session | undefined;
     try {
       wired = await this.wire(next);
-      opened = await this.run({ ...session, ...next, ...wired }, "open", [site]);
+      moving = { ...session, ...next, ...wired };
+      opened = await this.runNative(moving, "open", [site]);
       if (opened.exitCode !== 0) throw new Error(`the open in Bao's task tab failed: ${opened.stderr || opened.stdout || `exit ${opened.exitCode}`}`);
     } catch (error) {
       try { if (wired) await this.stopDaemon(wired.stateDir); }
@@ -1155,7 +1300,7 @@ export class AgentBrowserProxy {
     }
     const old = { chrome: session.chrome, background: session.background, stateDir: session.stateDir };
     const waiting = this.waitOf(session) !== "off";
-    Object.assign(session, next, wired, { browser: openedChoice(next.pick), missed: undefined, page: undefined });
+    Object.assign(session, moving, { browser: openedChoice(next.pick), missed: undefined, page: undefined });
     session.recording.pickBrowser(next.pick);
     if (waiting) this.setWait(session, "off");
     await this.disarmReloadBanner();
@@ -1210,48 +1355,129 @@ export class AgentBrowserProxy {
   }
 
   /**
-   * Keeps the agent in its tab of the owner's Chrome. The pinned native daemon never makes a tab the owner opens, or Chrome's Gemini
-   * panel, current. A tab the agent's tab opened, such as a sign-in popup, becomes the agent's tab, as it does in Bao's own Chrome.
-   * When that opener is a Bao task tab, the popup is a task tab too, so tab lists mark it and finish closes it.
-   * When the daemon is anywhere else, Bao switches it back to the agent's tab, or to Bao's newest task tab when that tab is gone.
-   * When neither remains, the caller ends the session instead of acting on an owner tab.
+   * Keeps the agent in its tab of the owner's Chrome. A fresh tab joins the task only when it is in the target list taken when a
+   * command that can open one returned, and not in the list taken when that command started, and its opener is the tab the agent
+   * is on or a popup adopted in this same pass. A tab that appears during wall handling, workflow
+   * capture, an owner wait, or between commands stays the owner's even when its opener is the task tab: Bao does not switch to it,
+   * mark it, or close it. When the daemon is anywhere else, Bao switches it back to the agent's tab. That switch's Page.bringToFront
+   * is answered on the daemon's connection, so Chrome does not rise. When no task tab remains, the caller ends the session instead of
+   * acting on an owner tab.
    */
   private async keepTab(session: Session & DebuggingChrome, tabs: NativeTab[], ceiling: AbortSignal): Promise<NativeTab[]> {
     const listed = (targetId: string | undefined) => tabs.find((tab) => tab.targetId === targetId);
-    const fresh = new Set(tabs.flatMap((tab) => tab.targetId && !session.seen.has(tab.targetId) ? [tab.targetId] : []));
     let want = session.targetId;
-    if (fresh.size) {
+    const adopt: ChromeTarget[] = [];
+    const waiting = new Set<string>();
+    if (session.pending.size) {
       const { targetInfos } = await session.chrome.cdp.sendUntilProgress<{ targetInfos: ChromeTarget[] }>("Target.getTargets", {}, undefined, { signal: ceiling });
-      for (const info of targetInfos) {
-        if (fresh.has(info.targetId) && info.openerId === want && await isChromeTab(session.chrome.cdp, info, ceiling)) {
-          if (session.taskTabs.has(want)) session.taskTabs.add(info.targetId);
+      const alive = new Set(targetInfos.map((info) => info.targetId));
+      for (const targetId of [...session.pending]) if (!alive.has(targetId)) session.pending.delete(targetId);
+      const owned = (targetId: string) => session.taskTabs.has(targetId) || adopt.some((item) => item.targetId === targetId);
+      const skipped = new Set<string>();
+      let progressed = true;
+      while (progressed && !ceiling.aborted) {
+        progressed = false;
+        for (const info of targetInfos) {
+          if (!session.pending.has(info.targetId) || waiting.has(info.targetId) || skipped.has(info.targetId) || adopt.some((item) => item.targetId === info.targetId)) continue;
+          if (info.openerId && waiting.has(info.openerId)) {
+            waiting.add(info.targetId);
+            progressed = true;
+            continue;
+          }
+          if (info.openerId !== want || !owned(want)) continue;
+          if (!listed(info.targetId)?.tabId) {
+            waiting.add(info.targetId);
+            progressed = true;
+            continue;
+          }
+          if (!await isChromeTab(session.chrome.cdp, info, ceiling)) {
+            skipped.add(info.targetId);
+            continue;
+          }
+          adopt.push(info);
           want = info.targetId;
+          progressed = true;
         }
       }
       if (ceiling.aborted) throw new Error("cdp aborted Browser.getWindowForTarget");
-      for (const targetId of fresh) session.seen.add(targetId);
+      for (const targetId of [...session.pending]) {
+        if (waiting.has(targetId) || adopt.some((info) => info.targetId === targetId)) continue;
+        session.pending.delete(targetId);
+      }
     }
-    if (!listed(want)) want = [...session.taskTabs].reverse().find((targetId) => listed(targetId)) ?? want;
+    if (!listed(want) || adopt.at(-1)?.targetId !== want) {
+      adopt.length = 0;
+      if (!listed(want)) want = [...session.taskTabs].reverse().find((targetId) => listed(targetId)) ?? want;
+    }
     const tab = listed(want);
     if (!tab?.tabId) return tabs;
+    for (const info of adopt) session.taskTabs.add(info.targetId);
+    if (!tab.active) {
+      const back = await this.run(session, "tab", [tab.tabId], undefined, ceiling);
+      if (back.exitCode !== 0) {
+        for (const info of adopt) session.taskTabs.delete(info.targetId);
+        throw new Error(`Bao could not keep the agent in its tab ${tab.tabId}: ${back.stderr || back.stdout || `exit ${back.exitCode}`}`);
+      }
+    }
     session.targetId = want;
-    if (tab.active) return tabs;
-    const back = await this.run(session, "tab", [tab.tabId], undefined, ceiling);
-    if (back.exitCode !== 0) throw new Error(`Bao could not keep the agent in its tab ${tab.tabId}: ${back.stderr || back.stdout || `exit ${back.exitCode}`}`);
-    return this.nativeTabs(session, ceiling);
+    for (const info of adopt) {
+      session.pending.delete(info.targetId);
+      await this.focusTab(session, info.targetId, ceiling);
+    }
+    return tab.active ? tabs : this.nativeTabs(session, ceiling);
+  }
+
+  /** Runs the agent's command. On the owner's Chrome, a new tab is the agent's only when it is in the return list and not the entry list. */
+  private async runNative(session: Session, command: string, args: string[]): Promise<AgentBrowserCommandResult> {
+    if (session.kind !== "current" || session.relay || this.waitOf(session) !== "off" || !canOpenTab(command, args)) {
+      return this.forward(session, command, args);
+    }
+    session.ended = undefined;
+    const baseline = await this.targetIds(session);
+    const result = await this.forward(session, command, args);
+    await this.queueFresh(session, baseline);
+    return result;
+  }
+
+  private async targetIds(session: Session & DebuggingChrome): Promise<Set<string>> {
+    const { targetInfos } = await session.chrome.cdp.sendUntilProgress<{ targetInfos: ChromeTarget[] }>("Target.getTargets", {}, undefined, { signal: session.abort.signal });
+    return new Set(targetInfos.map((info) => info.targetId));
+  }
+
+  /** Notes targets in the list taken when the native command returned and absent from the list taken when it started. */
+  private async queueFresh(session: Session & DebuggingChrome, baseline: ReadonlySet<string>): Promise<void> {
+    const ended = session.ended;
+    session.ended = undefined;
+    if (!ended) return;
+    for (const targetId of ended) {
+      if (!baseline.has(targetId) && !session.taskTabs.has(targetId)) session.pending.add(targetId);
+    }
+  }
+
+  /** Focus emulation keeps a background task tab painting and taking input. It lasts while this session stays attached. */
+  private async focusTab(session: Session & DebuggingChrome, targetId: string, ceiling: AbortSignal): Promise<void> {
+    const { sessionId } = await session.chrome.cdp.sendUntilProgress<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true }, undefined, { signal: ceiling });
+    await session.chrome.cdp.sendUntilProgress("Emulation.setFocusEmulationEnabled", { enabled: true }, sessionId, { signal: ceiling });
   }
 
   /**
    * Runs one agent command. On the owner's Chrome over remote debugging, a tab list leaves out Chrome's own surfaces, such as the
-   * Gemini panel and side panels, and marks Bao's task tabs. Switching to or closing such a surface is refused. A switch makes the
-   * chosen tab the agent's tab.
+   * Gemini panel and side panels, and marks Bao's task tabs. Switching to or closing such a surface is refused. Switching to or
+   * closing a tab the owner opened is refused too; the agent opens that page's URL in the task tab instead.
    */
   private async forward(session: Session, command: string, args: string[]): Promise<AgentBrowserCommandResult> {
-    if (session.kind !== "current" || session.relay || command !== "tab" || args[0] === "new") return this.run(session, command, args);
-    const list = args[0] === undefined || args[0] === "list" || args[0].startsWith("-");
-    const ref = list ? undefined : args[0] === "close" ? args[1] : args[0];
+    const parsed = command === "tab" ? parseTabArgs(args) : undefined;
+    if (parsed?.action === "close" && parsed.ref !== undefined && !parsed.ref.trim()) {
+      return { stdout: "", stderr: "\u2717 Empty tab reference; expected `t<N>` (e.g. `t2`) or a label\n", exitCode: 1 };
+    }
+    if (!parsed || session.kind !== "current" || session.relay || parsed.action === "new") return this.run(session, command, parsed ? parsed.forwarded : args);
     const tabs = await this.nativeTabs(session);
-    const named = ref === undefined ? undefined : tabs.find((tab) => tab.tabId === ref || tab.label === ref);
+    const resolved = parsed.ref === undefined ? parsed.action === "close" ? tabs.find((tab) => tab.active) : undefined : resolveTabRef(parsed.ref, tabs);
+    if (parsed.ref !== undefined && resolved && "message" in resolved) return { stdout: "", stderr: `\u2717 ${resolved.message}\n`, exitCode: 1 };
+    const named = resolved && "tabId" in resolved ? resolved : undefined;
+    if (parsed.action === "close" && parsed.ref === undefined && !named?.tabId) return { stdout: "", stderr: "\u2717 No current tab to close.\n", exitCode: 1 };
+    const list = parsed.action === "list";
+    const ref = parsed.ref ?? named?.tabId;
     const { targetInfos } = await session.chrome.cdp.send<{ targetInfos: ChromeTarget[] }>("Target.getTargets", {}, undefined, 5000);
     const surfaces = new Set<string>();
     for (const tab of list ? tabs : named ? [named] : []) {
@@ -1261,20 +1487,26 @@ export class AgentBrowserProxy {
     if (named?.tabId && surfaces.has(named.tabId)) {
       return { stdout: "", stderr: `✗ ${ref} is not a tab in a Chrome window, such as the Gemini panel or a side panel. Stay in Bao's task tab.\n`, exitCode: 1 };
     }
-    const result = await this.run(session, command, args);
+    if (named?.tabId && named.targetId && !session.taskTabs.has(named.targetId)) {
+      const url = targetInfos.find((target) => target.targetId === named.targetId)?.url;
+      const where = url ? `: ${url}` : "";
+      return { stdout: "", stderr: `✗ ${ref} is a tab the owner opened. When the owner wants work done on a page he has open, open that page's URL in your task tab (it shares his sign-ins)${where}.\n`, exitCode: 1 };
+    }
+    const forwarded = parsed.action === "list" ? parsed.forwarded : parsed.action === "close" ? [...(named?.tabId ? ["close", named.tabId] : ["close"]), ...parsed.flags] : [named?.tabId ?? "", ...parsed.flags];
+    const result = await this.run(session, command, forwarded);
     if (result.exitCode !== 0) return result;
-    if (args[0] === "close" && named?.targetId && session.taskTabs.has(named.targetId)) {
+    if (parsed.action === "close" && named?.targetId && session.taskTabs.has(named.targetId)) {
       session.taskTabs.delete(named.targetId);
       session.justClosed = named.targetId;
       if (session.targetId === named.targetId) session.targetId = [...session.taskTabs].at(-1) ?? "";
     }
-    if (!list) {
-      const active = args[0] === "close" ? undefined : (await this.nativeTabs(session)).find((tab) => tab.active);
-      if (active?.targetId) session.targetId = active.targetId;
+    if (parsed.action === "switch" && named?.targetId) {
+      session.targetId = named.targetId;
       return result;
     }
+    if (parsed.action !== "list") return result;
     const task = (tab: NativeTab | undefined) => !!tab?.targetId && session.taskTabs.has(tab.targetId);
-    if (args.includes("--json")) {
+    if (parsed.json) {
       try {
         const parsed = JSON.parse(result.stdout) as { data?: { tabs?: (NativeTab & { baoTaskTab?: boolean })[] } };
         if (parsed.data?.tabs) {
@@ -1726,6 +1958,7 @@ export class AgentBrowserProxy {
       });
     });
     const result = await execute(command, args, readTimeoutMs, bound);
+    if (session.kind === "current" && !session.relay && canOpenTab(command, args)) session.ended = await this.targetIds(session);
     if (session.kind === "current" && !session.relay && opensTab(command, args) && result.exitCode === 0) {
       try {
         const tabs = await execute("tab", ["list", "--json"], 5000);
@@ -1735,6 +1968,7 @@ export class AgentBrowserProxy {
         if (!targetId) throw new Error("Native task tab has no target id");
         session.taskTabs.add(targetId);
         session.targetId = targetId;
+        await this.focusTab(session, targetId, bound ?? session.abort.signal);
       } catch (error) {
         process.stderr.write(`Bao task tab tracking unavailable: ${error instanceof Error ? error.message : String(error)}\n`);
       }

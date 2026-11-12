@@ -6,10 +6,23 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import type { Duplex } from "node:stream";
+import { keepBehind } from "../engines/background-cdp";
 import type { DevToolsEndpoint } from "./endpoint";
 import { CDP_PROGRESS_CEILING_MS, serverFrame, ServerFrameDecoder, type CdpMessage, type CdpSocket } from "./socket";
 
 const MAX_FRAME = 256 * 1024 * 1024;
+
+/** Query on the native daemon's `--cdp` URL. Only that client stays behind. A handoff client does not send it. */
+export const DAEMON_BEHIND_QUERY = "background=1";
+
+function daemonStaysBehind(resource: string | undefined): boolean {
+  const [key, value] = DAEMON_BEHIND_QUERY.split("=");
+  try {
+    return new URL(resource ?? "/", "http://127.0.0.1").searchParams.get(key ?? "") === value;
+  } catch {
+    return false;
+  }
+}
 
 export interface SharedConnection {
   endpoint: DevToolsEndpoint;
@@ -19,9 +32,13 @@ export interface SharedConnection {
 /**
  * Joins one client to Bao's connection. The client gets its own browser session (Target.attachToBrowserTarget), so the
  * targets it discovers, the sessions it attaches, and their events stay its own. Its browser-level messages travel on that
- * session; messages of the sessions it attaches pass through unchanged. Its commands travel under ids of Bao's connection.
+ * session. When the client's URL has `background=1`, Page.bringToFront and Target.activateTarget are answered here and
+ * Target.createTarget is forced into the background, so the native daemon's tab switch does not raise the owner's Chrome.
+ * A client without that marker is forwarded unchanged, so a handoff's Target.activateTarget still brings the task tab forward.
+ * Bao's own socket, the one passed into shareConnection, is not a client. Other messages pass through. Its commands travel
+ * under ids of Bao's connection.
  */
-async function join(cdp: CdpSocket, client: Duplex, head: Buffer, key: string): Promise<void> {
+async function join(cdp: CdpSocket, client: Duplex, head: Buffer, key: string, behind: boolean): Promise<void> {
   let browser: string;
   const ceiling = new AbortController();
   const timer = setTimeout(() => ceiling.abort(), CDP_PROGRESS_CEILING_MS);
@@ -83,6 +100,18 @@ async function join(cdp: CdpSocket, client: Duplex, head: Buffer, key: string): 
       for (const frame of frames.push(chunk)) {
         if (frame.opcode === 1 && frame.text !== undefined) {
           const message = JSON.parse(frame.text) as CdpMessage;
+          if (typeof message.id === "number" && typeof message.method === "string") {
+            const command = { id: message.id, method: message.method, params: message.params, sessionId: message.sessionId };
+            const next = behind ? keepBehind(command) : { forward: command };
+            if ("reply" in next) {
+              const reply = { id: message.id, result: next.reply, ...message.sessionId ? { sessionId: message.sessionId } : {} };
+              if (client.writable) client.write(serverFrame(1, Buffer.from(JSON.stringify(reply))));
+              continue;
+            }
+            const forward = next.forward;
+            cdp.write(forward.sessionId === undefined ? { ...forward, sessionId: browser } : forward, deliver);
+            continue;
+          }
           cdp.write(message.sessionId === undefined ? { ...message, sessionId: browser } : message, deliver);
         } else if (frame.opcode === 8) {
           // Answer the close, as the WebSocket closing handshake asks, before letting the client go.
@@ -104,13 +133,14 @@ export async function shareConnection(cdp: CdpSocket): Promise<SharedConnection>
   const server = createServer((_request, response) => response.writeHead(404).end());
   server.on("upgrade", (request, client: Duplex, head: Buffer) => {
     const key = request.headers["sec-websocket-key"];
-    if (new URL(request.url ?? "/", "http://127.0.0.1").pathname !== browserPath || typeof key !== "string" || !cdp.isOpen) {
+    const url = new URL(request.url ?? "/", "http://127.0.0.1");
+    if (url.pathname !== browserPath || typeof key !== "string" || !cdp.isOpen) {
       client.destroy();
       return;
     }
     clients.add(client);
     client.on("error", () => client.destroy()).once("close", () => clients.delete(client));
-    void join(cdp, client, head, key);
+    void join(cdp, client, head, key, daemonStaysBehind(request.url));
   });
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
