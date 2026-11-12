@@ -114,6 +114,7 @@ node "$ROOT/desktop/packaging/build-mcpb.mjs" "$DIST/bao.mcpb"
 # codesign on Bao.app signs only the main executable, so the launcher is signed on its own.
 codesign --force --sign "$IDENTITY" --identifier dev.bao.mcp "$APP/Contents/MacOS/bao-mcp"
 codesign --force --sign "$IDENTITY" --identifier dev.bao.cli "$APP/Contents/MacOS/bao-cli"
+codesign --force --sign "$IDENTITY" --identifier dev.bao.front "$APP/Contents/MacOS/bao-front"
 # Nested BaoOSHelper.app is already signed. --deep would change its cdhash.
 codesign --force --sign "$IDENTITY" --identifier dev.bao.desktop "$APP"
 node "$ROOT/desktop/packaging/macos/prove-apple-events.mjs" "$APP"

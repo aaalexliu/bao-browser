@@ -12,6 +12,7 @@ import { connectCdp, type CdpSocket } from "../../src/cdp-live/socket";
 import { INSPECT_URL } from "../../src/cdp-live/ax";
 import * as profileCopy from "../../src/engines/chrome-profile-copy";
 import * as baoProfile from "../../src/engines/bao-profile";
+import * as copyFront from "../../src/engines/copy-front";
 import { CURRENT_CHROME_ENDED, describeStep, TASK_TAB_CLOSED, RUN_ENDED } from "../../src/engines/agent-browser-describe";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import { getRun } from "../../src/mcp/catalog";
@@ -570,7 +571,7 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
   await writeFile(executable, "", { mode: 0o700 });
   const stateDirs = new Set<string>();
   const state = { closed: false, tabs: 0, commands: [] as string[], trackingFails: false, cleanupFails: false, setupFails: false, activations: [] as unknown[],
-    windowState: undefined as string | undefined, windowStates: [] as unknown[], closeTargetFails: false, hold: false, closes: 0, kept: 0, taskGone: false, noActivePage: false,
+    windowState: undefined as string | undefined, windowStates: [] as unknown[], windowBounds: [] as Record<string, unknown>[], failBoundsOnce: false, failActivate: false, failMaximize: false, closeTargetFails: false, hold: false, closes: 0, kept: 0, taskGone: false, noActivePage: false,
     activeTarget: "task", captures: [] as string[], failCapture: "", missActive: false, infoReads: 0, failInfoAfter: 0,
     taskUrl: "https://fixture.invalid/", taskTitle: "Task",
     onSnapshot: undefined as ((resume: () => void) => void) | undefined,
@@ -587,10 +588,23 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
         return { targetId: "task" };
       }
       if (method === "Emulation.setFocusEmulationEnabled" && state.setupFails) throw new Error("setup failed");
-      if (method === "Target.activateTarget") state.activations.push(params);
+      if (method === "Target.activateTarget") {
+        state.activations.push(params);
+        if (state.failActivate) throw new Error("activate failed");
+      }
       if (method === "Browser.getWindowForTarget" && state.windowState) return { windowId: 4 };
       if (method === "Browser.getWindowBounds" && state.windowState) return { bounds: { windowState: state.windowState } };
-      if (method === "Browser.setWindowBounds") state.windowStates.push((params.bounds as { windowState: string }).windowState);
+      if (method === "Browser.setWindowBounds") {
+        const bounds = params.bounds as Record<string, unknown>;
+        const next = String(bounds.windowState);
+        state.windowBounds.push(bounds);
+        state.windowStates.push(next);
+        if (state.failBoundsOnce) {
+          state.failBoundsOnce = false;
+          throw new Error("window not ready");
+        }
+        if (state.failMaximize && next === "maximized") throw new Error("To maximize a minimized or fullscreen window, restore it to normal state first.");
+      }
       if (method === "Target.getTargets") {
         if (state.cleanupFails) throw new Error("cleanup failed");
         return { targetInfos: state.taskGone ? [] : [{ targetId: "task", url: "https://fixture.invalid/", title: "Task" }] };
@@ -646,6 +660,8 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
     });
     return new EventEmitter();
   });
+  const front = { ok: true, calls: 0 };
+  t.mock.method(copyFront, "bringCopyFront", async () => { front.calls++; return front.ok; });
   const proxy = new AgentBrowserProxy({ home, sourceRoot: root, executable, keepOpen: () => keepOpen, hasHold: () => state.hold });
   t.after(async () => {
     state.cleanupFails = false;
@@ -653,7 +669,7 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
     for (const dir of stateDirs) await rm(dir, { recursive: true, force: true });
     await rm(root, { recursive: true, force: true });
   });
-  return { proxy, state, cdp, library: new Library(home), openCurrentChrome };
+  return { proxy, state, cdp, library: new Library(home), openCurrentChrome, front };
 }
 
 const TASK_TAB_PICTURE = "The active tab could not be pictured, so Bao kept a picture of its task tab.";
@@ -1071,8 +1087,8 @@ for (const keepOpen of [false, true]) test(`a copied session whose waiting tab c
   assert.equal(f.library.listRuns()[0]!.envelope?.reason, "session_closed");
 });
 
-for (const [windowState, raise] of [["normal", ["minimized", "normal"]], ["minimized", ["normal"]], ["maximized", ["minimized", "normal", "maximized"]], ["fullscreen", []]] as const) {
-  test(`a Mac copy's handoff brings a ${windowState} window back on top only when it can, and says so only then`, async (t) => {
+for (const [windowState, uncover] of [["normal", []], ["minimized", ["normal"]], ["maximized", []], ["fullscreen", ["normal"]]] as const) {
+  test(`a Mac copy's handoff leaves a ${windowState} window visible without minimizing it, and says so only when activation succeeds`, async (t) => {
     const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
     Object.defineProperty(process, "platform", { ...platform, value: "darwin" });
     t.after(() => { Object.defineProperty(process, "platform", platform); });
@@ -1087,11 +1103,156 @@ for (const [windowState, raise] of [["normal", ["minimized", "normal"]], ["minim
     f.state.taskUrl = "https://fixture.invalid/login";
     f.state.taskTitle = "Sign in";
     const [result] = await f.proxy.execute("wait_for_owner", ["50"], undefined, false, undefined, {}, f.proxy.activeRunId);
-    assert.deepEqual(f.state.windowStates, raise, "a window from the Dock lands on top; a zoomed one returns zoomed; a full-screen Space stays put");
+    assert.deepEqual(f.state.windowStates, uncover, "a visible copy window is not minimized, because that brings the copy's other windows forward; full screen and the Dock still become normal");
+    assert.equal(f.state.windowBounds.every((bounds) => Object.keys(bounds).every((key) => key === "windowState")), true, "a copy handoff restores window state and does not move or resize");
+    assert.equal(f.front.calls, 1);
     const { instruction } = JSON.parse(result!.stdout) as { instruction: string };
-    assert.equal(instruction.includes("Bao brought this window to the front"), raise.length > 0);
+    assert.equal(instruction.includes("Bao brought this window to the front"), true);
   });
 }
+
+test("a copy's browser pid is that copy's process, not the owner's Chrome", () => {
+  const exe = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+  const copy = "/tmp/bao-profile-copies-fixture/run-1";
+  const pid = copyFront.copyBrowserPid(exe, copy, [
+    { pid: 15133, ppid: 1, command: exe },
+    { pid: 9, ppid: 1, command: `${exe} --type=gpu-process --user-data-dir=${copy}` },
+    { pid: 42, ppid: 1, command: `${exe} --user-data-dir=${copy} --restore-last-session` },
+    { pid: 7, ppid: 1, command: `${exe} --user-data-dir=/tmp/other` },
+  ]);
+  assert.equal(pid, 42);
+  assert.equal(copyFront.copyBrowserPid(exe, "relative", []), undefined);
+});
+
+test("a Mac copy's handoff does not claim a raise when that copy's process stays behind", async (t) => {
+  const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+  Object.defineProperty(process, "platform", { ...platform, value: "darwin" });
+  t.after(() => { Object.defineProperty(process, "platform", platform); });
+  const f = await lifecycleFixture(t);
+  const endpoint = await import("../../src/cdp-live/endpoint");
+  t.mock.method(endpoint, "readDevToolsActivePort", async () => ({ port: await trapPort(), browserPath: "/browser" }));
+  const socket = await import("../../src/cdp-live/socket");
+  t.mock.method(socket, "connectCdp", async () => ({ ...f.cdp, close() {} }));
+  f.state.windowState = "normal";
+  f.front.ok = false;
+  await f.proxy.execute("open", [], "copy");
+  f.state.taskUrl = "https://fixture.invalid/login";
+  f.state.taskTitle = "Sign in";
+  const [result] = await f.proxy.execute("wait_for_owner", ["50"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  assert.equal(f.front.calls, 1);
+  assert.deepEqual(f.state.windowStates, [], "a failed activation still does not minimize the waiting window");
+  const { instruction } = JSON.parse(result!.stdout) as { instruction: string };
+  assert.equal(instruction.includes("Bao brought this window to the front"), false);
+});
+
+test("a Mac copy's handoff does not zoom or minimize a maximized window", async (t) => {
+  const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+  Object.defineProperty(process, "platform", { ...platform, value: "darwin" });
+  t.after(() => { Object.defineProperty(process, "platform", platform); });
+  const f = await lifecycleFixture(t);
+  const endpoint = await import("../../src/cdp-live/endpoint");
+  t.mock.method(endpoint, "readDevToolsActivePort", async () => ({ port: await trapPort(), browserPath: "/browser" }));
+  const socket = await import("../../src/cdp-live/socket");
+  t.mock.method(socket, "connectCdp", async () => ({ ...f.cdp, close() {} }));
+  f.state.windowState = "maximized";
+  f.state.failMaximize = true;
+  await f.proxy.execute("open", [], "copy");
+  f.state.taskUrl = "https://fixture.invalid/login";
+  f.state.taskTitle = "Sign in";
+  const [result] = await f.proxy.execute("wait_for_owner", ["50"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  assert.deepEqual(f.state.windowStates, [], "a maximized copy window stays maximized; minimizing it would bring the copy's other windows forward");
+  const { instruction } = JSON.parse(result!.stdout) as { instruction: string };
+  assert.equal(instruction.includes("Bao brought this window to the front"), true);
+});
+
+test("a Mac copy's handoff still raises when selecting the waiting tab fails", async (t) => {
+  const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+  Object.defineProperty(process, "platform", { ...platform, value: "darwin" });
+  t.after(() => { Object.defineProperty(process, "platform", platform); });
+  const f = await lifecycleFixture(t);
+  const endpoint = await import("../../src/cdp-live/endpoint");
+  t.mock.method(endpoint, "readDevToolsActivePort", async () => ({ port: await trapPort(), browserPath: "/browser" }));
+  const socket = await import("../../src/cdp-live/socket");
+  t.mock.method(socket, "connectCdp", async () => ({ ...f.cdp, close() {} }));
+  f.state.windowState = "normal";
+  f.state.failActivate = true;
+  await f.proxy.execute("open", [], "copy");
+  f.state.taskUrl = "https://fixture.invalid/login";
+  f.state.taskTitle = "Sign in";
+  const [result] = await f.proxy.execute("wait_for_owner", ["50"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  assert.deepEqual(f.state.windowStates, [], "a missed tab select still does not minimize the waiting window");
+  const { instruction } = JSON.parse(result!.stdout) as { instruction: string };
+  assert.equal(instruction.includes("Bao brought this window to the front"), true);
+});
+
+test("a Mac copy's handoff retry restores normal state and does not move or resize", async (t) => {
+  const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+  Object.defineProperty(process, "platform", { ...platform, value: "darwin" });
+  t.after(() => { Object.defineProperty(process, "platform", platform); });
+  const f = await lifecycleFixture(t);
+  const endpoint = await import("../../src/cdp-live/endpoint");
+  t.mock.method(endpoint, "readDevToolsActivePort", async () => ({ port: await trapPort(), browserPath: "/browser" }));
+  const socket = await import("../../src/cdp-live/socket");
+  t.mock.method(socket, "connectCdp", async () => ({ ...f.cdp, close() {} }));
+  f.state.windowState = "fullscreen";
+  f.state.failBoundsOnce = true;
+  await f.proxy.execute("open", [], "copy");
+  f.state.taskUrl = "https://fixture.invalid/login";
+  f.state.taskTitle = "Sign in";
+  const [result] = await f.proxy.execute("wait_for_owner", ["50"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  assert.deepEqual(f.state.windowBounds[1], { windowState: "normal" }, "the retry after a failed restore sets only normal state");
+  assert.equal(f.state.windowBounds.every((bounds) => Object.keys(bounds).every((key) => key === "windowState")), true);
+  const { instruction } = JSON.parse(result!.stdout) as { instruction: string };
+  assert.equal(instruction.includes("Bao brought this window to the front"), true);
+});
+
+test("a Mac Bao profile handoff still misses the raise when Chrome refuses to zoom the window again", async (t) => {
+  const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+  Object.defineProperty(process, "platform", { ...platform, value: "darwin" });
+  t.after(() => { Object.defineProperty(process, "platform", platform); });
+  const f = await lifecycleFixture(t);
+  f.openCurrentChrome.mock.mockImplementation(async () => { throw new Error("Chrome is not open. Open Google Chrome, then try again."); });
+  t.mock.method(baoProfile, "openBaoChromeForProxy", async () => ({ target: { portFile: "unused" },
+    closed: f.cdp.disconnected, isClosed: () => !f.state.closed,
+    close: async () => { f.state.closes++; f.cdp.close(); }, keepOpen: async () => { f.state.kept++; } }));
+  const endpoint = await import("../../src/cdp-live/endpoint");
+  t.mock.method(endpoint, "readDevToolsActivePort", async () => ({ port: await trapPort(), browserPath: "/browser" }));
+  const socket = await import("../../src/cdp-live/socket");
+  t.mock.method(socket, "connectCdp", async () => ({ ...f.cdp, close() {} }));
+  f.state.windowState = "maximized";
+  f.state.failMaximize = true;
+  await f.proxy.execute("open", [], "bao");
+  f.state.taskUrl = "https://fixture.invalid/login";
+  f.state.taskTitle = "Sign in";
+  const [result] = await f.proxy.execute("wait_for_owner", ["50"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  assert.deepEqual(f.state.windowStates, ["minimized", "normal", "maximized"]);
+  assert.equal(f.front.calls, 0, "a Bao profile handoff does not activate a copy process");
+  const { instruction } = JSON.parse(result!.stdout) as { instruction: string };
+  assert.equal(instruction.includes("Bao brought this window to the front"), false);
+});
+
+test("a Mac Bao profile handoff still leaves a full-screen window on its Space", async (t) => {
+  const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+  Object.defineProperty(process, "platform", { ...platform, value: "darwin" });
+  t.after(() => { Object.defineProperty(process, "platform", platform); });
+  const f = await lifecycleFixture(t);
+  f.openCurrentChrome.mock.mockImplementation(async () => { throw new Error("Chrome is not open. Open Google Chrome, then try again."); });
+  t.mock.method(baoProfile, "openBaoChromeForProxy", async () => ({ target: { portFile: "unused" },
+    closed: f.cdp.disconnected, isClosed: () => !f.state.closed,
+    close: async () => { f.state.closes++; f.cdp.close(); }, keepOpen: async () => { f.state.kept++; } }));
+  const endpoint = await import("../../src/cdp-live/endpoint");
+  t.mock.method(endpoint, "readDevToolsActivePort", async () => ({ port: await trapPort(), browserPath: "/browser" }));
+  const socket = await import("../../src/cdp-live/socket");
+  t.mock.method(socket, "connectCdp", async () => ({ ...f.cdp, close() {} }));
+  f.state.windowState = "fullscreen";
+  await f.proxy.execute("open", [], "bao");
+  f.state.taskUrl = "https://fixture.invalid/login";
+  f.state.taskTitle = "Sign in";
+  const [result] = await f.proxy.execute("wait_for_owner", ["50"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  assert.deepEqual(f.state.windowStates, [], "a Bao profile full-screen window stays on its Space");
+  const { instruction } = JSON.parse(result!.stdout) as { instruction: string };
+  assert.equal(instruction.includes("Bao brought this window to the front"), false);
+});
 
 test("finish_task during async window cleanup applies the same session's checked outcome", async (t) => {
   const f = await lifecycleFixture(t);
