@@ -1416,8 +1416,9 @@ async function loadRun(id: string, request: number): Promise<void> {
   if (!runResponse.ok) throw new Error("Run unavailable");
   const run = await runResponse.json() as RunSummary;
   const receipt = receiptResponse?.ok ? await receiptResponse.json().catch(() => null) as ReturnType<typeof inspectRunView> | null : null;
-  const response = await fetch("/api/workflows/" + encodeURIComponent(run.workflowId));
-  const workflow = response.ok
+  const listed = (state.workflows || []).some((item) => item.id === run.workflowId);
+  const response = listed ? await fetch("/api/workflows/" + encodeURIComponent(run.workflowId)) : undefined;
+  const workflow = response?.ok
     ? await response.json() as { name: string; id: string; steps: { id: string; action?: string; caption?: { text?: string; citation?: { text?: string } } }[]; recordedOnly?: boolean }
     : { name: runWorkflowName(run, state.workflows || []), id: run.workflowId, steps: run.steps || [], recordedOnly: true };
   const host = document.getElementById("run-host");

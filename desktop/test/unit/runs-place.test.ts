@@ -157,7 +157,9 @@ test("Runs rows use filled glyphs, stop reasons and elapsed time without invente
     { id: "unknown", workflowId: "wf", status: "passed" },
   ], [{ id: "wf", name: "Download bill", steps: 7 }]);
   assert.match(html, /<circle cx="7" cy="7" r="7"/);
-  assert.match(html, />Passed<\/span> · 41 s/);
+  assert.match(html, />Recorded as passed<\/span> · 41 s/);
+  assert.doesNotMatch(html, /class="run-state passed"/);
+  assert.doesNotMatch(html, /class="run-glyph passed"/);
   assert.match(html, /Stopped at step 5\./);
   assert.match(html, /Stopped at step 5 of 7/);
   assert.match(html, /The Download PDF button is gone/);
@@ -368,7 +370,8 @@ test("Runs keeps current owner waits actionable and ended asks informational", {
       assert.equal((await page.locator("#run-receipt").innerText()).includes(("shown" in item && item.shown) || item.ask), true, "ended runs show the ask, in current words, as information");
       assert.equal(await page.locator(".receipt-handoff").count(), item.waiting ? 1 : 0, item.id);
       assert.equal((await page.locator("#run-receipt").innerText()).includes("Deadline:"), item.waiting, item.id);
-      assert.equal(await page.locator(".receipt-kicker .run-state").innerText(), item.waiting ? "needs you" : item.status === "timed-out" ? "stopped, timed out" : item.status);
+      const recordedWord = item.waiting ? "needs you" : item.status === "timed-out" ? "stopped, timed out" : item.status;
+      assert.equal(await page.locator(".receipt-recorded-status").innerText(), `Recorded as ${recordedWord}`);
       await page.getByText("Detailed evidence", { exact: true }).click();
       assert.equal(await page.locator("#run-viewer").isVisible(), true);
     }
@@ -437,7 +440,8 @@ test("running Runs groups history, opens shared receipts, survives polling and r
     assert.doesNotMatch(await history.locator("[data-open-run=raw-failed]").innerText(), /model calls/);
     assert.equal(await page.locator('#runs section[aria-label="Now"]').count(), 0);
     assert.equal(await page.locator('#runs ul[aria-label="Needs you"] [data-open-run=raw-paused]').count(), 1);
-    assert.match(await page.locator("#runs [data-open-run=raw-old]").innerText(), /Passed/);
+    assert.match(await page.locator("#runs [data-open-run=raw-old]").innerText(), /Recorded as passed/);
+    assert.doesNotMatch(await page.locator("#runs [data-open-run=raw-old]").innerText(), /\bPassed\b/);
     assert.equal(await history.getByRole("button", { name: workflow.name, exact: true }).count(), 3);
     const row = history.locator("[data-open-run=raw-failed]");
     await row.focus();
