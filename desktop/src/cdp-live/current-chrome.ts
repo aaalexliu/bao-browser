@@ -16,7 +16,7 @@ import { REMOTE_CHECKBOX } from "./consent";
 import type { AxNode } from "../proxy/os-macos";
 import { endpointOnPid, listenPid, listenPorts, probeDevToolsVersion, readDevToolsActivePort, type DevToolsEndpoint, type VersionProbe } from "./endpoint";
 import { CHROME_APP_EXE, dailyChromePids } from "./remote-debugging";
-import { holdFixtureEndpoint, joinOrStartHold } from "./chrome-hold";
+import { holdDir, holdFixtureEndpoint, joinOrStartHold } from "./chrome-hold";
 import { shareConnection } from "./shared-connection";
 import { connectCdp, type CdpSocket } from "./socket";
 import { remoteDebuggingBlock } from "../helper-capabilities";
@@ -366,21 +366,21 @@ function profileDirectoryFromReported(reported: string | undefined, root: string
 }
 
 /**
- * The profile the listening browser reports, found without DevToolsActivePort. Undefined when nothing listens, the report
- * fails, or it times out. A hermetic run uses only the throwaway listener a test named.
+ * The profile the listening browser reports, found without DevToolsActivePort. The version page is read on the
+ * consent-managed hold, after a listener is confirmed. Undefined when nothing listens, the hold cannot be had, the
+ * report fails, or it times out. A hermetic run uses only the throwaway listener a test named.
  */
-export async function listeningProfileDirectory(root: string): Promise<string | undefined> {
+export async function listeningProfileDirectory(root: string, axLog?: string): Promise<string | undefined> {
   const fixture = holdFixtureEndpoint();
   if (!fixture && process.env.BAO_LANE === "hermetic") return undefined;
-  const endpoint = fixture ?? await dailyListener(root);
-  if (!endpoint) return undefined;
-  let cdp: CdpSocket | undefined;
+  if (!fixture && !await dailyListener(root)) return undefined;
+  let chrome: CurrentChrome | undefined;
   try {
-    cdp = await connectCdp(endpoint.port, endpoint.browserPath, { timeoutMs: 5_000 });
-    return profileDirectoryFromReported(await defaultContextProfile(cdp), root);
+    chrome = await joinOrStartHold({ root, axLog: axLog ?? path.join(holdDir(root), "ax.jsonl") });
+    return profileDirectoryFromReported(await defaultContextProfile(chrome.cdp), root);
   } catch {
     return undefined;
-  } finally { cdp?.close(); }
+  } finally { chrome?.detach(); }
 }
 
 async function dailyListener(root: string): Promise<DevToolsEndpoint | undefined> {

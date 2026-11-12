@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { createServer } from "node:http";
-import type { AddressInfo } from "node:net";
+import { createServer, type IncomingMessage } from "node:http";
+import { connect as netConnect, type AddressInfo, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test, { type TestContext } from "node:test";
@@ -212,7 +212,55 @@ async function stopHold(root: string): Promise<void> {
   } catch { /* the hold already ended */ }
 }
 
-async function listeningFixture(t: TestContext, args: string[]): Promise<{ root: string; keeper: CdpSocket; homes: string[]; reported: string }> {
+function approvalGate(upstreamPort: number, browserPath: string): Promise<{ port: number; accepted: () => number; close: () => void }> {
+  let accepted = 0;
+  const hanging = new Set<Socket>();
+  const upstreams = new Set<Socket>();
+  const server = createServer((_request, response) => { response.writeHead(404).end(); });
+  server.on("upgrade", (request: IncomingMessage, socket: Socket, head: Buffer) => {
+    const pathname = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
+    if (accepted !== 0 || pathname !== browserPath) {
+      hanging.add(socket);
+      socket.on("close", () => hanging.delete(socket));
+      return;
+    }
+    accepted += 1;
+    const upstream = netConnect(upstreamPort, "127.0.0.1");
+    upstreams.add(upstream);
+    const stop = () => { socket.destroy(); upstream.destroy(); upstreams.delete(upstream); };
+    socket.on("error", stop);
+    upstream.on("error", stop);
+    upstream.on("connect", () => {
+      const lines = [`GET ${request.url ?? browserPath} HTTP/1.1`];
+      for (const [key, value] of Object.entries(request.headers)) {
+        if (value === undefined) continue;
+        for (const item of Array.isArray(value) ? value : [value]) lines.push(`${key}: ${item}`);
+      }
+      upstream.write(`${lines.join("\r\n")}\r\n\r\n`);
+      if (head.length) upstream.write(head);
+      socket.pipe(upstream);
+      upstream.pipe(socket);
+    });
+  });
+  return new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      const address = server.address() as AddressInfo;
+      resolve({
+        port: address.port,
+        accepted: () => accepted,
+        close: () => {
+          server.close();
+          for (const socket of hanging) socket.destroy();
+          for (const socket of upstreams) socket.destroy();
+        },
+      });
+    });
+  });
+}
+
+async function listeningFixture(t: TestContext, args: string[]): Promise<{ root: string; keeper: CdpSocket; homes: string[]; reported: string; accepted: () => number }> {
   pinTestBrowser();
   const root = await chromeRoot(t, { Default: { name: "Alex" }, "Profile 1": { name: "Work" } });
   const chrome = await launchOwnedChromeEndpoint({ userDataDir: root, headless: true, args: [...args, "--no-startup-window"] });
@@ -223,8 +271,9 @@ async function listeningFixture(t: TestContext, args: string[]): Promise<{ root:
   const previousFixture = process.env.BAO_CHROME_HOLD_FIXTURE;
   const pid = chrome.pid ?? pidsForDataDir(root)[0];
   if (!pid) throw new Error("fixture Chrome has no pid");
+  const gate = await approvalGate(endpoint.port, endpoint.browserPath);
   process.env.BAO_CHROME_HOLD_FIXTURE = JSON.stringify({
-    port: endpoint.port, browserPath: endpoint.browserPath, chromePid: pid, executable: pinTestBrowser(),
+    port: gate.port, browserPath: endpoint.browserPath, chromePid: pid, executable: pinTestBrowser(),
   });
   const homes = [await mkdtemp(path.join(tmpdir(), "bao-denied-workflow-")), await mkdtemp(path.join(tmpdir(), "bao-denied-agent-"))];
   t.after(async () => {
@@ -237,14 +286,15 @@ async function listeningFixture(t: TestContext, args: string[]): Promise<{ root:
     await Promise.race([closed, new Promise((resolve) => setTimeout(resolve, 3000))]);
     if (pid) { try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ } }
     await closed.catch(() => undefined);
+    gate.close();
     await rm(holdDir(root), { recursive: true, force: true });
     for (const home of homes) await rm(home, { recursive: true, force: true });
   });
-  return { root, keeper, homes, reported };
+  return { root, keeper, homes, reported, accepted: gate.accepted };
 }
 
 test("a flag-free listening Chrome opens through each planner when the profile list cannot be read", { timeout: scaledMs(120_000) }, async (t) => {
-  const { root, keeper, homes, reported } = await listeningFixture(t, []);
+  const { root, keeper, homes, reported, accepted } = await listeningFixture(t, []);
   const directory = path.basename(reported);
   const other = directory === "Default" ? "Profile 1" : "Default";
   await chmod(path.join(root, "Local State"), 0o000);
@@ -280,6 +330,28 @@ test("a flag-free listening Chrome opens through each planner when the profile l
   assert.ok(agentOpened.length >= 1, agentError instanceof Error ? agentError.message : "the agent planner opened no tab");
   try { assert.ok((await pageProfile(keeper, agentOpened[0]!.targetId)).endsWith(`${path.sep}${directory}`)); }
   finally { await proxy.end(); }
+  assert.equal(accepted(), 1, "a second debugging connection was not allowed");
+});
+
+test("a default workflow uses the listening profile before it falls back", { timeout: scaledMs(120_000) }, async (t) => {
+  const { root, keeper, homes, reported, accepted } = await listeningFixture(t, []);
+  const directory = path.basename(reported);
+  await chmod(path.join(root, "Local State"), 0o000);
+  await chmod(path.join(root, "DevToolsActivePort"), 0o000);
+  const before = new Set((await keeper.send<{ targetInfos: { targetId: string }[] }>("Target.getTargets")).targetInfos.map((target) => target.targetId));
+  const workflow = await openWorkflowBrowser({ browser: "current", why: "the default", home: homes[0]!, site: "about:blank", sourceRoot: root });
+  try {
+    assert.equal(workflow.kind, "current");
+    if (workflow.kind !== "current" || workflow.pick?.route !== "current") throw new Error("the default workflow fell back before asking the listening Chrome");
+    assert.equal(workflow.pick.why, "the default");
+    assert.equal(workflow.pick.profile.directory, directory);
+    const opened = (await keeper.send<{ targetInfos: { targetId: string; type: string; url: string }[] }>("Target.getTargets")).targetInfos
+      .filter((target) => target.type === "page" && !before.has(target.targetId));
+    assert.equal(opened.some((target) => target.url.includes("chrome://inspect")), false);
+    assert.ok(opened.length >= 1, "the default workflow opened a tab");
+    assert.ok((await pageProfile(keeper, opened[0]!.targetId)).endsWith(`${path.sep}${directory}`));
+  } finally { await workflow.close(); }
+  assert.equal(accepted(), 1, "a second debugging connection was not allowed");
 });
 
 test("a failed profile report stops Running Chrome and does not guess Default", { timeout: scaledMs(120_000) }, async (t) => {

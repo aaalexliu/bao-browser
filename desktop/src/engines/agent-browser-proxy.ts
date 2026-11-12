@@ -1076,7 +1076,7 @@ export class AgentBrowserProxy {
     if (process.env.BAO_TEST_BROWSER && !this.options.sourceRoot) throw new Error("tests must supply a throwaway Chrome profile source");
     const root = this.options.sourceRoot ?? chromeProfilesRoot();
     try {
-      const profile = await chooseChromeProfile(root, named === undefined ? undefined : { directory: named, by: "agent" }, this.options.settingsProfile?.(), route === "current");
+      const profile = await chooseChromeProfile(root, named === undefined ? undefined : { directory: named, by: "agent" }, this.options.settingsProfile?.(), route === "current", path.join(this.options.home, "audit", "current-chrome.jsonl"));
       if (boundRoute(route, site, path.join(profile.root, profile.directory))) {
         return boundOpenPlan(route, profile, this.options.extensionRoute?.() === true);
       }

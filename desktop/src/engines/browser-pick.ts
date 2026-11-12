@@ -217,14 +217,14 @@ export class ChromeProfileQuestion extends Error {
  * is set, the profile is the one the listening browser reports. A named profile that report does not confirm, or a report that
  * fails, stops with that refusal.
  */
-export async function chooseChromeProfile(root: string, named: { directory: string; by: "agent" | "settings" } | undefined, settings?: string, fromListener = false): Promise<ChosenProfile> {
+export async function chooseChromeProfile(root: string, named: { directory: string; by: "agent" | "settings" } | undefined, settings?: string, fromListener = false, axLog?: string): Promise<ChosenProfile> {
   let profiles: ChromeProfileChoice[];
   try { profiles = await listChromeProfiles(root); }
   catch (error) {
     if (!(error instanceof ChromeFolderDenied)) {
       throw new Error(`Bao could not read Chrome's profiles in ${root}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
     }
-    const directory = fromListener ? await listeningProfileDirectory(root) : undefined;
+    const directory = fromListener ? await listeningProfileDirectory(root, axLog) : undefined;
     if (!directory || (named && named.directory !== directory)) throw error;
     profiles = [{ directory, name: directory, email: "" }];
   }
