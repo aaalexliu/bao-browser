@@ -67,7 +67,7 @@ require("node:fs").writeFileSync(process.argv.at(-1), Buffer.alloc(2000));
     while (video !== `${runId}.mp4`) {
       assert.ok(Date.now() < attached, "run keeps the MP4 after the release wait");
       await wait(20);
-      try { video = JSON.parse(await readFile(path.join(home, "runs", `${runId}.json`), "utf8")).video; }
+      try { video = (JSON.parse(await readFile(path.join(home, "runs", `${runId}.json`), "utf8")) as { video?: string }).video; }
       catch { /* the run file is between the temp write and the rename */ }
     }
     assert.equal(existsSync(frames), false);
