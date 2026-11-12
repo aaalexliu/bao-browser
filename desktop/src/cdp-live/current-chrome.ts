@@ -9,15 +9,14 @@ import { existsSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import path from "node:path";
 import { ChromeFolderDenied, assertChromeReadable, chromeDenied } from "../chrome-access";
-import { confirmedProfileDirectories } from "./remote-debugging";
 import { chromeProfilesRoot } from "../engines/chrome-profile-copy";
 import { killCommandToken, LAUNCH_SERVICES_RESTART, launchServicesStalled, processesNaming } from "../launch";
 import { chromeHelper, CHROME_BUNDLE, helperBin, INSPECT_URL, logAx, type ChromeAx } from "./ax";
 import { REMOTE_CHECKBOX } from "./consent";
 import type { AxNode } from "../proxy/os-macos";
-import { endpointFromVersion, listenPid, listenPorts, probeDevToolsVersion, readDevToolsActivePort, type DevToolsEndpoint, type VersionProbe } from "./endpoint";
+import { endpointOnPid, listenPid, listenPorts, probeDevToolsVersion, readDevToolsActivePort, type DevToolsEndpoint, type VersionProbe } from "./endpoint";
 import { CHROME_APP_EXE, dailyChromePids } from "./remote-debugging";
-import { joinOrStartHold } from "./chrome-hold";
+import { holdFixtureEndpoint, joinOrStartHold } from "./chrome-hold";
 import { shareConnection } from "./shared-connection";
 import { connectCdp, type CdpSocket } from "./socket";
 import { remoteDebuggingBlock } from "../helper-capabilities";
@@ -275,18 +274,7 @@ export async function connectOwnedChrome(options: {
       }
       return await deps.listener(endpoint.port) === pid ? endpoint : undefined;
     };
-    const endpointFromListener = async (): Promise<DevToolsEndpoint | undefined> => {
-      let ports: number[] = [];
-      try { ports = await deps.listenPorts(pid); }
-      catch { return undefined; }
-      for (const port of ports) {
-        const probe = await deps.probeVersion(port);
-        if (!probe) continue;
-        const found = endpointFromVersion(port, probe.status, probe.body);
-        if (found && await deps.listener(found.port) === pid) return found;
-      }
-      return undefined;
-    };
+    const endpointFromListener = (): Promise<DevToolsEndpoint | undefined> => endpointOnPid(pid, deps.probeVersion, deps.listenPorts, deps.listener);
     let endpoint: DevToolsEndpoint | undefined;
     try { endpoint = await endpointFromFile(); }
     catch (error) {
@@ -362,6 +350,45 @@ function pathKeys(file: string): Set<string> {
   return keys;
 }
 
+function samePath(left: string, right: string): boolean {
+  for (const key of pathKeys(left)) if (pathKeys(right).has(key)) return true;
+  return false;
+}
+
+const PROFILE_DIRECTORY = /^(?:Default|Profile \d+)$/;
+
+/** The profile folder a chrome://version path names under this root. Not a path, or not under the root, confirms nothing. Never invents Default. */
+function profileDirectoryFromReported(reported: string | undefined, root: string): string | undefined {
+  if (!reported || !path.isAbsolute(reported)) return undefined;
+  const directory = path.basename(reported);
+  if (!PROFILE_DIRECTORY.test(directory) || !samePath(path.dirname(reported), root)) return undefined;
+  return directory;
+}
+
+/**
+ * The profile the listening browser reports, found without DevToolsActivePort. Undefined when nothing listens, the report
+ * fails, or it times out. A hermetic run uses only the throwaway listener a test named.
+ */
+export async function listeningProfileDirectory(root: string): Promise<string | undefined> {
+  const fixture = holdFixtureEndpoint();
+  if (!fixture && process.env.BAO_LANE === "hermetic") return undefined;
+  const endpoint = fixture ?? await dailyListener(root);
+  if (!endpoint) return undefined;
+  let cdp: CdpSocket | undefined;
+  try {
+    cdp = await connectCdp(endpoint.port, endpoint.browserPath, { timeoutMs: 5_000 });
+    return profileDirectoryFromReported(await defaultContextProfile(cdp), root);
+  } catch {
+    return undefined;
+  } finally { cdp?.close(); }
+}
+
+async function dailyListener(root: string): Promise<DevToolsEndpoint | undefined> {
+  const pids = await dailyChromePids(root, chromeProfilesRoot());
+  if (pids.length !== 1) return undefined;
+  return endpointOnPid(pids[0]!);
+}
+
 /** True when both paths name one profile. A refused folder is compared as text, including macOS /tmp and /private/tmp. */
 function sameProfilePath(reported: string, wanted: string, root: string): boolean {
   for (const key of pathKeys(reported)) if (pathKeys(wanted).has(key)) return true;
@@ -400,10 +427,7 @@ export async function openTaskTab(chrome: Pick<CurrentChrome, "cdp" | "executabl
   const wanted = path.resolve(path.join(chrome.root, directory));
   const { defaultBrowserContextId } = await chrome.cdp.send<{ defaultBrowserContextId?: string }>("Target.getBrowserContexts", {}, undefined, 5000);
   const inDefault = await defaultContextProfile(chrome.cdp).catch(() => undefined);
-  const versionNamesIt = Boolean(inDefault && path.isAbsolute(inDefault) && sameProfilePath(inDefault, wanted, chrome.root));
-  const confirmed = confirmedProfileDirectories(chrome.root);
-  const processNamesIt = (!inDefault || !path.isAbsolute(inDefault)) && confirmed.length === 1 && confirmed[0] === directory;
-  if (defaultBrowserContextId && (versionNamesIt || processNamesIt)) {
+  if (defaultBrowserContextId && inDefault && path.isAbsolute(inDefault) && sameProfilePath(inDefault, wanted, chrome.root)) {
     const { targetId } = await chrome.cdp.send<{ targetId: string }>("Target.createTarget", { url: "about:blank", background: true }, undefined, 5000);
     const { targetInfo } = await chrome.cdp.send<{ targetInfo: { browserContextId?: string } }>("Target.getTargetInfo", { targetId }, undefined, 5000);
     if (targetInfo.browserContextId === defaultBrowserContextId) return { targetId, background: true };

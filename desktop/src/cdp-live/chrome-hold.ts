@@ -402,6 +402,12 @@ async function connectFixture(root: string, fixture: HoldFixture): Promise<Curre
   };
 }
 
+/** The throwaway listener a test named. Absent in a normal session, so that session cannot skip the Allow sheet. */
+export function holdFixtureEndpoint(): { port: number; browserPath: string } | undefined {
+  const fixture = readFixture();
+  return fixture ? { port: fixture.port, browserPath: fixture.browserPath } : undefined;
+}
+
 function readFixture(): HoldFixture | undefined {
   // A test points the hold at a throwaway browser. A normal session never has these, so it cannot skip the Allow sheet.
   if (!process.env.BAO_TEST_BROWSER && !process.env.BAO_LANE) return undefined;

@@ -25,7 +25,7 @@ import { scaledMs } from "../runtime";
 
 async function chromeRoot(t: TestContext, profiles: ProfileNames): Promise<string> {
   const root = await mkdtemp(path.join(tmpdir(), "bao-pick-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  t.after(async () => { await chmod(root, 0o700).catch(() => undefined); await rm(root, { recursive: true, force: true }); });
   return chromeProfiles(root, profiles);
 }
 
@@ -212,13 +212,14 @@ async function stopHold(root: string): Promise<void> {
   } catch { /* the hold already ended */ }
 }
 
-test("Running Chrome opens through each planner when the folder is denied and Chrome already listens", { timeout: scaledMs(120_000) }, async (t) => {
+async function listeningFixture(t: TestContext, args: string[]): Promise<{ root: string; keeper: CdpSocket; homes: string[]; reported: string }> {
   pinTestBrowser();
   const root = await chromeRoot(t, { Default: { name: "Alex" }, "Profile 1": { name: "Work" } });
-  const chrome = await launchOwnedChromeEndpoint({ userDataDir: root, headless: true, args: ["--profile-directory=Profile 1", "--no-startup-window"] });
+  const chrome = await launchOwnedChromeEndpoint({ userDataDir: root, headless: true, args: [...args, "--no-startup-window"] });
   const endpoint = await readDevToolsActivePort(chrome.portFile);
   const keeper = await connectCdp(endpoint.port, endpoint.browserPath);
   const keeperTab = await keeper.send<{ targetId: string }>("Target.createTarget", { url: "about:blank", background: true });
+  const reported = await pageProfile(keeper, keeperTab.targetId);
   const previousFixture = process.env.BAO_CHROME_HOLD_FIXTURE;
   const pid = chrome.pid ?? pidsForDataDir(root)[0];
   if (!pid) throw new Error("fixture Chrome has no pid");
@@ -239,42 +240,60 @@ test("Running Chrome opens through each planner when the folder is denied and Ch
     await rm(holdDir(root), { recursive: true, force: true });
     for (const home of homes) await rm(home, { recursive: true, force: true });
   });
-  await chmod(root, 0o000);
+  return { root, keeper, homes, reported };
+}
 
-  assert.equal((await chooseChromeProfile(root, undefined)).directory, "Profile 1", "an unnamed open uses the one profile Chrome names, not Default");
-  await assert.rejects(chooseChromeProfile(root, { directory: "Default", by: "agent" }), ChromeFolderDenied);
-  await assert.rejects(openWorkflowBrowser({ browser: "current", home: homes[0]!, site: "about:blank", sourceRoot: root, profile: "Default" }), ChromeFolderDenied);
+test("a flag-free listening Chrome opens through each planner when the profile list cannot be read", { timeout: scaledMs(120_000) }, async (t) => {
+  const { root, keeper, homes, reported } = await listeningFixture(t, []);
+  const directory = path.basename(reported);
+  const other = directory === "Default" ? "Profile 1" : "Default";
+  await chmod(path.join(root, "Local State"), 0o000);
+  await chmod(path.join(root, "DevToolsActivePort"), 0o000);
+  assert.equal((await chooseChromeProfile(root, undefined, undefined, true)).directory, directory, "an unnamed open uses the profile the listening Chrome reports");
+  await assert.rejects(chooseChromeProfile(root, { directory: other, by: "agent" }, undefined, true), ChromeFolderDenied);
+  await assert.rejects(chooseChromeProfile(root, undefined), ChromeFolderDenied);
 
   const before = new Set((await keeper.send<{ targetInfos: { targetId: string }[] }>("Target.getTargets")).targetInfos.map((target) => target.targetId));
   const workflow = await openWorkflowBrowser({ browser: "current", home: homes[0]!, site: "about:blank", sourceRoot: root });
   try {
     assert.equal(workflow.kind, "current");
     if (workflow.kind !== "current" || workflow.pick?.route !== "current") throw new Error("the workflow planner did not choose Running Chrome");
-    assert.equal(workflow.pick.profile.directory, "Profile 1");
+    assert.equal(workflow.pick.profile.directory, directory);
     const opened = (await keeper.send<{ targetInfos: { targetId: string; type: string; url: string }[] }>("Target.getTargets")).targetInfos
       .filter((target) => target.type === "page" && !before.has(target.targetId));
     assert.equal(opened.some((target) => target.url.includes("chrome://inspect")), false);
     assert.ok(opened.length >= 1, "the workflow planner opened a tab");
-    await chmod(root, 0o700);
-    assert.ok((await pageProfile(keeper, opened[0]!.targetId)).endsWith(`${path.sep}Profile 1`), "the tab is in the profile Chrome named");
-    await chmod(root, 0o000);
+    assert.ok((await pageProfile(keeper, opened[0]!.targetId)).endsWith(`${path.sep}${directory}`));
   } finally { await workflow.close(); }
 
-  await assert.rejects(openWorkflowBrowser({ browser: "copy", home: homes[0]!, site: "about:blank", sourceRoot: root, profile: "Profile 1" }), ChromeFolderDenied);
+  await assert.rejects(openWorkflowBrowser({ browser: "current", home: homes[0]!, site: "about:blank", sourceRoot: root, profile: other }), ChromeFolderDenied);
 
   const proxy = new AgentBrowserProxy({ home: homes[1]!, sourceRoot: root, executable: "/usr/bin/true" });
   const agentBefore = new Set((await keeper.send<{ targetInfos: { targetId: string }[] }>("Target.getTargets")).targetInfos.map((target) => target.targetId));
   let agentError: unknown;
-  try { await proxy.execute("open", ["about:blank"], "current", false, "Profile 1"); }
+  try { await proxy.execute("open", ["about:blank"], "current"); }
   catch (error) { agentError = error; }
   assert.equal(agentError instanceof ChromeFolderDenied, false, agentError instanceof Error ? agentError.message : String(agentError));
   const agentOpened = (await keeper.send<{ targetInfos: { targetId: string; type: string; url: string }[] }>("Target.getTargets")).targetInfos
-    .filter((target) => target.type === "page" && !agentBefore.has(target.targetId) && target.targetId !== keeperTab.targetId);
+    .filter((target) => target.type === "page" && !agentBefore.has(target.targetId));
   assert.equal(agentOpened.some((target) => target.url.includes("chrome://inspect")), false);
   assert.ok(agentOpened.length >= 1, agentError instanceof Error ? agentError.message : "the agent planner opened no tab");
-  await chmod(root, 0o700);
-  try { assert.ok((await pageProfile(keeper, agentOpened[0]!.targetId)).endsWith(`${path.sep}Profile 1`)); }
+  try { assert.ok((await pageProfile(keeper, agentOpened[0]!.targetId)).endsWith(`${path.sep}${directory}`)); }
   finally { await proxy.end(); }
+});
+
+test("a failed profile report stops Running Chrome and does not guess Default", { timeout: scaledMs(120_000) }, async (t) => {
+  const { root, keeper, homes } = await listeningFixture(t, []);
+  const before = new Set((await keeper.send<{ targetInfos: { targetId: string; url: string }[] }>("Target.getTargets")).targetInfos.map((target) => target.targetId));
+  await chmod(root, 0o000);
+  await assert.rejects(chooseChromeProfile(root, undefined, undefined, true), ChromeFolderDenied);
+  await assert.rejects(openWorkflowBrowser({ browser: "current", home: homes[0]!, site: "about:blank", sourceRoot: root }), ChromeFolderDenied);
+  const proxy = new AgentBrowserProxy({ home: homes[1]!, sourceRoot: root, executable: "/usr/bin/true" });
+  await assert.rejects(proxy.execute("open", ["about:blank"], "current"), ChromeFolderDenied);
+  await proxy.end();
+  const after = (await keeper.send<{ targetInfos: { targetId: string; type: string; url: string }[] }>("Target.getTargets")).targetInfos;
+  assert.equal(after.some((target) => target.url.includes("chrome://inspect")), false);
+  assert.equal(after.some((target) => target.type === "page" && !before.has(target.targetId)), false);
 });
 
 test("run_workflow names its route, Chrome profile, and sign-in import, and a sign-in stop in Bao's profile gives the call back to Running Chrome", { timeout: scaledMs(120_000) }, async (t) => {

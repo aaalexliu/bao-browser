@@ -105,6 +105,25 @@ export function browserPathFromVersion(body: string): string | undefined {
   } catch { return undefined; }
 }
 
+/** The debugging endpoint a pid already listens on. Does not read DevToolsActivePort. */
+export async function endpointOnPid(
+  pid: number,
+  probe: (port: number) => Promise<VersionProbe | undefined> = probeDevToolsVersion,
+  ports: (pid: number) => Promise<number[]> = listenPorts,
+  listener: (port: number) => Promise<number | undefined> = listenPid,
+): Promise<DevToolsEndpoint | undefined> {
+  let open: number[];
+  try { open = await ports(pid); }
+  catch { return undefined; }
+  for (const port of open) {
+    const version = await probe(port);
+    if (!version) continue;
+    const found = endpointFromVersion(port, version.status, version.body);
+    if (found && await listener(found.port) === pid) return found;
+  }
+  return undefined;
+}
+
 /**
  * The endpoint a version probe names. A command-line port returns 200 and a /devtools/browser path.
  * chrome://inspect approval mode returns an empty 404 and accepts /devtools/browser with no guid.

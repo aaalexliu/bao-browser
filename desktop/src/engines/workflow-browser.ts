@@ -64,8 +64,8 @@ export function runningChromeRefusal(browser: BrowserChoice | undefined, workflo
  * The Chrome profile a saved workflow runs with: the one the agent named, else the one picked in Bao Settings, else the only one.
  * With several and none named or picked, it throws ChromeProfileQuestion. Never a silent "Default".
  */
-function workflowProfile(root: string, named: string | undefined, settings: string | undefined): Promise<ChosenProfile> {
-  return chooseChromeProfile(root, named ? { directory: named, by: "agent" } : settings ? { directory: settings, by: "settings" } : undefined, settings);
+function workflowProfile(root: string, named: string | undefined, settings: string | undefined, fromListener = false): Promise<ChosenProfile> {
+  return chooseChromeProfile(root, named ? { directory: named, by: "agent" } : settings ? { directory: settings, by: "settings" } : undefined, settings, fromListener);
 }
 
 /** Bao's own profile runs without Chrome's profiles. It then imports no sign-in and says why. A named or picked profile must exist. */
@@ -119,7 +119,7 @@ export async function planWorkflowBrowser(options: WorkflowBrowserOptions): Prom
   // Bao's own profile, and a run that did not name a route, work without Chrome's profiles: Bao's profile opens with no sign-in import.
   const fallback = fallsBack(options.browser, why);
   const source = options.browser === "bao" || fallback ? await baoSource(root, options.profile, options.directory)
-    : { profile: await workflowProfile(root, options.profile, options.directory) };
+    : { profile: await workflowProfile(root, options.profile, options.directory, options.browser === "current") };
   if (!source.profile) return fallback ? fallbackPlan(source.unread) : { route: "bao", why, unread: source.unread };
   // A site that ties its sign-in to the owner's Chrome runs there, unless the workflow moves files.
   if (boundRoute(options.browser, options.site, path.join(source.profile.root, source.profile.directory), options.movesFiles)) {
