@@ -12,7 +12,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test, { type TestContext } from "node:test";
 import * as currentChrome from "../../src/cdp-live/current-chrome";
-import type { CdpSocket } from "../../src/cdp-live/socket";
+import { shareConnection } from "../../src/cdp-live/shared-connection";
+import type { CdpMessage, CdpRoute, CdpSocket } from "../../src/cdp-live/socket";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
 import { pinTestBrowser } from "../../src/launch";
@@ -60,11 +61,13 @@ async function fixture(t: TestContext) {
   const listed = () => tracked().map(target => ({ tabId: daemon.tabIds.get(target.targetId)!, targetId: target.targetId, label: null, title: target.title,
     url: target.url, type: target.type, active: target.targetId === daemon.active }));
   const closed: string[] = [];
+  const sent: { method: string; params: Record<string, unknown> }[] = [];
   const cdp = {
     isOpen: true,
     disconnected: new Promise<void>(() => undefined),
     close() { cdp.isOpen = false; },
     async send(method: string, params: Record<string, unknown> = {}) {
+      sent.push({ method, params });
       const target = targets.find(item => item.targetId === params.targetId);
       if (method === "Target.createTarget") {
         targets.unshift({ targetId: "task", type: "page", url: "about:blank", title: "about:blank", inWindow: true });
@@ -99,9 +102,10 @@ async function fixture(t: TestContext) {
     const [command, ...args] = argv.slice(at) as [string, ...string[]];
     if (argv.includes("--pin-tab")) daemon.pinned = true;
     if (!daemon.active) daemon.active = "task";
-    drain();
+    // A target that appears as the command starts is on this command's tab list, as Chrome would report it.
     daemon.before?.();
     daemon.before = undefined;
+    drain();
     daemon.commands.push({ command, args, on: daemon.active });
     const tabs = listed();
     const reply = (stdout: string, code = 0) => void writeFile(path.join(String(options.cwd), "bao.pid"), String(process.pid))
@@ -139,7 +143,7 @@ async function fixture(t: TestContext) {
   const home = path.join(root, "home");
   const proxy = new AgentBrowserProxy({ home, sourceRoot: root, executable });
   t.after(() => proxy.end());
-  return { proxy, targets, daemon, closed, home };
+  return { proxy, targets, daemon, closed, sent, home };
 }
 
 test("Chrome's Gemini panel and side panels stay out of the agent's tab list, and Bao's task tab says so", async (t) => {
@@ -162,12 +166,14 @@ test("when the native daemon makes the Gemini panel current mid-session, the nex
   assert.equal(click!.stdout, "✓ Done on task\n");
   assert.deepEqual(f.daemon.commands.filter(entry => entry.command === "click").map(entry => entry.on), ["task"]);
   assert.ok(f.daemon.commands.some(entry => entry.command === "tab" && entry.args[0] === "t1" && entry.on === "glic"), "Bao switched the daemon back to its task tab");
+  assert.equal(f.sent.filter(call => call.method === "Page.bringToFront" || call.method === "Target.activateTarget").length, 0,
+    "the return does not ask Chrome to raise the task tab; the daemon's Page.bringToFront is answered on the shared connection");
   f.daemon.before = () => { f.daemon.active = "search"; };
   assert.equal((await f.proxy.execute("snapshot", ["-i"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout, "✓ Done on task\n");
   assert.ok(f.daemon.commands.filter(entry => entry.command !== "tab").every(entry => entry.on === "task"), "no page command ran on a panel");
 });
 
-test("the agent cannot switch to or close Chrome's own panels, but can switch to the owner's tabs and stays there", async (t) => {
+test("the agent cannot switch to or close Chrome's own panels, or a tab the owner opened", async (t) => {
   const f = await fixture(t);
   await f.proxy.execute("open", [MAPS], "current");
   await f.proxy.execute("tab", [], undefined, false, undefined, {}, f.proxy.activeRunId);
@@ -176,13 +182,20 @@ test("the agent cannot switch to or close Chrome's own panels, but can switch to
     assert.equal(result!.exitCode, 1);
     assert.match(result!.stderr, /is not a tab in a Chrome window, such as the Gemini panel or a side panel\. Stay in Bao's task tab\./);
   }
-  assert.ok(!f.daemon.commands.some(entry => entry.command === "tab" && ["t4", "t6"].includes(entry.args.at(-1)!)), "the refused calls never reached the daemon");
-  assert.equal((await f.proxy.execute("tab", ["t3"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.exitCode, 0, "a real tab on the Gemini panel URL is still a tab");
-  assert.equal(f.daemon.active, "glic-tab");
-  assert.equal((await f.proxy.execute("tab", ["t2"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.exitCode, 0);
+  const [owner] = await f.proxy.execute("tab", ["t2"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  assert.equal(owner!.exitCode, 1);
+  assert.match(owner!.stderr, /is a tab the owner opened/);
+  assert.match(owner!.stderr, /open that page's URL in your task tab \(it shares his sign-ins\): https:\/\/www\.google\.com\/maps/);
+  const [closed] = await f.proxy.execute("tab", ["close", "t2"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  assert.equal(closed!.exitCode, 1);
+  assert.match(closed!.stderr, /open that page's URL in your task tab/);
+  const [panelTab] = await f.proxy.execute("tab", ["t3"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  assert.equal(panelTab!.exitCode, 1, "a real tab the owner opened is refused even on the Gemini panel URL");
+  assert.match(panelTab!.stderr, /open that page's URL in your task tab/);
+  assert.ok(!f.daemon.commands.some(entry => entry.command === "tab" && ["t2", "t3", "t4", "t6"].includes(entry.args.at(-1)!)), "the refused calls never reached the daemon");
+  assert.equal(f.daemon.active, "task");
   await f.proxy.execute("click", ["@e1"], undefined, false, undefined, {}, f.proxy.activeRunId);
-  assert.equal(f.daemon.commands.at(-1)!.on, "owner", "an explicit switch is not undone");
-  assert.equal((await f.proxy.execute("tab", [], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout, `  [t1] (Bao task tab) Google Maps - ${MAPS}\n→ [t2] Google Maps - ${MAPS}\n  [t3] Gemini - ${GLIC}\n`);
+  assert.equal(f.daemon.commands.at(-1)!.on, "task");
 });
 
 test("a tab Bao's task tab opens becomes the agent's tab, once", async (t) => {
@@ -210,22 +223,31 @@ test("a popup the agent follows from its task tab is a Bao task tab, and finish_
   f.daemon.clicked = () => f.targets.push({ targetId: "popup2", type: "page", url: "https://www.google.com/maps/place/Vesta", title: "Vesta", openerId: "popup", inWindow: true });
   await f.proxy.execute("click", ["@e3"], undefined, false, undefined, {}, f.proxy.activeRunId);
   assert.match((await f.proxy.execute("tab", [], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout, /→ \[t8\] \(Bao task tab\) Vesta - https:\/\/www\.google\.com\/maps\/place\/Vesta\n/);
+  assert.ok(f.sent.filter(call => call.method === "Emulation.setFocusEmulationEnabled" && call.params.enabled === true).length >= 3,
+    "the task tab and each followed popup get focus emulation so a background popup can take clicks");
+  assert.equal(f.sent.filter(call => call.method === "Page.bringToFront" || call.method === "Target.activateTarget").length, 0,
+    "following a popup does not ask Chrome to raise it");
   assert.ok(await f.proxy.finishTask({ outcome: "passed", reason: "fixture" }, f.proxy.activeRunId));
   assert.deepEqual([...f.closed].sort(), ["popup", "popup2", "task"], "Bao closes the followed popups and the task tab, not the owner's tabs");
 });
 
-test("a popup opened from an owner tab the agent switched to stays open and unmarked", async (t) => {
+test("an owner target=_blank from the task tab during a wait is not adopted and not closed", async (t) => {
   const f = await fixture(t);
   await f.proxy.execute("open", [MAPS], "current");
-  assert.equal((await f.proxy.execute("tab", ["t2"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.exitCode, 0);
-  f.daemon.clicked = () => f.targets.push({ targetId: "popup", type: "page", url: "https://example.com/from-owner", title: "From owner", openerId: "owner", inWindow: true });
-  await f.proxy.execute("click", ["@e2"], undefined, false, undefined, {}, f.proxy.activeRunId);
-  const listed = (await f.proxy.execute("tab", [], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout;
-  assert.match(listed, /\[t7\] From owner - https:\/\/example\.com\/from-owner/);
-  assert.doesNotMatch(listed, /\[t7\] \(Bao task tab\)/);
-  assert.equal(f.daemon.commands.at(-1)!.on, "popup", "the agent still follows a popup its current tab opened");
-  assert.ok(await f.proxy.finishTask({ outcome: "passed", reason: "fixture" }, f.proxy.activeRunId));
-  assert.deepEqual(f.closed, ["task"], "Bao does not close a popup the owner's tab opened");
+  const task = f.targets.find(item => item.targetId === "task")!;
+  task.url = "https://example.com/login";
+  task.title = "Sign in";
+  f.daemon.before = () => {
+    f.targets.push({ targetId: "forgot", type: "page", url: "https://example.com/forgot", title: "Forgot password", openerId: "task", inWindow: true });
+  };
+  const [waited] = await f.proxy.execute("wait_for_owner", ["1"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  assert.equal(waited!.exitCode, 0);
+  assert.match(waited!.stdout, /waiting/);
+  assert.equal(f.daemon.active, "task", "the owner's popup does not become the agent's tab");
+  assert.ok(!f.daemon.commands.some(entry => entry.command === "tab" && entry.args[0] === "t7"), "Bao does not switch to the owner's popup");
+  assert.ok(await f.proxy.finishTask({ outcome: "failed", reason: "fixture" }, f.proxy.activeRunId));
+  assert.equal(f.closed.includes("forgot"), false, "finish does not close a tab the owner opened");
+  assert.ok(f.closed.includes("task"));
 });
 
 test("a popup check that hits the ceiling leaves the popup fresh, and the next call adopts it", async (t) => {
@@ -339,11 +361,65 @@ test("closing a tab the agent opened does not end the session while Bao's task t
   assert.equal((await f.proxy.execute("snapshot", ["-i"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout, "✓ Done on task\n");
 });
 
-test("an owner tab the agent switched to stays the session when the task tab closes", async (t) => {
+test("tab onto an owner tab is refused, and that tab does not keep the session when the task tab closes", async (t) => {
   const f = await fixture(t);
   await f.proxy.execute("open", [MAPS], "current");
-  assert.equal((await f.proxy.execute("tab", ["t2"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.exitCode, 0);
+  const [refused] = await f.proxy.execute("tab", ["t2"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  assert.equal(refused!.exitCode, 1);
+  assert.match(refused!.stderr, /open that page's URL in your task tab \(it shares his sign-ins\)/);
+  assert.equal(f.daemon.active, "task");
   dropTab(f, "task");
-  assert.equal((await f.proxy.execute("snapshot", ["-i"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout, "✓ Done on owner\n");
-  assert.equal(f.proxy.hasSession(), true);
+  const [ended] = await f.proxy.execute("snapshot", ["-i"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  assert.match(ended!.stdout, /Bao's task tab was closed/);
+  assert.equal(f.proxy.hasSession(), false);
+  assert.ok(f.targets.some(item => item.targetId === "owner"));
+});
+
+test("a client of the shared connection cannot raise Chrome or open a tab in front", async () => {
+  const written: CdpMessage[] = [];
+  const cdp = {
+    isOpen: true,
+    disconnected: new Promise<void>(() => undefined),
+    async send(method: string) {
+      if (method === "Target.attachToBrowserTarget") return { sessionId: "browser-session" };
+      return {};
+    },
+    sendUntilProgress(method: string) { return this.send(method); },
+    write(message: CdpMessage, route: CdpRoute) {
+      written.push(message);
+      if (typeof message.id === "number") route(JSON.stringify({ id: message.id, result: { targetId: "created" } }), { id: message.id, result: { targetId: "created" } });
+    },
+    route() {},
+  };
+  const shared = await shareConnection(cdp as unknown as CdpSocket);
+  const client = new WebSocket(`ws://127.0.0.1:${shared.endpoint.port}${shared.endpoint.browserPath}`);
+  const replies = new Map<number, { result?: Record<string, unknown> }>();
+  const waiting = new Map<number, () => void>();
+  client.onmessage = (event) => {
+    const message = JSON.parse(String(event.data)) as { id?: number; result?: Record<string, unknown> };
+    if (typeof message.id !== "number") return;
+    replies.set(message.id, message);
+    waiting.get(message.id)?.();
+  };
+  try {
+    await new Promise<void>((resolve, reject) => { client.onopen = () => resolve(); client.onerror = () => reject(new Error("shared endpoint did not accept the client")); });
+    const ask = (id: number, method: string, params: Record<string, unknown>, sessionId?: string) => {
+      const done = new Promise<void>((resolve) => waiting.set(id, resolve));
+      client.send(JSON.stringify({ id, method, params, ...sessionId ? { sessionId } : {} }));
+      return done;
+    };
+    await ask(1, "Page.bringToFront", {}, "page-1");
+    await ask(2, "Target.activateTarget", { targetId: "owner" });
+    await ask(3, "Target.createTarget", { url: "https://example.com/" });
+    assert.deepEqual(replies.get(1)?.result, {}, "Page.bringToFront is answered locally");
+    assert.deepEqual(replies.get(2)?.result, {}, "Target.activateTarget is answered locally");
+    assert.equal(written.some(message => message.method === "Page.bringToFront" || message.method === "Target.activateTarget"), false,
+      "a return or a followed popup does not deliver a raise to Chrome");
+    const created = written.find(message => message.method === "Target.createTarget");
+    assert.equal(created?.params?.background, true, "a tab the daemon opens stays in the background");
+    assert.equal(created?.sessionId, "browser-session");
+  } finally {
+    client.close();
+    shared.close();
+  }
 });

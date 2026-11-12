@@ -155,12 +155,16 @@ interface SessionData {
 /** Whether a native command opens a new tab itself: `tab new`, or a click that opens its link in a new tab. */
 const opensTab = (command: string, args: readonly string[]) => (command === "tab" && args[0] === "new") || (command === "click" && args.includes("--new-tab"));
 
+/** A command that can open a tab while the native daemon is running it: open, click, tab new, or click --new-tab. */
+const canOpenTab = (command: string, args: readonly string[]) => command === "open" || command === "click" || (command === "tab" && args[0] === "new");
+
 /**
  * The owner's running Chrome over remote debugging. Bao closes only the tabs it opened. `targetId` is the tab the agent works in:
- * Bao's task tab, until the agent switches tabs or its tab opens one. A popup followed from a task tab joins `taskTabs`.
- * `seen` holds every target the native tab list has shown.
+ * Bao's task tab, until a command that can open a tab follows a popup that command opened. That popup joins `taskTabs`.
+ * `seen` holds every target the native tab list has shown. `pending` holds fresh targets from an opening command that were not
+ * classified yet. `opening` is true only while such a command is in flight, and never during an owner wait.
  */
-type DebuggingChrome = { kind: "current"; relay?: undefined; chrome: CurrentChrome; taskTabs: Set<string>; targetId: string; seen: Set<string>; justClosed?: string };
+type DebuggingChrome = { kind: "current"; relay?: undefined; chrome: CurrentChrome; taskTabs: Set<string>; targetId: string; seen: Set<string>; pending: Set<string>; opening?: boolean; justClosed?: string };
 
 /** An opened browser, what it runs on and why, and on the owner's Chrome the task tab the native daemon binds to. */
 type Opened = { pick: BrowserPick } & (
@@ -614,14 +618,20 @@ export class AgentBrowserProxy {
         await this.captureTarget(session, step, args[0]);
         if (this.waitOf(session) !== "off") { results.push(...this.ownerResult("halted", session)); return results; }
       }
-      await session.workflow.record(command as string, args, step.id, async () => {
-        const result = command === "close" && (session.kind === "current" || session.chrome.isClosed())
-          ? { stdout: session.kind === "current" ? "Disconnected from the owner's own Chrome. Only Bao's task tabs close; the owner's tabs and windows stay open." : "", stderr: "", exitCode: 0 }
-          : await this.forward(session, command as string, args);
-        results.push(result);
-        if (command !== "close" && result.exitCode === 0) await this.detectOwnerWall(session, command === "open" ? webSite(args[0]) : undefined);
-        return result;
-      }, () => this.waitOf(session) !== "off");
+      const opening = session.kind === "current" && !session.relay && this.waitOf(session) === "off" && canOpenTab(command as string, args);
+      if (opening) session.opening = true;
+      try {
+        await session.workflow.record(command as string, args, step.id, async () => {
+          const result = command === "close" && (session.kind === "current" || session.chrome.isClosed())
+            ? { stdout: session.kind === "current" ? "Disconnected from the owner's own Chrome. Only Bao's task tabs close; the owner's tabs and windows stay open." : "", stderr: "", exitCode: 0 }
+            : await this.forward(session, command as string, args);
+          results.push(result);
+          if (command !== "close" && result.exitCode === 0) await this.detectOwnerWall(session, command === "open" ? webSite(args[0]) : undefined);
+          return result;
+        }, () => this.waitOf(session) !== "off");
+      } finally {
+        if (session.kind === "current" && !session.relay) session.opening = false;
+      }
       if (command !== "close" && results[0]?.exitCode === 0) {
         const inPage = this.waitOf(session) === "off" && command === "snapshot" && this.movable(session) && pageWall(results[0].stdout);
         const opened = this.waitOf(session) !== "off" ? await this.moveAway(session, this.wallWords(session), this.reopenOf(session))
@@ -815,7 +825,7 @@ export class AgentBrowserProxy {
           // Focus emulation keeps a background tab painting, running timers, and taking input. It lasts while this session stays attached.
           const { sessionId } = await chrome.cdp.sendUntilProgress<{ sessionId: string }>("Target.attachToTarget", { targetId: tab.targetId, flatten: true }, undefined, { signal });
           await chrome.cdp.sendUntilProgress("Emulation.setFocusEmulationEnabled", { enabled: true }, sessionId, { signal });
-          return { kind: "current", chrome, taskTabs, targetId: tab.targetId, seen: new Set(),
+          return { kind: "current", chrome, taskTabs, targetId: tab.targetId, seen: new Set(), pending: new Set(),
             pick: { route: "current", why, chrome: chrome.executable, userDataDir: chrome.root, profile: plan.profile, background: tab.background } };
         } catch (error) {
           for (const targetId of taskTabs) await chrome.cdp.send("Target.closeTarget", { targetId }, undefined, 5000).catch(() => undefined);
@@ -1091,27 +1101,31 @@ export class AgentBrowserProxy {
   }
 
   /**
-   * Keeps the agent in its tab of the owner's Chrome. The pinned native daemon never makes a tab the owner opens, or Chrome's Gemini
-   * panel, current. A tab the agent's tab opened, such as a sign-in popup, becomes the agent's tab, as it does in Bao's own Chrome.
-   * When that opener is a Bao task tab, the popup is a task tab too, so tab lists mark it and finish closes it.
-   * When the daemon is anywhere else, Bao switches it back to the agent's tab, or to Bao's newest task tab when that tab is gone.
-   * When neither remains, the caller ends the session instead of acting on an owner tab.
+   * Keeps the agent in its tab of the owner's Chrome. A fresh tab joins the task only when it appears while a command that can open
+   * one is in flight, and its opener is the agent's task tab. A tab that appears during an owner wait, or between commands, stays the
+   * owner's even when its opener is the task tab: Bao does not switch to it, mark it, or close it. When the daemon is anywhere else,
+   * Bao switches it back to the agent's tab. That switch's Page.bringToFront is answered on the shared connection, so Chrome does not
+   * rise. When no task tab remains, the caller ends the session instead of acting on an owner tab.
    */
   private async keepTab(session: Session & DebuggingChrome, tabs: NativeTab[], ceiling: AbortSignal): Promise<NativeTab[]> {
     const listed = (targetId: string | undefined) => tabs.find((tab) => tab.targetId === targetId);
     const fresh = new Set(tabs.flatMap((tab) => tab.targetId && !session.seen.has(tab.targetId) ? [tab.targetId] : []));
     let want = session.targetId;
-    if (fresh.size) {
+    if (session.opening) for (const targetId of fresh) session.pending.add(targetId);
+    if (session.pending.size) {
       const { targetInfos } = await session.chrome.cdp.sendUntilProgress<{ targetInfos: ChromeTarget[] }>("Target.getTargets", {}, undefined, { signal: ceiling });
       for (const info of targetInfos) {
-        if (fresh.has(info.targetId) && info.openerId === want && await isChromeTab(session.chrome.cdp, info, ceiling)) {
-          if (session.taskTabs.has(want)) session.taskTabs.add(info.targetId);
-          want = info.targetId;
-        }
+        if (!session.pending.has(info.targetId) || info.openerId !== want || !session.taskTabs.has(want)) continue;
+        if (!await isChromeTab(session.chrome.cdp, info, ceiling)) continue;
+        session.taskTabs.add(info.targetId);
+        want = info.targetId;
+        await this.focusTab(session, info.targetId, ceiling);
       }
       if (ceiling.aborted) throw new Error("cdp aborted Browser.getWindowForTarget");
-      for (const targetId of fresh) session.seen.add(targetId);
     }
+    for (const targetId of fresh) session.seen.add(targetId);
+    for (const targetId of session.pending) session.seen.add(targetId);
+    session.pending.clear();
     if (!listed(want)) want = [...session.taskTabs].reverse().find((targetId) => listed(targetId)) ?? want;
     const tab = listed(want);
     if (!tab?.tabId) return tabs;
@@ -1122,10 +1136,16 @@ export class AgentBrowserProxy {
     return this.nativeTabs(session, ceiling);
   }
 
+  /** Focus emulation keeps a background task tab painting and taking input. It lasts while this session stays attached. */
+  private async focusTab(session: Session & DebuggingChrome, targetId: string, ceiling: AbortSignal): Promise<void> {
+    const { sessionId } = await session.chrome.cdp.sendUntilProgress<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true }, undefined, { signal: ceiling });
+    await session.chrome.cdp.sendUntilProgress("Emulation.setFocusEmulationEnabled", { enabled: true }, sessionId, { signal: ceiling });
+  }
+
   /**
    * Runs one agent command. On the owner's Chrome over remote debugging, a tab list leaves out Chrome's own surfaces, such as the
-   * Gemini panel and side panels, and marks Bao's task tabs. Switching to or closing such a surface is refused. A switch makes the
-   * chosen tab the agent's tab.
+   * Gemini panel and side panels, and marks Bao's task tabs. Switching to or closing such a surface is refused. Switching to or
+   * closing a tab the owner opened is refused too; the agent opens that page's URL in the task tab instead.
    */
   private async forward(session: Session, command: string, args: string[]): Promise<AgentBrowserCommandResult> {
     if (session.kind !== "current" || session.relay || command !== "tab" || args[0] === "new") return this.run(session, command, args);
@@ -1141,6 +1161,11 @@ export class AgentBrowserProxy {
     }
     if (named?.tabId && surfaces.has(named.tabId)) {
       return { stdout: "", stderr: `✗ ${ref} is not a tab in a Chrome window, such as the Gemini panel or a side panel. Stay in Bao's task tab.\n`, exitCode: 1 };
+    }
+    if (named?.tabId && named.targetId && !session.taskTabs.has(named.targetId)) {
+      const url = targetInfos.find((target) => target.targetId === named.targetId)?.url;
+      const where = url ? `: ${url}` : "";
+      return { stdout: "", stderr: `✗ ${ref} is a tab the owner opened. When the owner wants work done on a page he has open, open that page's URL in your task tab (it shares his sign-ins)${where}.\n`, exitCode: 1 };
     }
     const result = await this.run(session, command, args);
     if (result.exitCode !== 0) return result;

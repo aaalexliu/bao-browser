@@ -6,6 +6,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import type { Duplex } from "node:stream";
+import { keepBehind } from "../engines/background-cdp";
 import type { DevToolsEndpoint } from "./endpoint";
 import { CDP_PROGRESS_CEILING_MS, serverFrame, ServerFrameDecoder, type CdpMessage, type CdpSocket } from "./socket";
 
@@ -19,7 +20,9 @@ export interface SharedConnection {
 /**
  * Joins one client to Bao's connection. The client gets its own browser session (Target.attachToBrowserTarget), so the
  * targets it discovers, the sessions it attaches, and their events stay its own. Its browser-level messages travel on that
- * session; messages of the sessions it attaches pass through unchanged. Its commands travel under ids of Bao's connection.
+ * session. Page.bringToFront and Target.activateTarget are answered here, and Target.createTarget is forced into the background,
+ * the same split Bao's own Chrome uses, so a tab switch does not raise the owner's Chrome. Other messages pass through. Its
+ * commands travel under ids of Bao's connection.
  */
 async function join(cdp: CdpSocket, client: Duplex, head: Buffer, key: string): Promise<void> {
   let browser: string;
@@ -83,6 +86,17 @@ async function join(cdp: CdpSocket, client: Duplex, head: Buffer, key: string): 
       for (const frame of frames.push(chunk)) {
         if (frame.opcode === 1 && frame.text !== undefined) {
           const message = JSON.parse(frame.text) as CdpMessage;
+          if (typeof message.id === "number" && typeof message.method === "string") {
+            const next = keepBehind({ id: message.id, method: message.method, params: message.params, sessionId: message.sessionId });
+            if ("reply" in next) {
+              const reply = { id: message.id, result: next.reply, ...message.sessionId ? { sessionId: message.sessionId } : {} };
+              if (client.writable) client.write(serverFrame(1, Buffer.from(JSON.stringify(reply))));
+              continue;
+            }
+            const forward = next.forward;
+            cdp.write(forward.sessionId === undefined ? { ...forward, sessionId: browser } : forward, deliver);
+            continue;
+          }
           cdp.write(message.sessionId === undefined ? { ...message, sessionId: browser } : message, deliver);
         } else if (frame.opcode === 8) {
           // Answer the close, as the WebSocket closing handshake asks, before letting the client go.
