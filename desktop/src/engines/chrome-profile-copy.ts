@@ -294,7 +294,7 @@ export async function agentTab(portFile: string): Promise<string> {
  */
 export async function openCopiedChromeForProxy(options: {
   sourceRoot: string; directory: string; home: string; detached?: boolean; restoreTabs?: boolean;
-}): Promise<{ target: { kind: "bao"; portFile: string }; targetId?: string; close(): Promise<void>; keepOpen(): Promise<void>; isClosed(): boolean; closed: Promise<void>; bytes: number; copyMs: number }> {
+}): Promise<{ target: { kind: "bao"; portFile: string }; targetId?: string; pid?: number; close(): Promise<void>; keepOpen(): Promise<void>; isClosed(): boolean; closed: Promise<void>; bytes: number; copyMs: number }> {
   const copy = await copyChromeProfile(options);
   let chrome: Awaited<ReturnType<typeof launchOwnedChromeEndpoint>> | undefined;
   let closing: Promise<void> | undefined;
@@ -309,7 +309,7 @@ export async function openCopiedChromeForProxy(options: {
     });
     const targetId = options.restoreTabs === false ? undefined : await agentTab(chrome.portFile);
     return {
-      target: { kind: "bao", portFile: chrome.portFile }, targetId, closed: chrome.closed, close,
+      target: { kind: "bao", portFile: chrome.portFile }, targetId, pid: chrome.pid, closed: chrome.closed, close,
       isClosed: chrome.isClosed,
       async keepOpen() {
         if (closing) return closing;
