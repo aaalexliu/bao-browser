@@ -98,12 +98,6 @@ function fieldLabel(step: OutlineStep): string {
   return label || "field";
 }
 
-function controlKey(step: OutlineStep): string {
-  const ref = step.native?.args?.[0];
-  const control = ref?.startsWith("@") ? ref : "";
-  return `${control}|${fieldLabel(step)}`;
-}
-
 function fillValue(step: OutlineStep): string | undefined {
   if (step.status !== "passed") return undefined;
   if (command(step) !== "fill") return undefined;
@@ -150,7 +144,7 @@ interface DraftChapter {
   title: string;
   start: number;
   end: number;
-  fields: Map<string, ReceiptField>;
+  fields: ReceiptField[];
   clicks: ReceiptClick[];
 }
 
@@ -160,7 +154,7 @@ function chaptersFor(steps: OutlineStep[]): ReceiptChapter[] {
   steps.forEach((step, index) => {
     const url = pageUrl(step);
     if (url && url !== current?.url) {
-      current = { url, title: pageTitle(step) || url, start: index, end: index, fields: new Map(), clicks: [] };
+      current = { url, title: pageTitle(step) || url, start: index, end: index, fields: [], clicks: [] };
       chapters.push(current);
     } else if (!current) {
       return;
@@ -170,7 +164,7 @@ function chaptersFor(steps: OutlineStep[]): ReceiptChapter[] {
       if (title) current.title = title;
     }
     const value = fillValue(step);
-    if (value !== undefined) current.fields.set(controlKey(step), shownField(step, value));
+    if (value !== undefined) current.fields.push(shownField(step, value));
     if (isClick(step)) current.clicks.push({ label: cleanLabel(step.label || "") || "Click", status: step.status || "unknown" });
   });
   return chapters.map((chapter) => ({
@@ -178,7 +172,7 @@ function chaptersFor(steps: OutlineStep[]): ReceiptChapter[] {
     url: chapter.url,
     start: chapter.start + 1,
     end: chapter.end + 1,
-    fields: [...chapter.fields.values()],
+    fields: chapter.fields,
     clicks: chapter.clicks,
   }));
 }

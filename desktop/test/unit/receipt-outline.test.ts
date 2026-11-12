@@ -106,7 +106,7 @@ test("a pizza run shows its pages, clicks, and the agent's own words", () => {
   assert.match(html, /data-search="[^"]*fill @e8 Brooklyn DOP 237 5th Ave/);
 });
 
-test("a form shows the latest passed field on each page and hides email", () => {
+test("a form lists every passed fill in order and hides email", () => {
   const steps = [
     step({ label: "Type into \"Name\"", command: "fill", args: ["@name", "Ada Lovelace"], title: "Order", url: "https://fixture.test/order" }),
     step({ label: "Type into \"Email\"", command: "fill", args: ["@email", "ada@fixture.test"], title: "Order", url: "https://fixture.test/order" }),
@@ -125,13 +125,15 @@ test("a form shows the latest passed field on each page and hides email", () => 
     ["Name", "Ada Lovelace"],
     ["Email", "Hidden"],
     ["Password", "Hidden"],
+    ["Note", "old note"],
     ["Note", "Cleared"],
   ]);
   assert.equal(outline.chapters[0]?.clicks[0]?.label, "Click Submit");
   assert.equal(outline.chapters[0]?.clicks[0]?.status, "passed");
   const html = receipt({ id: "synthetic-form", status: "passed", steps });
   assert.match(html, /Last recorded page: Thank you\. Your order could not be submitted\./);
-  assert.doesNotMatch(chapters(html), /ada@fixture\.test|other@bad\.test|s3cret-value|Thank you for your help|old note/);
+  assert.match(chapters(html), /old note[\s\S]*Cleared/);
+  assert.doesNotMatch(chapters(html), /ada@fixture\.test|other@bad\.test|s3cret-value|Thank you for your help/);
   assert.match(html, /<details><summary>Evidence<\/summary>[\s\S]*ada@fixture\.test/);
   assert.match(html, /<details><summary>Evidence<\/summary>[\s\S]*s3cret-value/);
   assert.doesNotMatch(html, /<h3>Submitted<\/h3>|Saved draft|Confirmation was not captured|Submission was not observed/);
@@ -158,6 +160,27 @@ test("a ten-place run reads as the page's clicks", () => {
     status: "passed",
     steps: [step({ label: "Read fixture", command: "snapshot" }), step({ label: "Read fixture", command: "snapshot" })],
   }), /<h3>Chapters<\/h3>/);
+});
+
+test("passed fills stay in order, including css targets and a repeated email", () => {
+  const html = receipt({
+    status: "passed",
+    steps: [
+      step({ label: "Type", command: "fill", args: ["#name", "Ada"], title: "Order", url: "https://fixture.test/order" }),
+      step({ label: "Type", command: "fill", args: ["#city", "London"], title: "Order", url: "https://fixture.test/order" }),
+      step({ label: "Type into \"Email\"", command: "fill", args: ["@email", "ada@fixture.test"], title: "Order", url: "https://fixture.test/order" }),
+      step({ label: "Type into \"Email\"", command: "fill", args: ["@email", "grace@fixture.test"], title: "Order", url: "https://fixture.test/order" }),
+      step({ label: "Type into \"Email\"", command: "fill", args: ["@email", "other@bad.test"], status: "failed", title: "Order", url: "https://fixture.test/order" }),
+      step({ label: "Type into \"Email\"", command: "fill", args: ["@email", "pending@fixture.test"], status: "pending", title: "Order", url: "https://fixture.test/order" }),
+    ],
+  });
+  const listed = chapters(html);
+  assert.match(listed, /Ada[\s\S]*London/);
+  assert.equal(listed.match(/>Hidden</g)?.length, 2);
+  assert.doesNotMatch(listed, /other@bad\.test|pending@fixture\.test|ada@fixture\.test|grace@fixture\.test/);
+  const evidence = html.match(/<details><summary>Evidence<\/summary>[\s\S]*?<\/details>/g)?.join("\n") || "";
+  assert.match(evidence, /ada@fixture\.test[\s\S]*grace@fixture\.test[\s\S]*other@bad\.test/);
+  assert.doesNotMatch(listed, /other@bad\.test/);
 });
 
 test("the same control on two query pages stays two fields", () => {
