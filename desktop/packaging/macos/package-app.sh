@@ -22,6 +22,7 @@ cp desktop/packaging/macos/Info.plist "$APP/Contents/Info.plist"
 VERSION="$(bash desktop/packaging/macos/stamp-version.sh "$APP/Contents/Info.plist")"
 echo "VERSION $VERSION"
 bash "$ROOT/desktop/packaging/stage-runtime.sh" "$APP/Contents/Resources"
+bash "$ROOT/desktop/packaging/macos/sign-runtime.sh" --inside-out "$APP/Contents/Resources/bao/node_modules"
 cp -a "$HELPER" "$APP/Contents/Resources/BaoOSHelper.app"
 # BAO_BUNDLE_NODE names a nodejs.org node binary (24 or newer). It keeps its own
 # Developer ID signature, so the app no longer needs Node on the Mac.

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import test from "node:test";
-import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { scaledMs } from "../runtime";
@@ -128,14 +128,58 @@ function signingEnv(dir: string, extra: Record<string, string> = {}): NodeJS.Pro
   return env;
 }
 
-test("Chromium's entitlements add library validation off, and bao's do not", () => {
-  const jit = readFileSync("desktop/packaging/macos/entitlements-jit.plist", "utf8");
-  const chromium = readFileSync("desktop/packaging/macos/entitlements-chromium.plist", "utf8");
-  assert.match(jit, /com\.apple\.security\.cs\.allow-jit/);
-  assert.match(jit, /com\.apple\.security\.cs\.allow-unsigned-executable-memory/);
-  assert.doesNotMatch(jit, /disable-library-validation|allow-dyld-environment-variables/);
-  assert.match(chromium, /disable-library-validation/);
-  assert.doesNotMatch(chromium, /allow-dyld-environment-variables/);
+test("Chromium's entitlements add library validation off, and bao's do not", {
+  skip: process.platform !== "darwin" ? "entitlement validation uses macOS plutil" : false,
+}, () => {
+  const parse = (name: string): unknown => {
+    const result = spawnSync("/usr/bin/plutil", ["-convert", "json", "-o", "-", `desktop/packaging/macos/${name}.plist`], { encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    return JSON.parse(result.stdout);
+  };
+  assert.deepEqual(parse("entitlements-jit"), {
+    "com.apple.security.cs.allow-jit": true,
+    "com.apple.security.cs.allow-unsigned-executable-memory": true,
+  });
+  assert.deepEqual(parse("entitlements-chromium"), {
+    "com.apple.security.cs.allow-jit": true,
+    "com.apple.security.cs.allow-unsigned-executable-memory": true,
+    "com.apple.security.cs.disable-library-validation": true,
+  });
+});
+
+test("inside-out signing covers native dependencies without signing the node_modules directory", {
+  skip: process.platform !== "darwin" ? "native dependency fixtures use macOS Mach-O binaries" : false,
+}, () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "bao-native-sign-"));
+  const modules = path.join(dir, "node_modules");
+  const bin = path.join(dir, "bin");
+  const log = path.join(dir, "codesign.jsonl");
+  const addon = path.join(modules, "classic-level", "prebuilds", "darwin-x64+arm64", "classic-level.node");
+  const dylib = path.join(modules, "@img", "sharp-libvips-darwin-arm64", "lib", "libvips-cpp.dylib");
+  try {
+    mkdirSync(bin);
+    for (const file of [addon, dylib]) {
+      mkdirSync(path.dirname(file), { recursive: true });
+      copyFileSync("/usr/bin/true", file);
+    }
+    writeFileSync(path.join(modules, "package.json"), "{}");
+    writeFileSync(path.join(bin, "codesign"), `#!${process.execPath}
+require("node:fs").appendFileSync(${JSON.stringify(log)}, JSON.stringify(process.argv.slice(2)) + "\\n");
+`);
+    chmodSync(path.join(bin, "codesign"), 0o755);
+    const result = spawnSync("bash", ["desktop/packaging/macos/sign-runtime.sh", "--inside-out", modules], {
+      encoding: "utf8",
+      env: signingEnv(dir, { PATH: `${bin}:${process.env.PATH}`, BAO_SIGN_IDENTITY: "test signing identity", BAO_APPLE_TEAM_ID: TEAM }),
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const calls = readFileSync(log, "utf8").trim().split("\n").map((line) => JSON.parse(line) as string[]);
+    assert.deepEqual(calls.map((args) => args.at(-1)).sort(), [addon, dylib].sort());
+    for (const args of calls) {
+      assert.deepEqual(args.slice(0, -1), ["--force", "--options", "runtime", "--sign", "test signing identity", "--timestamp"]);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("a release with no signing secret stays ad-hoc and does not pin a helper hash", () => {

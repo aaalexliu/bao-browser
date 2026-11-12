@@ -60,7 +60,7 @@ if [[ "$INSIDE_OUT" != 1 ]]; then
 fi
 
 if [[ ! -d "$TARGET" ]]; then
-  echo "sign-runtime.sh: --inside-out needs a bundle directory" >&2
+  echo "sign-runtime.sh: --inside-out needs a directory" >&2
   exit 2
 fi
 
@@ -89,8 +89,7 @@ done < "$list"
 
 while IFS= read -r -d '' bundle; do
   case "$bundle" in
-    "$TARGET"|*/BaoOSHelper.app|*/BaoOSHelper.app/*) continue ;;
+    */BaoOSHelper.app|*/BaoOSHelper.app/*) continue ;;
   esac
   sign_one "$bundle"
 done < <(find "$TARGET" -depth -type d \( -name '*.app' -o -name '*.framework' -o -name '*.xpc' -o -name '*.bundle' \) -print0)
-sign_one "$TARGET"
