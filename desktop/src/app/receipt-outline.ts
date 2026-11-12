@@ -101,8 +101,7 @@ function fieldLabel(step: OutlineStep): string {
 function fillValue(step: OutlineStep): string | undefined {
   if (step.status !== "passed") return undefined;
   if (command(step) !== "fill") return undefined;
-  const args = step.native?.args || [];
-  const value = args.length >= 2 ? args[args.length - 1] : args[0];
+  const value = step.native?.args?.[1];
   return typeof value === "string" ? value : undefined;
 }
 

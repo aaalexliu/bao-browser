@@ -461,6 +461,14 @@ test("running Runs groups history, opens shared receipts, survives polling and r
     await page.waitForFunction(() => document.querySelectorAll(".receipt-steps li:not([hidden])").length === 21);
     assert.equal(await page.locator(".receipt-steps").getAttribute("start"), "1");
     assert.equal(await search.evaluate((node) => node === document.activeElement), true, "search filters the open receipt without a refetch");
+    await search.evaluate((node) => (node as HTMLInputElement).setSelectionRange(1, 4));
+    const focusedRun = app.library.readRun("raw-browser");
+    app.library.saveRun({ ...focusedRun, status: "failed", failure: { reason: "The page stopped." } });
+    await page.locator("#run-receipt .run-state").filter({ hasText: "failed" }).waitFor();
+    assert.deepEqual(await page.locator("#receipt-search").evaluate((node) => {
+      const input = node as HTMLInputElement;
+      return [document.activeElement === input, input.selectionStart, input.selectionEnd, input.value];
+    }), [true, 1, 4, "Read fixture"], "a run-status change keeps the search field and its selection");
     await search.fill("missing command");
     await page.waitForFunction(() => document.querySelectorAll(".receipt-steps li:not([hidden])").length === 0);
     await search.fill("");

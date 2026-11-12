@@ -183,6 +183,30 @@ test("passed fills stay in order, including css targets and a repeated email", (
   assert.doesNotMatch(listed, /other@bad\.test/);
 });
 
+test("a fill with a trailing option uses the positional value", () => {
+  const html = receipt({
+    status: "passed",
+    steps: [
+      step({ label: "Type into \"Name\"", command: "fill", args: ["@name", "Ada", "--json"], title: "Order", url: "https://fixture.test/order" }),
+      step({ label: "Type into \"City\"", command: "fill", args: ["@city", "", "--json"], title: "Order", url: "https://fixture.test/order" }),
+      step({ label: "Type into \"Password\"", command: "fill", args: ["@password", "s3cret-value", "--json"], title: "Order", url: "https://fixture.test/order" }),
+    ],
+  });
+  const listed = chapters(html);
+  assert.match(listed, /Ada/);
+  assert.match(listed, /Cleared/);
+  assert.doesNotMatch(listed, /--json|s3cret-value/);
+  const preview = (html.match(/<li id="receipt-step-[\s\S]*?<\/li>/g) || []).map((row) => row.split("<details>")[0]).join("\n");
+  assert.match(preview, /fill · @name · Ada · --json/);
+  assert.match(preview, /fill · @password · Hidden · --json/);
+  assert.doesNotMatch(preview, /s3cret-value/);
+  const search = preview.match(/data-search="[^"]*"/g)?.join("\n") || "";
+  assert.match(search, /Ada/);
+  assert.match(search, /Hidden/);
+  assert.doesNotMatch(search, /s3cret-value/);
+  assert.match(html, /<details><summary>Evidence<\/summary>[\s\S]*s3cret-value[\s\S]*--json/);
+});
+
 test("the same control on two query pages stays two fields", () => {
   const outline = receiptOutline({
     status: "passed",

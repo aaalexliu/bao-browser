@@ -2158,7 +2158,9 @@ function receiptInspector(view: ReturnType<typeof inspectRunView>, run: RunSumma
     const reason = step.reason || receiptReadBack(run, step.id) || viewed?.result;
     const native = step.native;
     const hidden = privateReceiptField(label);
-    const args = (native?.args || []).map((arg, argIndex) => hidden && argIndex === (native?.args.length || 1) - 1 ? "Hidden" : arg);
+    const rawArgs = native?.args || [];
+    const secretIndex = native?.command === "fill" ? 1 : rawArgs.length - 1;
+    const args = rawArgs.map((arg, argIndex) => hidden && argIndex === secretIndex ? "Hidden" : arg);
     const timing = typeof step.startedAt === "number" && typeof run.at === "number" ? receiptClock(step.startedAt - run.at) : "";
     const duration = typeof step.startedAt === "number" && typeof step.endedAt === "number" ? receiptDuration(step.endedAt - step.startedAt) : "";
     const command = [native?.command, ...args, timing, duration].filter(Boolean).join(" · ");
