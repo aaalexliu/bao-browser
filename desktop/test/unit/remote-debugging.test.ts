@@ -44,6 +44,21 @@ test("the daily Chrome is the browser process on its user-data dir, not a render
   assert.deepEqual(chromePidsFromPs(ps, "/tmp/test-profile", DIR), [104]);
 });
 
+// macOS publishes /tmp and /var as symlinks to /private/tmp and /private/var. path.resolve does not follow them.
+test("a Chrome whose argv says /tmp or /var/folders matches the /private path a hold passes in", () => {
+  const exe = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+  const launched = "/var/folders/xx/bao-ale79-loc";
+  const passed = "/private/var/folders/xx/bao-ale79-loc";
+  const line = `  18409 ${exe} --user-data-dir=${launched} --no-first-run`;
+  assert.deepEqual(chromePidsFromPs(line, passed, DIR), [18409]);
+  assert.deepEqual(chromePidsFromPs(line, launched, DIR), [18409]);
+  assert.deepEqual(chromePidsFromPs(`  18410 ${exe} --user-data-dir=/tmp/bao-ale79-loc --no-first-run`, "/private/tmp/bao-ale79-loc", DIR), [18410]);
+  assert.deepEqual(chromePidsFromPs(line, "/private/var/folders/xx/other", DIR), []);
+  assert.deepEqual(chromePidsFromPs(`  18411 ${exe} --headless=new --user-data-dir=${launched}`, passed, DIR), []);
+  assert.deepEqual(chromePidsFromPs(`  7 ${exe}`, "/private/tmp/daily", "/tmp/daily"), [7]);
+  assert.deepEqual(chromePidsFromPs(`  7 ${exe}`, "/tmp/other", "/tmp/daily"), []);
+});
+
 /** A daily Chrome whose inspect page Bao can open, and whose checkbox BaoOSHelper can press. */
 function fakeChrome(start: { on: boolean; inspectOpen: boolean }) {
   const state = { ...start, presses: 0, opened: 0, closed: 0, pids: [7], openError: "", reads: 0, missingReads: 0, boxMissing: false, portStuck: false, gate: { ok: true, permitted: true } as AxHit, asked: { ok: true, permitted: true } as AxHit, calls: [] as string[][] };

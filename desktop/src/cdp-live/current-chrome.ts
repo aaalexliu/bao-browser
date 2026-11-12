@@ -15,7 +15,7 @@ import { chromeHelper, CHROME_BUNDLE, helperBin, INSPECT_URL, logAx, type Chrome
 import { REMOTE_CHECKBOX } from "./consent";
 import type { AxNode } from "../proxy/os-macos";
 import { endpointOnPid, listenPid, listenPorts, probeDevToolsVersion, readDevToolsActivePort, type DevToolsEndpoint, type VersionProbe } from "./endpoint";
-import { CHROME_APP_EXE, dailyChromePids } from "./remote-debugging";
+import { CHROME_APP_EXE, dailyChromePids, pathKeys } from "./remote-debugging";
 import { holdDir, holdFixtureEndpoint, joinOrStartHold } from "./chrome-hold";
 import { shareConnection } from "./shared-connection";
 import { connectCdp, type CdpSocket } from "./socket";
@@ -340,14 +340,6 @@ export async function connectOwnedChrome(options: {
     if (openedInspect) await closeOpenedInspect(deps.helper, pid);
     throw error;
   }
-}
-
-function pathKeys(file: string): Set<string> {
-  const resolved = path.resolve(file);
-  const keys = new Set([resolved]);
-  if (resolved.startsWith("/private/")) keys.add(resolved.slice("/private".length));
-  else keys.add(`/private${resolved}`);
-  return keys;
 }
 
 function samePath(left: string, right: string): boolean {
