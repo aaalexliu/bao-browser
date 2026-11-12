@@ -58,6 +58,7 @@ jobs:
         env:
           BAO_SIGNING_P12: ${{ secrets.BAO_SIGNING_P12 }}
           BAO_SIGNING_P12_PASSWORD: ${{ secrets.BAO_SIGNING_P12_PASSWORD }}
+          BAO_APPLE_TEAM_ID: ${{ secrets.BAO_APPLE_TEAM_ID }}
         run: bash desktop/packaging/macos/ci-signing.sh import
       - name: Build BaoOSHelper
         # The macOS runner image has no Rust, so install a minimal stable toolchain for this job.
@@ -73,6 +74,12 @@ jobs:
         env:
           BAO_SKIP_DMG: "1"
         run: bash desktop/packaging/macos/package-app.sh
+      - name: Notarize and staple
+        env:
+          BAO_NOTARY_KEY_P8: ${{ secrets.BAO_NOTARY_KEY_P8 }}
+          BAO_NOTARY_KEY_ID: ${{ secrets.BAO_NOTARY_KEY_ID }}
+          BAO_NOTARY_ISSUER_ID: ${{ secrets.BAO_NOTARY_ISSUER_ID }}
+        run: bash desktop/packaging/macos/notarize-app.sh desktop/packaging/macos/dist/Bao.app
       - name: Make the release asset
         env:
           BASE: ${{ steps.release.outputs.base }}

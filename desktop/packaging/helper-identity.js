@@ -21,22 +21,72 @@ function helperCertHash(env = process.env) {
   return normalizeCertHash(raw);
 }
 
+const TEAM_ID = /^[A-Z0-9]{10}$/;
+
 function expectedRequirement(certHash) {
   return `identifier "${BUNDLE_ID}" and certificate leaf = H"${certHash}"`;
 }
 
-function acceptHelper(report, identity, certHash) {
+/** Apple's designated requirement for a Developer ID Application certificate. The team id is not quoted. */
+function appleTeamRequirement(teamId) {
+  return `identifier "${BUNDLE_ID}" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = ${teamId}`;
+}
+
+function requirementMatchesTeam(designated, teamId) {
+  const bare = appleTeamRequirement(teamId);
+  return designated === bare || designated === bare.replace(`= ${teamId}`, `= "${teamId}"`);
+}
+
+function teamFromSubject(subject) {
+  const ou = String(subject || "").match(/(?:^|[,/\s])OU=([A-Z0-9]{10})(?:[,/\s]|$)/);
+  if (ou) return ou[1];
+  const paren = String(subject || "").match(/\(([A-Z0-9]{10})\)/);
+  return paren ? paren[1] : "";
+}
+
+/**
+ * How ci-signing.sh records a release identity.
+ * A Developer ID certificate is not pinned to its leaf SHA-1: renewal keeps the team id.
+ * A self-signed project certificate still pins the leaf hash, which is the requirement codesign writes for it.
+ */
+function signingPlan(subject, issuer, teamId) {
+  const text = `${subject || ""}\n${issuer || ""}`;
+  const developerId = /Developer ID Application/.test(text) || /Developer ID Certification Authority/.test(issuer || "");
+  const team = String(teamId || "").trim();
+  if (!developerId) {
+    if (team) return { ok: false, pinHash: false, teamId: "", reason: "BAO_APPLE_TEAM_ID is set but the certificate is not Developer ID" };
+    return { ok: true, pinHash: true, teamId: "", reason: "" };
+  }
+  if (!TEAM_ID.test(team)) return { ok: false, pinHash: false, teamId: "", reason: "Developer ID certificate needs BAO_APPLE_TEAM_ID (10 letters or digits)" };
+  const fromCert = teamFromSubject(subject);
+  if (fromCert && fromCert !== team) return { ok: false, pinHash: false, teamId: "", reason: `BAO_APPLE_TEAM_ID ${team} does not match the certificate team ${fromCert}` };
+  return { ok: true, pinHash: false, teamId: team, reason: "" };
+}
+
+function acceptHelper(report, identity, certHash, teamId) {
   if (!report.exists) return { ok: false, reason: "helper is absent" };
   if (!report.isBundle) return { ok: false, reason: "helper must be the signed BaoOSHelper.app bundle" };
+  const team = String(teamId || "").trim();
   // An ad-hoc build signs everything ad-hoc. macOS then keys a helper grant to one build, so it
   // does not survive an update. Running Chrome, the default, uses that grant.
   if (identity === ADHOC) {
+    if (team) return { ok: false, reason: "BAO_APPLE_TEAM_ID is set, so this is not an ad-hoc build" };
     if (!report.adhoc) return { ok: false, reason: "an ad-hoc build (BAO_SIGN_IDENTITY=-) needs an ad-hoc helper" };
     if (report.identifier !== BUNDLE_ID) return { ok: false, reason: "helper bundle id is not dev.bao.oshelper" };
     return { ok: true, reason: "" };
   }
   if (report.adhoc) return { ok: false, reason: "helper signature is ad-hoc" };
   if (report.identifier !== BUNDLE_ID) return { ok: false, reason: "helper bundle id is not dev.bao.oshelper" };
+  if (team) {
+    if (!TEAM_ID.test(team)) return { ok: false, reason: "BAO_APPLE_TEAM_ID must be 10 letters or digits" };
+    if (!requirementMatchesTeam(report.designated, team)) {
+      return { ok: false, reason: "designated requirement is not Apple's Developer ID form for this team" };
+    }
+    const identityHash = normalizeCertHash(identity);
+    const leaf = report.authorities[0] || "";
+    if (!identityHash && leaf !== identity) return { ok: false, reason: `helper certificate is not ${identity}` };
+    return { ok: true, reason: "" };
+  }
   const hash = normalizeCertHash(certHash);
   if (!hash) return { ok: false, reason: "helper certificate hash is not 40 hex digits" };
   const identityHash = normalizeCertHash(identity);
@@ -76,8 +126,13 @@ function readBundle(app) {
 function main() {
   const app = process.argv[2];
   const identity = process.env.BAO_SIGN_IDENTITY || "bao dev signing";
+  const teamId = String(process.env.BAO_APPLE_TEAM_ID || "").trim();
   const certHash = helperCertHash();
-  if (!certHash) {
+  if (teamId && !TEAM_ID.test(teamId)) {
+    process.stderr.write("package-app.sh: BAO_APPLE_TEAM_ID must be 10 letters or digits\n");
+    process.exit(1);
+  }
+  if (!teamId && !certHash) {
     process.stderr.write("package-app.sh: BAO_HELPER_CERT_HASH must be 40 hex digits\n");
     process.exit(1);
   }
@@ -106,7 +161,7 @@ function main() {
     process.exit(1);
   }
   const parsed = parseCodesign(`${listed.stdout}\n${listed.stderr}`, `${requirement.stdout}\n${requirement.stderr}`);
-  const verdict = acceptHelper({ ...bundle, ...parsed }, identity, certHash);
+  const verdict = acceptHelper({ ...bundle, ...parsed }, identity, certHash, teamId);
   if (!verdict.ok) {
     process.stderr.write(`package-app.sh: ${verdict.reason}\n`);
     process.exit(1);
@@ -122,6 +177,8 @@ module.exports = {
   readBundle,
   helperCertHash,
   expectedRequirement,
+  appleTeamRequirement,
+  signingPlan,
   ADHOC,
   BUNDLE_ID,
   PINNED_CERT_HASH,

@@ -52,13 +52,19 @@ Without a signing secret, the release build signs every part ad-hoc (`BAO_SIGN_I
 - macOS keys an ad-hoc helper's Accessibility grant to one build, so the grant does not survive an update. The same holds for Bao's Files & Folders > Google Chrome switch, so an ad-hoc build leaves agents with their own app's switch; a certificate build makes `bao-mcp` answer as Bao ([Files & Folders](permissions.md#files--folders--google-chrome)). A copied profile needs no grant. Running Chrome, the default, uses the helper's Accessibility grant.
 - The app still runs `BaoOSHelper permissions-ax` for the Settings label. That reads Accessibility without a prompt.
 
-To sign with one project certificate, add two repository secrets: `BAO_SIGNING_P12`, a base64 `.p12` of the certificate and key, and `BAO_SIGNING_P12_PASSWORD`. `desktop/packaging/macos/ci-signing.sh` imports it into a temporary keychain and sets `BAO_SIGN_IDENTITY` and `BAO_HELPER_CERT_HASH` to its SHA-1. A self-signed certificate like `bao dev signing` works as is. Every update signed by it keeps the helper grant. Gatekeeper treats it like an ad-hoc signature.
+To sign with one project certificate, add two repository secrets: `BAO_SIGNING_P12`, a base64 `.p12` of the certificate and key, and `BAO_SIGNING_P12_PASSWORD`. `desktop/packaging/macos/ci-signing.sh` imports it into a temporary keychain and sets `BAO_SIGN_IDENTITY` to its SHA-1. A self-signed certificate like `bao dev signing` also sets `BAO_HELPER_CERT_HASH` to that SHA-1. Every update signed by it keeps the helper grant. Gatekeeper treats it like an ad-hoc signature.
 
-Apple Developer ID also opens from a browser download and keeps the grant across certificate renewal. It needs three more changes:
+Apple Developer ID opens from a browser download and keeps the grant across certificate renewal. It needs `BAO_APPLE_TEAM_ID` as well as the `.p12`. `ci-signing.sh` does not pin that helper to the leaf SHA-1. `helper-identity.js` accepts Apple's requirement form, which names the team id:
 
-1. `helper-identity.js` must accept Apple's requirement form, which names the team id instead of a certificate hash.
-2. Every executable needs the hardened runtime: `bao`, `bao-mcp`, `bao-cli`, `bao-front`, BaoCaptureBar, BaoWindowVideo, agent-browser, and Chromium. The helper and Node already have it.
-3. A `notarytool submit --wait` step, then `stapler staple`, before `make-release-asset.sh`.
+```
+identifier "dev.bao.oshelper" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = TEAMID
+```
+
+A quoted team id is accepted too. A self-signed certificate still has to match the leaf hash.
+
+Every executable is signed with the hardened runtime: `bao`, `bao-mcp`, `bao-cli`, `bao-front`, BaoCaptureBar, BaoWindowVideo, agent-browser, and Chromium. The helper and the bundled Node already have it, and the build does not sign Node again. `bao` gets the JIT entitlements a WebKit window needs (`allow-jit` and `allow-unsigned-executable-memory`) and nothing more. Chromium gets those two, plus `disable-library-validation`: without it the hardened runtime rejected Chromium's own framework when the certificate has no team id. The other binaries get no extra entitlements. A Developer ID signature also gets a timestamp, which notarization requires. A self-signed certificate cannot timestamp.
+
+When `BAO_NOTARY_KEY_P8` (a base64 `.p8`), `BAO_NOTARY_KEY_ID`, and `BAO_NOTARY_ISSUER_ID` are all set, `notarize-app.sh` zips the app, runs `xcrun notarytool submit --wait` with that App Store Connect API key, then `xcrun stapler staple`, before `make-release-asset.sh`. If any notary secret is missing, that step skips and the release is not notarized. A release with no signing secret is still ad-hoc.
 
 ## Build the release locally
 

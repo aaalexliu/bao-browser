@@ -16,7 +16,7 @@ When a read is refused, Bao says `macOS blocked <app> from reading Chrome's data
 
 The step is optional. Settings → Mac permissions → **Google Chrome's folder** shows whether Bao can read the folder and has **Open System Settings**. `bao setup` ends with the same step: `o` opens Files & Folders, `c` checks again, Enter skips. `bao doctor` reports it as `chrome folder`.
 
-Once Files & Folders > Bao > Google Chrome is on, another program running as you may still reach Chrome's folder through Bao. `bao --run-node` runs only Bao's own `src/app/cli.js` and clears `NODE_OPTIONS` and `NODE_PATH`, but environment variables that name other programs, library injection into Bao, which is not built with the hardened runtime, and the way Bao finds Node through `$HOME` and `$SHELL` can still run that program's code as Bao.
+Once Files & Folders > Bao > Google Chrome is on, another program running as you may still reach Chrome's folder through Bao. `bao --run-node` runs only Bao's own `src/app/cli.js` and clears `NODE_OPTIONS` and `NODE_PATH`. The hardened runtime blocks library injection into Bao. Environment variables that name other programs, and the way Bao finds Node through `$HOME` and `$SHELL`, can still run that program's code as Bao.
 
 ## The Chrome remote-debugging toggle
 

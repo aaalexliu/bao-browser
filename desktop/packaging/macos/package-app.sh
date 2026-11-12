@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Build Bao.app and a dmg on a Mac. Signing identity defaults to "bao dev signing".
 # BAO_SIGN_IDENTITY=- signs everything ad-hoc, as a release without a signing secret does.
-# The app version is the root package.json version. No notarization. The OS helper is a separate bundle copied into Resources.
+# The app version is the root package.json version. Notarization is notarize-app.sh, not this script.
+# The OS helper is a separate bundle copied into Resources. It is not signed again.
 # The product window is native WebKit. Bundled Chromium stays available for tasks.
 # Opening Bao does not launch a browser.
 set -euo pipefail
@@ -35,7 +36,7 @@ if [[ -n "${BAO_BUNDLE_NODE:-}" ]]; then
   cp -p "$BAO_BUNDLE_NODE" "$APP/Contents/Resources/node/bin/node"
   echo "BUNDLED_NODE $("$APP/Contents/Resources/node/bin/node" --version)"
 fi
-codesign --force --sign "$IDENTITY" --identifier dev.bao.agent-browser "$APP/Contents/Resources/agent-browser/agent-browser"
+bash "$ROOT/desktop/packaging/macos/sign-runtime.sh" --identifier dev.bao.agent-browser "$APP/Contents/Resources/agent-browser/agent-browser"
 codesign --verify --strict "$APP/Contents/Resources/agent-browser/agent-browser"
 
 SMOKE="$(mktemp -d "${TMPDIR:-/tmp}/bao-require.XXXXXX")"
@@ -96,7 +97,7 @@ while IFS= read -r -d '' strings; do
   /usr/libexec/PlistBuddy -c "Set :CFBundleName Bao" "$strings" || true
   /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Bao" "$strings" || true
 done < <(find "$CHROME" -name InfoPlist.strings -print0)
-codesign --force --sign "$IDENTITY" "$CHROME"
+bash "$ROOT/desktop/packaging/macos/sign-runtime.sh" --inside-out --entitlements "$ROOT/desktop/packaging/macos/entitlements-chromium.plist" "$CHROME"
 
 # A certificate keeps a Files & Folders grant across updates, so agents answer to macOS as Bao.
 # An ad-hoc grant lasts one build, so an ad-hoc build leaves agents with their own app. See bao-run-node.h.
@@ -111,12 +112,13 @@ CERT_FLAG=""
 # library, before it and Bao.app are signed.
 bash desktop/packaging/macos/build-mcp-launcher.sh "$APP"
 node "$ROOT/desktop/packaging/build-mcpb.mjs" "$DIST/bao.mcpb"
-# codesign on Bao.app signs only the main executable, so the launcher is signed on its own.
-codesign --force --sign "$IDENTITY" --identifier dev.bao.mcp "$APP/Contents/MacOS/bao-mcp"
-codesign --force --sign "$IDENTITY" --identifier dev.bao.cli "$APP/Contents/MacOS/bao-cli"
-codesign --force --sign "$IDENTITY" --identifier dev.bao.front "$APP/Contents/MacOS/bao-front"
+# Signing Bao.app signs only the main executable, so the launchers are signed on their own.
+# bao hosts a WebKit window, so the app signature carries the JIT entitlements. The launchers do not.
+bash "$ROOT/desktop/packaging/macos/sign-runtime.sh" --identifier dev.bao.mcp "$APP/Contents/MacOS/bao-mcp"
+bash "$ROOT/desktop/packaging/macos/sign-runtime.sh" --identifier dev.bao.cli "$APP/Contents/MacOS/bao-cli"
+bash "$ROOT/desktop/packaging/macos/sign-runtime.sh" --identifier dev.bao.front "$APP/Contents/MacOS/bao-front"
 # Nested BaoOSHelper.app is already signed. --deep would change its cdhash.
-codesign --force --sign "$IDENTITY" --identifier dev.bao.desktop "$APP"
+bash "$ROOT/desktop/packaging/macos/sign-runtime.sh" --identifier dev.bao.desktop --entitlements "$ROOT/desktop/packaging/macos/entitlements-jit.plist" "$APP"
 node "$ROOT/desktop/packaging/macos/prove-apple-events.mjs" "$APP"
 # The release workflow ships a zip, not the dmg, so it sets BAO_SKIP_DMG=1.
 if [[ "${BAO_SKIP_DMG:-}" != 1 ]]; then
