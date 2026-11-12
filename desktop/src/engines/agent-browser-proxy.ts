@@ -715,6 +715,10 @@ export class AgentBrowserProxy {
           return results;
         }
         if (!stop) {
+          if (this.waitOf(session) === "off") {
+            session.ownerSince = session.ownerTouched = Date.now();
+            this.setWait(session, "pending");
+          } else session.recording.ownerWaiting(true);
           let active: { targetId: string; page: OwnerPage } | undefined;
           let absent = false;
           while (Date.now() < deadline && !session.abort.signal.aborted) {
@@ -821,7 +825,7 @@ export class AgentBrowserProxy {
         }
       }
       // A close during an owner wait ends the session; it reports the close, not the wait.
-      if (this.waitOf(session) !== "off" && command !== "close" && (this.moved?.pick || command === "open" && session.moveError === undefined)) {
+      if (this.waitOf(session) !== "off" && command !== "close" && (command === "open" || this.moved?.pick)) {
         results.splice(0, results.length, ...this.ownerResult("halted", session));
         return results;
       }
