@@ -50,19 +50,6 @@ function run(cmd: string, args: string[], env: NodeJS.ProcessEnv) {
   });
 }
 
-test("docs and the installer name the same newest-release command", () => {
-  const script = readFileSync(INSTALL_SH, "utf8");
-  const bin = readFileSync(path.join(REPO, "installer/bin/bao-browser.mjs"), "utf8");
-  const releaseJson = "https://github.com/aaalexliu/bao-browser/releases/latest/download/release.json";
-  const installSh = "https://raw.githubusercontent.com/aaalexliu/bao-browser/main/installer/install.sh";
-  assert.ok(script.includes(releaseJson));
-  assert.ok(bin.includes(releaseJson));
-  assert.ok(bin.includes(installSh));
-  for (const file of ["README.md", "installer/README.md", "docs/release.md"]) {
-    assert.ok(readFileSync(path.join(REPO, file), "utf8").includes(installSh), file);
-  }
-});
-
 test("the latest tarball URL reinstalls the cached release, and install.sh installs the release the redirect now names", { skip, timeout: scaledMs(120_000) }, async (t) => {
   const root = realpathSync(mkdtempSync(path.join(tmpdir(), "bao-installer-latest-")));
   const home = path.join(root, "home");

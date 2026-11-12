@@ -25,7 +25,7 @@ Publishing a GitHub release runs `mac-release.yml`. When the tag is not `v` plus
 curl -fsSL https://raw.githubusercontent.com/aaalexliu/bao-browser/main/installer/install.sh | sh
 ```
 
-`npx` on the `releases/latest` tarball URL is the wrong command. npx caches that URL and keeps the first release it fetched. The installer prints the version it is about to install and the version already in `Bao.app`. It refuses a downgrade, and it refuses a same-version reinstall when a newer release exists.
+`npx` on the `releases/latest` tarball URL is the wrong command. npx caches that URL and keeps the first release it fetched. The installer prints the version it is about to install and the version already in `/Applications/Bao.app`, or in `~/Applications/Bao.app` when that is the only copy. It refuses a downgrade, and it refuses a same-version reinstall when a newer release exists or cannot be read.
 
 A rerun never replaces those files: a published `bao-browser` pins the zip's size and SHA-256, and a rebuilt zip never matches. When the release already has any of them, the run stops; publish a new release instead.
 

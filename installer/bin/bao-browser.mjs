@@ -294,6 +294,16 @@ function installedApp() {
   return ["/Applications/Bao.app", path.join(home(), "Applications", "Bao.app")].find((app) => existsSync(app));
 }
 
+function installedCopies(dir, target) {
+  const apps = [];
+  const add = (app) => {
+    if (app && existsSync(app) && !apps.includes(app)) apps.push(app);
+  };
+  if (!dir) add(installedApp());
+  add(target);
+  return apps.map((app) => ({ app, version: appVersion(app) }));
+}
+
 /** x.y.z only. Returns -1, 0, or 1. */
 function compareVersions(left, right) {
   const parse = (value) => {
@@ -315,14 +325,14 @@ function appVersion(app) {
   return version;
 }
 
-/** The newest release's version, or null when the default URL cannot be read. A set BAO_INSTALLER_LATEST must be readable. */
+/** The newest release's version. A same-version install stops when this cannot be read. */
 async function newestVersion() {
   const source = process.env.BAO_INSTALLER_LATEST || LATEST;
   try {
     return (await readRelease(source)).release.version;
   } catch (err) {
-    if (process.env.BAO_INSTALLER_LATEST) throw err;
-    return null;
+    const why = err instanceof Error ? err.message : String(err);
+    throw new InstallError(`Cannot read the newest release at ${source}: ${why} Nothing was installed.`);
   }
 }
 
@@ -332,25 +342,28 @@ async function install(opts) {
   const { release, base } = await readRelease(opts.release || path.join(HERE, "..", "release.json"));
   const asset = release.platforms[key];
   if (!asset) throw new InstallError(`Bao ${release.version} has no build for ${key}. It has ${Object.keys(release.platforms).join(", ")}.`);
-  const target = path.join(applicationsDir(opts.dir), "Bao.app");
-  const installed = existsSync(target) ? appVersion(target) : null;
-  const line = installed
-    ? `${bold(`Installing Bao ${release.version}`)} over ${installed} at ${target}`
-    : `${bold(`Installing Bao ${release.version}.`)} No Bao.app is installed yet.`;
+  const dir = applicationsDir(opts.dir);
+  const target = path.join(dir, "Bao.app");
+  const copies = installedCopies(opts.dir, target);
+  const blocking = copies.reduce((best, copy) => (!best || compareVersions(copy.version, best.version) > 0 ? copy : best), null);
+  const installed = blocking?.version || null;
+  const described = copies.map((copy) => `${copy.version} at ${copy.app}`).join(" and ");
+  const into = copies.some((copy) => copy.app === target) ? "" : ` into ${target}`;
+  const line = copies.length === 0
+    ? `${bold(`Installing Bao ${release.version}.`)} No Bao.app is installed yet.`
+    : `${bold(`Installing Bao ${release.version}`)} over ${described}${into}`;
   process.stdout.write(`${line}\n`);
   process.stdout.write(`${dim(`for ${key}, ${(asset.size / 1e6).toFixed(0)} MB`)}\n`);
   const order = installed ? compareVersions(release.version, installed) : 1;
-  if (order < 0) throw new InstallError(`Refusing to install Bao ${release.version} over ${installed} at ${target}. That would downgrade.`);
+  if (order < 0) throw new InstallError(`Refusing to install Bao ${release.version} over ${installed} at ${blocking.app}. That would downgrade.`);
   if (order === 0) {
     const newest = await newestVersion();
-    if (newest && compareVersions(newest, release.version) > 0) {
-      throw new InstallError(`Refusing to install Bao ${release.version} over ${installed} at ${target}. The newest release is ${newest}.`);
+    if (compareVersions(newest, release.version) > 0) {
+      throw new InstallError(`Refusing to install Bao ${release.version} over ${installed} at ${blocking.app}. The newest release is ${newest}.`);
     }
-    if (!newest) process.stdout.write(`${dim("Could not read the newest release, so this same-version install was not checked against it.")}\n`);
   }
   const zip = await download(asset, release.version, key, base);
   step(`Checked size and SHA-256 ${dim(asset.sha256.slice(0, 16))}`);
-  const dir = applicationsDir(opts.dir);
   const placed = await place(zip, dir, opts.yes);
   if (!placed) return 0;
   const { app, signer } = placed;

@@ -230,3 +230,16 @@ test("a same-version reinstall is refused when a newer release exists", { skip }
   assert.equal(version(path.join(box.apps, "Bao.app")), "9.9.1");
   assert.equal(existsSync(path.join(box.home, "bao-cli.log")), false);
 });
+
+test("a same-version reinstall stops when the newest release cannot be read", { skip }, (t) => {
+  const box = lab(t);
+  assert.equal(install(box, "--none").status, 0);
+  rmSync(path.join(box.home, "bao-cli.log"));
+  const missing = path.join(box.root, "missing-latest.json");
+  const run = installWith(box, { BAO_INSTALLER_LATEST: missing }, "--none");
+  assert.equal(run.status, 1);
+  assert.match(run.stderr, /Cannot read the newest release/);
+  assert.match(run.stderr, /Nothing was installed/);
+  assert.equal(version(path.join(box.apps, "Bao.app")), "9.9.1");
+  assert.equal(existsSync(path.join(box.home, "bao-cli.log")), false);
+});
