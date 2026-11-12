@@ -198,13 +198,6 @@ type ProxySeat =
   | { phase: "ended"; reason: "closed" | "current-ended"; closes: CloseQueue }
   | { phase: "ended"; reason: "disconnected"; closes: CloseQueue; session?: Session; ownerWait?: OwnerWait; starting?: Promise<Session>; closeRequested?: boolean; priorEnded?: "current-ended" };
 
-/**
- * macOS does not let a Chrome that Bao launched in the background make itself the front app, so Target.activateTarget only
- * lifts its window behind the owner's. A window that comes back from the Dock comes back on top of every app's windows. The
- * owner's app keeps the keyboard until he clicks the window. A zoomed window comes back zoomed. A full-screen window has its
- * own Space, so Bao leaves it. Returns whether the window came back on top.
- */
-
 /** The pid line from `lsappinfo info -only pid`. A missing pid does not skip the raise. */
 export function parseFrontPid(text: string): number | undefined {
   const match = text.match(/(?:^|\s)pid\s*=\s*(\d+)\b/);
@@ -235,6 +228,12 @@ async function chromeIsFront(pid: number | undefined): Promise<boolean> {
   catch { return false; }
 }
 
+/**
+ * macOS does not let a Chrome that Bao launched in the background make itself the front app, so Target.activateTarget only
+ * lifts its window behind the owner's. A window that comes back from the Dock comes back on top of every app's windows. The
+ * owner's app keeps the keyboard until he clicks the window. A zoomed window comes back zoomed. A full-screen window has its
+ * own Space, so Bao leaves it. Returns whether the window came back on top.
+ */
 async function windowOnTop(cdp: CdpSocket, targetId: string): Promise<boolean> {
   const { windowId } = await cdp.send<{ windowId: number }>("Browser.getWindowForTarget", { targetId }, undefined, 2000);
   const { bounds: { windowState } } = await cdp.send<{ bounds: { windowState: string } }>("Browser.getWindowBounds", { windowId }, undefined, 2000);
