@@ -3,7 +3,8 @@
 
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import path from "node:path";
 
 export const HOST_STOP_VIDEO_UNAVAILABLE = "Bao stopped before the video finished";
 
@@ -61,6 +62,40 @@ function writeResult(destination: string, result: VideoHandoffResult): void {
   writeFileSync(handoffPaths(destination).result, JSON.stringify(result), { mode: 0o600 });
 }
 
+function dropFrames(dir: string): void {
+  try { rmSync(dir, { recursive: true, force: true }); }
+  catch { /* the next Bao start sweeps a claimed video's frames */ }
+}
+
+function framesVideoName(name: string): string | undefined {
+  const mark = ".mp4.frames-";
+  const at = name.indexOf(mark);
+  if (at <= 0) return undefined;
+  return name.slice(0, at + ".mp4".length);
+}
+
+/** Removes frames directories whose run already names that MP4. Never deletes an MP4. */
+export function sweepClaimedVideoFrames(home: string): void {
+  const videos = path.join(home, "videos");
+  let names: string[];
+  try { names = readdirSync(videos); }
+  catch { return; }
+  for (const name of names) {
+    const videoName = framesVideoName(name);
+    if (!videoName) continue;
+    const dir = path.join(videos, name);
+    try { if (!lstatSync(dir).isDirectory()) continue; }
+    catch { continue; }
+    const runId = videoName.slice(0, -".mp4".length);
+    let video: unknown;
+    try { video = (JSON.parse(readFileSync(path.join(home, "runs", `${runId}.json`), "utf8")) as { video?: unknown }).video; }
+    catch { continue; }
+    if (video !== videoName) continue;
+    try { rmSync(dir, { recursive: true, force: true }); }
+    catch { /* a later start tries again */ }
+  }
+}
+
 function attach(spec: VideoHandoffSpec, wrote: boolean): void {
   if (!spec.runFile || !spec.videoName || spec.startedAt === undefined) return;
   const run = JSON.parse(readFileSync(spec.runFile, "utf8")) as Record<string, unknown>;
@@ -86,9 +121,16 @@ function attach(spec: VideoHandoffSpec, wrote: boolean): void {
   rmSync(paths.result, { force: true });
 }
 
-async function finish(specPath: string, wrote: boolean): Promise<void> {
+function exitSupervisor(code: number, framesDir: string, wrote: boolean): void {
+  if (wrote) dropFrames(framesDir);
+  process.exit(code);
+}
+
+async function finish(specPath: string, wrote: boolean, framesDir: string): Promise<void> {
   const opened = readSpec(specPath);
-  if (!opened) { process.exit(wrote ? 0 : 1); return; }
+  // A host stop can exit this process during the release wait. The MP4 is already written.
+  if (wrote) dropFrames(framesDir);
+  if (!opened) { exitSupervisor(wrote ? 0 : 1, framesDir, wrote); return; }
   const until = Date.now() + 2_000;
   while (Date.now() < until) {
     const spec = readSpec(specPath) ?? opened;
@@ -98,9 +140,9 @@ async function finish(specPath: string, wrote: boolean): Promise<void> {
     const latest = readSpec(specPath) ?? spec;
     try { if (latest.runFile) attach(latest, wrote); }
     catch { /* the run directory is already gone */ }
-    process.exit(0);
+    exitSupervisor(0, framesDir, wrote);
   }
-  process.exit(wrote ? 0 : 1);
+  exitSupervisor(wrote ? 0 : 1, framesDir, wrote);
 }
 
 /** Runs as its own process. The parent exits on the host-stop cap; this one does not. */
@@ -115,7 +157,7 @@ export function finishHandedOffVideo(specPath: string): void {
     clearTimeout(timer);
     const wrote = code === 0 && fileOk(spec.destination);
     writeResult(spec.destination, { wrote, code, signal });
-    void finish(specPath, wrote);
+    void finish(specPath, wrote, spec.framesDir);
   };
   child.once("error", () => done(null, null));
   child.once("exit", (code, signal) => done(code, signal));

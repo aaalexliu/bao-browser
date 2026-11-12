@@ -33,6 +33,7 @@ import { auditLine, chooseProfile, chromeUserDataDir, assertDomain, importConfir
 import { boundsApplied, moveOwnedWindow, readOwnedWindow, type WindowBounds } from "../v1/window-bounds";
 import { openReplayVideo } from "../v1/replay-video";
 import { pageEngineName } from "../engines/agent-browser";
+import { sweepClaimedVideoFrames } from "../engines/video-handoff";
 import { chromeProfilesRoot as systemChromeProfilesRoot, listChromeProfiles } from "../engines/chrome-profile-copy";
 import { browserChoice, DEFAULT_BROWSER, type BrowserChoice } from "../browser-choice";
 import { ChromeProfileQuestion, defaultRoute, PICKED_IN_APP, type RouteWhy } from "../engines/browser-pick";
@@ -270,6 +271,7 @@ export async function startApp(opts: {
   desktopMcpLauncher?: string;
 }): Promise<App> {
   opts = { ...opts, home: path.resolve(opts.home) };
+  sweepClaimedVideoFrames(opts.home);
   process.env.BAO_HOME = opts.home;
   await readCursorAccount().catch(() => undefined);
   const library = new Library(opts.home);
