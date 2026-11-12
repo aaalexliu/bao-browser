@@ -165,31 +165,15 @@ const GLOBAL_VALUE_FLAGS = new Set([
   "--device", "--session-name", "--color-scheme", "--download-path", "--max-output", "--allowed-domains", "--action-policy", "--confirm-actions", "--config",
   "--engine", "--input-mode", "--screenshot-dir", "--screenshot-quality", "--screenshot-format", "--idle-timeout", "--ca-cert", "--model",
 ]);
-const TOP_LEVEL_COMMANDS = new Set([
-  "open", "goto", "navigate", "back", "forward", "reload", "read", "click", "dblclick", "fill", "type", "hover", "focus", "check", "uncheck",
-  "select", "drag", "upload", "download", "press", "key", "keydown", "keyup", "keyboard", "scroll", "scrollintoview", "scrollinto", "wait",
-  "screenshot", "pdf", "snapshot", "eval", "close", "quit", "exit", "inspect", "auth", "confirm", "deny", "connect", "stream", "get", "is", "find",
-  "mouse", "set", "network", "storage", "cookies", "tab", "window", "frame", "dialog", "trace", "profiler", "record", "console", "errors",
-  "highlight", "clipboard", "state", "tap", "swipe", "device", "diff", "batch", "react", "vitals", "web-vitals", "a11y", "pushstate", "removeinitscript",
-  "session", "mcp", "doctor", "install", "upgrade", "profiles", "skills", "dashboard", "plugin", "plugins", "chat", "webmcp",
-]);
-
 /** The tab words left after pinned agent-browser 0.41.0 removes global flags, plus whether that command asked for JSON. */
 function stripGlobalFlags(args: readonly string[]): { args: string[]; json: boolean } {
   const cleaned: string[] = [];
   let json = false;
-  let seenCommand = false;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
     if (arg.startsWith("--restore=")) continue;
     if (GLOBAL_VALUE_FLAGS.has(arg)) { i += 1; continue; }
-    if (arg === "--restore") {
-      if (!seenCommand) {
-        const next = args[i + 1];
-        if (next && !next.startsWith("-") && !TOP_LEVEL_COMMANDS.has(next)) i += 1;
-      }
-      continue;
-    }
+    if (arg === "--restore") continue;
     if (GLOBAL_BOOL_FLAGS.has(arg)) {
       const next = args[i + 1];
       const valued = next === "true" || next === "false";
@@ -197,7 +181,6 @@ function stripGlobalFlags(args: readonly string[]): { args: string[]; json: bool
       if (valued) i += 1;
       continue;
     }
-    if (!arg.startsWith("-") && TOP_LEVEL_COMMANDS.has(arg)) seenCommand = true;
     cleaned.push(arg);
   }
   return { args: cleaned, json };
@@ -208,7 +191,6 @@ interface ParsedTab { action: "list" | "new" | "close" | "switch"; ref?: string;
 /** Global flags pinned agent-browser 0.41.0 accepts on any command, in the caller's order, including each flag's value. */
 function acceptedCliFlags(args: readonly string[]): string[] {
   const flags: string[] = [];
-  let seenCommand = false;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
     if (arg.startsWith("--restore=")) { flags.push(arg); continue; }
@@ -219,21 +201,13 @@ function acceptedCliFlags(args: readonly string[]): string[] {
       i += 1;
       continue;
     }
-    if (arg === "--restore") {
-      flags.push(arg);
-      if (!seenCommand) {
-        const next = args[i + 1];
-        if (next && !next.startsWith("-") && !TOP_LEVEL_COMMANDS.has(next)) { flags.push(next); i += 1; }
-      }
-      continue;
-    }
+    if (arg === "--restore") { flags.push(arg); continue; }
     if (GLOBAL_BOOL_FLAGS.has(arg)) {
       flags.push(arg);
       const next = args[i + 1];
       if (next === "true" || next === "false") { flags.push(next); i += 1; }
       continue;
     }
-    if (!arg.startsWith("-") && TOP_LEVEL_COMMANDS.has(arg)) seenCommand = true;
   }
   return flags;
 }

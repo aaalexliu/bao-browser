@@ -490,6 +490,20 @@ test("tab new --json and tab t1 --json keep --json in the argv sent to the daemo
   assert.equal(again.args.includes("--made-up"), false);
 });
 
+test("tab --restore t1 switches to t1 and is not a list", async (t) => {
+  const f = await fixture(t);
+  await f.proxy.execute("open", [MAPS], "current");
+  f.daemon.clicked = () => f.targets.push({ targetId: "popup", type: "page", url: "https://example.com/popup", title: "Popup", openerId: "task", inWindow: true });
+  assert.equal((await f.proxy.execute("click", ["@e2"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.exitCode, 0);
+  assert.equal(f.daemon.active, "popup");
+  const [switched] = await f.proxy.execute("tab", ["--restore", "t1"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  assert.equal(switched!.exitCode, 0);
+  assert.equal(f.daemon.active, "task", "--restore after tab does not consume the tab reference");
+  const sent = f.daemon.commands.find(entry => entry.command === "tab" && entry.args[0] === "t1" && entry.args.includes("--restore"));
+  assert.ok(sent, "Bao forwards the switch to t1");
+  assert.equal(f.daemon.commands.some(entry => entry.command === "tab" && entry.args[0] === "list" && entry.args.includes("--restore")), false, "Bao does not forward a list");
+});
+
 test("tab new gets focus emulation, and an owner tab does not", async (t) => {
   const f = await fixture(t);
   await f.proxy.execute("open", [MAPS], "current");
