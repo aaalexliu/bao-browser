@@ -55,7 +55,7 @@ To sign with one project certificate, add two repository secrets: `BAO_SIGNING_P
 Apple Developer ID also opens from a browser download and keeps the grant across certificate renewal. It needs three more changes:
 
 1. `helper-identity.js` must accept Apple's requirement form, which names the team id instead of a certificate hash.
-2. Every executable needs the hardened runtime: `bao`, `bao-mcp`, `bao-cli`, BaoCaptureBar, BaoWindowVideo, agent-browser, and Chromium. The helper and Node already have it.
+2. Every executable needs the hardened runtime: `bao`, `bao-mcp`, `bao-cli`, `bao-front`, BaoCaptureBar, BaoWindowVideo, agent-browser, and Chromium. The helper and Node already have it.
 3. A `notarytool submit --wait` step, then `stapler staple`, before `make-release-asset.sh`.
 
 ## Build the release locally
