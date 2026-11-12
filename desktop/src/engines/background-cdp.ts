@@ -1,7 +1,6 @@
 // The native agent-browser reaches Bao's own agent Chrome through this endpoint, so Chrome stays behind the owner's apps.
 // agent-browser brings a tab to the front on every tab switch and opens new tabs in front. On macOS either one lifts
 // Chrome's window over the owner's other apps, and can make Chrome the front app with the owner's keyboard.
-// On a Chrome copy, the same switch also selects the tab. Focus emulation does not unthrottle a tab that is not selected.
 
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
@@ -76,7 +75,7 @@ function upgrade(chrome: DevToolsEndpoint): Promise<{ socket: Socket; rest: Buff
 }
 
 /** Joins one agent connection to its own Chrome connection. Each page also gets focus emulation, so it acts as if its window had focus. */
-async function join(chrome: DevToolsEndpoint, client: Duplex, head: Buffer, key: string, sockets: Set<Duplex>, selectTab?: (targetId: string) => Promise<void>): Promise<void> {
+async function join(chrome: DevToolsEndpoint, client: Duplex, head: Buffer, key: string, sockets: Set<Duplex>): Promise<void> {
   let opened: { socket: Socket; rest: Buffer } | undefined;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
@@ -107,10 +106,7 @@ async function join(chrome: DevToolsEndpoint, client: Duplex, head: Buffer, key:
 
   const focused = new Set<string>();
   const own = new Set<number>();
-  const sessions = new Map<string, string>();
-  const attachIds = new Map<number, string>();
   let nextOwn = FIRST_OWN_ID;
-  let selectFailed = false;
   const toChrome = (command: CdpCommand) => chromeSocket.write(clientFrame(1, Buffer.from(JSON.stringify(command))));
   const fromClient = new ServerFrameDecoder(MAX_FRAME);
   const fromChrome = new ServerFrameDecoder(MAX_FRAME);
@@ -120,63 +116,30 @@ async function join(chrome: DevToolsEndpoint, client: Duplex, head: Buffer, key:
       return typeof id === "number" && own.delete(id);
     } catch { return false; }
   };
-  const rememberSession = (text: string) => {
-    let message: { id?: number; method?: string; params?: { sessionId?: string; targetInfo?: { targetId?: string } }; result?: { sessionId?: string } };
-    try { message = JSON.parse(text); } catch { return; }
-    const attached = message.method === "Target.attachedToTarget" ? message.params : undefined;
-    if (attached?.sessionId && attached.targetInfo?.targetId) sessions.set(attached.sessionId, attached.targetInfo.targetId);
-    if (message.id !== undefined && message.result?.sessionId) {
-      const targetId = attachIds.get(message.id);
-      if (targetId) {
-        sessions.set(message.result.sessionId, targetId);
-        attachIds.delete(message.id);
-      }
-    }
-  };
-  const targetOf = (command: CdpCommand): string | undefined => {
-    if (command.method === "Target.activateTarget" && typeof command.params?.targetId === "string") return command.params.targetId;
-    if (command.method === "Page.bringToFront" && command.sessionId) return sessions.get(command.sessionId);
-    return undefined;
-  };
 
-  const handleClient = async (chunk: Buffer) => {
-    for (const frame of fromClient.push(chunk)) {
-      if (frame.opcode === 1 && frame.text) {
-        const command = JSON.parse(frame.text) as CdpCommand;
-        if (command.sessionId && !focused.has(command.sessionId)) {
-          focused.add(command.sessionId);
-          own.add(nextOwn);
-          toChrome({ id: nextOwn++, method: "Emulation.setFocusEmulationEnabled", params: { enabled: true }, sessionId: command.sessionId });
-        }
-        const next = keepBehind(command);
-        if ("reply" in next) {
-          const targetId = selectTab ? targetOf(command) : undefined;
-          if (selectTab && targetId) {
-            try { await selectTab(targetId); }
-            catch (error) {
-              if (!selectFailed) {
-                selectFailed = true;
-                console.error(`Bao could not select the agent's tab without raising Chrome: ${error instanceof Error ? error.message : String(error)}`);
-              }
-            }
+  const takeClient = (chunk: Buffer) => {
+    try {
+      for (const frame of fromClient.push(chunk)) {
+        if (frame.opcode === 1 && frame.text) {
+          const command = JSON.parse(frame.text) as CdpCommand;
+          if (command.sessionId && !focused.has(command.sessionId)) {
+            focused.add(command.sessionId);
+            own.add(nextOwn);
+            toChrome({ id: nextOwn++, method: "Emulation.setFocusEmulationEnabled", params: { enabled: true }, sessionId: command.sessionId });
           }
-          if (!client.destroyed) client.write(serverFrame(1, Buffer.from(JSON.stringify({ id: command.id, result: next.reply, ...command.sessionId ? { sessionId: command.sessionId } : {} }))));
-        } else {
-          if (command.method === "Target.attachToTarget" && typeof command.params?.targetId === "string") attachIds.set(command.id, command.params.targetId);
-          toChrome(next.forward);
-        }
-      } else if (frame.opcode === 2) chromeSocket.write(clientFrame(2, frame.payload!));
-      else if (frame.opcode === 8) end();
-      else if (frame.opcode === 9) client.write(serverFrame(10, frame.payload ?? Buffer.alloc(0)));
-    }
+          const next = keepBehind(command);
+          if ("reply" in next) client.write(serverFrame(1, Buffer.from(JSON.stringify({ id: command.id, result: next.reply, ...command.sessionId ? { sessionId: command.sessionId } : {} }))));
+          else toChrome(next.forward);
+        } else if (frame.opcode === 2) chromeSocket.write(clientFrame(2, frame.payload!));
+        else if (frame.opcode === 8) end();
+        else if (frame.opcode === 9) client.write(serverFrame(10, frame.payload ?? Buffer.alloc(0)));
+      }
+    } catch { end(); }
   };
-  let chain = Promise.resolve();
-  const takeClient = (chunk: Buffer) => { chain = chain.then(() => handleClient(chunk)).catch(end); };
   const takeChrome = (chunk: Buffer) => {
     try {
       for (const frame of fromChrome.push(chunk)) {
         // Replies to Bao's own commands are short. Larger frames go straight through unread.
-        if (frame.opcode === 1 && frame.payload!.length < 65_536) rememberSession(frame.text!);
         if (frame.opcode === 1 && own.size && frame.payload!.length < 512 && ownReply(frame.text!)) continue;
         if (frame.opcode === 1 || frame.opcode === 2) client.write(serverFrame(frame.opcode, frame.payload!));
         else if (frame.opcode === 8) end();
@@ -191,8 +154,8 @@ async function join(chrome: DevToolsEndpoint, client: Duplex, head: Buffer, key:
   chromeSocket.resume();
 }
 
-/** A local endpoint in front of Bao's agent Chrome. Close it when the session ends. `selectTab` runs before Bao answers a raising command, and only the copy route sets it. */
-export async function openBackgroundCdp(chrome: DevToolsEndpoint, selectTab?: (targetId: string) => Promise<void>): Promise<BackgroundCdp> {
+/** A local endpoint in front of Bao's agent Chrome. Close it when the session ends. */
+export async function openBackgroundCdp(chrome: DevToolsEndpoint): Promise<BackgroundCdp> {
   const browserPath = `/devtools/browser/${randomUUID()}`;
   const sockets = new Set<Duplex>();
   // Plain HTTP gets nothing. Chrome's /json routes would raise its windows or hand out its own port.
@@ -205,7 +168,7 @@ export async function openBackgroundCdp(chrome: DevToolsEndpoint, selectTab?: (t
     }
     sockets.add(client);
     client.on("error", () => client.destroy()).once("close", () => sockets.delete(client));
-    void join(chrome, client, head, key, sockets, selectTab);
+    void join(chrome, client, head, key, sockets);
   });
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);

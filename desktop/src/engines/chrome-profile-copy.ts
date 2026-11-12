@@ -9,7 +9,6 @@ import { readDevToolsActivePort } from "../cdp-live/endpoint";
 import { connectCdp } from "../cdp-live/socket";
 import { boundSessionSites, deleteChromeTokens, deleteCookieRows, signedOutPreferences } from "./bound-sign-in";
 import { closeRetainedChrome, launchOwnedChrome, launchOwnedChromeEndpoint, listedPids, pidsForDataDir, RESTORE_LAST_SESSION, startupUrl } from "../launch";
-import { backgroundTabLaunchArgs } from "./background-tab";
 
 export interface ChromeProfileChoice {
   directory: string;
@@ -290,8 +289,8 @@ export async function agentTab(portFile: string): Promise<string> {
  * Pass-through startup owns Chrome without attaching Playwright to restored tabs. With restored tabs, the agent's page opens in
  * `targetId`, a new background tab beside them, so the native daemon leaves every restored tab untouched and Bao knows the
  * bound target. Focus emulation on the native endpoint keeps that tab running behind the owner's apps. A later `tab`
- * switch selects the chosen tab in its window without bringing Chrome forward. With only startup pages, `targetId` is the
- * startup tab.
+ * switch attaches to the restored tab and turns on the same focus emulation. It does not select that tab, so the tab
+ * shown in the window stays the one Chrome restored. With only startup pages, `targetId` is the startup tab.
  */
 export async function openCopiedChromeForProxy(options: {
   sourceRoot: string; directory: string; home: string; detached?: boolean; restoreTabs?: boolean;
@@ -305,10 +304,8 @@ export async function openCopiedChromeForProxy(options: {
   try {
     const sessions = await readdir(path.join(copy.userDataDir, copy.profileDirectory, "Sessions")).catch(() => []);
     chrome = await launchOwnedChromeEndpoint({
-      userDataDir: copy.userDataDir, headless: false, childHome: userInfo().homedir, preserveRestoredTabs: true,
-      background: sessions.some((name) => name.startsWith("Session_")) ? "restore" : "window",
-      // Copied extensions stay off. The helper is the one exception: a tab switch selects a restored tab without focusing the window.
-      args: [...copy.launchArgs, ...backgroundTabLaunchArgs()], detached: options.detached,
+      userDataDir: copy.userDataDir, headless: false, childHome: userInfo().homedir, loadExtensions: false, preserveRestoredTabs: true,
+      background: sessions.some((name) => name.startsWith("Session_")) ? "restore" : "window", args: copy.launchArgs, detached: options.detached,
     });
     const targetId = options.restoreTabs === false ? undefined : await agentTab(chrome.portFile);
     return {
