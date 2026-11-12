@@ -1396,7 +1396,7 @@ async function loadRun(id: string, request: number): Promise<void> {
   const receipt = receiptResponse?.ok ? await receiptResponse.json().catch(() => null) as ReturnType<typeof inspectRunView> | null : null;
   const response = await fetch("/api/workflows/" + encodeURIComponent(run.workflowId));
   const workflow = response.ok
-    ? await response.json() as { name: string; id: string; steps: { id: string; label?: string; action?: string }[]; recordedOnly?: boolean }
+    ? await response.json() as { name: string; id: string; steps: { id: string; action?: string; caption?: { text?: string; citation?: { text?: string } } }[]; recordedOnly?: boolean }
     : { name: runWorkflowName(run, state.workflows || []), id: run.workflowId, steps: run.steps || [], recordedOnly: true };
   const host = document.getElementById("run-host");
   if (!host || screen !== "run" || openRun !== id || request !== runRequest) return;
@@ -1407,7 +1407,7 @@ async function loadRun(id: string, request: number): Promise<void> {
   merged.set(run.id, run);
   const history = [...merged.values()].sort((a, b) => (a.at || 0) - (b.at || 0)).slice(-8);
   const reviewStepIds = reviewItems((state.runs || []).filter((item) => item.workflowId === run.workflowId)).map((item) => item.stepId);
-  host.innerHTML = (receipt ? runReceipt(receipt, workflow.name, run) : receiptError()) + `<details id="run-evidence"${evidenceOpen ? " open" : ""}><summary>Detailed evidence</summary>${runViewer(run, workflow, selectedStep, { recent: history, recorded, reviewStepIds })}</details>`;
+  host.innerHTML = (receipt ? runReceipt(receipt, workflow.name, run, workflow.recordedOnly ? undefined : workflow.steps) : receiptError()) + `<details id="run-evidence"${evidenceOpen ? " open" : ""}><summary>Detailed evidence</summary>${runViewer(run, workflow, selectedStep, { recent: history, recorded, reviewStepIds })}</details>`;
   const retry = document.getElementById("retry-run");
   if (retry) retry.onclick = () => { void showRun(id).then(() => focusMain({ preventScroll: true })); };
   const evidence = document.getElementById("run-evidence") as HTMLDetailsElement;

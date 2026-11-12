@@ -2075,23 +2075,71 @@ function receiptDuration(ms: number): string {
 }
 
 function privateReceiptField(label: string): boolean {
-  return /password|secret|ssn|social security|card number|cvv|cvc|\bpin\b|token/i.test(label);
+  return /password|e-?mail|secret|ssn|social security|card number|cvv|cvc|\bpin\b|token/i.test(label);
+}
+
+function keepStreet(text: string): string {
+  return text.replace(/(\d+)-(\d+)/g, "$1\u2011$2");
+}
+
+function plainActionError(error: string, label: string): string {
+  const raw = error.replace(/^[\u2717\u2713]\s*/, "").replace(/\s+/g, " ").trim();
+  const named = label.replace(/^Click\s+/i, "").replace(/^Type into\s+/i, "").replace(/"/g, "").trim();
+  const target = named && named !== "Click" && named !== "Step" ? named : "";
+  if (/covered by|intercepts? (?:the )?pointer|obscur/i.test(raw)) return "The target was covered, so the action did not land.";
+  if (/unknown ref|could not locate|could not find|no such element|not attached|detached|stale element/i.test(raw)) {
+    return target ? `Could not find ${target}.` : "Could not find the target.";
+  }
+  if (/\btimed?\s*out\b|\btimeout\b/i.test(raw)) return "The action timed out.";
+  const stripped = raw
+    .replace(/<[^>]*>/g, " ")
+    .replace(/@e\d+/gi, " ")
+    .replace(/\brole=\S+/gi, " ")
+    .replace(/\bname=\S+/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[.\s]+$/, "");
+  if (!stripped || /[@<>]|role=|name=/i.test(stripped)) return target ? `Could not complete ${target}.` : "The action failed.";
+  return `${stripped}.`;
+}
+
+function namesItem(text: string, name: string): boolean {
+  if (name.trim().length < 3) return false;
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:^|[^\\p{L}\\p{N}])${escaped}(?:$|[^\\p{L}\\p{N}])`, "iu").test(text);
+}
+
+function claimConflict(claim: string | undefined, listed: string[], outline: ReceiptOutline): string | undefined {
+  if (outline.proof.kind !== "list") return undefined;
+  const text = [claim, ...listed].filter(Boolean).join("\n");
+  const missed = outline.proof.items.filter((item) => item.state === "not confirmed" && namesItem(text, item.name)).map((item) => item.name);
+  if (!missed.length) return undefined;
+  if (missed.length === 1) return `The agent claimed ${missed[0]} was added. The record does not confirm it.`;
+  return `The agent claimed ${missed.join(", ")} were added. The record does not confirm them.`;
 }
 
 function receiptShotHtml(runId: string, outline: ReceiptOutline): string {
   const shots = outline.shots.flatMap((shot) => {
     const src = imageRef(runId, shot.file);
-    return src ? [`<figure><img src="${src}" alt="${esc(shot.label)}"><figcaption>${esc(shot.label)}</figcaption></figure>`] : [];
+    return src ? [`<figure><img src="${src}" alt="${esc(keepStreet(shot.label))}"><figcaption>${esc(keepStreet(shot.label))}</figcaption></figure>`] : [];
   });
   return shots.length ? `<div class="receipt-shots">${shots.join("")}</div>` : "";
+}
+
+function listCountAgreed(outline: ReceiptOutline): boolean {
+  if (outline.proof.kind !== "list") return false;
+  if (outline.proof.items.some((item) => item.state === "not confirmed")) return false;
+  const quoted = /(\d+)\s+(?:places|items)\b/i.exec(outline.proof.quoted || "");
+  return !quoted || Number(quoted[1]) === outline.proof.items.length;
 }
 
 function receiptProofHtml(outline: ReceiptOutline): string {
   if (outline.proof.kind === "list") {
     const heading = outline.proof.name || "Recorded items";
     const count = outline.proof.items.length;
-    const rows = outline.proof.items.map((item: ReceiptItem) => `<li><span>${esc(item.name)}</span><span class="${item.state === "not confirmed" ? "exception" : ""}">${esc(item.state)}</span></li>`).join("");
-    return `<section class="receipt-proof" aria-label="Recorded items"><h3>${esc(heading)}</h3><p class="receipt-count">${count} ${count === 1 ? "entry" : "entries"}</p><ul class="receipt-items">${rows}</ul></section>`;
+    const countLine = listCountAgreed(outline) ? `<p class="receipt-count">${count} ${count === 1 ? "entry" : "entries"}</p>` : "";
+    const rows = outline.proof.items.map((item: ReceiptItem) => `<li><span>${esc(keepStreet(item.name))}</span><span class="${item.state === "not confirmed" ? "exception" : ""}">${esc(item.state)}</span></li>`).join("");
+    return `<section class="receipt-proof" aria-label="Recorded items"><h3>${esc(heading)}</h3>${countLine}<ul class="receipt-items">${rows}</ul></section>`;
   }
   if (outline.proof.kind === "form") {
     const pageTitle = outline.recordedLines.find((line) => line.startsWith("Last recorded page: "))?.replace(/^Last recorded page: /, "").replace(/\.$/, "");
@@ -2106,7 +2154,9 @@ function receiptProofHtml(outline: ReceiptOutline): string {
 function receiptProblemHtml(problem: ReceiptProblem): string {
   const page = problem.page ? ` Recorded page: ${esc(problem.page)}.` : "";
   const later = problem.later ? ` Step ${problem.later.step} clicked ${esc(problem.later.label)} and passed.` : "";
-  return `<li>Step ${problem.step}, ${esc(problem.label)}, failed. ${esc(problem.error)}.${page}${later}</li>`;
+  const spoken = ownerStopText(problem.error);
+  const sentence = spoken !== problem.error.trim() ? (/[.!?]$/.test(spoken) ? spoken : `${spoken}.`) : plainActionError(problem.error, problem.label);
+  return `<li>Step ${problem.step}, ${esc(problem.label)}, failed. ${esc(sentence)}${page}${later}</li>`;
 }
 
 function receiptChaptersHtml(outline: ReceiptOutline): string {
@@ -2127,23 +2177,38 @@ interface InspectorStep {
   native?: StepView["native"];
 }
 
-function receiptInspector(view: ReturnType<typeof inspectRunView>, run: RunSummary): string {
+type ReceiptWorkflowStep = { id?: string; action?: string; caption?: { text?: string; citation?: { text?: string } } };
+
+function workflowStepLabel(steps: ReceiptWorkflowStep[] | undefined, id: string | undefined): string | undefined {
+  if (!id || !steps) return undefined;
+  const step = steps.find((item) => item.id === id);
+  return step ? stepTitle(step) : undefined;
+}
+
+function receiptReadBack(run: RunSummary, stepId: string | undefined): string | undefined {
+  if (!stepId) return undefined;
+  const lines = (run.receipts || []).filter((item) => item.stepId === stepId).map((item) =>
+    `Read back ${item.source || "value"}: expected ${item.expected || ""}, saw ${item.actual || ""}. ${item.pass ? "matches" : "does not match"}.`);
+  return lines.length ? lines.join("\n") : undefined;
+}
+
+function receiptInspector(view: ReturnType<typeof inspectRunView>, run: RunSummary, workflowSteps?: ReceiptWorkflowStep[]): string {
   const labels = new Map(view.steps.flatMap((step) => step.id ? [[step.id, step]] as const : []));
   const stored = (run.steps || []) as InspectorStep[];
   if (!stored.length && !view.steps.length) return `<p class="quiet">No step results recorded.</p>`;
   const source: InspectorStep[] = stored.length ? stored : view.steps.map((step) => ({ id: step.id, status: step.status, label: step.label, reason: step.reason }));
   const rows = source.map((step, index) => {
-    const viewed = step.id ? labels.get(step.id) : undefined;
-    const label = step.label || step.caption?.text || viewed?.label || "Step";
+    const viewed = step.id ? labels.get(step.id) : view.steps[index];
+    const label = workflowStepLabel(workflowSteps, step.id) || step.label || step.caption?.text || viewed?.label || (run.kind === "capture" ? step.native?.command : undefined) || step.id || "Step";
     const status = receiptStepStatus(step.status || viewed?.status || "unknown", step.id, run);
-    const reason = step.reason || viewed?.reason || viewed?.result;
+    const reason = step.reason || receiptReadBack(run, step.id) || viewed?.result;
     const native = step.native;
     const hidden = privateReceiptField(label);
     const args = (native?.args || []).map((arg, argIndex) => hidden && argIndex === (native?.args.length || 1) - 1 ? "Hidden" : arg);
     const timing = typeof step.startedAt === "number" && typeof run.at === "number" ? receiptClock(step.startedAt - run.at) : "";
     const duration = typeof step.startedAt === "number" && typeof step.endedAt === "number" ? receiptDuration(step.endedAt - step.startedAt) : "";
     const command = [native?.command, ...args, timing, duration].filter(Boolean).join(" · ");
-    const search = [label, native?.command, ...args, status].filter(Boolean).join(" ");
+    const search = [label, native?.command, ...args, status, receiptReadBack(run, step.id)].filter(Boolean).join(" ");
     const shot = imageRef(run.id, step.afterShot);
     const stderr = (native?.results || []).map((result) => result.stderr?.replace(/^[✗✓]\s*/, "").trim()).find(Boolean);
     const evidence = command || shot || stderr
@@ -2151,10 +2216,10 @@ function receiptInspector(view: ReturnType<typeof inspectRunView>, run: RunSumma
       : "";
     return `<li id="receipt-step-${index + 1}" value="${index + 1}" data-step="${index + 1}" data-search="${esc(search)}"><div><strong>${esc(label)}</strong><span class="run-state">${esc(status)}</span></div>${reason ? `<p>${esc(ownerStopText(reason))}</p>` : ""}${command ? `<p class="receipt-command">${esc(command)}</p>` : ""}${evidence}</li>`;
   }).join("");
-  return `<h3 id="receipt-step-heading" class="section" tabindex="-1">Command inspector</h3><input id="receipt-search" type="search" aria-label="Search commands" placeholder="Search commands, targets, and values"><ol class="receipt-steps" start="1">${rows}</ol>`;
+  return `<h3 id="receipt-step-heading" tabindex="-1">Command inspector</h3><input id="receipt-search" type="search" aria-label="Search commands" placeholder="Search commands, targets, and values"><ol class="receipt-steps" start="1">${rows}</ol>`;
 }
 
-export function runReceipt(view: ReturnType<typeof inspectRunView>, name: string, run: RunSummary): string {
+export function runReceipt(view: ReturnType<typeof inspectRunView>, name: string, run: RunSummary, workflowSteps?: ReceiptWorkflowStep[]): string {
   const kind = runListKind(run);
   const at = view.run.at === null ? "Time unknown" : formatWhen(view.run.at);
   const calls = view.run.modelCalls;
@@ -2165,9 +2230,10 @@ export function runReceipt(view: ReturnType<typeof inspectRunView>, name: string
   const claim = passed ? outline.claim : undefined;
   const unlabeled = view.reason || run.failure?.reason || "";
   const skipUnlabeled = Boolean(claim && unlabeled === claim);
-  const listed = passed && outline.listed.length ? `<h3>Agent listed</h3><ul class="receipt-listed">${outline.listed.map((item) => `<li>${esc(item)}</li>`).join("")}</ul>` : "";
-  const claimBlock = claim || listed ? `<section class="receipt-agent" aria-label="Agent report">${claim ? `<h3>Agent said</h3><p class="receipt-claim">${esc(claim)}</p>` : ""}${listed}</section>` : "";
-  const recorded = outline.recordedLines.map((line) => `<p class="receipt-recorded">${esc(line)}</p>`).join("");
+  const listed = passed && outline.listed.length ? `<h3>Agent listed</h3><ul class="receipt-listed">${outline.listed.map((item) => `<li>${esc(keepStreet(item))}</li>`).join("")}</ul>` : "";
+  const conflict = claimConflict(claim, outline.listed, outline);
+  const claimBlock = claim || listed || conflict ? `<section class="receipt-agent" aria-label="Agent report">${claim ? `<h3>Agent said</h3><p class="receipt-claim">${esc(keepStreet(claim))}</p>` : ""}${conflict ? `<p class="receipt-conflict">${esc(conflict)}</p>` : ""}${listed}</section>` : "";
+  const recorded = outline.recordedLines.map((line) => `<p class="receipt-recorded">${esc(keepStreet(line))}</p>`).join("");
   return `<section id="run-receipt" aria-label="Run receipt"><p class="receipt-kicker"><span class="run-state ${esc(kind)}">${esc(statusLabel(kind))}</span> · ${esc(at)}</p><h2>${esc(name)}</h2>
     <p class="receipt-meta">${view.run.stepCount} step${view.run.stepCount === 1 ? "" : "s"}${calls === null ? "" : ` · ${calls} model call${calls === 1 ? "" : "s"}`}</p>
     ${receiptBrowsers(run)}
@@ -2179,7 +2245,7 @@ export function runReceipt(view: ReturnType<typeof inspectRunView>, name: string
     ${outline.problems.length ? `<section class="receipt-problems" aria-label="Action problems"><h3>Action problems</h3><ul>${outline.problems.map(receiptProblemHtml).join("")}</ul></section>` : ""}
     ${claimBlock}
     ${receiptChaptersHtml(outline)}
-    ${receiptInspector(view, run)}
+    ${receiptInspector(view, run, workflowSteps)}
   </section>`;
 }
 

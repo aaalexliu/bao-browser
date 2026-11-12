@@ -148,9 +148,11 @@ test("an ended agent session receipt names its steps in words and marks the cut-
     const rows = runsList([read("old-idle"), read("old-closed")], [], "", 3);
     assert.match(rows, new RegExp(`data-open-run="old-idle"[\\s\\S]*?${idle.replace(/[.]/g, "\\.")}`));
     assert.match(rows, new RegExp(`data-open-run="old-closed"[\\s\\S]*?${closed.replace(/[.]/g, "\\.")}`));
-    for (const html of [waited, oldIdle, oldClosed, rows]) {
-      assert.doesNotMatch(html, /wait_for_owner|finish_task|agent-browser command|owner wait completed|>open<|>pending</);
+    const spokenReceipt = (html: string) => html.split('<h3 id="receipt-step-heading"')[0] || html;
+    for (const html of [waited, oldIdle, oldClosed]) {
+      assert.doesNotMatch(spokenReceipt(html), /wait_for_owner|finish_task|agent-browser command|owner wait completed|>open<|>pending</);
     }
+    assert.doesNotMatch(rows, /wait_for_owner|finish_task|agent-browser command|owner wait completed|>open<|>pending</);
     const legacy = session({
       id: "dropped", status: "failed", at: 4, pageEngine: "agent-browser",
       steps: [{ id: "command-1", label: "Open example.com", status: "failed", reason: "agent-browser client disconnected", native: { command: "open", args: ["https://example.com"] } }],

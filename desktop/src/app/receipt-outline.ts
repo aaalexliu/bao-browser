@@ -120,10 +120,11 @@ function fieldLabel(step: OutlineStep): string {
 }
 
 function fillValue(step: OutlineStep): string | undefined {
+  if (step.status !== "passed") return undefined;
   if (command(step) !== "fill" && command(step) !== "type") return undefined;
   const args = step.native?.args || [];
   const value = args.length >= 2 ? args[args.length - 1] : args[0];
-  return typeof value === "string" && value.length > 0 ? value : undefined;
+  return typeof value === "string" ? value : undefined;
 }
 
 function pageOf(step: OutlineStep): { title?: string; url?: string } | undefined {
@@ -158,6 +159,10 @@ function tokens(value: string): string[] {
     .filter((word) => word.length >= 4 && !STOP_WORDS.has(word));
 }
 
+function numberTokens(value: string): string[] {
+  return [...value.matchAll(/\d+(?:-\d+)*/g)].map((match) => match[0]);
+}
+
 function tokenOverlap(typed: string, label: string): number {
   const wanted = new Set(tokens(typed));
   let shared = 0;
@@ -181,8 +186,11 @@ function consecutiveTokens(typed: string, label: string): boolean {
 
 function sharesSelection(typed: string, label: string): boolean {
   if (countClick(label)) return false;
+  const wantedNumbers = numberTokens(typed);
+  const clickedNumbers = new Set(numberTokens(label));
+  if (wantedNumbers.some((number) => !clickedNumbers.has(number))) return false;
   const wanted = typed.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
-  const clicked = label.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  const clicked = displayLabel(label).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
   if (wanted.length >= 6 && clicked.includes(wanted)) return true;
   return consecutiveTokens(typed, label);
 }
@@ -224,13 +232,13 @@ function fillsOf(steps: OutlineStep[]): Fill[] {
   const fills: Fill[] = [];
   steps.forEach((step, index) => {
     const value = fillValue(step);
-    if (value) fills.push({ index, field: fieldLabel(step), value });
+    if (value !== undefined) fills.push({ index, field: fieldLabel(step), value });
   });
   return fills;
 }
 
 function privateField(label: string): boolean {
-  return /password|secret|ssn|social security|card number|cvv|cvc|\bpin\b|token/i.test(label);
+  return /password|e-?mail|secret|ssn|social security|card number|cvv|cvc|\bpin\b|token/i.test(label);
 }
 
 interface QuotedCount {
@@ -303,9 +311,10 @@ function selectionList(steps: OutlineStep[], fills: Fill[]): SelectionList | und
         items.push({ name: row.value, state: "not confirmed" });
         continue;
       }
-      items.push({ name: displayLabel(hit.label || row.value), state: "selected" });
-      const file = shotFile(hit);
-      if (file) shots.push({ label: displayLabel(hit.label || row.value), file });
+      const selectedName = displayLabel(hit.label || row.value);
+      items.push({ name: selectedName, state: "selected" });
+      const shot = shotForPlace(steps, row.index + 1, end, [row.value, selectedName]);
+      if (shot) shots.push(shot);
     }
     const confirmed = items.filter((item) => item.state === "selected");
     if (confirmed.length < 2) continue;
@@ -330,8 +339,30 @@ function relatedStems(left: string, right: string): boolean {
 
 interface PageVisit {
   stem: string;
+  title: string;
   clicked: boolean;
   shot?: string;
+  shotTitle?: string;
+}
+
+function pageIsPlace(title: string | undefined, names: string[]): boolean {
+  const stem = titleStem(title).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  if (stem.length < 4) return false;
+  return names.some((name) => {
+    const wanted = name.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+    return wanted === stem || wanted.startsWith(`${stem} `);
+  });
+}
+
+function shotForPlace(steps: OutlineStep[], start: number, end: number, names: string[]): ReceiptShot | undefined {
+  for (let i = start; i < end; i++) {
+    const step = steps[i]!;
+    const file = shotFile(step);
+    const title = pageOf(step)?.title?.trim();
+    if (!file || !title || !pageIsPlace(title, names)) continue;
+    return { label: title, file };
+  }
+  return undefined;
 }
 
 function pageVisits(steps: OutlineStep[]): PageVisit[] {
@@ -343,28 +374,32 @@ function pageVisits(steps: OutlineStep[]): PageVisit[] {
     if (!stem) continue;
     let visit = visits.find((item) => item.stem === stem);
     if (!visit) {
-      visit = { stem, clicked: false };
+      visit = { stem, title, clicked: false };
       visits.push(visit);
     }
     if (step.status === "passed" && command(step) === "click") visit.clicked = true;
     const file = shotFile(step);
-    if (file && !visit.shot) visit.shot = file;
+    if (file && !visit.shot) {
+      visit.shot = file;
+      visit.shotTitle = title.trim();
+    }
   }
   return visits;
 }
 
 function pageList(steps: OutlineStep[], name: string | undefined): { items: ReceiptItem[]; shots: ReceiptShot[] } | undefined {
+  if (!quotedCounts(steps)) return undefined;
   const visits = pageVisits(steps);
   const named = name?.toLowerCase();
   const clicked = visits.filter((visit) => visit.clicked && visit.stem.toLowerCase() !== named);
-  if (clicked.length < 3 && !quotedCounts(steps)) return undefined;
   const items: ReceiptItem[] = [
     ...visits
       .filter((visit) => !visit.clicked && visit.stem.toLowerCase() !== named && !clicked.some((item) => relatedStems(item.stem, visit.stem)))
       .map((visit) => ({ name: visit.stem, state: "not confirmed" as const })),
     ...clicked.map((visit) => ({ name: visit.stem, state: "clicked" as const })),
   ];
-  const shots = withFinal(steps, pickShots(clicked.flatMap((visit) => visit.shot ? [{ label: visit.stem, file: visit.shot }] : [])));
+  if (!items.length) return undefined;
+  const shots = withFinal(steps, pickShots(clicked.flatMap((visit) => visit.shot ? [{ label: visit.shotTitle || visit.title, file: visit.shot }] : [])));
   return { items, shots };
 }
 
@@ -378,13 +413,26 @@ function withFinal(steps: OutlineStep[], shots: ReceiptShot[]): ReceiptShot[] {
   return [...shots.slice(0, 2), final];
 }
 
-function repeatedFill(fills: Fill[]): boolean {
-  const counts = new Map<string, number>();
-  for (const fill of fills) counts.set(fill.field, (counts.get(fill.field) || 0) + 1);
-  return [...counts.values()].some((count) => count >= 3);
+const SUBMIT = /\b(submit|send|place order|sign up|confirm)\b|\bsave\b/i;
+const CONFIRM = /\b(?:thank you|order number|confirmation number|confirmation code|reference number|reference code|submitted|saved draft|draft saved)\b/gi;
+const NEGATED = /\b(?:not|no|never|wasn'?t|isn'?t|aren'?t|didn'?t|cannot|can't|could not|failed|unable|without)\b/i;
+
+function positiveConfirmation(text: string): boolean {
+  for (const match of text.matchAll(new RegExp(CONFIRM.source, "gi"))) {
+    const before = text.slice(Math.max(0, match.index - 48), match.index);
+    if (NEGATED.test(before)) continue;
+    return true;
+  }
+  return false;
 }
 
-const SUBMIT = /\b(submit|send|place order|sign up|confirm)\b|\bsave\b/i;
+function confirmationOf(step: OutlineStep): string | undefined {
+  const summary = step.summary?.text?.trim();
+  if (summary && positiveConfirmation(summary)) return summary;
+  const title = pageOf(step)?.title?.trim();
+  if (title && positiveConfirmation(title)) return title;
+  return undefined;
+}
 
 function formProof(steps: OutlineStep[], fills: Fill[]): Extract<ReceiptProof, { kind: "form" }> | undefined {
   const fields = new Map<string, Fill>();
@@ -400,13 +448,10 @@ function formProof(steps: OutlineStep[], fills: Fill[]): Extract<ReceiptProof, {
   let confirmation: string | undefined;
   if (submitAt >= 0) {
     for (let i = submitAt + 1; i < steps.length; i++) {
-      const step = steps[i]!;
-      const text = `${pageOf(step)?.title || ""} ${step.summary?.text || ""}`;
-      const match = /thank you|submitted|confirmation|reference|order number|saved draft|draft saved/i.exec(text);
-      if (match) {
-        confirmation = (pageOf(step)?.title || step.summary?.text || match[0]).trim();
-        break;
-      }
+      const found = confirmationOf(steps[i]!);
+      if (!found) continue;
+      confirmation = found;
+      break;
     }
   }
   const draft = /draft/i.test(confirmation || "");
@@ -416,15 +461,15 @@ function formProof(steps: OutlineStep[], fills: Fill[]): Extract<ReceiptProof, {
       ? "A submit click passed. Confirmation was not captured."
       : draft
         ? "Saved draft."
-        : "Submitted.";
+        : "Submitted";
   return {
     kind: "form",
     state,
     confirmation,
     fields: [...fields.values()].map((fill) => ({
       label: fill.field,
-      value: privateField(fill.field) ? "Hidden" : fill.value,
-      masked: privateField(fill.field),
+      value: fill.value && privateField(fill.field) ? "Hidden" : fill.value,
+      masked: Boolean(fill.value) && privateField(fill.field),
     })),
   };
 }
@@ -440,36 +485,40 @@ function proofFor(steps: OutlineStep[]): { proof: ReceiptProof; shots: ReceiptSh
     return {
       proof: { kind: "list", name, quoted: quoted?.quote, items: selected.items },
       shots: selected.shots,
-      recordedExtra: recordedListLines(name, quoted, `${confirmed} selection${confirmed === 1 ? "" : "s"} passed.`, missed),
+      recordedExtra: recordedListLines(name, quoted, agreedCount(quoted, confirmed) ? `${confirmed} ${confirmed === 1 ? "entry was" : "entries were"} selected.` : undefined, missed),
     };
   }
   const quoted = quotedCounts(steps);
   const pages = pageList(steps, quoted?.name);
-  if (pages && (pages.items.filter((item) => item.state !== "not confirmed").length >= 3 || quoted)) {
+  if (pages) {
     const name = listName(steps, fills, undefined, quoted);
     const confirmed = pages.items.filter((item) => item.state !== "not confirmed").length;
     const missed = pages.items.length - confirmed;
+    const countLine = agreedCount(quoted, confirmed)
+      ? `${confirmed} place ${confirmed === 1 ? "page was" : "pages were"} opened.`
+      : undefined;
     return {
       proof: { kind: "list", name, quoted: quoted?.quote, items: pages.items },
       shots: pages.shots.length ? pages.shots : finalShot(steps),
-      recordedExtra: recordedListLines(name, quoted, `${confirmed} place page${confirmed === 1 ? "" : "s"} had a passed click.`, missed),
+      recordedExtra: recordedListLines(name, quoted, countLine, missed),
     };
   }
-  if (!repeatedFill(fills)) {
-    const form = formProof(steps, fills);
-    if (form) {
-      return { proof: form, shots: finalShot(steps), recordedExtra: [] };
-    }
-  }
+  const form = formProof(steps, fills);
+  if (form) return { proof: form, shots: finalShot(steps), recordedExtra: [] };
   return { proof: { kind: "text" }, shots: finalShot(steps), recordedExtra: [] };
 }
 
-function recordedListLines(name: string | undefined, quoted: QuotedCount | undefined, countLine: string, missed: number): string[] {
+function agreedCount(quoted: QuotedCount | undefined, count: number): boolean {
+  const match = /(\d+)\s+(?:places|items)\b/i.exec(quoted?.quote || "");
+  return !match || Number(match[1]) === count;
+}
+
+function recordedListLines(name: string | undefined, quoted: QuotedCount | undefined, countLine: string | undefined, missed: number): string[] {
   const lines: string[] = [];
   if (name) lines.push(`List name recorded as “${name}”.`);
   if (quoted) lines.push(`The page said “${quoted.quote}”.`);
-  lines.push(countLine);
-  if (missed) lines.push(`${missed} entr${missed === 1 ? "y has" : "ies have"} no passed selection.`);
+  if (countLine) lines.push(countLine);
+  if (missed) lines.push(`${missed} ${missed === 1 ? "entry was" : "entries were"} not confirmed.`);
   return lines;
 }
 

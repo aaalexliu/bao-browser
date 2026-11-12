@@ -452,14 +452,16 @@
     .receipt-steps p { margin-block: 4px 0; white-space: pre-wrap; }
     .receipt-pages { display: flex; gap: 8px; flex-wrap: wrap; }
     .receipt-outcome, .receipt-proof, .receipt-problems { margin: 0 0 18px; }
-    .receipt-outcome h3, .receipt-proof h3, .receipt-problems h3, .receipt-chapters h3 { margin: 0 0 8px; font-size: 15px; }
+    .receipt-outcome h3, .receipt-proof h3, .receipt-problems h3, .receipt-chapters h3, .receipt-agent h3, #receipt-step-heading { margin: 0 0 8px; font-size: 15px; }
     .receipt-recorded, .receipt-claim { margin: 0 0 10px; }
-    .receipt-claim { border-left: 3px solid var(--line); padding-left: 10px; color: var(--quiet); }
+    #run-receipt .receipt-claim, #run-receipt .receipt-recorded, #run-receipt .receipt-conflict { max-width: none; }
+    .receipt-claim { border-left: 3px solid var(--line); padding-left: 10px; color: var(--quiet); hyphens: manual; }
     .receipt-listed { margin: 0 0 12px; padding-left: 18px; color: var(--quiet); }
-    .receipt-shots { display: flex; gap: 8px; overflow: auto; margin: 0 0 8px; }
-    .receipt-shots figure { margin: 0; flex: 0 0 168px; }
-    .receipt-shots img { width: 168px; height: 126px; object-fit: contain; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; }
-    .receipt-shots figcaption { margin-top: 4px; color: var(--quiet); font-size: 12px; }
+    .receipt-shots { display: flex; justify-content: space-between; gap: 12px; overflow: auto; margin: 0 0 8px; }
+    .receipt-shots figure { margin: 0; flex: 1 1 168px; max-width: 168px; min-width: 112px; display: flex; flex-direction: column; }
+    .receipt-shots img { width: 100%; height: 96px; object-fit: cover; object-position: center; border: 1px solid var(--line); border-radius: 8px; background: transparent; }
+    .receipt-shots figcaption { margin-top: 4px; min-height: 2.6em; color: var(--quiet); font-size: 12px; line-height: 1.3; }
+    [data-theme="dark"] #run-receipt :is(.receipt-kicker, .receipt-meta, .receipt-count, .receipt-shots figcaption) { color: #d1d1d6; }
     .receipt-count { margin: 0 0 8px; color: var(--quiet); font-size: 13px; }
     .receipt-items { list-style: none; margin: 0; padding: 0; max-height: 240px; overflow-y: scroll; scrollbar-width: thin; border: 1px solid var(--line); border-radius: 8px; }
     .receipt-items::-webkit-scrollbar, .receipt-chapters::-webkit-scrollbar { width: 8px; }
@@ -480,8 +482,6 @@
     .receipt-steps details { margin-top: 6px; }
     .receipt-steps details img { display: block; max-width: 100%; margin-top: 8px; border: 1px solid var(--line); border-radius: 8px; }
     @container detail (max-width: 560px) {
-      .receipt-shots { flex-direction: column; }
-      .receipt-shots figure, .receipt-shots img { width: 100%; height: auto; max-height: 220px; flex-basis: auto; object-fit: contain; }
       .receipt-items li, .receipt-chapters button { align-items: flex-start; }
     }
     #run-evidence { margin-block-start: 24px; }
