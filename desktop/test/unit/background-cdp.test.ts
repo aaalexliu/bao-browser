@@ -132,14 +132,17 @@ test("a swallowed tab switch drives an unselected tab and does not forward the r
     return result.result.value;
   };
   const visibility = (targetId: string) => read<string>(targetId, "document.visibilityState");
-  const ticks = (targetId: string) => read<number>(targetId, "new Promise(r=>{const a=n;setTimeout(()=>r(n-a),1000)})", 5_000);
   try {
     await new Promise((resolve, reject) => {
       socket.addEventListener("open", resolve, { once: true });
       socket.addEventListener("error", () => reject(new Error("agent socket failed")), { once: true });
     });
+    const { targetInfos } = await direct.send<{ targetInfos: { targetId: string; type: string }[] }>("Target.getTargets");
+    const pages = targetInfos.filter((target) => target.type === "page");
+    assert.equal(pages.length, 1, "the window starts on one tab");
+    const shown = pages[0]!.targetId;
     const page = "data:text/html," + encodeURIComponent(
-      "<body style=\"margin:0;background:#c81414\"><button data-testid=go style=\"position:absolute;left:20px;top:20px;width:120px;height:40px\">Go</button><input data-testid=field style=\"position:absolute;left:20px;top:80px;width:200px;height:30px\"><script>let n=0;setInterval(()=>n++,16);document.querySelector('[data-testid=go]').addEventListener('click',()=>{document.querySelector('[data-testid=go]').textContent='Done'})</script>",
+      "<body style=\"margin:0;background:#c81414\"><button data-testid=go style=\"position:absolute;left:20px;top:20px;width:120px;height:40px\">Go</button><input data-testid=field style=\"position:absolute;left:20px;top:80px;width:200px;height:30px\"><script>document.querySelector('[data-testid=go]').addEventListener('click',()=>{document.querySelector('[data-testid=go]').textContent='Done'})</script>",
     );
     const { targetId: hidden } = await direct.send<{ targetId: string }>("Target.createTarget", { url: page, background: true });
     const ready = Date.now() + 5_000;
@@ -156,17 +159,21 @@ test("a swallowed tab switch drives an unselected tab and does not forward the r
       if (!button) await new Promise((resolve) => setTimeout(resolve, 50));
     }
     assert.equal(button, true, "the restored tab painted its button");
+    // Selection is exclusive: Target.activateTarget hides the tab the window already showed. Focus emulation can make the
+    // driven tab report itself visible, and on Linux it also runs that tab's timers, so neither of those is selection.
+    const windowStays = async (where: string) => {
+      assert.equal(await visibility(shown), "visible", `${where} leaves the window on the tab it already showed`);
+    };
+    assert.equal(await visibility(shown), "visible", "the window starts on the tab it already showed");
     assert.equal(await visibility(hidden), "hidden", "the restored tab is not the selected tab");
     const { sessionId } = await send("Target.attachToTarget", { targetId: hidden, flatten: true }) as { sessionId: string };
-    assert.equal(await visibility(hidden), "hidden", "attaching does not select the tab");
-    const before = await ticks(hidden);
-    assert.ok(before <= 25, `an unselected tab is throttled, got ${before} ticks`);
+    assert.equal(await visibility(shown), "visible", "attaching leaves the window on the tab it already showed");
+    assert.equal(await visibility(hidden), "hidden", "attaching does not select the restored tab");
     assert.deepEqual(await send("Page.bringToFront", {}, sessionId), {});
     assert.equal(received.filter((message) => message.id === id).length, 1, "bringToFront is answered once, not forwarded");
     assert.deepEqual(await send("Target.activateTarget", { targetId: hidden }), {});
     assert.equal(received.filter((message) => message.id === id).length, 1, "activateTarget is answered once, not forwarded");
-    const after = await ticks(hidden);
-    assert.ok(after <= 25, `the switch did not select the tab, got ${after} ticks`);
+    await windowStays("the switch");
     await send("Emulation.setDeviceMetricsOverride", { width: 800, height: 600, deviceScaleFactor: 1, mobile: false }, sessionId);
     const box = await send("Runtime.evaluate", {
       expression: "(() => { const el = document.querySelector('[data-testid=go]'); const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2, w: r.width }; })()",
@@ -194,8 +201,7 @@ test("a swallowed tab switch drives an unselected tab and does not forward the r
     const i = (300 * width + 400) * channels;
     const pixel = [decoded.data[i]!, decoded.data[i + 1]!, decoded.data[i + 2]!];
     assert.ok(pixel[0] > 160 && pixel[1] < 60 && pixel[2] < 60, `the screenshot shows the page, got ${pixel.join(",")}`);
-    const still = await ticks(hidden);
-    assert.ok(still <= 25, `click, typing, and the screenshot leave the tab unselected, got ${still} ticks`);
+    await windowStays("click, typing, and the screenshot");
   } finally {
     socket.close();
     direct.close();
