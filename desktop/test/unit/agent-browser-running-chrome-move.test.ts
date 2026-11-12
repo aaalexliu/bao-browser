@@ -146,11 +146,13 @@ async function harness(t: TestContext, initial: "works" | "refused") {
   });
   const raises: { port: number; method: string }[] = [];
   const order: string[] = [];
+  let misses = 0;
   const realConnect = sockets.connectCdp;
   t.mock.method(sockets, "connectCdp", async (port: number, browserPath: string, opts?: Parameters<typeof connectCdp>[2]) => {
     const cdp = await realConnect(port, browserPath, opts);
     const send = cdp.send.bind(cdp);
     t.mock.method(cdp, "send", async (method: string, ...args: unknown[]) => {
+      if (method === "Target.getTargetInfo" && misses > 0) { misses -= 1; throw new Error("page metadata is not ready"); }
       if (method === "Target.activateTarget" || method === "Browser.setWindowBounds") {
         raises.push({ port, method });
         order.push(method);
@@ -195,7 +197,12 @@ ${LIST_TARGETS}
    await cdp.send('Page.navigate',{url:rest.at(-1)},sessionId); await loaded;
    console.log('✓ '+await read('document.title')+'\\n  '+await read('location.href'));
   } else if(command==='snapshot') process.stdout.write(await read("document.getElementById('snapshot')?.textContent ?? ''"));
-  else console.log(command+' native output');
+  else if(command==='press'){
+   await cdp.send('Page.enable',{},sessionId);
+   const loaded=new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('fixture navigation timed out')),20000);cdp.on('Page.loadEventFired',sessionId,()=>{clearTimeout(timer);resolve();});});
+   await cdp.send('Page.navigate',{url:new URL('/login', tab.url).href},sessionId); await loaded;
+   console.log('press native output');
+  } else console.log(command+' native output');
  } finally{cdp.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});
 `, { mode: 0o700 });
@@ -218,7 +225,8 @@ ${LIST_TARGETS}
   const ownerTabs = (await pages()).map((target) => target.targetId).sort();
   return { proxy, site, home, sourceRoot, baoDir, endpoint, ownerTabs, calls, pages, attaches: () => attaches, launched: () => [...launched],
     raises: () => raises, order: () => [...order],
-    allow: () => { attach = "works"; }, slow: (ms: number) => { delay = ms; } };
+    allow: () => { attach = "works"; }, slow: (ms: number) => { delay = ms; },
+    missNextRead: () => { misses += 1; } };
 }
 
 const MOVED = `Bao's own browser hit a sign-in or verification prompt on 127.0.0.1; continued in your running Chrome (Chrome profile "Default", Owner) over remote debugging. Take a fresh snapshot before acting.`;
@@ -549,6 +557,60 @@ test("a command that meets a sign-in page between commands does not run; Bao rec
   assert.doesNotMatch(step.summary!.text, /Clicked/);
   assert.equal(h.raises().length, 0, "the move closes Bao's window without selecting it or cycling the Dock");
   assert.ok(await baoClosed(h.baoDir));
+});
+
+test("a press that lands on a sign-in page keeps its own output, and the next command moves", { timeout: scaledMs(60_000) }, async (t) => {
+  const h = await harness(t, "works");
+  assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "bao"))[0]!.exitCode, 0);
+  const [pressed] = await h.proxy.execute("press", ["Enter"], undefined, false, undefined, {}, h.proxy.activeRunId);
+  assert.equal(pressed!.stdout, "press native output\n", "the press result is the press, not the later open and not a halted reply");
+  assert.equal(h.attaches(), 0, "the press only notes the wall");
+  assert.equal(h.raises().length, 0, "a wall noted after the press is not raised in that command");
+  const pressStep = savedSteps(h.home).at(-1)!;
+  assert.equal(pressStep.native.command, "press");
+  assert.equal(pressStep.native.results[0]?.stdout, "press native output\n");
+  assert.equal(pressStep.summary!.text.includes("running Chrome"), false);
+  const [next] = await h.proxy.execute("click", ["@e5"], undefined, false, undefined, {}, h.proxy.activeRunId);
+  assert.equal(next!.stdout, `\u2713 Article\n  ${h.site}/article\n`, "the next command moves; it does not click");
+  assert.equal(h.attaches(), 1);
+  assert.equal((await h.calls()).some((call) => call.command === "click"), false);
+  const steps = savedSteps(h.home);
+  assert.equal(steps.at(-2)!.native.command, "press");
+  assert.equal(steps.at(-2)!.native.results[0]?.stdout, "press native output\n");
+  assert.equal(steps.at(-1)!.native.command, "open");
+  assert.ok(await baoClosed(h.baoDir));
+});
+
+test("a transient first page read on wait_for_owner still moves a normal page and records the open", { timeout: scaledMs(60_000) }, async (t) => {
+  const h = await harness(t, "works");
+  assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "bao"))[0]!.exitCode, 0);
+  h.missNextRead();
+  const [moved] = await h.proxy.execute("wait_for_owner", ["5000"], undefined, false, undefined, {}, h.proxy.activeRunId);
+  assert.equal(moved!.stdout, `\u2713 Article\n  ${h.site}/article\n`);
+  assert.equal(savedSteps(h.home).at(-1)!.native.command, "open", "a recovered move is an open step, not wait_for_owner");
+  assert.equal(h.attaches(), 1, "a normal page still tries Running Chrome");
+  assert.equal(h.raises().length, 0, "a successful move does not raise Bao");
+  assert.ok(await baoClosed(h.baoDir));
+});
+
+test("an owner wait does not measure a new heading with a native box read", { timeout: scaledMs(60_000) }, async (t) => {
+  const h = await harness(t, "refused");
+  assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "bao"))[0]!.exitCode, 0);
+  assert.equal((await h.proxy.execute("snapshot", [], undefined, true, undefined, {}, h.proxy.activeRunId))[0]!.stdout, NO_WALL);
+  const endpoint = await readDevToolsActivePort(path.join(h.baoDir, "DevToolsActivePort"));
+  const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
+  try {
+    const tab = (await cdp.send<{ targetInfos: { targetId: string; type: string; url: string }[] }>("Target.getTargets")).targetInfos
+      .find((target) => target.type === "page" && target.url.endsWith("/article"))!;
+    const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId: tab.targetId, flatten: true });
+    await cdp.send("Runtime.evaluate", { expression: `document.getElementById('snapshot').textContent = ${JSON.stringify(SIGN_IN_FORM)}`, returnByValue: true }, sessionId);
+    await cdp.send("Target.detachFromTarget", { sessionId });
+  } finally { cdp.close(); }
+  const before = await h.calls();
+  const [shot] = await h.proxy.execute("snapshot", [], undefined, true, undefined, {}, h.proxy.activeRunId);
+  assert.equal(shot!.stdout, SIGN_IN_FORM, "the declined in-page move keeps the snapshot stdout");
+  assert.equal((await h.calls()).slice(before.length).some((call) => call.command === "get"), false, "an owner wait does not run get box");
+  assert.ok(h.raises().length > 0, "the declined move still raises once");
 });
 
 test("a command whose move lands on a sign-in page in the owner's Chrome halts there, and the run keeps the move on its step", { timeout: scaledMs(60_000) }, async (t) => {

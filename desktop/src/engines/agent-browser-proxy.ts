@@ -702,10 +702,10 @@ export class AgentBrowserProxy {
         const stop = wall ?? (read ? this.stopped(session, read) : undefined);
         const page = stop?.page;
         const noted = read && !ownerWall(read.page) ? await this.withWall(session, this.stopped(session, read)) : undefined;
-        if (noted?.wall) {
+        if (stop && read && (this.waitOf(session) === "off" || this.waitOf(session) === "pending")) {
           if (this.waitOf(session) === "off") session.ownerSince = session.ownerTouched = Date.now();
-          this.setWait(session, noted);
-          session.ownerPage = read!.page;
+          this.setWait(session, noted ?? await this.withWall(session, stop));
+          session.ownerPage = read.page;
         }
         const opened = stop ? await this.settleWall(session, { retry: true, what: this.wallWords(session), url: stop.reopen }) : undefined;
         if (opened) {
@@ -714,13 +714,14 @@ export class AgentBrowserProxy {
           results.push(...this.waitOf(session) !== "off" ? this.ownerResult("halted", session) : [opened]);
           return results;
         }
-        if (stop && read && (this.waitOf(session) === "off" || this.waitOf(session) === "pending")) {
-          if (this.waitOf(session) === "off") session.ownerSince = session.ownerTouched = Date.now();
-          this.setWait(session, noted ?? await this.withWall(session, stop));
-          session.ownerPage = read.page;
-          if (session.raised === undefined) await this.ownerBanner(session, read.targetId, true).catch(() => undefined);
-        } else if (this.wallOf(session) && session.raised === undefined) {
-          await this.ownerBanner(session, this.wallOf(session)!.targetId, true).catch(() => undefined);
+        if (!stop) {
+          const discovered = await this.waitForOwner(session, deadline);
+          const moved = this.moved?.site;
+          step = recording.begin(moved ? "open" : command as string, moved ? [moved] : args);
+          this.latest = { runId: recording.id, step, steps: recording.steps };
+          results.push(...discovered);
+          if (ownerReply(results)?.instruction === TASK_TAB_CLOSED) failure = new Error("Bao's task tab was closed");
+          return results;
         }
         step ??= recording.begin(command as string, args);
         this.latest = { runId: recording.id, step, steps: recording.steps };
@@ -780,12 +781,14 @@ export class AgentBrowserProxy {
       }, () => this.waitOf(session) !== "off");
       if (command !== "close" && results[0]?.exitCode === 0) {
         inPage = this.waitOf(session) === "off" && command === "snapshot" && this.movable(session) && pageWall(results[0].stdout);
-        const opened = this.waitOf(session) !== "off" ? await this.settleWall(session)
+        const opened = command === "open" && this.waitOf(session) !== "off" ? await this.settleWall(session)
           : inPage && session.page ? await this.settleWall(session, { what: "a sign-in or verification prompt", url: session.page.url }) : undefined;
-        if (opened) results.splice(0, results.length, command === "snapshot" && this.waitOf(session) === "off" ? await this.run(session, "snapshot", args) : opened);
+        if (opened && (command === "open" || this.waitOf(session) === "off")) {
+          results.splice(0, results.length, command === "snapshot" && this.waitOf(session) === "off" ? await this.run(session, "snapshot", args) : opened);
+        }
       }
       // A close during an owner wait ends the session; it reports the close, not the wait.
-      if (this.waitOf(session) !== "off" && command !== "close") {
+      if (this.waitOf(session) !== "off" && command !== "close" && (this.moved?.pick || command === "open" && session.moveError === undefined)) {
         results.splice(0, results.length, ...this.ownerResult("halted", session));
         return results;
       }
@@ -1612,10 +1615,8 @@ export class AgentBrowserProxy {
             if (this.waitOf(session) === "off") session.ownerSince = session.ownerTouched = Date.now();
             this.setWait(session, this.stopped(session, active));
             session.ownerPage = active.page;
-            if (ownerWall(active.page)) {
-              const opened = await this.settleWall(session, { retry: true });
-              if (opened) return this.waitOf(session) !== "off" ? this.ownerResult("halted", session) : [opened];
-            } else await this.ownerBanner(session, active.targetId, true);
+            const opened = await this.settleWall(session, { retry: true, what: this.wallWords(session), url: this.reopenOf(session) });
+            if (opened) return this.waitOf(session) !== "off" ? this.ownerResult("halted", session) : [opened];
           }
           const waiting = this.wallOf(session);
           if (!waiting) return this.ownerClosed(session);
@@ -1663,6 +1664,7 @@ export class AgentBrowserProxy {
 
   /** Measure the heading or dialog a read found new, so its card can box it. */
   private async readMark(session: Session, seen: ReadonlySet<string> | undefined, current: string): Promise<ShotBox | undefined> {
+    if (this.waitOf(session) !== "off") return undefined;
     const added = newInRead(seen, current);
     if (!added?.ref) return undefined;
     try { return await this.box(session, `@${added.ref}`); }

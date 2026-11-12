@@ -248,11 +248,13 @@ test("a copy handoff brings that copy forward and does not Dock-cycle its window
   try {
     const result = await proxy.execute("open", ["http://127.0.0.1/login"], "copy");
     assert.equal(outcome(result), "halted");
-    assert.equal(brought, 1, "a copy handoff still brings that copy forward");
+    if (process.platform === "darwin") assert.equal(brought, 1, "a copy handoff still brings that copy forward");
+    else assert.equal(brought, 0, "a non-Mac handoff does not bring the copy forward");
     assert.equal(methods.includes("Browser.setWindowBounds"), false, "a copy handoff does not Dock-cycle the window");
     const again = methods.length;
+    const broughtOnce = brought;
     await proxy.execute("snapshot", [], undefined, false, undefined, {}, proxy.activeRunId);
-    assert.equal(brought, 1, "a later command does not bring the copy forward again");
+    assert.equal(brought, broughtOnce, "a later command does not bring the copy forward again");
     assert.equal(methods.includes("Browser.setWindowBounds"), false);
     assert.equal(methods.length, again, "a later command does not select or raise again");
   } finally {
