@@ -227,9 +227,11 @@ function ownerWaitPage(wait: OwnerWait, ownerPage: OwnerPage | undefined): Owner
 }
 
 const OWNER_BANNER_STYLE = "position:fixed;bottom:16px;left:16px;right:16px;padding:16px 20px;background:#fff3dd;color:#492800;border:2px solid #e88600;border-radius:12px;font:600 15px/1.5 system-ui;box-shadow:0 4px 20px #0003;z-index:2147483647;pointer-events:none";
+const OWNER_BANNER_CANCEL = "baoOwnerWaitCancel";
 
 /** Paints the owner-wait banner in the top frame. It writes that node and reads nothing from the page. */
 function ownerBannerScript(text: string): string {
+  const handle = JSON.stringify(OWNER_BANNER_CANCEL);
   return `(() => {
     try { if (window.top !== window) return; } catch { return; }
     const place = () => {
@@ -243,9 +245,27 @@ function ownerBannerScript(text: string): string {
       banner.style.cssText = ${JSON.stringify(OWNER_BANNER_STYLE)};
       root.append(banner);
     };
+    const handle = ${handle};
+    const prior = window[handle];
+    window[handle] = () => {
+      document.removeEventListener("DOMContentLoaded", place);
+      try { if (typeof prior === "function") prior(); } catch {}
+    };
     // A new document is still loading when Chrome runs this. Placing now loses the node to the parser.
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", place, { once: true });
     else place();
+  })()`;
+}
+
+/** Drops a queued banner callback and Bao's banner node. It writes Bao's handle and reads nothing from the page. */
+function ownerBannerGone(): string {
+  const handle = JSON.stringify(OWNER_BANNER_CANCEL);
+  return `(() => {
+    const handle = ${handle};
+    const cancel = window[handle];
+    window[handle] = undefined;
+    try { if (typeof cancel === "function") cancel(); } catch {}
+    document.getElementById("bao-owner-wait")?.remove();
   })()`;
 }
 
@@ -1359,13 +1379,14 @@ export class AgentBrowserProxy {
     }
   }
 
-  /** Drops the reload script and, on a copy, the socket opened for it. */
+  /** Drops the reload script, cancels a banner callback already queued in this document, and, on a copy, closes the socket opened for the script. */
   private async disarmReloadBanner(): Promise<void> {
     const armed = this.reloadBanner;
     this.reloadBanner = undefined;
     if (!armed) return;
     try {
       if (armed.cdp.isOpen) {
+        await armed.cdp.send("Runtime.evaluate", { expression: ownerBannerGone(), returnByValue: true }, armed.sessionId, 2000).catch(() => undefined);
         await armed.cdp.send("Page.removeScriptToEvaluateOnNewDocument", { identifier: armed.identifier }, armed.sessionId, 2000).catch(() => undefined);
         await armed.cdp.send("Target.detachFromTarget", { sessionId: armed.sessionId }, undefined, 2000).catch(() => undefined);
       }
@@ -1393,7 +1414,7 @@ export class AgentBrowserProxy {
       }
       const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true }, undefined, 2000);
       attached = sessionId;
-      const expression = waiting ? ownerBannerScript(text) : `document.getElementById('bao-owner-wait')?.remove()`;
+      const expression = waiting ? ownerBannerScript(text) : ownerBannerGone();
       await cdp.send("Runtime.evaluate", { expression, returnByValue: true }, sessionId, 2000);
     } catch {
       // The durable Library notice remains visible if the page rejects the banner or closes.

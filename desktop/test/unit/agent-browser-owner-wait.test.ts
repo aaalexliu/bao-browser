@@ -398,6 +398,47 @@ test("a failed password at the same address restores the banner without raising 
   } finally { await h.cleanup("copy", observer); }
 });
 
+test("a dashboard that finishes loading after the wait does not restore the banner", { timeout: scaledMs(45_000) }, async (t) => {
+  const front: string[] = [];
+  const reads: string[] = [];
+  let scripts = 0;
+  const send = CdpSocket.prototype.send;
+  t.mock.method(CdpSocket.prototype, "send", function (this: CdpSocket, ...args: Parameters<typeof send>) {
+    const method = args[0];
+    if (method === "Target.activateTarget" || method === "Browser.getWindowForTarget" || method === "Browser.setWindowBounds" || method === "Bao.showTab") front.push(method);
+    if (method === "Page.getFrameTree" || method === "DOM.getDocument") reads.push(method);
+    if (method === "Page.addScriptToEvaluateOnNewDocument") scripts += 1;
+    return send.apply(this, args);
+  });
+  const h = await ownerProxy(t);
+  const { proxy, fixture } = h;
+  let observer: Awaited<ReturnType<typeof chromium.connectOverCDP>> | undefined;
+  try {
+    assert.equal(outcome(await proxy.execute("open", [fixture.url("/owner/session")], "copy")), "halted");
+    assert.equal(scripts, 1, "the wall registers one reload script");
+    const runId = proxy.activeRunId!;
+    const endpoint = await readDevToolsActivePort(path.join(h.copyDir, "DevToolsActivePort"));
+    observer = await chromium.connectOverCDP(`http://127.0.0.1:${endpoint.port}`);
+    const page = observer.contexts()[0]!.pages().find((item) => item.url().includes("/owner/session"))!;
+    page.setDefaultTimeout(5000);
+    assert.equal(await page.locator("#bao-owner-wait").count(), 1);
+
+    front.length = 0;
+    reads.length = 0;
+    await page.goto(fixture.url("/owner/held-dashboard"), { waitUntil: "commit" });
+    await page.waitForFunction(() => document.title === "Dashboard" && document.readyState === "loading");
+    assert.equal(outcome(await proxy.execute("wait_for_owner", ["3000"], undefined, false, undefined, {}, runId)), "ready");
+    assert.equal(await page.evaluate(() => document.readyState), "loading", "the dashboard had not finished loading when the wait ended");
+    assert.equal(await page.evaluate(() => document.getElementById("bao-owner-wait") ? 1 : 0), 0);
+    assert.deepEqual(front, [], "ending the wait does not activate or raise");
+    assert.deepEqual(reads, [], "ending the wait does not read frames or the document");
+    fixture.releaseHeldDashboard();
+    await page.waitForFunction(() => document.readyState !== "loading");
+    assert.equal(await page.locator("h1").innerText(), "Dashboard");
+    assert.equal(await page.locator("#bao-owner-wait").count(), 0, "a load that finishes after the wait does not restore the banner");
+  } finally { await h.cleanup("copy", observer); }
+});
+
 test("finish_task reports a wait the timer ended once, not on the next browser call", { timeout: scaledMs(30_000) }, async (t) => {
   const h = await ownerProxy(t);
   const { proxy, fixture } = h;

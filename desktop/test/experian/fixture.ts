@@ -17,6 +17,13 @@ const buttons = traps.map((label) => label === "Unfreeze"
 export async function startExperianFixture(t: TestContext, options: { loopbackHttp?: boolean } = {}) {
   const certificate = selfSignedCert(EXPERIAN_FIXTURE_HOSTS);
   const requests: { host: string; path: string }[] = [];
+  let releaseHeldDashboard = (): void => {};
+  const heldDashboard = new Promise<void>((resolve) => {
+    releaseHeldDashboard = () => {
+      releaseHeldDashboard = () => {};
+      resolve();
+    };
+  });
   const handler: RequestListener = (req, res) => {
     const host = (req.headers.host || "").split(":")[0];
     const url = new URL(req.url || "/", "https://fixture");
@@ -28,6 +35,14 @@ export async function startExperianFixture(t: TestContext, options: { loopbackHt
     if (url.pathname === "/owner/start") {
       res.writeHead(302, { location: url.searchParams.get("check") === "captcha" ? "/owner/check" : "/owner/sign-in" });
       res.end();
+    } else if (url.pathname === "/owner/held-dashboard") {
+      res.socket?.setNoDelay(true);
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+      res.write("<!doctype html><html><head><meta charset=\"utf-8\"><title>Dashboard</title></head><body><main><h1>Dashboard</h1>");
+      void heldDashboard.then(() => {
+        if (res.destroyed || res.writableEnded) return;
+        res.end("</main></body></html>");
+      });
     } else if (url.pathname === "/owner/session") {
       req.resume();
       const failed = req.method === "POST" ? "<p>That password did not match.</p>" : "";
@@ -109,12 +124,16 @@ export async function startExperianFixture(t: TestContext, options: { loopbackHt
   const server = options.loopbackHttp ? createServer(handler) : createSecureServer({ key: certificate.key, cert: certificate.cert }, handler);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   holdServer(t, server);
+  t.after(() => releaseHeldDashboard());
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("missing fixture port");
   return {
     port: address.port, spki: certificate.spki, hosts: EXPERIAN_FIXTURE_HOSTS,
     url: (pathname = "/member", host = "usa.experian.com") => options.loopbackHttp ? `http://127.0.0.1:${address.port}${pathname}` : `https://${host}${pathname}`,
-    requests,
-    close: () => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())),
+    requests, releaseHeldDashboard,
+    close: () => {
+      releaseHeldDashboard();
+      return new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    },
   };
 }
