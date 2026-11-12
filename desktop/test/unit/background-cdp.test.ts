@@ -7,6 +7,7 @@ import test from "node:test";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { connectCdp } from "../../src/cdp-live/socket";
 import { keepBehind, openBackgroundCdp } from "../../src/engines/background-cdp";
+import { BackgroundTabSelect, backgroundTabLaunchArgs } from "../../src/engines/background-tab";
 import { launchOwnedChromeEndpoint, pinTestBrowser } from "../../src/launch";
 import { scaledMs } from "../runtime";
 
@@ -98,6 +99,82 @@ test("the agent's endpoint keeps Chrome behind, gives each page focus, and hides
   } finally {
     socket.close();
     direct.close();
+    background.close();
+    await chrome.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a swallowed tab switch selects a background tab and does not forward the raising commands", { timeout: scaledMs(60_000) }, async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-background-tab-"));
+  const chrome = await launchOwnedChromeEndpoint({
+    userDataDir: path.join(root, "chrome"), headless: true, background: "window", args: backgroundTabLaunchArgs(),
+  });
+  const endpoint = await readDevToolsActivePort(chrome.portFile);
+  const select = new BackgroundTabSelect(endpoint);
+  const background = await openBackgroundCdp(endpoint, (targetId) => select.select(targetId));
+  const direct = await connectCdp(endpoint.port, endpoint.browserPath);
+  const socket = new WebSocket(`ws://127.0.0.1:${background.endpoint.port}${background.endpoint.browserPath}`);
+  const opened = new Promise<void>((resolve, reject) => {
+    socket.addEventListener("open", () => resolve(), { once: true });
+    socket.addEventListener("error", () => reject(new Error("agent socket failed")), { once: true });
+  });
+  const received: { id?: number; result?: Record<string, unknown> }[] = [];
+  const waiting = new Map<number, (message: { result?: Record<string, unknown>; error?: unknown }) => void>();
+  let id = 0;
+  socket.addEventListener("message", (event) => {
+    const message = JSON.parse(String(event.data)) as { id?: number; result?: Record<string, unknown>; error?: unknown };
+    received.push(message);
+    if (message.id !== undefined) waiting.get(message.id)?.(message);
+  });
+  const send = (method: string, params: Record<string, unknown> = {}, sessionId?: string) => new Promise<Record<string, unknown>>((resolve, reject) => {
+    const next = ++id;
+    waiting.set(next, (message) => message.error ? reject(new Error(JSON.stringify(message.error))) : resolve(message.result!));
+    socket.send(JSON.stringify({ id: next, method, params, ...sessionId ? { sessionId } : {} }));
+  });
+  const state = async (targetId: string) => {
+    const { sessionId } = await direct.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true });
+    const read = await direct.send<{ result: { value: string } }>("Runtime.evaluate", {
+      expression: "document.visibilityState", returnByValue: true,
+    }, sessionId);
+    await direct.send("Target.detachFromTarget", { sessionId }).catch(() => undefined);
+    return read.result.value;
+  };
+  const ticks = async (targetId: string) => {
+    const { sessionId } = await direct.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true });
+    const read = await direct.send<{ result: { value: number } }>("Runtime.evaluate", {
+      expression: "new Promise(r=>{const a=n;setTimeout(()=>r(n-a),1000)})", awaitPromise: true, returnByValue: true,
+    }, sessionId, 5_000);
+    await direct.send("Target.detachFromTarget", { sessionId }).catch(() => undefined);
+    return read.result.value;
+  };
+  try {
+    await select.ready();
+    await opened;
+    const hiddenUrl = "data:text/html,<title>hidden</title><script>let n=0;setInterval(()=>n++,16)</script>";
+    const { targetInfos } = await direct.send<{ targetInfos: { targetId: string; type: string }[] }>("Target.getTargets");
+    const shown = targetInfos.find((target) => target.type === "page")?.targetId;
+    assert.ok(shown, "the launch opens one window");
+    const { targetId: hidden } = await direct.send<{ targetId: string }>("Target.createTarget", { url: hiddenUrl, background: true });
+    assert.equal(await state(hidden), "hidden", "a background tab is not the selected tab");
+    const before = await ticks(hidden);
+    assert.ok(before <= 25, `a background tab is throttled, got ${before} ticks`);
+    const activated = await send("Target.activateTarget", { targetId: hidden });
+    assert.deepEqual(activated, {});
+    assert.equal(received.filter((message) => message.id === id).length, 1, "the raising command is answered once, not forwarded");
+    assert.equal(await state(hidden), "visible", "the switch selects the tab in its window");
+    const after = await ticks(hidden);
+    assert.ok(after >= 40, `a selected tab keeps its timers running, got ${after} ticks`);
+    const { sessionId } = await send("Target.attachToTarget", { targetId: shown, flatten: true }) as { sessionId: string };
+    const brought = await send("Page.bringToFront", {}, sessionId);
+    assert.deepEqual(brought, {});
+    assert.equal(received.filter((message) => message.id === id).length, 1, "bringToFront is answered once, not forwarded");
+    assert.equal(await state(shown), "visible", "a session switch selects that tab too");
+    assert.equal(await state(hidden), "hidden");
+  } finally {
+    socket.close();
+    direct.close();
+    select.close();
     background.close();
     await chrome.close();
     await rm(root, { recursive: true, force: true });

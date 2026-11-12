@@ -25,6 +25,7 @@ import { targetBox } from "../v1/caption";
 import { diffView, findView, snapshotView } from "./snapshot-view";
 import { AGENT_DISCONNECTED, AGENT_IDLE_REASON, NEWER_TASK_REASON } from "../v1/stop-copy";
 import { openBackgroundCdp, type BackgroundCdp } from "./background-cdp";
+import { BackgroundTabSelect } from "./background-tab";
 
 export const AGENT_BROWSER_COMMANDS = ["open", "snapshot", "click", "fill", "press", "scroll", "tab", "screenshot", "wait_for_owner", "close"] as const;
 export type AgentBrowserCommand = typeof AGENT_BROWSER_COMMANDS[number];
@@ -213,10 +214,21 @@ async function windowOnTop(cdp: CdpSocket, targetId: string): Promise<boolean> {
   return true;
 }
 
-async function behind(chrome: OwnedChrome): Promise<{ chrome: OwnedChrome; background: BackgroundCdp }> {
+async function behind(chrome: OwnedChrome, selectTabs = false): Promise<{ chrome: OwnedChrome; background: BackgroundCdp }> {
+  let select: BackgroundTabSelect | undefined;
   try {
-    return { chrome, background: await openBackgroundCdp(await readDevToolsActivePort(chrome.target.portFile)) };
+    const endpoint = await readDevToolsActivePort(chrome.target.portFile);
+    const tabs = selectTabs ? new BackgroundTabSelect(endpoint) : undefined;
+    select = tabs;
+    if (tabs) await tabs.ready();
+    const background = await openBackgroundCdp(endpoint, tabs && ((targetId) => tabs.select(targetId)));
+    if (tabs) {
+      const close = background.close.bind(background);
+      background.close = () => { tabs.close(); close(); };
+    }
+    return { chrome, background };
   } catch (error) {
+    select?.close();
     await chrome.close();
     throw error;
   }
@@ -833,7 +845,7 @@ export class AgentBrowserProxy {
       case "copy": {
         const chrome = await openCopiedChromeForProxy({ sourceRoot: plan.profile.root, directory: plan.profile.directory, home: this.options.home,
           detached: this.options.keepOpen?.() === true });
-        return { kind: "copy", ...await behind(chrome), targetId: chrome.targetId, pick: { route: "copy", why, chrome: resolveNormalChrome(), profile: plan.profile, userDataDir: path.dirname(chrome.target.portFile) } };
+        return { kind: "copy", ...await behind(chrome, true), targetId: chrome.targetId, pick: { route: "copy", why, chrome: resolveNormalChrome(), profile: plan.profile, userDataDir: path.dirname(chrome.target.portFile) } };
       }
     }
   }
