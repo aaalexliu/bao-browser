@@ -90,7 +90,12 @@ test("ended agent sessions show their reason and stay out of Needs you", () => {
   assert.match(html, /data-open-run="milk"[\s\S]*?>Add milk</);
   assert.match(html, /data-open-run="milk"[\s\S]*?Failed<\/span><span class="run-agent">Agent said: The item was sold out\./);
   assert.match(html, /data-open-run="github"[\s\S]*?>github.com</);
-  assert.match(html, new RegExp(`data-open-run="github"[\\s\\S]*?${closed.replace(/[.]/g, "\\.")}`));
+  const github = html.match(/data-open-run="github"[\s\S]*?<\/button>/)?.[0] || "";
+  assert.match(github, new RegExp(closed.replace(/[.]/g, "\\.")));
+  assert.doesNotMatch(github, /Agent said/);
+  const idleRow = html.match(/data-open-run="idle"[\s\S]*?<\/button>/)?.[0] || "";
+  assert.match(idleRow, new RegExp(idle.replace(/[.]/g, "\\.")));
+  assert.doesNotMatch(idleRow, /Agent said/);
   assert.doesNotMatch(html, /session_closed|Bao stopped\. Open Chrome/);
   assert.match(html, new RegExp(idle.replace(/[.]/g, "\\.")));
   assert.doesNotMatch(html, /finish_task|wait_for_owner/);
@@ -302,6 +307,7 @@ test("Runs names agent sessions, shows the failure reason, and leaves ended sess
     assert.match(await page.locator('#runs [data-open-run="milk"] .run-meta').innerText(), /Failed\nAgent said: The item was sold out\./);
     assert.equal(await page.locator('#runs [data-open-run="github"] .run-name').innerText(), "github.com");
     assert.match(await page.locator('#runs [data-open-run="github"] .run-meta').innerText(), new RegExp(closed.replace(/[.]/g, "\\.")));
+    assert.doesNotMatch(await page.locator('#runs [data-open-run="github"] .run-meta').innerText(), /Agent said/);
     assert.doesNotMatch(await page.locator("#runs").innerText(), /session_closed|Bao stopped\. Open Chrome/);
     assert.equal(await page.locator('#runs [data-open-run="blank"] .run-name').innerText(), "Browser session");
     assert.equal(await page.locator('#runs [data-open-run="signin"] .run-name').first().innerText(), "instacart.com");

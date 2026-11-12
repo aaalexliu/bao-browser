@@ -370,7 +370,8 @@ test("Runs keeps current owner waits actionable and ended asks informational", {
       assert.equal((await page.locator("#run-receipt").innerText()).includes(("shown" in item && item.shown) || item.ask), true, "ended runs show the ask, in current words, as information");
       assert.equal(await page.locator(".receipt-handoff").count(), item.waiting ? 1 : 0, item.id);
       assert.equal((await page.locator("#run-receipt").innerText()).includes("Deadline:"), item.waiting, item.id);
-      assert.equal(await page.locator(".receipt-kicker .run-state").innerText(), item.waiting ? "needs you" : item.status === "timed-out" ? "stopped, timed out" : item.status);
+      const recordedWord = item.waiting ? "needs you" : item.status === "timed-out" ? "stopped, timed out" : item.status;
+      assert.equal(await page.locator(".receipt-recorded-status").innerText(), `Recorded as ${recordedWord}`);
       await page.getByText("Detailed evidence", { exact: true }).click();
       assert.equal(await page.locator("#run-viewer").isVisible(), true);
     }

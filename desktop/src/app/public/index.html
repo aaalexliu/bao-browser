@@ -415,7 +415,8 @@
     .run-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
     .run-row time { color: var(--quiet); font-size: var(--text-sm); font-variant-numeric: tabular-nums; align-self: center; white-space: nowrap; }
     .run-meta, .run-extra { grid-column: 2 / -1; color: var(--quiet); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
-    .run-pinned .run-meta:not(:has(.run-agent)) { font-size: var(--text-md); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+    .run-meta:not(:has(.run-agent)) { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+    .run-pinned .run-meta:not(:has(.run-agent)) { font-size: var(--text-md); }
     .run-meta:has(.run-agent) { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
     .run-agent { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; max-width: 100%; }
     .run-state { font-weight: 500; }

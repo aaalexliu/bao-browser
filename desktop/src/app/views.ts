@@ -23,7 +23,7 @@ import { tokenFields, type TokenInput } from "../v1/input-token";
 import { hasStrippedSecret } from "../../../shared/saved-secrets";
 import { hostAccessLabel, hostAccessMode } from "../../../extension/src/host-grant";
 import { visibleCopy } from "../v1/visible-copy";
-import { agentRunText, ownerStopMessage, ownerStopText } from "../v1/stop-copy";
+import { AGENT_CLOSED_ASK, AGENT_DISCONNECTED, AGENT_IDLE_REASON, AGENT_STEP_FAILED, AGENT_WAIT_ENDED, NEWER_TASK_REASON, agentRunText, ownerStopMessage, ownerStopText } from "../v1/stop-copy";
 import { readBackSentence, receiptOutline, type OutlineRun, type ReceiptChapter, type ReceiptOutline } from "./receipt-outline";
 import type { ConsoleLine, IdentityView, NetworkLine, SnapshotNode, StepView } from "./view-types";
 
@@ -1884,6 +1884,30 @@ function agentSessionBlocked(run: RunSummary): boolean {
   return (run.envelope?.status || run.status) === "failed";
 }
 
+const BAO_AUTHORED_REASON = new Set<string>([
+  AGENT_IDLE_REASON,
+  AGENT_CLOSED_ASK,
+  AGENT_DISCONNECTED,
+  AGENT_STEP_FAILED,
+  AGENT_WAIT_ENDED,
+  NEWER_TASK_REASON,
+  "Bao's task tab was closed",
+  "owner_signin",
+]);
+
+function agentReport(run: RunSummary): string | undefined {
+  if (!isAgentBrowserSession(run)) return undefined;
+  const reason = run.envelope?.reason?.trim();
+  if (!reason || BAO_AUTHORED_REASON.has(reason) || agentRunText(reason) !== reason) return undefined;
+  return reason;
+}
+
+function summaryFromAgent(run: RunSummary, spoken: string | undefined, detail: string | undefined): boolean {
+  const report = agentReport(run);
+  if (!report) return false;
+  return spoken ? spoken === report || spoken === agentRunText(report) : detail?.trim() === report;
+}
+
 function plainAgentReason(run: RunSummary): string | undefined {
   if (!agentSessionBlocked(run)) return undefined;
   const reason = run.envelope?.reason?.trim();
@@ -2000,8 +2024,7 @@ export function runsList(runs: RunSummary[], workflows: WorkflowSummary[], selec
     const spoken = plainAgentReason(run);
     const detail = spoken || (kind === "paused" ? reason : kind === "failed" ? stoppedAt || reason : kind === "healed" && heal ? heal.failedStep?.index === undefined ? "Review the repair." : `Step ${heal.failedStep.index + 1} moved.` : reason || runDuration(run));
     const shown = spoken || (detail ? ownerStopText(detail) : "");
-    const agentWords = spoken || (isAgentBrowserSession(run) ? run.envelope?.reason?.trim() : undefined);
-    const agentLine = agentWords && shown === agentWords ? `Agent said: ${shown}` : "";
+    const agentLine = summaryFromAgent(run, spoken, detail) && shown ? `Agent said: ${shown}` : "";
     const deadline = attentionLabel && kind === "paused" && ask && (openLive || ask.runId === run.id) ? ask.deadline : undefined;
     const promotion = healId ? selection.promotions?.find((item) => item.healId === healId && item.workflowId === run.workflowId) || (run.promotion?.healId === healId ? run.promotion : undefined) : undefined;
     const remaining = promotion?.status === "provisional" ? Math.max(0, (promotion.need ?? DEFAULT_PROMOTE_AFTER) - (promotion.replays ?? 0)) : 0;
@@ -2096,8 +2119,7 @@ const TASK_TAB_PICTURE = "The active tab could not be pictured, so Bao kept a pi
 const PLAIN_TASK_TAB_PICTURE = "The active tab could not be pictured, so Bao kept a picture of another tab.";
 
 function plainPictureNote(note: string): string {
-  if (note === TASK_TAB_PICTURE) return PLAIN_TASK_TAB_PICTURE;
-  return note.replace(/\btask tab\b/g, "another tab");
+  return note === TASK_TAB_PICTURE ? PLAIN_TASK_TAB_PICTURE : note;
 }
 
 function receiptStatusWord(status: string): string {

@@ -192,7 +192,9 @@ test("passed fills stay in order, including css targets and a repeated email", (
   });
   const listed = chapters(html);
   assert.match(listed, /Ada[\s\S]*London/);
-  assert.equal(listed.match(/Typed a hidden value into Email/g)?.length, 2);
+  assert.equal(listed.match(/Typed a hidden value into Email/g)?.length, 4);
+  assert.match(listed, /class="failed"/);
+  assert.doesNotMatch(listed, /Cleared Email/);
   assert.doesNotMatch(listed, /other@bad\.test|pending@fixture\.test|ada@fixture\.test|grace@fixture\.test/);
   const evidence = html.match(/<details><summary>Evidence<\/summary>[\s\S]*?<\/details>/g)?.join("\n") || "";
   assert.equal(evidence.match(/fill @email Hidden/g)?.length, 4);
@@ -306,6 +308,20 @@ test("a task-tab fallback is captioned as the other tab", () => {
   assert.match(html, /alt="The active tab could not be pictured, so Bao kept a picture of another tab\."/);
   assert.doesNotMatch(html, /task tab/);
   assert.doesNotMatch(html, /alt="Amore Pizza - Google Maps"|alt="Click Amore Pizza"/);
+  const titled = receipt({
+    status: "passed",
+    steps: [step({
+      label: "Click Save",
+      command: "click",
+      args: ["@save"],
+      title: "Review a task tab",
+      url: "https://fixture.test/task",
+      shot: "title.png",
+      shotNote: "Kept the picture titled Review a task tab.",
+    })],
+  });
+  assert.match(titled, /alt="Kept the picture titled Review a task tab\."/);
+  assert.match(titled, /Last recorded page: Review a task tab\./);
 });
 
 test("a replay inspector keeps the label and read-back past the first page", () => {
@@ -413,10 +429,76 @@ test("a short replay does not say it took 0 s, and agent words are labeled", () 
       envelope: { status: "passed", reason: "Added these 10 places: " + "Place Example Street, Springfield. ".repeat(12) },
       steps: [{ id: "step-1", status: "passed", startedAt: 2_000, endedAt: 3_000 }],
     },
+    {
+      id: "agent-field",
+      workflowId: "agent-browser",
+      kind: "capture",
+      pageEngine: "agent-browser",
+      status: "passed",
+      at: 3_000,
+      envelope: { status: "passed", reason: "Set first_name on the form." },
+      steps: [{ id: "step-1", status: "passed", startedAt: 3_000, endedAt: 4_000 }],
+    },
   ], []);
   assert.match(html, /under 1 s/);
   assert.doesNotMatch(html, /0 s/);
   assert.match(html, /class="run-state recorded">Recorded as passed<\/span> <span class="run-state failed">1 failed<\/span>/);
   assert.doesNotMatch(html, /class="run-state passed"|class="run-glyph passed"/);
   assert.match(html, /class="run-agent">Agent said: Added these 10 places/);
+  assert.match(html, /data-open-run="agent-field"[\s\S]*?class="run-agent">Agent said: Set Bao stopped\. Open Chrome to check the page before continuing\. on the form\./);
+});
+
+test("chapter rows follow the recorded command, including a failed fill and a typed Cleared", () => {
+  const sequence = receipt({
+    status: "passed",
+    steps: [
+      step({ label: "Open example.com", command: "open", args: ["https://example.com"], title: "Example", url: "https://example.com" }),
+      step({ label: "Read the page", command: "snapshot", title: "Example", url: "https://example.com" }),
+      step({ label: "Type into \"Name\"", command: "fill", args: ["@name", "Ada"], title: "Example", url: "https://example.com" }),
+      step({ label: "Press Enter", command: "press", args: ["Enter"], title: "Example", url: "https://example.com" }),
+      step({ label: "Click \"Save\"", command: "click", args: ["@save"], title: "Example", url: "https://example.com" }),
+    ],
+  });
+  const listed = chapters(sequence);
+  assert.match(listed, /Opened https:\/\/example\.com/);
+  assert.match(listed, /Typed &quot;Ada&quot; into Name/);
+  assert.match(listed, /Pressed &quot;Enter&quot;/);
+  assert.match(listed, /Clicked &quot;Save&quot;/);
+  assert.doesNotMatch(listed, /Clicked &quot;&quot;Save&quot;&quot;/);
+  assert.doesNotMatch(listed, /Read the page/);
+  assert.doesNotMatch(listed, /Opened Example/);
+
+  const failed = receipt({
+    status: "failed",
+    steps: [
+      step({ label: "Type into \"Name\"", command: "fill", args: ["@name", "Ada"], status: "failed", title: "Order", url: "https://fixture.test/order" }),
+      step({ label: "Type into \"Status\"", command: "fill", args: ["@status", "Cleared"], title: "Order", url: "https://fixture.test/order" }),
+      step({ label: "Type into \"Note\"", command: "fill", args: ["@note", ""], title: "Order", url: "https://fixture.test/order" }),
+    ],
+  });
+  const form = chapters(failed);
+  assert.match(failed, /class="receipt-recorded-status run-state failed">Recorded as failed/);
+  assert.match(form, /<li class="failed"><span>Typed &quot;Ada&quot; into Name<\/span><span class="receipt-status run-state failed">Failed<\/span>/);
+  assert.match(form, /Typed &quot;Cleared&quot; into Status/);
+  assert.match(form, /Cleared Note/);
+  assert.doesNotMatch(form, /Cleared Status/);
+  assert.doesNotMatch(form, /Opened /);
+
+  const read = receipt({
+    status: "passed",
+    steps: [step({ label: "Read the page", command: "snapshot", title: "Example", url: "https://example.com" })],
+  });
+  assert.match(chapters(read), /Read the page/);
+  assert.doesNotMatch(chapters(read), /Opened /);
+  const waited = receipt({
+    status: "passed",
+    steps: [step({ label: "Wait for you to sign in", command: "wait_for_owner", title: "Example", url: "https://example.com" })],
+  });
+  assert.match(chapters(waited), /Waited/);
+  assert.doesNotMatch(chapters(waited), /Opened /);
+  const moved = receipt({
+    status: "passed",
+    steps: [step({ label: "Navigate", command: "navigate", args: ["https://fixture.test/next"], title: "Next", url: "https://fixture.test/next" })],
+  });
+  assert.match(chapters(moved), /Opened https:\/\/fixture\.test\/next/);
 });

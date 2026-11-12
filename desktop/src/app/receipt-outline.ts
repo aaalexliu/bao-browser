@@ -104,8 +104,7 @@ function fieldLabel(step: OutlineStep): string {
   return label;
 }
 
-function fillValue(step: OutlineStep): string | undefined {
-  if (step.status !== "passed") return undefined;
+function fillArg(step: OutlineStep): string | undefined {
   if (command(step) !== "fill") return undefined;
   const value = step.native?.args?.[1];
   return typeof value === "string" ? value : undefined;
@@ -144,21 +143,42 @@ function selector(value: string): boolean {
   return /^[@#.]/.test(value) || /[\[\]>#]/.test(value);
 }
 
-function fillLine(field: ReceiptField): string {
-  if (field.value === "Cleared") return `Cleared ${field.label}`;
+function fillLine(field: ReceiptField, cleared: boolean): string {
+  if (cleared) return `Cleared ${field.label}`;
   if (field.masked) return `Typed a hidden value into ${field.label}`;
   return `Typed ${quoted(field.value)} into ${field.label}`;
 }
 
+function recordedName(value: string): string {
+  const trimmed = value.trim();
+  return trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"') ? trimmed.slice(1, -1).trim() : trimmed;
+}
+
 function clickLine(label: string, args: string[] = []): string {
-  const named = /^Click\s+(.+)$/.exec(label)?.[1];
+  const named = recordedName(/^Click\s+(.+)$/.exec(label)?.[1] || "");
   if (named && !selector(named)) return `Clicked ${quoted(named)}`;
   return /\blink\b/i.test(`${label} ${args.join(" ")}`) ? "Clicked a link" : "Clicked a button";
 }
 
+function openCommand(step: OutlineStep): boolean {
+  return command(step) === "open" || command(step) === "goto" || command(step) === "navigate";
+}
+
 function openedLine(step: OutlineStep, fallback: string): string {
-  const arg = command(step) === "open" ? step.native?.args?.[0]?.trim() : "";
+  const arg = openCommand(step) ? step.native?.args?.[0]?.trim() : "";
   return `Opened ${arg || pageTitle(step) || pageUrl(step) || fallback}`;
+}
+
+function pressLine(step: OutlineStep): string {
+  const key = (step.native?.args || []).map((arg) => recordedName(arg)).find((arg) => arg && !arg.startsWith("-") && !/^@e\d+$/.test(arg));
+  return key ? `Pressed ${quoted(key)}` : "Pressed a key";
+}
+
+function readOnlyLine(step: OutlineStep): string | undefined {
+  const cmd = command(step);
+  if (cmd === "snapshot" || cmd === "get") return "Read the page";
+  if (cmd === "wait" || cmd.startsWith("wait_")) return "Waited";
+  return undefined;
 }
 
 export function readBackSentence(item: { source?: string; expected?: string; actual?: string; pass?: boolean }, mode: "saw" | "compare"): string {
@@ -203,6 +223,10 @@ function isClick(step: OutlineStep): boolean {
   return command(step) === "click" || /^Click\b/.test(cleanLabel(step.label || ""));
 }
 
+interface DraftRow extends ReceiptRow {
+  readOnly?: boolean;
+}
+
 interface DraftChapter {
   url: string;
   title: string;
@@ -210,15 +234,42 @@ interface DraftChapter {
   end: number;
   fields: ReceiptField[];
   clicks: ReceiptClick[];
-  rows: ReceiptRow[];
+  rows: DraftRow[];
+}
+
+function actionRow(step: OutlineStep, title: string): { row: DraftRow; field?: ReceiptField; click?: ReceiptClick } {
+  const status = step.status || "unknown";
+  const value = fillArg(step);
+  if (value !== undefined) {
+    const field = shownField(step, value);
+    return {
+      row: { line: fillLine(field, value === ""), status },
+      field: status === "passed" ? field : undefined,
+    };
+  }
+  if (isClick(step)) {
+    const label = cleanLabel(step.label || "") || "Click";
+    return { row: { line: clickLine(label, step.native?.args), status }, click: { label, status } };
+  }
+  if (openCommand(step)) return { row: { line: openedLine(step, title), status } };
+  if (command(step) === "press") return { row: { line: pressLine(step), status } };
+  const readOnly = readOnlyLine(step);
+  if (readOnly) return { row: { line: readOnly, status, readOnly: true } };
+  return { row: { line: cleanLabel(step.label || "") || "Recorded step", status } };
+}
+
+function keepActionRows(chapter: DraftChapter): void {
+  if (chapter.rows.some((row) => !row.readOnly)) chapter.rows = chapter.rows.filter((row) => !row.readOnly);
 }
 
 function chaptersFor(steps: OutlineStep[]): ReceiptChapter[] {
   const chapters: DraftChapter[] = [];
   let current: DraftChapter | undefined;
+  const close = () => { if (current) keepActionRows(current); };
   steps.forEach((step, index) => {
     const url = pageUrl(step);
     if (url && url !== current?.url) {
+      close();
       current = { url, title: pageTitle(step) || url, start: index, end: index, fields: [], clicks: [], rows: [] };
       chapters.push(current);
     } else if (!current) {
@@ -228,23 +279,12 @@ function chaptersFor(steps: OutlineStep[]): ReceiptChapter[] {
       const title = pageTitle(step);
       if (title) current.title = title;
     }
-    const before = current.rows.length;
-    const value = fillValue(step);
-    if (value !== undefined) {
-      const field = shownField(step, value);
-      current.fields.push(field);
-      current.rows.push({ line: fillLine(field), status: "passed" });
-    }
-    if (isClick(step)) {
-      const label = cleanLabel(step.label || "") || "Click";
-      const status = step.status || "unknown";
-      current.clicks.push({ label, status });
-      current.rows.push({ line: clickLine(label, step.native?.args), status });
-    }
-    if (current.rows.length === before) {
-      current.rows.push({ line: openedLine(step, current.title), status: step.status || "unknown" });
-    }
+    const action = actionRow(step, current.title);
+    if (action.field) current.fields.push(action.field);
+    if (action.click) current.clicks.push(action.click);
+    current.rows.push(action.row);
   });
+  close();
   return withoutRepeatedSuffix(chapters.map((chapter) => ({
     title: chapter.title,
     url: chapter.url,
@@ -252,7 +292,7 @@ function chaptersFor(steps: OutlineStep[]): ReceiptChapter[] {
     end: chapter.end + 1,
     fields: chapter.fields,
     clicks: chapter.clicks,
-    rows: chapter.rows,
+    rows: chapter.rows.map((row) => ({ line: row.line, status: row.status })),
   })));
 }
 
