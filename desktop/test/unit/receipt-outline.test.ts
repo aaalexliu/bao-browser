@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { receiptOutline, type OutlineRun, type OutlineStep } from "../../src/app/receipt-outline";
-import { runReceipt } from "../../src/app/views";
+import { runReceipt, runsList } from "../../src/app/views";
 import { inspectRunView } from "../../src/mcp/run-view";
 import { Library } from "../../src/v1/store";
 
@@ -90,18 +90,25 @@ test("a pizza run shows its pages, clicks, and the agent's own words", () => {
   assert.equal(outline.shot?.label, "nytimes pizza - Google Maps");
   assert.equal(outline.passed, 10);
   assert.equal(outline.failed, 1);
-  assert.equal(outline.chapters.some((chapter) => chapter.title === "Amore Pizza - Google Maps" && chapter.clicks.some((click) => click.label.includes("Amore Pizza") && click.status === "passed")), true);
+  assert.equal(outline.chapters.some((chapter) => chapter.title === "Amore Pizza" && chapter.clicks.some((click) => click.label.includes("Amore Pizza") && click.status === "passed")), true);
+  assert.equal(outline.chapters.some((chapter) => chapter.title.endsWith("Google Maps") && chapter.title !== "Google Maps"), false);
   assert.equal(outline.chapters.some((chapter) => chapter.clicks.some((click) => click.label === "Click Ceres pizza" && click.status === "passed")), true);
   assert.equal(outline.open[0]?.label, "Click Saved");
   assert.equal(outline.open[0]?.status, "failed");
 
   const html = receipt(run);
   assert.match(html, /Last recorded page: nytimes pizza - Google Maps\./);
-  assert.match(html, /10 passed\. 1 failed\./);
+  assert.match(html, /10 passed\. <span class="run-state failed">1 failed<\/span>\./);
   assert.match(html, /Agent said[\s\S]*Created a list and verified it shows exactly 3 places\./);
   assert.match(html, /Agent listed[\s\S]*Added Ceres Mott St/);
-  assert.match(html, /Step 2, Click Saved, failed\./);
-  assert.match(chapters(html), /Click Ceres pizza/);
+  assert.match(html, /Step 2, Click Saved, <span class="run-state failed">failed<\/span>\./);
+  assert.match(chapters(html), /Clicked &quot;Ceres pizza&quot;/);
+  assert.match(chapters(html), /Typed &quot;nytimes pizza&quot; into the text field/);
+  assert.match(chapters(html), /Step 2/);
+  assert.doesNotMatch(chapters(html), /@e5|#|4–4|4-4/);
+  assert.match(html, /Recorded as passed/);
+  assert.match(html, /class="run-state failed">1 failed</);
+  assert.doesNotMatch(html, /class="run-state passed"/);
   assert.match(html, /alt="nytimes pizza - Google Maps"/);
   assert.doesNotMatch(html, /the agent claimed|not confirmed|Submitted|Confirmation was not captured|Submission was not observed|Saved draft/i);
   assert.doesNotMatch(html, /<h3 id="receipt-step-heading" class="section"/);
@@ -139,8 +146,9 @@ test("a form lists every passed fill in order and hides email", () => {
   assert.doesNotMatch(html, /submitted\.\./);
   assert.match(chapters(html), /old note[\s\S]*Cleared/);
   assert.doesNotMatch(chapters(html), /ada@fixture\.test|other@bad\.test|s3cret-value|Thank you for your help/);
-  assert.match(html, /<details><summary>Evidence<\/summary>[\s\S]*ada@fixture\.test/);
-  assert.match(html, /<details><summary>Evidence<\/summary>[\s\S]*s3cret-value/);
+  assert.match(html, /<details><summary>Evidence<\/summary>[\s\S]*fill @email Hidden/);
+  assert.match(html, /<details><summary>Evidence<\/summary>[\s\S]*fill @password Hidden/);
+  assert.doesNotMatch(html, /ada@fixture\.test|s3cret-value/);
   assert.doesNotMatch(html, /<h3>Submitted<\/h3>|Saved draft|Confirmation was not captured|Submission was not observed/);
 });
 
@@ -159,7 +167,7 @@ test("a ten-place run reads as the page's clicks", () => {
   assert.equal(outline.chapters[0]?.clicks[0]?.label, "Click Place 1 Example Street");
   assert.equal(outline.chapters[0]?.clicks[9]?.status, "passed");
   const html = receipt({ status: "passed", steps });
-  assert.equal(chapters(html).match(/Click Place \d+ Example Street/g)?.length, 10);
+  assert.equal(chapters(html).match(/Clicked &quot;Place \d+ Example Street&quot;/g)?.length, 10);
   assert.doesNotMatch(html, /not confirmed|selected|entries were|Submitted/);
   assert.doesNotMatch(receipt({
     status: "passed",
@@ -181,10 +189,11 @@ test("passed fills stay in order, including css targets and a repeated email", (
   });
   const listed = chapters(html);
   assert.match(listed, /Ada[\s\S]*London/);
-  assert.equal(listed.match(/>Hidden</g)?.length, 2);
+  assert.equal(listed.match(/Typed a hidden value into Email/g)?.length, 2);
   assert.doesNotMatch(listed, /other@bad\.test|pending@fixture\.test|ada@fixture\.test|grace@fixture\.test/);
   const evidence = html.match(/<details><summary>Evidence<\/summary>[\s\S]*?<\/details>/g)?.join("\n") || "";
-  assert.match(evidence, /ada@fixture\.test[\s\S]*grace@fixture\.test[\s\S]*other@bad\.test/);
+  assert.equal(evidence.match(/fill @email Hidden/g)?.length, 4);
+  assert.doesNotMatch(evidence, /ada@fixture\.test|grace@fixture\.test|other@bad\.test|pending@fixture\.test/);
   assert.doesNotMatch(listed, /other@bad\.test/);
 });
 
@@ -209,7 +218,8 @@ test("a fill with a trailing option uses the positional value", () => {
   assert.match(search, /Ada/);
   assert.match(search, /Hidden/);
   assert.doesNotMatch(search, /s3cret-value/);
-  assert.match(html, /<details><summary>Evidence<\/summary>[\s\S]*s3cret-value[\s\S]*--json/);
+  assert.match(html, /<details><summary>Evidence<\/summary>[\s\S]*fill @password Hidden --json/);
+  assert.doesNotMatch(html, /s3cret-value/);
 });
 
 test("the same control on two query pages stays two fields", () => {
@@ -270,9 +280,9 @@ test("a replay read-back is shown as a read-back", () => {
     receipts: [{ stepId: "step-1", source: "heading", expected: "Thank you. Order submitted", actual: "Thank you. Order submitted", pass: true }],
   };
   const outline = receiptOutline(run);
-  assert.deepEqual(outline.readBack, ["Read back heading: Thank you. Order submitted"]);
+  assert.deepEqual(outline.readBack, ["Read back from the page, heading: \"Thank you. Order submitted\""]);
   const outcome = receipt(run).match(/aria-label="Outcome"[\s\S]*?<\/section>/)?.[0] || "";
-  assert.match(outcome, /Read back heading: Thank you\. Order submitted/);
+  assert.match(outcome, /Read back from the page, heading: &quot;Thank you\. Order submitted&quot;/);
   assert.doesNotMatch(outcome, /No page title or confirmation was recorded|Submitted/);
 });
 
@@ -290,7 +300,8 @@ test("a task-tab fallback is captioned as the other tab", () => {
   assert.equal(outline.shot?.label, note);
   const html = receipt(run);
   assert.match(html, /Last recorded page: Amore Pizza - Google Maps\./);
-  assert.match(html, /alt="The active tab could not be pictured, so Bao kept a picture of its task tab\."/);
+  assert.match(html, /alt="The active tab could not be pictured, so Bao kept a picture of another tab\."/);
+  assert.doesNotMatch(html, /task tab/);
   assert.doesNotMatch(html, /alt="Amore Pizza - Google Maps"|alt="Click Amore Pizza"/);
 });
 
@@ -333,7 +344,70 @@ test("a replay inspector keeps the label and read-back past the first page", () 
     receipts: [{ stepId: "step-21", source: "heading", expected: "Done", actual: "Done", pass: true }],
   }, workflowSteps);
   assert.match(html, /<strong>Open the last report<\/strong>/);
-  assert.match(html, /Read back heading: expected Done, saw Done\. matches\./);
+  assert.match(html, /Read back from the page, heading: expected &quot;Done&quot;, saw &quot;Done&quot;\. It matches\./);
+  assert.doesNotMatch(html, /submitted\. matches\./);
   assert.match(html, /data-search="[^"]*Open the last report/);
   assert.doesNotMatch(html, /Next steps|Previous steps/);
+  assert.doesNotMatch(html, /<h3>Chapters<\/h3>/);
+});
+
+test("a replay with a recorded page shows that page as a chapter", () => {
+  const html = receipt({
+    id: "replay-page",
+    status: "passed",
+    steps: [
+      step({ label: "Open the confirmation", command: "click", args: ["@confirm"], title: "Thank you - Order", url: "https://fixture.test/thanks", at: 1_000 }),
+    ],
+  });
+  assert.match(html, /<h3>Chapters<\/h3>/);
+  assert.match(html, /Thank you - Order/);
+  assert.match(html, /Clicked &quot;Open the confirmation&quot;/);
+  assert.match(html, /Step 1/);
+});
+
+test("ten distinct place pages drop the repeated site suffix and name the step", () => {
+  const steps = Array.from({ length: 10 }, (_, index) => {
+    const name = `Place ${index + 1} Example Street`;
+    return [
+      step({ label: "Type", command: "fill", args: ["@search", name], title: "Google Maps", url: "https://www.google.com/maps" }),
+      step({ label: `Click ${name}`, command: "click", args: [`@e${index + 1}`], title: `${name} - Google Maps`, url: `https://www.google.com/maps/place/${index + 1}` }),
+    ];
+  }).flat();
+  const html = receipt({ status: "passed", steps });
+  const listed = chapters(html);
+  assert.equal(listed.match(/Steps \d+-\d+|Step \d+/g)?.length, 20);
+  assert.match(listed, /Step 1/);
+  assert.doesNotMatch(listed, /\d+-\d+|\d+–\d+/);
+  assert.doesNotMatch(listed, /- Google Maps/);
+  assert.match(listed, /Place 10 Example Street/);
+  assert.match(listed, /Typed &quot;Place 1 Example Street&quot; into the text field/);
+  assert.match(listed, /Clicked &quot;Place 1 Example Street&quot;/);
+  assert.doesNotMatch(listed, /@search|@e1/);
+});
+
+test("a short replay does not say it took 0 s, and agent words are labeled", () => {
+  const html = runsList([
+    {
+      id: "replay-short",
+      workflowId: "bill",
+      status: "passed",
+      kind: "replay",
+      at: 1_000,
+      steps: [{ id: "step-1", status: "passed", startedAt: 1_000, endedAt: 1_200 }],
+    },
+    {
+      id: "agent-long",
+      workflowId: "agent-browser",
+      kind: "capture",
+      pageEngine: "agent-browser",
+      status: "passed",
+      at: 2_000,
+      task: "Add ten places",
+      envelope: { status: "passed", reason: "Added these 10 places: " + "Place Example Street, Springfield. ".repeat(12) },
+      steps: [{ id: "step-1", status: "passed", startedAt: 2_000, endedAt: 3_000 }],
+    },
+  ], []);
+  assert.match(html, /under 1 s/);
+  assert.doesNotMatch(html, /0 s/);
+  assert.match(html, /class="run-agent">Agent said: Added these 10 places/);
 });

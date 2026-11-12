@@ -24,7 +24,7 @@ import { hasStrippedSecret } from "../../../shared/saved-secrets";
 import { hostAccessLabel, hostAccessMode } from "../../../extension/src/host-grant";
 import { visibleCopy } from "../v1/visible-copy";
 import { agentRunText, ownerStopMessage, ownerStopText } from "../v1/stop-copy";
-import { receiptOutline, type OutlineRun, type ReceiptOutline } from "./receipt-outline";
+import { readBackSentence, receiptOutline, type OutlineRun, type ReceiptChapter, type ReceiptOutline } from "./receipt-outline";
 import type { ConsoleLine, IdentityView, NetworkLine, SnapshotNode, StepView } from "./view-types";
 
 /** Chromium app mode uses the document title as the window title. */
@@ -1962,8 +1962,10 @@ function runDuration(run: RunSummary): string {
   const start = run.steps?.[0]?.startedAt;
   const end = run.steps?.at(-1)?.endedAt;
   if (typeof start !== "number" || !Number.isFinite(start) || typeof end !== "number" || !Number.isFinite(end)) return "";
-  const seconds = Math.round((end - start) / 1000);
-  if (seconds < 0) return "";
+  const ms = end - start;
+  if (ms < 0) return "";
+  if (ms < 1000) return ms === 0 ? "" : "under 1 s";
+  const seconds = Math.round(ms / 1000);
   if (seconds < 60) return `${seconds} s`;
   const minutes = Math.floor(seconds / 60);
   return `${minutes} min${seconds % 60 ? ` ${seconds % 60} s` : ""}`;
@@ -1998,15 +2000,17 @@ export function runsList(runs: RunSummary[], workflows: WorkflowSummary[], selec
     const spoken = plainAgentReason(run);
     const detail = spoken || (kind === "paused" ? reason : kind === "failed" ? stoppedAt || reason : kind === "healed" && heal ? heal.failedStep?.index === undefined ? "Review the repair." : `Step ${heal.failedStep.index + 1} moved.` : reason || runDuration(run));
     const shown = spoken || (detail ? ownerStopText(detail) : "");
+    const agentWords = spoken || (isAgentBrowserSession(run) ? run.envelope?.reason?.trim() : undefined);
+    const agentLine = agentWords && shown === agentWords ? `Agent said: ${shown}` : "";
     const deadline = attentionLabel && kind === "paused" && ask && (openLive || ask.runId === run.id) ? ask.deadline : undefined;
     const promotion = healId ? selection.promotions?.find((item) => item.healId === healId && item.workflowId === run.workflowId) || (run.promotion?.healId === healId ? run.promotion : undefined) : undefined;
     const remaining = promotion?.status === "provisional" ? Math.max(0, (promotion.need ?? DEFAULT_PROMOTE_AFTER) - (promotion.replays ?? 0)) : 0;
     const extra = attentionLabel && kind === "failed" && stoppedAt ? reason : typeof deadline === "number" ? runWaitLeft(deadline, now) : attentionLabel && kind === "paused" && run.envelope?.deadline ? `Waits until ${run.envelope.deadline}` : remaining ? `Kept after ${remaining} more clean run${remaining === 1 ? "" : "s"}` : "";
-    const description = `${label}${shown ? ` · ${shown}` : ""}`;
+    const description = `${label}${shown ? ` · ${agentLine || shown}` : ""}`;
     return `<li><button type="button" class="run-row${attentionLabel ? " run-pinned" : ""}${selected ? " selected" : ""}" ${healId ? `data-heal="${esc(healId)}" data-run="${esc(run.id)}"` : openLive ? `data-open-run="${esc(run.id)}" data-screen="live"` : `data-open-run="${esc(run.id)}"`} aria-label="${esc(name)}" aria-description="${esc(description)} · ${esc(when)}"${selected ? ` aria-current="true"` : ""}>
       <span class="run-glyph ${esc(kind)}" aria-hidden="true">${runStatusGlyph(kind)}</span>
       <span class="run-name" title="${esc(name)}">${esc(name)}</span><time${at === undefined ? "" : ` title="${esc(formatClock(at))}"`}>${esc(when)}</time>
-      <span class="run-meta"><span class="run-state ${esc(kind)}">${esc(label)}</span>${shown ? ` · ${esc(shown)}` : ""}</span>
+      <span class="run-meta"><span class="run-state ${esc(kind)}">${esc(label)}</span>${agentLine ? `<span class="run-agent">${esc(agentLine)}</span>` : shown ? ` · ${esc(shown)}` : ""}</span>
       ${extra ? `<span class="run-extra"${typeof deadline === "number" ? ` data-run-deadline="${esc(deadline)}"` : ""}>${esc(ownerStopText(extra))}</span>` : ""}
     </button></li>`;
   };
@@ -2083,12 +2087,32 @@ function keepStreet(text: string): string {
 }
 
 
+const TASK_TAB_PICTURE = "The active tab could not be pictured, so Bao kept a picture of its task tab.";
+const PLAIN_TASK_TAB_PICTURE = "The active tab could not be pictured, so Bao kept a picture of another tab.";
+
+function plainPictureNote(note: string): string {
+  if (note === TASK_TAB_PICTURE) return PLAIN_TASK_TAB_PICTURE;
+  return note.replace(/\btask tab\b/g, "another tab");
+}
+
+function receiptStatusWord(status: string): string {
+  if (status === "passed") return "Passed";
+  if (status === "failed") return "Failed";
+  return status;
+}
+
+function receiptStatusHtml(status: string): string {
+  const failed = status === "failed";
+  return `<span class="receipt-status${failed ? " run-state failed" : ""}">${esc(receiptStatusWord(status))}</span>`;
+}
+
 function receiptShotHtml(runId: string, outline: ReceiptOutline): string {
   const shot = outline.shot;
   if (!shot) return "";
   const src = imageRef(runId, shot.file);
   if (!src) return "";
-  return `<div class="receipt-shots"><figure><img src="${src}" alt="${esc(keepStreet(shot.label))}"><figcaption>${esc(keepStreet(shot.label))}</figcaption></figure></div>`;
+  const label = plainPictureNote(shot.label);
+  return `<div class="receipt-shots"><figure><img src="${src}" alt="${esc(keepStreet(label))}"><figcaption>${esc(keepStreet(label))}</figcaption></figure></div>`;
 }
 
 function receiptPageSentence(title: string): string {
@@ -2097,28 +2121,33 @@ function receiptPageSentence(title: string): string {
 }
 
 function receiptOutcomeHtml(outline: ReceiptOutline): string {
-  const lines = [
-    outline.pageTitle ? `Last recorded page: ${receiptPageSentence(outline.pageTitle)}` : "",
-    outline.passed || outline.failed ? `${outline.passed} passed. ${outline.failed} failed.` : "",
-    ...outline.readBack,
-  ].filter(Boolean);
-  return lines.map((line) => `<p class="receipt-recorded">${esc(keepStreet(line))}</p>`).join("");
+  const page = outline.pageTitle ? `<p class="receipt-recorded">${esc(keepStreet(`Last recorded page: ${receiptPageSentence(outline.pageTitle)}`))}</p>` : "";
+  const failed = outline.failed ? `<span class="run-state failed">${outline.failed} failed</span>` : `${outline.failed} failed`;
+  const count = outline.passed || outline.failed ? `<p class="receipt-recorded">${outline.passed} passed. ${failed}.</p>` : "";
+  const read = outline.readBack.map((line) => `<p class="receipt-recorded">${esc(keepStreet(line))}</p>`).join("");
+  return `${page}${count}${read}`;
 }
 
 function receiptAgentHtml(run: RunSummary, outline: ReceiptOutline): string {
   const said = outline.claim ? `<h3>Agent said</h3><p class="receipt-claim">${esc(keepStreet(outline.claim))}</p>` : "";
   const listed = outline.listed.length ? `<h3>Agent listed</h3><ul class="receipt-listed">${outline.listed.map((item) => `<li>${esc(keepStreet(item))}</li>`).join("")}</ul>` : "";
-  const open = outline.open.length ? `<h3>Steps not passed</h3><ul class="receipt-listed">${outline.open.map((item) => `<li>Step ${item.step}, ${esc(item.label)}, ${esc(receiptStepStatus(item.status, item.id, run))}.</li>`).join("")}</ul>` : "";
+  const open = outline.open.length ? `<h3>Steps not passed</h3><ul class="receipt-listed">${outline.open.map((item) => {
+    const word = receiptStepStatus(item.status, item.id, run);
+    const shown = word === "failed" ? `<span class="run-state failed">failed</span>` : esc(word);
+    return `<li>Step ${item.step}, ${esc(item.label)}, ${shown}.</li>`;
+  }).join("")}</ul>` : "";
   return said || listed || open ? `<section class="receipt-agent" aria-label="Agent report">${said}${listed}${open}</section>` : "";
+}
+
+function chapterRange(chapter: ReceiptChapter): string {
+  return chapter.start === chapter.end ? `Step ${chapter.start}` : `Steps ${chapter.start}-${chapter.end}`;
 }
 
 function receiptChaptersHtml(outline: ReceiptOutline): string {
   if (!outline.chapters.length) return "";
   const rows = outline.chapters.map((chapter) => {
-    const fields = chapter.fields.map((field) => `<li><span>${esc(field.label)}</span><span>${esc(keepStreet(field.value))}</span></li>`).join("");
-    const clicks = chapter.clicks.map((click) => `<li><span>${esc(keepStreet(click.label))}</span><span>${esc(click.status)}</span></li>`).join("");
-    const items = fields || clicks ? `<ul class="receipt-items">${fields}${clicks}</ul>` : "";
-    return `<section class="receipt-chapter"><button type="button" data-receipt-from="${chapter.start}" data-receipt-to="${chapter.end}"><span>${esc(chapter.title)}</span><span>${chapter.start}–${chapter.end}</span></button>${items}</section>`;
+    const items = chapter.rows.length ? `<ul class="receipt-items">${chapter.rows.map((row) => `<li${row.status === "failed" ? " class=\"failed\"" : ""}><span>${esc(keepStreet(row.line))}</span>${receiptStatusHtml(row.status)}</li>`).join("")}</ul>` : "";
+    return `<section class="receipt-chapter"><button type="button" data-receipt-from="${chapter.start}" data-receipt-to="${chapter.end}"><span class="receipt-chapter-title">${esc(chapter.title)}</span><span class="receipt-range">${chapterRange(chapter)}</span></button>${items}</section>`;
   }).join("");
   return `<section class="receipt-chapters" aria-label="Chapters"><h3>Chapters</h3>${rows}</section>`;
 }
@@ -2146,8 +2175,7 @@ function workflowStepLabel(steps: ReceiptWorkflowStep[] | undefined, id: string 
 
 function receiptReadBack(run: RunSummary, stepId: string | undefined): string | undefined {
   if (!stepId) return undefined;
-  const lines = (run.receipts || []).filter((item) => item.stepId === stepId).map((item) =>
-    `Read back ${item.source || "value"}: expected ${item.expected || ""}, saw ${item.actual || ""}. ${item.pass ? "matches" : "does not match"}.`);
+  const lines = (run.receipts || []).filter((item) => item.stepId === stepId).map((item) => readBackSentence(item, "compare"));
   return lines.length ? lines.join("\n") : undefined;
 }
 
@@ -2171,14 +2199,15 @@ function receiptInspector(view: ReturnType<typeof inspectRunView>, run: RunSumma
     const command = [native?.command, ...args, timing, duration].filter(Boolean).join(" · ");
     const search = [label, native?.command, ...args, status, receiptReadBack(run, step.id)].filter(Boolean).join(" ");
     const shot = imageRef(run.id, step.afterShot);
-    const shotNote = step.shotNote?.trim();
+    const shotNote = step.shotNote?.trim() ? plainPictureNote(step.shotNote.trim()) : "";
     const shotAlt = shotNote || label;
     const shotHtml = shot ? shotNote ? `<figure><img src="${shot}" alt="${esc(shotAlt)}"><figcaption>${esc(shotNote)}</figcaption></figure>` : `<img src="${shot}" alt="${esc(label)}">` : "";
     const stderr = (native?.results || []).map((result) => result.stderr?.replace(/^[✗✓]\s*/, "").trim()).find(Boolean);
+    const evidenceLine = [native?.command, ...args].filter(Boolean).join(" ");
     const evidence = command || shot || stderr
-      ? `<details><summary>Evidence</summary>${command ? `<p class="receipt-command">${esc(native?.command || "")} ${esc((native?.args || []).join(" "))}</p>` : ""}${stderr ? `<p>${esc(stderr)}</p>` : ""}${shotHtml}</details>`
+      ? `<details><summary>Evidence</summary>${evidenceLine ? `<p class="receipt-command">${esc(evidenceLine)}</p>` : ""}${stderr ? `<p>${esc(stderr)}</p>` : ""}${shotHtml}</details>`
       : "";
-    return `<li id="receipt-step-${index + 1}" value="${index + 1}" data-step="${index + 1}" data-search="${esc(search)}"><div><strong>${esc(label)}</strong><span class="run-state">${esc(status)}</span></div>${reason ? `<p>${esc(ownerStopText(reason))}</p>` : ""}${command ? `<p class="receipt-command">${esc(command)}</p>` : ""}${evidence}</li>`;
+    return `<li id="receipt-step-${index + 1}" value="${index + 1}" data-step="${index + 1}" data-search="${esc(search)}"${status === "failed" ? " class=\"failed\"" : ""}><div><strong>${esc(label)}</strong>${receiptStatusHtml(status)}</div>${reason ? `<p>${esc(ownerStopText(reason))}</p>` : ""}${command ? `<p class="receipt-command">${esc(command)}</p>` : ""}${evidence}</li>`;
   }).join("");
   return `<h3 id="receipt-step-heading" tabindex="-1">Command inspector</h3><input id="receipt-search" type="search" aria-label="Search commands" placeholder="Search commands, targets, and values"><ol class="receipt-steps" start="1">${rows}</ol>`;
 }
@@ -2192,7 +2221,8 @@ export function runReceipt(view: ReturnType<typeof inspectRunView>, name: string
   const outline = receiptOutline(run as OutlineRun);
   const unlabeled = view.reason || run.failure?.reason || "";
   const skipUnlabeled = Boolean(outline.claim);
-  return `<section id="run-receipt" aria-label="Run receipt"><p class="receipt-kicker"><span class="run-state ${esc(kind)}">${esc(statusLabel(kind))}</span> · ${esc(at)}</p><h2>${esc(name)}</h2>
+  const recordedKind = kind === "failed" || kind === "timed-out" ? kind : "";
+  return `<section id="run-receipt" aria-label="Run receipt"><p class="receipt-kicker"><span class="receipt-recorded-status${recordedKind ? ` run-state ${esc(recordedKind)}` : ""}">Recorded as ${esc(statusLabel(kind))}</span> · ${esc(at)}</p><h2>${esc(name)}</h2>
     <p class="receipt-meta">${view.run.stepCount} step${view.run.stepCount === 1 ? "" : "s"}${calls === null ? "" : ` · ${calls} model call${calls === 1 ? "" : "s"}`}</p>
     ${receiptBrowsers(run)}
     ${spoken ? `<p class="receipt-reason">${esc(spoken)}</p>` : ask ? runWaiting(run) ? `<aside class="receipt-handoff"><h3>Needs you</h3><p>${esc(ownerStopText(ask))}</p>${view.handoff?.deadline ? `<p>Deadline: ${esc(view.handoff.deadline)}</p>` : ""}</aside>` : `<h3>${esc(statusLabel(kind))}</h3><p class="receipt-reason">${esc(ownerStopText(ask))}</p>` : ""}

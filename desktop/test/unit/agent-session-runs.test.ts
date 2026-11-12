@@ -88,7 +88,7 @@ test("ended agent sessions show their reason and stay out of Needs you", () => {
   assert.match(html, /ul aria-label="Needs you"[\s\S]*data-open-run="bill"/);
   assert.doesNotMatch(html.split('aria-label="Today"')[0] || "", /data-open-run="milk"|data-open-run="github"|data-open-run="idle"/);
   assert.match(html, /data-open-run="milk"[\s\S]*?>Add milk</);
-  assert.match(html, /data-open-run="milk"[\s\S]*?Failed · The item was sold out\./);
+  assert.match(html, /data-open-run="milk"[\s\S]*?Failed<\/span><span class="run-agent">Agent said: The item was sold out\./);
   assert.match(html, /data-open-run="github"[\s\S]*?>github.com</);
   assert.match(html, new RegExp(`data-open-run="github"[\\s\\S]*?${closed.replace(/[.]/g, "\\.")}`));
   assert.doesNotMatch(html, /session_closed|Bao stopped\. Open Chrome/);
@@ -136,13 +136,13 @@ test("an ended agent session receipt names its steps in words and marks the cut-
     const receiptFor = (id: string) => runReceipt(inspectRunView(library, { run_id: id }), "Browser session", read(id));
     const waited = receiptFor(recorded.id);
     assert.match(waited, new RegExp(closed.replace(/[.]/g, "\\.")));
-    assert.match(waited, /<strong>Open github\.com\/login<\/strong><span class="run-state">passed</);
-    assert.match(waited, /<strong>Wait for you to sign in<\/strong><span class="run-state">failed<\/span><\/div><p>The session ended before you finished\.</);
+    assert.match(waited, /<strong>Open github\.com\/login<\/strong><span class="receipt-status">Passed</);
+    assert.match(waited, /<strong>Wait for you to sign in<\/strong><span class="receipt-status run-state failed">Failed<\/span><\/div><p>The session ended before you finished\.</);
     const oldIdle = receiptFor("old-idle");
     assert.match(oldIdle, new RegExp(idle.replace(/[.]/g, "\\.")));
-    assert.match(oldIdle, /<strong>Click Add to cart<\/strong><span class="run-state">failed<\/span><\/div><p>The browser could not do this step\.</);
-    assert.match(oldIdle, /<strong>Wait for you to sign in<\/strong><span class="run-state">did not finish</);
-    assert.match(oldIdle, /<strong>Read the page<\/strong><span class="run-state">not reached</);
+    assert.match(oldIdle, /<strong>Click Add to cart<\/strong><span class="receipt-status run-state failed">Failed<\/span><\/div><p>The browser could not do this step\.</);
+    assert.match(oldIdle, /<strong>Wait for you to sign in<\/strong><span class="receipt-status">did not finish</);
+    assert.match(oldIdle, /<strong>Read the page<\/strong><span class="receipt-status">not reached</);
     const oldClosed = receiptFor("old-closed");
     assert.match(oldClosed, new RegExp(closed.replace(/[.]/g, "\\.")));
     const rows = runsList([read("old-idle"), read("old-closed")], [], "", 3);
@@ -173,7 +173,7 @@ test("an ended agent session receipt names its steps in words and marks the cut-
     assert.doesNotMatch(droppedEvidence, /agent-browser client disconnected/);
     const live = new AgentBrowserRun(root);
     live.begin("snapshot", []);
-    assert.match(receiptFor(live.id), /<strong>Read the page<\/strong><span class="run-state">pending</);
+    assert.match(receiptFor(live.id), /<strong>Read the page<\/strong><span class="receipt-status">pending</);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -299,7 +299,7 @@ test("Runs names agent sessions, shows the failure reason, and leaves ended sess
     assert.equal(await page.locator('#runs [data-open-run="milk"]').count(), 1);
     assert.equal(await page.locator('#runs [data-open-run="github"]').count(), 1);
     assert.equal(await page.locator('#runs [data-open-run="milk"] .run-name').innerText(), "Add milk");
-    assert.match(await page.locator('#runs [data-open-run="milk"] .run-meta').innerText(), /Failed · The item was sold out\./);
+    assert.match(await page.locator('#runs [data-open-run="milk"] .run-meta').innerText(), /Failed\nAgent said: The item was sold out\./);
     assert.equal(await page.locator('#runs [data-open-run="github"] .run-name').innerText(), "github.com");
     assert.match(await page.locator('#runs [data-open-run="github"] .run-meta').innerText(), new RegExp(closed.replace(/[.]/g, "\\.")));
     assert.doesNotMatch(await page.locator("#runs").innerText(), /session_closed|Bao stopped\. Open Chrome/);

@@ -44,6 +44,11 @@ export interface ReceiptClick {
   status: string;
 }
 
+export interface ReceiptRow {
+  line: string;
+  status: string;
+}
+
 export interface ReceiptChapter {
   title: string;
   url: string;
@@ -51,6 +56,7 @@ export interface ReceiptChapter {
   end: number;
   fields: ReceiptField[];
   clicks: ReceiptClick[];
+  rows: ReceiptRow[];
 }
 
 export interface ReceiptShot {
@@ -130,6 +136,61 @@ function shownField(step: OutlineStep, value: string): ReceiptField {
   return { label, value, masked: false };
 }
 
+function quoted(value: string): string {
+  return `"${value}"`;
+}
+
+function selector(value: string): boolean {
+  return /^[@#.]/.test(value) || /[\[\]>#]/.test(value);
+}
+
+function fillLine(field: ReceiptField): string {
+  if (field.value === "Cleared") return `Cleared ${field.label}`;
+  if (field.masked) return `Typed a hidden value into ${field.label}`;
+  return `Typed ${quoted(field.value)} into ${field.label}`;
+}
+
+function clickLine(label: string): string {
+  const named = /^Click\s+(.+)$/.exec(label)?.[1];
+  const target = named ?? (label === "Click" ? "" : label);
+  if (!target || selector(target)) return "Clicked";
+  return `Clicked ${quoted(target)}`;
+}
+
+export function readBackSentence(item: { source?: string; expected?: string; actual?: string; pass?: boolean }, mode: "saw" | "compare"): string {
+  const source = item.source?.trim();
+  const where = source ? `Read back from the page, ${source}` : "Read back from the page";
+  if (mode === "saw") return `${where}: ${quoted(item.actual?.trim() || "")}`;
+  const verdict = item.pass ? "It matches" : "It does not match";
+  return `${where}: expected ${quoted(item.expected || "")}, saw ${quoted(item.actual || "")}. ${verdict}.`;
+}
+
+function siteSuffix(title: string): string | undefined {
+  const cut = title.lastIndexOf(" - ");
+  if (cut <= 0) return undefined;
+  const suffix = title.slice(cut + 3).trim();
+  return suffix || undefined;
+}
+
+function withoutRepeatedSuffix(chapters: ReceiptChapter[]): ReceiptChapter[] {
+  const counts = new Map<string, number>();
+  for (const chapter of chapters) {
+    const suffix = siteSuffix(chapter.title);
+    if (suffix) counts.set(suffix, (counts.get(suffix) || 0) + 1);
+  }
+  let repeated: string | undefined;
+  for (const [suffix, count] of counts) {
+    if (count >= 2 && (repeated === undefined || count > (counts.get(repeated) || 0))) repeated = suffix;
+  }
+  if (!repeated) return chapters;
+  const tail = ` - ${repeated}`;
+  return chapters.map((chapter) => {
+    if (!chapter.title.endsWith(tail)) return chapter;
+    const title = chapter.title.slice(0, -tail.length).trim();
+    return title ? { ...chapter, title } : chapter;
+  });
+}
+
 function shotFile(step: OutlineStep): string | undefined {
   return step.afterShot && /^[\w.-]+\.(png|jpe?g)$/.test(step.afterShot) ? step.afterShot : undefined;
 }
@@ -145,6 +206,7 @@ interface DraftChapter {
   end: number;
   fields: ReceiptField[];
   clicks: ReceiptClick[];
+  rows: ReceiptRow[];
 }
 
 function chaptersFor(steps: OutlineStep[]): ReceiptChapter[] {
@@ -153,7 +215,7 @@ function chaptersFor(steps: OutlineStep[]): ReceiptChapter[] {
   steps.forEach((step, index) => {
     const url = pageUrl(step);
     if (url && url !== current?.url) {
-      current = { url, title: pageTitle(step) || url, start: index, end: index, fields: [], clicks: [] };
+      current = { url, title: pageTitle(step) || url, start: index, end: index, fields: [], clicks: [], rows: [] };
       chapters.push(current);
     } else if (!current) {
       return;
@@ -163,17 +225,27 @@ function chaptersFor(steps: OutlineStep[]): ReceiptChapter[] {
       if (title) current.title = title;
     }
     const value = fillValue(step);
-    if (value !== undefined) current.fields.push(shownField(step, value));
-    if (isClick(step)) current.clicks.push({ label: cleanLabel(step.label || "") || "Click", status: step.status || "unknown" });
+    if (value !== undefined) {
+      const field = shownField(step, value);
+      current.fields.push(field);
+      current.rows.push({ line: fillLine(field), status: "passed" });
+    }
+    if (isClick(step)) {
+      const label = cleanLabel(step.label || "") || "Click";
+      const status = step.status || "unknown";
+      current.clicks.push({ label, status });
+      current.rows.push({ line: clickLine(label), status });
+    }
   });
-  return chapters.map((chapter) => ({
+  return withoutRepeatedSuffix(chapters.map((chapter) => ({
     title: chapter.title,
     url: chapter.url,
     start: chapter.start + 1,
     end: chapter.end + 1,
     fields: chapter.fields,
     clicks: chapter.clicks,
-  }));
+    rows: chapter.rows,
+  })));
 }
 
 function lastPageShot(steps: OutlineStep[]): { title?: string; shot?: ReceiptShot } {
@@ -196,9 +268,8 @@ function lastPageShot(steps: OutlineStep[]): { title?: string; shot?: ReceiptSho
 function readBackLines(run: OutlineRun): string[] {
   const lines: string[] = [];
   for (const item of run.receipts || []) {
-    const saw = item.actual?.trim();
-    if (!saw) continue;
-    lines.push(`Read back ${item.source || "value"}: ${saw}`);
+    if (!item.actual?.trim()) continue;
+    lines.push(readBackSentence(item, "saw"));
   }
   return lines;
 }
