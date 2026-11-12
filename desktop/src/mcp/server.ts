@@ -175,6 +175,7 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
   // End proxy ownership immediately; queued catalog work can outlast cleanup.
   // After stdin closes, catalog work finishes and saves with no cap.
   // SIGTERM, SIGINT, and SIGHUP cap that wait at 15 s, even mid-run.
+  // A tab video still encoding at that cap keeps running after exit and attaches when it finishes.
   const end = (): void => {
     if (ending) return;
     ending = true;
@@ -189,11 +190,15 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
       });
   };
   const stop = (): void => {
+    // Tests set BAO_HOST_STOP_MS. A normal session leaves it unset and keeps the 15 second cap.
+    const rawCap = process.env.BAO_HOST_STOP_MS;
+    const parsedCap = rawCap === undefined ? 15_000 : Number(rawCap);
+    const cap = Number.isSafeInteger(parsedCap) && parsedCap >= 0 ? parsedCap : 15_000;
     setTimeout(() => {
       try { abandonVideoOnHostStop(); }
       catch (error) { process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`); }
       process.exit(0);
-    }, 15_000).unref();
+    }, cap).unref();
     end();
   };
   const versionPoll = setInterval(() => {

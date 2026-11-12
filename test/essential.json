@@ -43,8 +43,10 @@
       "desktop/test/unit/experian-proxy.test.ts",
       "desktop/test/unit/process-list.test.ts",
       "desktop/test/unit/running-chrome-background.test.ts",
-      "desktop/test/unit/running-chrome.test.ts"
-    ]
+      "desktop/test/unit/running-chrome.test.ts",
+      "desktop/test/unit/video-host-stop.test.ts"
+    ],
+    "ffmpeg": true
   },
   "storage": {
     "kind": "desktop",
