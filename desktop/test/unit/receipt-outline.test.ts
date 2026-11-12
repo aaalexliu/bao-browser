@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { receiptOutline, type OutlineRun, type OutlineStep } from "../../src/app/receipt-outline";
-import { runReceipt, runsList } from "../../src/app/views";
+import { runReceipt, runsList, runStatusGlyph, type RunSummary } from "../../src/app/views";
 import { inspectRunView } from "../../src/mcp/run-view";
 import { Library } from "../../src/v1/store";
 
@@ -64,6 +64,63 @@ function receipt(run: OutlineRun): string {
 function chapters(html: string): string {
   return html.match(/aria-label="Chapters"[\s\S]*?<h3 id="receipt-step-heading"/)?.[0] || "";
 }
+
+for (const [verb, expected] of [
+  ["list", "Listed tabs"],
+  ["new", "Opened a new tab"],
+  ["close", "Closed a tab"],
+  ["2", "Switched tab"],
+] as const) {
+  test(`receipt tab ${verb} overrides stale labels in chapters and inspector`, () => {
+    const run: OutlineRun = { steps: [step({ label: "Switch tab", command: "tab", args: [verb, "--json"], title: "Tabs", url: "https://fixture.test/tabs" })] };
+    assert.deepEqual(receiptOutline(run).chapters[0]?.rows, [{ line: expected, status: "passed" }]);
+    const html = receipt(run);
+    assert.ok(chapters(html).includes(expected));
+    assert.ok(html.includes(`<strong>${expected}</strong>`));
+    assert.ok(html.includes(`tab · ${verb} · --json`));
+    assert.doesNotMatch(html, /Switch tab/);
+    const failed = receipt({ steps: [step({ label: "Switch tab", status: "failed", command: "tab", args: [verb] })] });
+    assert.ok(failed.includes(`Step 1, ${expected},`));
+    assert.doesNotMatch(failed, /Switch tab/);
+  });
+}
+
+for (const [args, expected, wrong] of [
+  [["--json", "close", "t2"], "Closed a tab", "Listed tabs"],
+  [["--json", "new"], "Opened a new tab", "Listed tabs"],
+  [["--quiet", "list"], "Listed tabs", "Switched tab"],
+  [["--session", "name", "close", "t2"], "Closed a tab", "Switched tab"],
+  [["--json", "true", "close", "t2"], "Closed a tab", "Listed tabs"],
+] as const) {
+  test(`receipt tab ${args.join(" ")} names the verb after flags`, () => {
+    const recorded = [...args];
+    const run: OutlineRun = { steps: [step({ label: "Switch tab", command: "tab", args: recorded, title: "Tabs", url: "https://fixture.test/tabs" })] };
+    assert.deepEqual(receiptOutline(run).chapters[0]?.rows, [{ line: expected, status: "passed" }]);
+    const html = receipt(run);
+    assert.ok(chapters(html).includes(expected));
+    assert.ok(html.includes(`<strong>${expected}</strong>`));
+    assert.ok(html.includes(`tab · ${recorded.join(" · ")}`));
+    assert.equal(html.includes(wrong), false);
+    assert.doesNotMatch(html, /Switch tab/);
+    const failed = receipt({ steps: [step({ label: "Switch tab", status: "failed", command: "tab", args: recorded })] });
+    assert.ok(failed.includes(`Step 1, ${expected},`));
+    assert.equal(failed.includes(wrong), false);
+    assert.doesNotMatch(failed, /Switch tab/);
+  });
+}
+
+test("recorded run icons stay neutral unless a step failed", () => {
+  const run: RunSummary = { id: "tabs", workflowId: "agent-browser", kind: "capture", pageEngine: "agent-browser", status: "passed" };
+  const neutral = runsList([{ ...run, steps: [{ id: "list", status: "passed" }] }], []);
+  assert.ok(neutral.includes(`<span class="run-glyph recorded" aria-hidden="true">${runStatusGlyph("recorded")}</span>`));
+  assert.notEqual(runStatusGlyph("recorded"), runStatusGlyph("passed"));
+  for (const selected of ["", "tabs"]) {
+    const failed = runsList([{ ...run, steps: [{ id: "close", status: "failed" }, { id: "list", status: "passed" }] }], [], selected);
+    assert.ok(failed.includes(`<span class="run-glyph failed" aria-hidden="true">${runStatusGlyph("failed")}</span>`));
+    assert.match(failed, /Recorded as passed/);
+    assert.match(failed, /1 failed/);
+  }
+});
 
 test("a pizza run shows its pages, clicks, and the agent's own words", () => {
   const run: OutlineRun = {

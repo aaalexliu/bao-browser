@@ -129,7 +129,7 @@ export class AgentBrowserRun {
   }
 
   begin(command: string, args: string[]): RecordedAgentBrowserCommand {
-    const spoken = commandSentence(command, args[0], this.lastSnapshot || latestSnapshot(this.run.steps));
+    const spoken = commandSentence(command, args, this.lastSnapshot || latestSnapshot(this.run.steps));
     const caption: StepCaption = { text: spoken.text, ...(spoken.citation ? { citation: spoken.citation } : {}) };
     const step: RecordedAgentBrowserCommand = {
       id: `command-${this.run.steps.length + 1}`,

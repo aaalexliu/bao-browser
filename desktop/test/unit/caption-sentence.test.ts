@@ -24,6 +24,36 @@ test("a type sentence cites the field name from the snapshot", () => {
   assert.equal(combo.citation?.text, "Search issues");
 });
 
+for (const [verb, expected] of [
+  ["list", "Listed tabs"],
+  ["new", "Opened a new tab"],
+  ["close", "Closed a tab"],
+  ["2", "Switched tab"],
+] as const) {
+  test(`tab ${verb} names its recorded verb`, () => {
+    assert.deepEqual(commandSentence("tab", verb, undefined), { text: expected });
+  });
+}
+
+test("tab without a verb lists tabs", () => {
+  assert.equal(commandSentence("tab", undefined, undefined).text, "Listed tabs");
+  assert.equal(commandSentence("tab", "--json", undefined).text, "Listed tabs");
+  assert.equal(commandSentence("tab", [], undefined).text, "Listed tabs");
+});
+
+for (const [args, expected, wrong] of [
+  [["--json", "close", "t2"], "Closed a tab", "Listed tabs"],
+  [["--json", "new"], "Opened a new tab", "Listed tabs"],
+  [["--quiet", "list"], "Listed tabs", "Switched tab"],
+  [["--session", "name", "close", "t2"], "Closed a tab", "Switched tab"],
+  [["--json", "true", "close", "t2"], "Closed a tab", "Listed tabs"],
+] as const) {
+  test(`tab ${args.join(" ")} names the verb after flags`, () => {
+    assert.equal(commandSentence("tab", args, undefined).text, expected);
+    assert.notEqual(commandSentence("tab", args, undefined).text, wrong);
+  });
+}
+
 test("open uses the host and path", () => {
   assert.equal(commandSentence("open", "https://github.com/aaalexliu/bao-browser", undefined).text, "Open github.com/aaalexliu/bao-browser");
 });

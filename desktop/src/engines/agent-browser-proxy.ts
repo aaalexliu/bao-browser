@@ -24,6 +24,7 @@ import { OWNER_WAIT_LIMIT_MS, ownerWall, ownerWallOnAddress, ownerCanResume, own
 import { pageWall } from "../cdp-live/page-wall";
 import { BROWSER_CHOICES, DEFAULT_BROWSER } from "../browser-choice";
 import { targetBox } from "../v1/caption";
+import { GLOBAL_BOOL_FLAGS, GLOBAL_VALUE_FLAGS, stripGlobalFlags, tabCommandAction } from "../v1/tab-command";
 import { diffView, findView, snapshotView } from "./snapshot-view";
 import { AGENT_DISCONNECTED, AGENT_IDLE_REASON, NEWER_TASK_REASON } from "../v1/stop-copy";
 import { openBackgroundCdp, type BackgroundCdp } from "./background-cdp";
@@ -156,39 +157,6 @@ interface SessionData {
   daemonStarted?: boolean;
 }
 
-/** Global flags pinned agent-browser 0.41.0 strips before it reads a command. A tab reference hidden behind one of them is still that command. */
-const GLOBAL_BOOL_FLAGS = new Set([
-  "--json", "--headed", "--webgpu", "--no-webmcp", "--debug", "--ignore-https-errors", "--allow-file-access", "--hide-scrollbars",
-  "--auto-connect", "--pin-tab", "--no-pin-tab", "--no-ca-cert", "--use-system-ca", "--annotate", "--content-boundaries", "--confirm-interactive",
-  "--no-auto-dialog", "-v", "--verbose", "-q", "--quiet", "--offline", "--quick", "--fix",
-]);
-const GLOBAL_VALUE_FLAGS = new Set([
-  "--session", "--restore-save", "--restore-check-url", "--restore-check-text", "--restore-check-fn", "--namespace", "--headers", "--executable-path",
-  "--cdp", "--extension", "--init-script", "--enable", "--profile", "--state", "--proxy", "--proxy-bypass", "--args", "--user-agent", "-p", "--provider",
-  "--device", "--session-name", "--color-scheme", "--download-path", "--max-output", "--allowed-domains", "--action-policy", "--confirm-actions", "--config",
-  "--engine", "--input-mode", "--screenshot-dir", "--screenshot-quality", "--screenshot-format", "--idle-timeout", "--ca-cert", "--model",
-]);
-/** The tab words left after pinned agent-browser 0.41.0 removes global flags, plus whether that command asked for JSON. */
-function stripGlobalFlags(args: readonly string[]): { args: string[]; json: boolean } {
-  const cleaned: string[] = [];
-  let json = false;
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i]!;
-    if (arg.startsWith("--restore=")) continue;
-    if (GLOBAL_VALUE_FLAGS.has(arg)) { i += 1; continue; }
-    if (arg === "--restore") continue;
-    if (GLOBAL_BOOL_FLAGS.has(arg)) {
-      const next = args[i + 1];
-      const valued = next === "true" || next === "false";
-      if (arg === "--json") json = valued ? next === "true" : true;
-      if (valued) i += 1;
-      continue;
-    }
-    cleaned.push(arg);
-  }
-  return { args: cleaned, json };
-}
-
 interface ParsedTab { action: "list" | "new" | "close" | "switch"; ref?: string; json: boolean; flags: string[]; forwarded: string[] }
 
 /** Global flags pinned agent-browser 0.41.0 accepts on any command, in the caller's order, including each flag's value. */
@@ -235,7 +203,7 @@ function tabNewWords(cleaned: readonly string[]): string[] {
 function parseTabArgs(args: readonly string[]): ParsedTab {
   const { args: cleaned, json } = stripGlobalFlags(args);
   const head = cleaned[0];
-  const action = head === undefined || head === "list" ? "list" : head === "new" ? "new" : head === "close" ? "close" : "switch";
+  const action = tabCommandAction(args);
   const flags = acceptedCliFlags(args);
   const closeRef = action === "close" && cleaned.length > 1 ? cleaned[1] : undefined;
   const ref = action === "switch" ? head : closeRef;

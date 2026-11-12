@@ -23,6 +23,7 @@ import { tokenFields, type TokenInput } from "../v1/input-token";
 import { hasStrippedSecret } from "../../../shared/saved-secrets";
 import { hostAccessLabel, hostAccessMode } from "../../../extension/src/host-grant";
 import { visibleCopy } from "../v1/visible-copy";
+import { tabSentence } from "../v1/caption";
 import { AGENT_CLOSED_ASK, AGENT_DISCONNECTED, AGENT_IDLE_REASON, AGENT_STEP_FAILED, AGENT_WAIT_ENDED, NEWER_TASK_REASON, agentRunText, ownerStopMessage, ownerStopText } from "../v1/stop-copy";
 import { readBackSentence, receiptOutline, type OutlineRun, type ReceiptChapter, type ReceiptOutline } from "./receipt-outline";
 import type { ConsoleLine, IdentityView, NetworkLine, SnapshotNode, StepView } from "./view-types";
@@ -1975,7 +1976,8 @@ export function runStatusGlyph(kind: string): string {
   const mark = kind === "paused" || kind === "waiting-for-sign-in" ? '<path d="M5.4 4.4v5.2M8.6 4.4v5.2"/>'
     : kind === "healed" ? '<path d="M7 3.9v6.2M3.9 7h6.2"/>'
     : ["failed", "timed-out"].includes(kind) ? '<path d="m4.6 4.6 4.8 4.8M9.4 4.6 4.6 9.4"/>'
-    : kind === "passed" || kind === "recorded" ? '<path d="m4 7.2 2 2 4-4.4"/>'
+    : kind === "recorded" ? '<path d="M4.5 5.2h5M4.5 7h5M4.5 8.8H8"/>'
+    : kind === "passed" ? '<path d="m4 7.2 2 2 4-4.4"/>'
     : '<path d="M7 3.8V7l2.2 1.4"/>';
   if (kind === "warning") return `<svg viewBox="0 0 14 14" aria-hidden="true"><path d="M6.13 1.5a1 1 0 0 1 1.74 0l5.6 9.95a1 1 0 0 1-.87 1.5H1.4a1 1 0 0 1-.87-1.5Z" fill="currentColor"/><path class="run-glyph-mark" d="M7 5v3.2"/><circle cx="7" cy="10.4" r=".9" fill="var(--glyph-mark)"/></svg>`;
   if (kind === "provisional") return `<svg viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="6.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7 .8a6.2 6.2 0 0 1 0 12.4Z" fill="currentColor"/></svg>`;
@@ -2034,11 +2036,12 @@ export function runsList(runs: RunSummary[], workflows: WorkflowSummary[], selec
     const recorded = kind === "passed" && !attentionLabel;
     const failedSteps = recorded ? (run.steps || []).filter((step) => step.status === "failed").length : 0;
     const statusKind = recorded ? "recorded" : kind;
+    const glyphKind = run.steps?.some((step) => step.status === "failed") ? "failed" : statusKind;
     const statusText = recorded ? "Recorded as passed" : label;
     const failedNote = failedSteps ? ` <span class="run-state failed">${failedSteps} failed</span>` : "";
     const description = `${recorded ? `Recorded as passed${failedSteps ? `, ${failedSteps} failed` : ""}` : label}${shown ? ` · ${agentLine || shown}` : ""}`;
     return `<li><button type="button" class="run-row${attentionLabel ? " run-pinned" : ""}${selected ? " selected" : ""}" ${healId ? `data-heal="${esc(healId)}" data-run="${esc(run.id)}"` : openLive ? `data-open-run="${esc(run.id)}" data-screen="live"` : `data-open-run="${esc(run.id)}"`} aria-label="${esc(name)}" aria-description="${esc(description)} · ${esc(when)}"${selected ? ` aria-current="true"` : ""}>
-      <span class="run-glyph ${esc(statusKind)}" aria-hidden="true">${runStatusGlyph(statusKind)}</span>
+      <span class="run-glyph ${esc(glyphKind)}" aria-hidden="true">${runStatusGlyph(glyphKind)}</span>
       <span class="run-name" title="${esc(name)}">${esc(name)}</span><time${at === undefined ? "" : ` title="${esc(formatClock(at))}"`}>${esc(when)}</time>
       <span class="run-meta"><span class="run-state ${esc(statusKind)}">${esc(statusText)}</span>${failedNote}${agentLine ? `<span class="run-agent">${esc(agentLine)}</span>` : shown ? ` · ${esc(shown)}` : ""}</span>
       ${extra ? `<span class="run-extra"${typeof deadline === "number" ? ` data-run-deadline="${esc(deadline)}"` : ""}>${esc(ownerStopText(extra))}</span>` : ""}
@@ -2215,7 +2218,7 @@ function receiptInspector(view: ReturnType<typeof inspectRunView>, run: RunSumma
   const source: InspectorStep[] = stored.length ? stored : view.steps.map((step) => ({ id: step.id, status: step.status, label: step.label, reason: step.reason }));
   const rows = source.map((step, index) => {
     const viewed = step.id ? labels.get(step.id) : view.steps[index];
-    const label = workflowStepLabel(workflowSteps, step.id) || step.label || step.caption?.text || viewed?.label || (run.kind === "capture" ? step.native?.command : undefined) || step.id || "Step";
+    const label = step.native?.command === "tab" ? tabSentence(step.native?.args) : workflowStepLabel(workflowSteps, step.id) || step.label || step.caption?.text || viewed?.label || (run.kind === "capture" ? step.native?.command : undefined) || step.id || "Step";
     const status = receiptStepStatus(step.status || viewed?.status || "unknown", step.id, run);
     const reason = step.reason || receiptReadBack(run, step.id) || viewed?.result;
     const native = step.native;
