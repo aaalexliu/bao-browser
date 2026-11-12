@@ -194,7 +194,7 @@ When the agent's task tab opens two popups before Bao looks, keepTab follows onl
 
 A popup opened from an owner tab the agent switched to stays open and is not marked, because Bao cannot tell that popup from one the owner opened in his own tab.
 
-A page that opens a new tab, such as a `target=_blank` link, can still bring Chrome forward: Chrome does that itself, not through the agent's commands. The installed Chrome on macOS does not, until the owner first clicks its window, for example during a handoff. A Chrome that Bao starts directly rather than through LaunchServices, which is the test browser on macOS, always can.
+A page that opens a new tab, such as a `target=_blank` link, can still bring Chrome forward: Chrome does that itself, not through the agent's commands. The installed Chrome on macOS does not, until the owner first clicks its window. A copy handoff is not that click; [Keep Bao's Chrome behind](#keep-baos-chrome-behind) owns it. A Chrome that Bao starts directly rather than through LaunchServices, which is the test browser on macOS, always can.
 
 Running Chrome through the Bao extension is gated off. Set `"runningChromeExtension": true` in the Library's `settings.json` to use it instead of remote debugging; no screen offers it. [Running Chrome](extension.md#running-chrome) describes that route. It runs in the Chrome profile where the extension is linked and takes no `profile`.
 
