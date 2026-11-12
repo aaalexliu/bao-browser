@@ -240,7 +240,7 @@ test("setup asks for Files & Folders > Bao > Google Chrome only when Bao cannot 
   } finally { chmodSync(chromeRoot, 0o700); }
 });
 
-test("doctor says whether Bao can read Chrome's folder and names the switch when it cannot", async (t) => {
+test("doctor says whether Bao can read Chrome's folder and names the blocked app when it cannot", async (t) => {
   const { probe, app, launcher } = lab(t);
   writeFileSync(launcher, `#!/bin/sh\nread line\nprintf '%s\\n' '{"jsonrpc":"2.0","id":1,"result":{}}'\nread line\nread line\nprintf '%s\\n' '{"jsonrpc":"2.0","id":2,"result":{"tools":[]}}'\n`);
   const chromeRoot = path.join(probe.home, "Chrome");
@@ -253,7 +253,9 @@ test("doctor says whether Bao can read Chrome's folder and names the switch when
   try {
     const refused = await check();
     assert.equal(refused?.level, "warn");
-    assert.match(refused?.detail ?? "", /^macOS did not let Bao read Google Chrome's folder \(EACCES on .+\/Chrome\)\. Turn on System Settings > Privacy & Security > Files & Folders > Bao > Google Chrome, then try again\. If it is already on, turn it off and on again/);
+    assert.match(refused?.detail ?? "", /^macOS blocked Bao from reading Chrome's data \(EACCES on .+\/Chrome\)\./);
+    assert.doesNotMatch(refused?.detail ?? "", /Turn on System Settings/);
+
   } finally { chmodSync(chromeRoot, 0o700); }
   assert.equal(await doctorChecks(app, { ...probe, env, chromeRoot: path.join(probe.home, "absent") }).then((rows) => rows.find((row) => row.name === "chrome folder")), undefined);
 });

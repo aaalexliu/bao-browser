@@ -124,7 +124,7 @@ test("a run_workflow that fails while choosing a profile names the route and fol
   try {
     await chmod(root, 0o000);
     const denied = await runWorkflow(library, { id: "hello", browser: "copy", profile: "Default", why: "named by the agent" });
-    assert.match(denied.reason ?? "", /macOS did not let Bao read Google Chrome's folder/);
+    assert.match(denied.reason ?? "", /macOS blocked the app that started Bao from reading Chrome's data/);
     assert.equal(denied.browser?.[0], tried("Chrome copy", "Default"));
   } finally {
     await chmod(root, 0o700);
@@ -179,7 +179,7 @@ test("a saved workflow runs in Bao's profile with Chrome's folder refused, and a
     try {
       assert.equal(session.kind, "owned");
       const report = session.kind === "owned" ? await session.importLogin?.("https://example.test/", true) : undefined;
-      assert.match(report?.error ?? "", new RegExp(`^macOS did not let Bao read Google Chrome's folder \\(EACCES on ${root}\\)\\.`));
+      assert.match(report?.error ?? "", new RegExp(`^macOS blocked the app that started Bao from reading Chrome's data \\(EACCES on ${root}\\)\\.`));
     } finally { await session.close(); }
   } finally {
     await chmod(root, 0o700);

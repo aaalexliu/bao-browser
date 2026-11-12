@@ -14,7 +14,7 @@ import { killCommandToken, LAUNCH_SERVICES_RESTART, launchServicesStalled, proce
 import { chromeHelper, CHROME_BUNDLE, helperBin, INSPECT_URL, logAx, type ChromeAx } from "./ax";
 import { REMOTE_CHECKBOX } from "./consent";
 import type { AxNode } from "../proxy/os-macos";
-import { listenPid, readDevToolsActivePort, type DevToolsEndpoint } from "./endpoint";
+import { endpointFromVersion, listenPid, listenPorts, probeDevToolsVersion, readDevToolsActivePort, type DevToolsEndpoint, type VersionProbe } from "./endpoint";
 import { CHROME_APP_EXE, dailyChromePids } from "./remote-debugging";
 import { joinOrStartHold } from "./chrome-hold";
 import { shareConnection } from "./shared-connection";
@@ -30,6 +30,10 @@ interface CurrentChromeDeps {
   executable: (pid: number) => string;
   readPort: typeof readDevToolsActivePort;
   listener: typeof listenPid;
+  /** Loopback ports this Chrome pid listens on. Used when the port file cannot be read. */
+  listenPorts: typeof listenPorts;
+  /** HTTP GET /json/version. Undefined when the port does not answer. Never a WebSocket. */
+  probeVersion: (port: number) => Promise<VersionProbe | undefined>;
   connect: typeof connectCdp;
 }
 
@@ -234,31 +238,32 @@ export async function connectOwnedChrome(options: {
     },
     readPort: readDevToolsActivePort,
     listener: listenPid,
+    listenPorts,
+    probeVersion: probeDevToolsVersion,
     connect: connectCdp,
     ...overrides,
   };
-  // Before the helper touches Chrome: without Files & Folders > Google Chrome, Bao turns remote debugging on and still cannot read its port.
+  // A refused folder is not a reason to open chrome://inspect. A listener is found without the file.
+  let folderDenied: ChromeFolderDenied | undefined;
   try { assertChromeReadable(options.root); }
-  catch (error) { if (error instanceof ChromeFolderDenied) throw error; }
-  const blocked = remoteDebuggingBlock(await deps.helper.permissions(false));
-  if (blocked) throw new Error(blocked);
-  if (await deps.helper.screenLocked()) throw new Error("The screen is locked. Unlock it, then try again.");
+  catch (error) { if (error instanceof ChromeFolderDenied) folderDenied = error; }
   options.signal?.throwIfAborted();
   let pids = await deps.findChrome(options.root);
-  if (!pids.length && await deps.startChrome(options.root)) {
+  if (!pids.length && !folderDenied && await deps.startChrome(options.root)) {
     for (const deadline = Date.now() + 30_000; !pids.length && Date.now() < deadline;) {
       options.signal?.throwIfAborted();
       await new Promise((resolve) => setTimeout(resolve, 250));
       pids = await deps.findChrome(options.root);
     }
   }
+  if (!pids.length && folderDenied) throw folderDenied;
   if (pids.length !== 1) throw new Error(pids.length ? "More than one Chrome runs on this profile root" : "Chrome is not open. Open Google Chrome, then try again");
   const pid = pids[0]!;
   const executable = deps.executable(pid);
   let openedInspect = false;
   try {
     const portFile = path.join(options.root, "DevToolsActivePort");
-    const endpointForChrome = async () => {
+    const endpointFromFile = async (): Promise<DevToolsEndpoint | undefined> => {
       let endpoint: DevToolsEndpoint;
       try { endpoint = await deps.readPort(portFile); }
       catch (error) {
@@ -269,7 +274,29 @@ export async function connectOwnedChrome(options: {
       }
       return await deps.listener(endpoint.port) === pid ? endpoint : undefined;
     };
-    let endpoint = await endpointForChrome();
+    const endpointFromListener = async (): Promise<DevToolsEndpoint | undefined> => {
+      let ports: number[] = [];
+      try { ports = await deps.listenPorts(pid); }
+      catch { return undefined; }
+      for (const port of ports) {
+        const probe = await deps.probeVersion(port);
+        if (!probe) continue;
+        const found = endpointFromVersion(port, probe.status, probe.body);
+        if (found && await deps.listener(found.port) === pid) return found;
+      }
+      return undefined;
+    };
+    let endpoint: DevToolsEndpoint | undefined;
+    try { endpoint = await endpointFromFile(); }
+    catch (error) {
+      if (!(error instanceof ChromeFolderDenied)) throw error;
+      folderDenied = error;
+    }
+    if (!endpoint) endpoint = await endpointFromListener();
+    if (!endpoint && folderDenied) throw folderDenied;
+    const blocked = remoteDebuggingBlock(await deps.helper.permissions(false));
+    if (blocked) throw new Error(blocked);
+    if (await deps.helper.screenLocked()) throw new Error("The screen is locked. Unlock it, then try again.");
     if (!endpoint) {
       const helper = deps.helper;
       options.signal?.throwIfAborted();
@@ -289,7 +316,7 @@ export async function connectOwnedChrome(options: {
       const portDeadline = Date.now() + 10_000;
       for (;;) {
         options.signal?.throwIfAborted();
-        endpoint = await endpointForChrome();
+        endpoint = await endpointFromFile();
         if (endpoint) break;
         if (Date.now() >= portDeadline) throw new Error("Chrome did not open its debugging port");
         await new Promise((resolve) => setTimeout(resolve, 250));

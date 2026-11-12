@@ -673,11 +673,11 @@ if (args.includes('--json')) {
   const [, imported, fallback] = proxy.pickLines;
   assert.equal(fallback, 'If the site still asks for a sign-in, Bao moves this session to the owner\'s running Chrome over remote debugging on the same Chrome profile "Default" '
     + 'by itself when it sees the wall or when you call wait_for_owner.');
-  assert.match(imported!, /^Sign-in import for https:\/\/news\.example\.test from Chrome profile "Default" failed: macOS did not let Bao read Google Chrome's folder \(EACCES on .+\/Default\/Cookies\)\. Turn on Google Chrome for the app that started Bao, such as your terminal or agent app, under System Settings > Privacy & Security > Files & Folders, then try again\. Bao's profile kept its saved sign-ins\.$/);
+  assert.match(imported!, /^Sign-in import for https:\/\/news\.example\.test from Chrome profile "Default" failed: macOS blocked the app that started Bao from reading Chrome's data \(EACCES on .+\/Default\/Cookies\)\. Bao's profile kept its saved sign-ins\.$/);
   const run = new Library(home).readRun(proxy.activeRunId!);
   assert.deepEqual(run.signInImports?.map(({ origin, found, cookies, storage }) => ({ origin, found, cookies, storage })),
     [{ origin: "https://news.example.test", found: 0, cookies: 0, storage: 0 }]);
-  assert.match(run.signInImports![0]!.error!, /^macOS did not let Bao read Google Chrome's folder \(EACCES on /);
+  assert.match(run.signInImports![0]!.error!, /^macOS blocked the app that started Bao from reading Chrome's data \(EACCES on /);
 });
 
 test("without Chrome's profiles, an open that names no browser opens the Bao profile and says why, and a copy or a named profile stops", { timeout: scaledMs(60_000) }, async (t) => {
@@ -727,7 +727,7 @@ if (args.includes('--json')) {
   t.mock.method(launches, "launchOwnedChromeEndpoint", (options: Parameters<typeof launch>[0]) => launch({ ...options, headless: true }));
   const proxy = new AgentBrowserProxy({ home, sourceRoot, executable });
   t.after(async () => { await proxy.close(); await chmod(sourceRoot, 0o700); await rm(root, { recursive: true, force: true }); });
-  const refused = `macOS did not let Bao read Google Chrome's folder (EACCES on ${sourceRoot}). Turn on Google Chrome for the app that started Bao, such as your terminal or agent app, under System Settings > Privacy & Security > Files & Folders, then try again.`;
+  const refused = `macOS blocked the app that started Bao from reading Chrome's data (EACCES on ${sourceRoot}).`;
   assert.equal((await proxy.execute("open", ["https://news.example.test/article"]))[0]!.exitCode, 0, "Bao's own profile needs no grant");
   assert.match(proxy.pickLines[0]!, /^Browser: Bao profile, fallback when running Chrome could not be used\. Chrome app: .+\. User data: .+agent-browser-profile\. Bao imports no sign-ins: /);
   assert.ok(proxy.pickLines[0]!.endsWith(refused), proxy.pickLines[0]);
