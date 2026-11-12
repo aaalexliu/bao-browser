@@ -24,7 +24,7 @@ import { hasStrippedSecret } from "../../../shared/saved-secrets";
 import { hostAccessLabel, hostAccessMode } from "../../../extension/src/host-grant";
 import { visibleCopy } from "../v1/visible-copy";
 import { agentRunText, ownerStopMessage, ownerStopText } from "../v1/stop-copy";
-import { receiptOutline, type OutlineRun, type ReceiptItem, type ReceiptOutline, type ReceiptProblem } from "./receipt-outline";
+import { receiptOutline, type OutlineRun, type ReceiptOutline } from "./receipt-outline";
 import type { ConsoleLine, IdentityView, NetworkLine, SnapshotNode, StepView } from "./view-types";
 
 /** Chromium app mode uses the document title as the window title. */
@@ -2082,87 +2082,40 @@ function keepStreet(text: string): string {
   return text.replace(/(\d+)-(\d+)/g, "$1\u2011$2");
 }
 
-function plainActionError(error: string, label: string): string {
-  const raw = error.replace(/^[\u2717\u2713]\s*/, "").replace(/\s+/g, " ").trim();
-  const named = label.replace(/^Click\s+/i, "").replace(/^Type into\s+/i, "").replace(/"/g, "").trim();
-  const target = named && named !== "Click" && named !== "Step" ? named : "";
-  if (/covered by|intercepts? (?:the )?pointer|obscur/i.test(raw)) return "The target was covered, so the action did not land.";
-  if (/unknown ref|could not locate|could not find|no such element|not attached|detached|stale element/i.test(raw)) {
-    return target ? `Could not find ${target}.` : "Could not find the target.";
-  }
-  if (/\btimed?\s*out\b|\btimeout\b/i.test(raw)) return "The action timed out.";
-  const stripped = raw
-    .replace(/<[^>]*>/g, " ")
-    .replace(/@e\d+/gi, " ")
-    .replace(/\brole=\S+/gi, " ")
-    .replace(/\bname=\S+/gi, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/[.\s]+$/, "");
-  if (!stripped || /[@<>]|role=|name=/i.test(stripped)) return target ? `Could not complete ${target}.` : "The action failed.";
-  return `${stripped}.`;
-}
-
-function namesItem(text: string, name: string): boolean {
-  if (name.trim().length < 3) return false;
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`(?:^|[^\\p{L}\\p{N}])${escaped}(?:$|[^\\p{L}\\p{N}])`, "iu").test(text);
-}
-
-function claimConflict(claim: string | undefined, listed: string[], outline: ReceiptOutline): string | undefined {
-  if (outline.proof.kind !== "list") return undefined;
-  const text = [claim, ...listed].filter(Boolean).join("\n");
-  const missed = outline.proof.items.filter((item) => item.state === "not confirmed" && namesItem(text, item.name)).map((item) => item.name);
-  if (!missed.length) return undefined;
-  if (missed.length === 1) return `The agent claimed ${missed[0]} was added. The record does not confirm it.`;
-  return `The agent claimed ${missed.join(", ")} were added. The record does not confirm them.`;
-}
 
 function receiptShotHtml(runId: string, outline: ReceiptOutline): string {
-  const shots = outline.shots.flatMap((shot) => {
-    const src = imageRef(runId, shot.file);
-    return src ? [`<figure><img src="${src}" alt="${esc(keepStreet(shot.label))}"><figcaption>${esc(keepStreet(shot.label))}</figcaption></figure>`] : [];
-  });
-  return shots.length ? `<div class="receipt-shots">${shots.join("")}</div>` : "";
+  const shot = outline.shot;
+  if (!shot) return "";
+  const src = imageRef(runId, shot.file);
+  if (!src) return "";
+  return `<div class="receipt-shots"><figure><img src="${src}" alt="${esc(keepStreet(shot.label))}"><figcaption>${esc(keepStreet(shot.label))}</figcaption></figure></div>`;
 }
 
-function listCountAgreed(outline: ReceiptOutline): boolean {
-  if (outline.proof.kind !== "list") return false;
-  if (outline.proof.items.some((item) => item.state === "not confirmed")) return false;
-  const quoted = /(\d+)\s+(?:places|items)\b/i.exec(outline.proof.quoted || "");
-  return !quoted || Number(quoted[1]) === outline.proof.items.length;
+function receiptOutcomeHtml(outline: ReceiptOutline): string {
+  const lines = [
+    outline.pageTitle ? `Last recorded page: ${outline.pageTitle}.` : "",
+    outline.passed || outline.failed ? `${outline.passed} passed. ${outline.failed} failed.` : "",
+    ...outline.readBack,
+  ].filter(Boolean);
+  return lines.map((line) => `<p class="receipt-recorded">${esc(keepStreet(line))}</p>`).join("");
 }
 
-function receiptProofHtml(outline: ReceiptOutline): string {
-  if (outline.proof.kind === "list") {
-    const heading = outline.proof.name || "Recorded items";
-    const count = outline.proof.items.length;
-    const countLine = listCountAgreed(outline) ? `<p class="receipt-count">${count} ${count === 1 ? "entry" : "entries"}</p>` : "";
-    const rows = outline.proof.items.map((item: ReceiptItem) => `<li><span>${esc(keepStreet(item.name))}</span><span class="${item.state === "not confirmed" ? "exception" : ""}">${esc(item.state)}</span></li>`).join("");
-    return `<section class="receipt-proof" aria-label="Recorded items"><h3>${esc(heading)}</h3>${countLine}<ul class="receipt-items">${rows}</ul></section>`;
-  }
-  if (outline.proof.kind === "form") {
-    const pageTitle = outline.recordedLines.find((line) => line.startsWith("Last recorded page: "))?.replace(/^Last recorded page: /, "").replace(/\.$/, "");
-    const note = outline.proof.confirmation && outline.proof.confirmation !== pageTitle ? `<p>${esc(outline.proof.confirmation)}</p>` : "";
-    const count = outline.proof.fields.length;
-    const rows = outline.proof.fields.map((field) => `<li><span>${esc(field.label)}</span><span>${esc(field.value)}</span></li>`).join("");
-    return `<section class="receipt-proof" aria-label="Form"><h3>${esc(outline.proof.state)}</h3><p class="receipt-count">${count} ${count === 1 ? "field" : "fields"}</p>${note}<ul class="receipt-items">${rows}</ul></section>`;
-  }
-  return "";
-}
-
-function receiptProblemHtml(problem: ReceiptProblem): string {
-  const page = problem.page ? ` Recorded page: ${esc(problem.page)}.` : "";
-  const later = problem.later ? ` Step ${problem.later.step} clicked ${esc(problem.later.label)} and passed.` : "";
-  const spoken = ownerStopText(problem.error);
-  const sentence = spoken !== problem.error.trim() ? (/[.!?]$/.test(spoken) ? spoken : `${spoken}.`) : plainActionError(problem.error, problem.label);
-  return `<li>Step ${problem.step}, ${esc(problem.label)}, failed. ${esc(sentence)}${page}${later}</li>`;
+function receiptAgentHtml(run: RunSummary, outline: ReceiptOutline): string {
+  const said = outline.claim ? `<h3>Agent said</h3><p class="receipt-claim">${esc(keepStreet(outline.claim))}</p>` : "";
+  const listed = outline.listed.length ? `<h3>Agent listed</h3><ul class="receipt-listed">${outline.listed.map((item) => `<li>${esc(keepStreet(item))}</li>`).join("")}</ul>` : "";
+  const open = outline.open.length ? `<h3>Steps not passed</h3><ul class="receipt-listed">${outline.open.map((item) => `<li>Step ${item.step}, ${esc(item.label)}, ${esc(receiptStepStatus(item.status, item.id, run))}.</li>`).join("")}</ul>` : "";
+  return said || listed || open ? `<section class="receipt-agent" aria-label="Agent report">${said}${listed}${open}</section>` : "";
 }
 
 function receiptChaptersHtml(outline: ReceiptOutline): string {
   if (!outline.chapters.length) return "";
-  const rows = outline.chapters.map((chapter) => `<button type="button" data-receipt-from="${chapter.start}" data-receipt-to="${chapter.end}"><span>${esc(chapter.title)}</span><span>${chapter.start}–${chapter.end}</span></button>`).join("");
-  return `<nav class="receipt-chapters" aria-label="Chapters"><h3>Chapters</h3>${rows}</nav>`;
+  const rows = outline.chapters.map((chapter) => {
+    const fields = chapter.fields.map((field) => `<li><span>${esc(field.label)}</span><span>${esc(keepStreet(field.value))}</span></li>`).join("");
+    const clicks = chapter.clicks.map((click) => `<li><span>${esc(keepStreet(click.label))}</span><span>${esc(click.status)}</span></li>`).join("");
+    const items = fields || clicks ? `<ul class="receipt-items">${fields}${clicks}</ul>` : "";
+    return `<section class="receipt-chapter"><button type="button" data-receipt-from="${chapter.start}" data-receipt-to="${chapter.end}"><span>${esc(chapter.title)}</span><span>${chapter.start}–${chapter.end}</span></button>${items}</section>`;
+  }).join("");
+  return `<section class="receipt-chapters" aria-label="Chapters"><h3>Chapters</h3>${rows}</section>`;
 }
 
 interface InspectorStep {
@@ -2230,24 +2183,16 @@ export function runReceipt(view: ReturnType<typeof inspectRunView>, name: string
   const spoken = plainAgentReason(run);
   const ask = spoken ? undefined : view.handoff?.ask || run.envelope?.ask;
   const outline = receiptOutline(run as OutlineRun);
-  const passed = (run.envelope?.status || run.status) === "passed";
-  const claim = passed ? outline.claim : undefined;
   const unlabeled = view.reason || run.failure?.reason || "";
-  const skipUnlabeled = Boolean(claim && unlabeled === claim);
-  const listed = passed && outline.listed.length ? `<h3>Agent listed</h3><ul class="receipt-listed">${outline.listed.map((item) => `<li>${esc(keepStreet(item))}</li>`).join("")}</ul>` : "";
-  const conflict = claimConflict(claim, outline.listed, outline);
-  const claimBlock = claim || listed || conflict ? `<section class="receipt-agent" aria-label="Agent report">${claim ? `<h3>Agent said</h3><p class="receipt-claim">${esc(keepStreet(claim))}</p>` : ""}${conflict ? `<p class="receipt-conflict">${esc(conflict)}</p>` : ""}${listed}</section>` : "";
-  const recorded = outline.recordedLines.map((line) => `<p class="receipt-recorded">${esc(keepStreet(line))}</p>`).join("");
+  const skipUnlabeled = Boolean(outline.claim && unlabeled === outline.claim);
   return `<section id="run-receipt" aria-label="Run receipt"><p class="receipt-kicker"><span class="run-state ${esc(kind)}">${esc(statusLabel(kind))}</span> · ${esc(at)}</p><h2>${esc(name)}</h2>
     <p class="receipt-meta">${view.run.stepCount} step${view.run.stepCount === 1 ? "" : "s"}${calls === null ? "" : ` · ${calls} model call${calls === 1 ? "" : "s"}`}</p>
     ${receiptBrowsers(run)}
     ${spoken ? `<p class="receipt-reason">${esc(spoken)}</p>` : ask ? runWaiting(run) ? `<aside class="receipt-handoff"><h3>Needs you</h3><p>${esc(ownerStopText(ask))}</p>${view.handoff?.deadline ? `<p>Deadline: ${esc(view.handoff.deadline)}</p>` : ""}</aside>` : `<h3>${esc(statusLabel(kind))}</h3><p class="receipt-reason">${esc(ownerStopText(ask))}</p>` : ""}
     ${spoken || (isAgentBrowserSession(run) && ask && runWaiting(run)) || skipUnlabeled ? "" : unlabeled ? `<p class="receipt-reason">${esc(ownerStopText(unlabeled))}</p>` : ""}
     ${pendingHealCount([run]) ? `<p>A target change is ready to review.</p><button type="button" data-screen="heals">Review heals</button>` : ""}
-    <section class="receipt-outcome" aria-label="Outcome"><h3>Outcome</h3>${recorded}${receiptShotHtml(run.id, outline)}</section>
-    ${receiptProofHtml(outline)}
-    ${outline.problems.length ? `<section class="receipt-problems" aria-label="Action problems"><h3>Action problems</h3><ul>${outline.problems.map(receiptProblemHtml).join("")}</ul></section>` : ""}
-    ${claimBlock}
+    <section class="receipt-outcome" aria-label="Outcome"><h3>Outcome</h3>${receiptOutcomeHtml(outline)}${receiptShotHtml(run.id, outline)}</section>
+    ${receiptAgentHtml(run, outline)}
     ${receiptChaptersHtml(outline)}
     ${receiptInspector(view, run, workflowSteps)}
   </section>`;
