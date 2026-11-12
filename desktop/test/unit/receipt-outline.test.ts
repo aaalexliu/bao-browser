@@ -103,7 +103,10 @@ test("a pizza run shows its pages, clicks, and the agent's own words", () => {
   assert.match(html, /Agent listed[\s\S]*Added Ceres Mott St/);
   assert.match(html, /Step 2, Click Saved, <span class="run-state failed">failed<\/span>\./);
   assert.match(chapters(html), /Clicked &quot;Ceres pizza&quot;/);
-  assert.match(chapters(html), /Typed &quot;nytimes pizza&quot; into the text field/);
+  assert.match(chapters(html), /Typed &quot;nytimes pizza&quot; into a text field/);
+  assert.match(chapters(html), /Opened https:\/\/www\.google\.com\/maps/);
+  const listed = chapters(html);
+  assert.equal(listed.match(/<ul class="receipt-items"><li/g)?.length, listed.match(/class="receipt-chapter"/g)?.length);
   assert.match(chapters(html), /Step 2/);
   assert.doesNotMatch(chapters(html), /@e5|#|4–4|4-4/);
   assert.match(html, /Recorded as passed/);
@@ -361,7 +364,8 @@ test("a replay with a recorded page shows that page as a chapter", () => {
   });
   assert.match(html, /<h3>Chapters<\/h3>/);
   assert.match(html, /Thank you - Order/);
-  assert.match(html, /Clicked &quot;Open the confirmation&quot;/);
+  assert.match(html, /Clicked a button/);
+  assert.doesNotMatch(html, /Clicked &quot;Open the confirmation&quot;/);
   assert.match(html, /Step 1/);
 });
 
@@ -380,7 +384,7 @@ test("ten distinct place pages drop the repeated site suffix and name the step",
   assert.doesNotMatch(listed, /\d+-\d+|\d+–\d+/);
   assert.doesNotMatch(listed, /- Google Maps/);
   assert.match(listed, /Place 10 Example Street/);
-  assert.match(listed, /Typed &quot;Place 1 Example Street&quot; into the text field/);
+  assert.match(listed, /Typed &quot;Place 1 Example Street&quot; into a text field/);
   assert.match(listed, /Clicked &quot;Place 1 Example Street&quot;/);
   assert.doesNotMatch(listed, /@search|@e1/);
 });
@@ -393,7 +397,10 @@ test("a short replay does not say it took 0 s, and agent words are labeled", () 
       status: "passed",
       kind: "replay",
       at: 1_000,
-      steps: [{ id: "step-1", status: "passed", startedAt: 1_000, endedAt: 1_200 }],
+      steps: [
+        { id: "step-1", status: "passed", startedAt: 1_000, endedAt: 1_200 },
+        { id: "step-2", status: "failed", startedAt: 1_200, endedAt: 1_400 },
+      ],
     },
     {
       id: "agent-long",
@@ -409,5 +416,7 @@ test("a short replay does not say it took 0 s, and agent words are labeled", () 
   ], []);
   assert.match(html, /under 1 s/);
   assert.doesNotMatch(html, /0 s/);
+  assert.match(html, /class="run-state recorded">Recorded as passed<\/span> <span class="run-state failed">1 failed<\/span>/);
+  assert.doesNotMatch(html, /class="run-state passed"|class="run-glyph passed"/);
   assert.match(html, /class="run-agent">Agent said: Added these 10 places/);
 });

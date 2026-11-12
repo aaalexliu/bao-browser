@@ -100,8 +100,8 @@ function fieldLabel(step: OutlineStep): string {
   const label = cleanLabel(step.label || "");
   const into = /^Type into "(.+)"$/.exec(label);
   if (into?.[1]) return into[1];
-  if (label === "Type") return "the text field";
-  return label || "field";
+  if (label === "Type" || !label) return "a text field";
+  return label;
 }
 
 function fillValue(step: OutlineStep): string | undefined {
@@ -150,11 +150,15 @@ function fillLine(field: ReceiptField): string {
   return `Typed ${quoted(field.value)} into ${field.label}`;
 }
 
-function clickLine(label: string): string {
+function clickLine(label: string, args: string[] = []): string {
   const named = /^Click\s+(.+)$/.exec(label)?.[1];
-  const target = named ?? (label === "Click" ? "" : label);
-  if (!target || selector(target)) return "Clicked";
-  return `Clicked ${quoted(target)}`;
+  if (named && !selector(named)) return `Clicked ${quoted(named)}`;
+  return /\blink\b/i.test(`${label} ${args.join(" ")}`) ? "Clicked a link" : "Clicked a button";
+}
+
+function openedLine(step: OutlineStep, fallback: string): string {
+  const arg = command(step) === "open" ? step.native?.args?.[0]?.trim() : "";
+  return `Opened ${arg || pageTitle(step) || pageUrl(step) || fallback}`;
 }
 
 export function readBackSentence(item: { source?: string; expected?: string; actual?: string; pass?: boolean }, mode: "saw" | "compare"): string {
@@ -224,6 +228,7 @@ function chaptersFor(steps: OutlineStep[]): ReceiptChapter[] {
       const title = pageTitle(step);
       if (title) current.title = title;
     }
+    const before = current.rows.length;
     const value = fillValue(step);
     if (value !== undefined) {
       const field = shownField(step, value);
@@ -234,7 +239,10 @@ function chaptersFor(steps: OutlineStep[]): ReceiptChapter[] {
       const label = cleanLabel(step.label || "") || "Click";
       const status = step.status || "unknown";
       current.clicks.push({ label, status });
-      current.rows.push({ line: clickLine(label), status });
+      current.rows.push({ line: clickLine(label, step.native?.args), status });
+    }
+    if (current.rows.length === before) {
+      current.rows.push({ line: openedLine(step, current.title), status: step.status || "unknown" });
     }
   });
   return withoutRepeatedSuffix(chapters.map((chapter) => ({

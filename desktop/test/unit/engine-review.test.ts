@@ -57,7 +57,8 @@ test("recordings do not trip replay circuits or clear heal streaks", () => {
 test("Library shows capture end status and keeps untimed truncated video visible", () => {
   assert.equal(runKind(recording), "passed");
   const list = runsList([recording], []);
-  assert.match(list, />Passed<\/span>/);
+  assert.match(list, />Recorded as passed<\/span>/);
+  assert.doesNotMatch(list, /class="run-state passed"/);
   assert.doesNotMatch(list, /model calls/);
   const viewer = runViewer(recording, { name: "Recorded task", steps: [] });
   assert.match(viewer, /Recorded task recorded/);

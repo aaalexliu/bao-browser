@@ -78,7 +78,9 @@ test("finished live captures show their end status without uncounted model-call 
         const label = kind === "paused" ? "needs you" : kind === "timed-out" ? "stopped, timed out" : kind;
         assert.equal(runKind(run, workflowPromotion), kind);
         const list = runsList([run], []);
-        assert.match(list, new RegExp(`class="run-state ${kind}">${label.charAt(0).toUpperCase() + label.slice(1)}</span>`));
+        const stateClass = kind === "passed" ? "recorded" : kind;
+        const stateText = kind === "passed" ? "Recorded as passed" : label.charAt(0).toUpperCase() + label.slice(1);
+        assert.match(list, new RegExp(`class="run-state ${stateClass}">${stateText}</span>`));
         assert.doesNotMatch(list, /recording|model calls/);
         const viewer = runViewer(run, workflow);
         assert.match(viewer, new RegExp(`id="run-status"><strong>${label}</strong>`));
