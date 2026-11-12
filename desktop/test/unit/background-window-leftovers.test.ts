@@ -324,3 +324,76 @@ test("a new wait does not claim a raise from a handoff that already ended", { ti
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("a recovered wait_for_owner read moves before it raises", { timeout: scaledMs(5_000) }, async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-recovered-wait-"));
+  const order: string[] = [];
+  const article = { url: "http://127.0.0.1/article", title: "Article" };
+  const signIn = { url: "http://127.0.0.1/login", title: "Sign in" };
+  let arm = false;
+  let missed = false;
+  const sourceRoot = await sourceProfile(root);
+  const executable = await writeNative(root, "CHECKOUT");
+  t.mock.method(frontApplication, "pid", async () => 1);
+  t.mock.method(bao, "openBaoChromeForProxy", async () => {
+    const portFile = path.join(root, "DevToolsActivePort");
+    await writeFile(portFile, "12345\n/devtools/browser/recovered-wait\n");
+    let closedWindow!: () => void;
+    const closed = new Promise<void>((resolve) => { closedWindow = resolve; });
+    return {
+      target: { kind: "bao" as const, portFile }, pid: 4242, closed,
+      isClosed: () => false, close: async () => { closedWindow(); }, keepOpen: async () => undefined,
+    };
+  });
+  t.mock.method(currentChrome, "openCurrentChrome", async () => {
+    order.push("move");
+    throw new Error("Chrome is not open. Open Google Chrome, then try again.");
+  });
+  t.mock.method(sockets, "connectCdp", async () => {
+    const cdp = new sockets.CdpSocket(new Socket());
+    t.mock.method(cdp, "send", async (method: string) => {
+      if (method === "Target.activateTarget" || method === "Browser.setWindowBounds") order.push(method);
+      if (method === "Target.getTargetInfo") {
+        if (arm && !missed) {
+          missed = true;
+          throw new Error("transient metadata miss");
+        }
+        return { targetInfo: missed ? signIn : article };
+      }
+      if (method === "Target.getTargets") return { targetInfos: [{ targetId: "CHECKOUT", ...signIn }] };
+      if (method === "Target.attachToTarget") return { sessionId: "fixture" };
+      if (method === "Browser.getWindowForTarget") return { windowId: 7 };
+      if (method === "Browser.getWindowBounds") return { bounds: { windowState: "normal" } };
+      return {};
+    });
+    followSend(t, cdp);
+    return cdp;
+  });
+  const proxy = new AgentBrowserProxy({ home: path.join(root, "home"), sourceRoot, executable });
+  try {
+    await proxy.execute("open", [article.url], "bao");
+    assert.equal(order.includes("move"), false);
+    assert.equal(order.includes("Target.activateTarget"), false);
+    arm = true;
+    const waited = await proxy.execute("wait_for_owner", ["800"], undefined, false, undefined, {}, proxy.activeRunId);
+    const moveAt = order.indexOf("move");
+    const raiseAt = order.findIndex((item) => item === "Target.activateTarget" || item === "Browser.setWindowBounds");
+    assert.equal(missed, true);
+    assert.equal(outcome(waited), "waiting");
+    assert.equal(order.filter((item) => item === "move").length, 1);
+    assert.ok(moveAt >= 0, "the recovered read attempted the move");
+    assert.ok(proxy.pickLines.some((line) => line.includes("a sign-in page")), proxy.pickLines.join("\n"));
+    assert.equal(order.filter((item) => item === "Target.activateTarget").length, 1);
+    assert.ok(raiseAt > moveAt, `raise at ${raiseAt} is not after move at ${moveAt}: ${order.join(",")}`);
+    assert.match(instruction(waited), /sign in to 127\.0\.0\.1/);
+    if (process.platform === "darwin") {
+      const dockAt = order.indexOf("Browser.setWindowBounds");
+      assert.ok(dockAt > moveAt, `dock raise at ${dockAt} is not after move at ${moveAt}`);
+      assert.equal(order.slice(0, moveAt).includes("Browser.setWindowBounds"), false);
+      assert.match(instruction(waited), /brought this window to the front/);
+    }
+  } finally {
+    await proxy.close().catch(() => undefined);
+    await rm(root, { recursive: true, force: true });
+  }
+});

@@ -1325,7 +1325,7 @@ export class AgentBrowserProxy {
   private async ownerBanner(session: Session, targetId: string, waiting: boolean, options?: { raise?: boolean }): Promise<void> {
     const wantsRaise = options?.raise !== false;
     const raise = wantsRaise && !this.movable(session);
-    if (waiting && wantsRaise) session.raised = false;
+    if (waiting && raise) session.raised = false;
     const cdp = await this.connectSession(session, { timeoutMs: 2000, signal: session.abort.signal });
     let attached: string | undefined;
     try {
@@ -1394,10 +1394,13 @@ export class AgentBrowserProxy {
           if (this.waitOf(session) === "off" || this.waitOf(session) === "pending") {
             const active = await this.activePage(session);
             if (!active) return this.ownerClosed(session);
+            const stop = this.stopped(session, active);
+            const opened = await this.moveAway(session, this.wallWords(session), stop.reopen, true);
+            if (opened) return this.waitOf(session) !== "off" ? this.ownerResult("halted", session) : [opened];
             if (this.waitOf(session) === "off") session.ownerSince = session.ownerTouched = Date.now();
-            this.setWait(session, this.stopped(session, active));
+            this.setWait(session, await this.withWall(session, stop));
             session.ownerPage = active.page;
-            await this.ownerBanner(session, active.targetId, true);
+            await this.ownerBanner(session, active.targetId, true).catch(() => undefined);
           }
           const waiting = this.wallOf(session);
           if (!waiting) return this.ownerClosed(session);
