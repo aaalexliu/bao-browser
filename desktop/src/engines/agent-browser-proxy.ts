@@ -185,18 +185,16 @@ type WaitOn = { targetId: string; page: OwnerPage; reopen?: string; wall?: true 
 /** The owner wait on a live or closing session. Recording status follows this value. */
 type OwnerWait = "off" | "pending" | WaitOn;
 
-type CloseQueue = { n: number };
-
 /**
  * One agent-browser session seat. A live session cannot also be closing or ended.
  * `disconnected` is an ended reason that can still hold the session a later close must reach.
  */
 type ProxySeat =
-  | { phase: "starting"; promise: Promise<Session>; abort: AbortController; closes: CloseQueue; priorEnded?: "current-ended" }
-  | { phase: "live"; session: Session; ownerWait: OwnerWait; closes: CloseQueue }
-  | { phase: "closing"; session: Session; ownerWait: OwnerWait; keep: boolean; closes: CloseQueue }
-  | { phase: "ended"; reason: "closed" | "current-ended"; closes: CloseQueue }
-  | { phase: "ended"; reason: "disconnected"; closes: CloseQueue; session?: Session; ownerWait?: OwnerWait; starting?: Promise<Session>; closeRequested?: boolean; priorEnded?: "current-ended" };
+  | { phase: "starting"; promise: Promise<Session>; abort: AbortController; priorEnded?: "current-ended" }
+  | { phase: "live"; session: Session; ownerWait: OwnerWait }
+  | { phase: "closing"; session: Session; ownerWait: OwnerWait; keep: boolean }
+  | { phase: "ended"; reason: "closed" | "current-ended" }
+  | { phase: "ended"; reason: "disconnected"; session?: Session; ownerWait?: OwnerWait; starting?: Promise<Session>; closeRequested?: boolean; priorEnded?: "current-ended" };
 
 /** The pid line from `lsappinfo info -only pid`. A missing pid does not skip the raise. */
 export function parseFrontPid(text: string): number | undefined {
@@ -302,7 +300,9 @@ function ownerBannerGone(): string {
 }
 
 export class AgentBrowserProxy {
-  private seat: ProxySeat = { phase: "ended", reason: "closed", closes: { n: 0 } };
+  private seat: ProxySeat = { phase: "ended", reason: "closed" };
+  /** Close commands already queued. A close can arrive before the session it closes. */
+  private pendingCloses = 0;
   private readonly cleanups = new WeakMap<Session, Promise<void>>();
   private latest: { runId: string; step: RecordedAgentBrowserCommand; steps: readonly RecordedAgentBrowserCommand[]; lastPicture?: AgentBrowserRun["lastPicture"] } | undefined;
   private workflowOutcome: string | undefined;
@@ -412,7 +412,7 @@ export class AgentBrowserProxy {
 
   private clearCurrentEnded(): void {
     if (this.seat.phase === "ended" && this.seat.reason === "current-ended") {
-      this.seat = { phase: "ended", reason: "closed", closes: this.seat.closes };
+      this.seat = { phase: "ended", reason: "closed" };
     }
   }
 
@@ -448,7 +448,7 @@ export class AgentBrowserProxy {
       return;
     }
     if (seat.phase !== "live" || seat.session !== session) return;
-    this.seat = { phase: "closing", session, ownerWait: seat.ownerWait, keep: false, closes: seat.closes };
+    this.seat = { phase: "closing", session, ownerWait: seat.ownerWait, keep: false };
   }
 
   private removingOf(session: Session): Promise<void> | undefined {
@@ -462,26 +462,26 @@ export class AgentBrowserProxy {
       this.seat = { ...kept, session, starting: undefined };
       return;
     }
-    this.seat = { phase: "live", session, ownerWait: "off", closes: seat.closes };
+    this.seat = { phase: "live", session, ownerWait: "off" };
   }
 
   private drop(session: Session, reason: "closed" | "current-ended" = "closed"): void {
     const seat = this.seat;
     if (this.session !== session) return;
     if (seat.phase === "ended" && seat.reason === "disconnected") {
-      this.seat = { phase: "ended", reason: "disconnected", closes: seat.closes };
+      this.seat = { phase: "ended", reason: "disconnected" };
       return;
     }
-    this.seat = { phase: "ended", reason, closes: seat.closes };
+    this.seat = { phase: "ended", reason };
   }
 
   private clearStart(): void {
     const seat = this.seat;
-    if (seat.phase === "starting") this.seat = { phase: "ended", reason: seat.priorEnded ?? "closed", closes: seat.closes };
+    if (seat.phase === "starting") this.seat = { phase: "ended", reason: seat.priorEnded ?? "closed" };
     else if (seat.phase === "ended" && seat.reason === "disconnected") {
       const { starting: _starting, priorEnded, ...rest } = seat;
       // A start that fails after disconnect must restore the Chrome-ended reason, the same way a start that fails without disconnect does.
-      this.seat = priorEnded && !rest.session ? { phase: "ended", reason: priorEnded, closes: seat.closes } : rest;
+      this.seat = priorEnded && !rest.session ? { phase: "ended", reason: priorEnded } : rest;
     }
   }
 
@@ -502,8 +502,8 @@ export class AgentBrowserProxy {
   queueClose(args: unknown = [], runId?: unknown): () => void {
     validateAgentBrowserCommand("close", args);
     if (this.session && (typeof runId === "string" ? runId.trim() : runId) !== this.session.recording.id) return () => undefined;
-    this.seat.closes.n++;
-    return () => { this.seat.closes.n--; };
+    this.pendingCloses++;
+    return () => { this.pendingCloses--; };
   }
 
   /**
@@ -784,7 +784,7 @@ export class AgentBrowserProxy {
     const starting = seat.phase === "starting" ? seat.promise : undefined;
     const priorEnded = seat.phase === "starting" ? seat.priorEnded : undefined;
     this.seat = {
-      phase: "ended", reason: "disconnected", closes: seat.closes,
+      phase: "ended", reason: "disconnected",
       ...(session ? { session, ownerWait } : {}),
       ...(starting ? { starting } : {}),
       ...(priorEnded ? { priorEnded } : {}),
@@ -937,7 +937,7 @@ export class AgentBrowserProxy {
     promise.catch(() => undefined);
     const priorEnded = seat.phase === "ended" && seat.reason === "current-ended" ? "current-ended" as const : undefined;
     if (seat.phase === "ended" && seat.reason === "disconnected") this.seat = { ...seat, starting: promise };
-    else this.seat = { phase: "starting", promise, abort, closes: seat.closes, ...(priorEnded ? { priorEnded } : {}) };
+    else this.seat = { phase: "starting", promise, abort, ...(priorEnded ? { priorEnded } : {}) };
     let missed: string | undefined;
     let browser: Opened | undefined;
     try {
@@ -1828,7 +1828,7 @@ export class AgentBrowserProxy {
     if ((seat.phase !== "live" && seat.phase !== "closing") || seat.session !== session) return;
     const ownerWait = seat.ownerWait;
     const keep = seat.phase === "closing" ? seat.keep : true;
-    this.seat = { phase: "closing", session, ownerWait, keep, closes: seat.closes };
+    this.seat = { phase: "closing", session, ownerWait, keep };
   }
 
   /** Selects the agent's last tab on Bao's direct connection. That does not bring the window to the front. A failed select still keeps the window. */
@@ -1873,7 +1873,7 @@ export class AgentBrowserProxy {
               }
             }
           } finally { session.chrome.detach(); }
-        } else if (keepOpen && !this.closingOf(session) && this.seat.closes.n === 0 && !session.chrome.isClosed()) {
+        } else if (keepOpen && !this.closingOf(session) && this.pendingCloses === 0 && !session.chrome.isClosed()) {
           await this.showAgentTab(session);
           await session.chrome.keepOpen();
         } else await session.chrome.close();
@@ -1886,7 +1886,7 @@ export class AgentBrowserProxy {
   }
 
   private async afterCleanup(session: Session, endedCurrent = false): Promise<void> {
-    if (session.kind === "copy" && (this.closingOf(session) || this.seat.closes.n > 0) && !session.chrome.isClosed()) {
+    if (session.kind === "copy" && (this.closingOf(session) || this.pendingCloses > 0) && !session.chrome.isClosed()) {
       this.requestClose(session);
       await session.chrome.close();
     }
