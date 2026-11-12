@@ -159,7 +159,8 @@ function clickLine(step: OutlineStep): string {
   const named = citedName(step);
   if (named) return `Clicked ${quoted(named)}`;
   const label = cleanLabel(step.label || "");
-  return /\blink\b/i.test(`${label} ${(step.native?.args || []).join(" ")}`) ? "Clicked a link" : "Clicked a button";
+  if (!label || label === "Click") return "Clicked";
+  return label.startsWith("Click ") ? `Clicked ${label.slice("Click ".length)}` : `Clicked ${label}`;
 }
 
 function openedLine(step: OutlineStep, fallback: string): string {

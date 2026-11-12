@@ -382,8 +382,8 @@ test("a replay with a recorded page shows that page as a chapter", () => {
   });
   assert.match(html, /<h3>Chapters<\/h3>/);
   assert.match(html, /Thank you - Order/);
-  assert.match(html, /Clicked a button/);
-  assert.doesNotMatch(html, /Clicked &quot;Open the confirmation&quot;/);
+  assert.match(html, /Clicked Open the confirmation/);
+  assert.doesNotMatch(html, /Clicked a button|Clicked &quot;Open the confirmation&quot;/);
   assert.match(html, /Step 1/);
 });
 
@@ -462,6 +462,7 @@ test("chapter rows follow the recorded command, including a failed fill and a ty
       step({ label: "Click \"Save\"", target: "Save", command: "click", args: ["@save"], title: "Example", url: "https://example.com" }),
       step({ label: "Click \"Save [draft]\"", target: "Save [draft]", command: "click", args: ["@draft"], title: "Example", url: "https://example.com" }),
       step({ label: "Click the checkbox", command: "click", args: ["@box"], title: "Example", url: "https://example.com" }),
+      step({ label: "", command: "click", args: [".copy-link-button"], title: "Example", url: "https://example.com" }),
     ],
   });
   const listed = chapters(sequence);
@@ -471,8 +472,10 @@ test("chapter rows follow the recorded command, including a failed fill and a ty
   assert.match(listed, /Clicked &quot;Save&quot;/);
   assert.match(listed, /Clicked &quot;Save \[draft\]&quot;/);
   assert.doesNotMatch(listed, /Clicked &quot;&quot;Save&quot;&quot;/);
+  assert.match(listed, /<span>Clicked the checkbox<\/span>/);
+  assert.match(listed, /<span>Clicked<\/span>/);
   assert.doesNotMatch(listed, /Clicked &quot;the checkbox&quot;/);
-  assert.match(listed, /Clicked a button/);
+  assert.doesNotMatch(listed, /Clicked a button|Clicked a link/);
   assert.doesNotMatch(listed, /Read the page/);
   assert.doesNotMatch(listed, /Opened Example/);
 
