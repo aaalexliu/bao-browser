@@ -1,6 +1,7 @@
 // Sentences and citations captured with a step. The citation is the element's own string.
 
 import type { AnchorLocator, CitationSource, Identity, StepCaption, TargetBox } from "./schema";
+import { tabCommandAction, type TabCommandAction } from "./tab-command";
 
 type LocatorRelation = AnchorLocator["relation"];
 
@@ -150,24 +151,29 @@ export function isElementRef(value: string | undefined): boolean {
   return !!value && /^@e\d+$/.test(value.trim());
 }
 
-export function tabSentence(verb: string | undefined): string {
-  if (!verb || verb === "list" || verb === "--json") return "Listed tabs";
-  if (verb === "new") return "Opened a new tab";
-  if (verb === "close") return "Closed a tab";
-  return "Switched tab";
+const TAB_SENTENCES: Record<TabCommandAction, string> = {
+  list: "Listed tabs",
+  new: "Opened a new tab",
+  close: "Closed a tab",
+  switch: "Switched tab",
+};
+
+export function tabSentence(args: readonly string[] | string | undefined): string {
+  return TAB_SENTENCES[tabCommandAction(typeof args === "string" ? [args] : args)];
 }
 
 /** Sentence for a pass-through command. The name comes from the snapshot line for that ref. */
-export function commandSentence(command: string, arg: string | undefined, snapshot: string | undefined): { text: string; citation?: { text: string; source: "text" } } {
-  if (command === "open") return { text: openSentence(arg) };
+export function commandSentence(command: string, arg: string | readonly string[] | undefined, snapshot: string | undefined): { text: string; citation?: { text: string; source: "text" } } {
+  const head = typeof arg === "string" ? arg : arg?.[0];
+  if (command === "open") return { text: openSentence(head) };
   if (command === "wait_for_owner") return { text: "Wait for you to sign in" };
   if (command === "snapshot") return { text: "Read the page" };
-  if (command === "press") return { text: `Press ${arg && !isElementRef(arg) ? arg : "key"}` };
+  if (command === "press") return { text: `Press ${head && !isElementRef(head) ? head : "key"}` };
   if (command === "close") return { text: "Close the page" };
   if (command === "scroll") return { text: "Scroll the page" };
   if (command === "screenshot") return { text: "Capture the page" };
   if (command === "tab") return { text: tabSentence(arg) };
-  const line = refLine(arg, snapshot);
+  const line = refLine(head, snapshot);
   const named = refName(line);
   if (command === "fill") return named
     ? { text: `Type into ${named}`, citation: { text: named, source: "text" } }

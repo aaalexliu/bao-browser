@@ -254,7 +254,7 @@ function actionRow(step: OutlineStep, title: string): { row: DraftRow; field?: R
   }
   if (command(step) === "open") return { row: { line: openedLine(step, title), status } };
   if (command(step) === "press") return { row: { line: pressLine(step), status } };
-  if (command(step) === "tab") return { row: { line: tabSentence(step.native?.args?.[0]), status } };
+  if (command(step) === "tab") return { row: { line: tabSentence(step.native?.args), status } };
   const readOnly = readOnlyLine(step);
   if (readOnly) return { row: { line: readOnly, status, readOnly: true } };
   return { row: { line: cleanLabel(step.label || "") || "Recorded step", status } };
@@ -331,7 +331,7 @@ function openSteps(steps: OutlineStep[]): ReceiptOpen[] {
     open.push({
       step: index + 1,
       id: step.id,
-      label: command(step) === "tab" ? tabSentence(step.native?.args?.[0]) : cleanLabel(step.label || "") || "Step",
+      label: command(step) === "tab" ? tabSentence(step.native?.args) : cleanLabel(step.label || "") || "Step",
       status: step.status || "unknown",
     });
   });

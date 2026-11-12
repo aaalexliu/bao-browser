@@ -2218,7 +2218,7 @@ function receiptInspector(view: ReturnType<typeof inspectRunView>, run: RunSumma
   const source: InspectorStep[] = stored.length ? stored : view.steps.map((step) => ({ id: step.id, status: step.status, label: step.label, reason: step.reason }));
   const rows = source.map((step, index) => {
     const viewed = step.id ? labels.get(step.id) : view.steps[index];
-    const label = step.native?.command === "tab" ? tabSentence(step.native.args?.[0]) : workflowStepLabel(workflowSteps, step.id) || step.label || step.caption?.text || viewed?.label || (run.kind === "capture" ? step.native?.command : undefined) || step.id || "Step";
+    const label = step.native?.command === "tab" ? tabSentence(step.native?.args) : workflowStepLabel(workflowSteps, step.id) || step.label || step.caption?.text || viewed?.label || (run.kind === "capture" ? step.native?.command : undefined) || step.id || "Step";
     const status = receiptStepStatus(step.status || viewed?.status || "unknown", step.id, run);
     const reason = step.reason || receiptReadBack(run, step.id) || viewed?.result;
     const native = step.native;

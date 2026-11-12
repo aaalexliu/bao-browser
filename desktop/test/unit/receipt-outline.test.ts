@@ -85,6 +85,30 @@ for (const [verb, expected] of [
   });
 }
 
+for (const [args, expected, wrong] of [
+  [["--json", "close", "t2"], "Closed a tab", "Listed tabs"],
+  [["--json", "new"], "Opened a new tab", "Listed tabs"],
+  [["--quiet", "list"], "Listed tabs", "Switched tab"],
+  [["--session", "name", "close", "t2"], "Closed a tab", "Switched tab"],
+  [["--json", "true", "close", "t2"], "Closed a tab", "Listed tabs"],
+] as const) {
+  test(`receipt tab ${args.join(" ")} names the verb after flags`, () => {
+    const recorded = [...args];
+    const run: OutlineRun = { steps: [step({ label: "Switch tab", command: "tab", args: recorded, title: "Tabs", url: "https://fixture.test/tabs" })] };
+    assert.deepEqual(receiptOutline(run).chapters[0]?.rows, [{ line: expected, status: "passed" }]);
+    const html = receipt(run);
+    assert.ok(chapters(html).includes(expected));
+    assert.ok(html.includes(`<strong>${expected}</strong>`));
+    assert.ok(html.includes(`tab · ${recorded.join(" · ")}`));
+    assert.equal(html.includes(wrong), false);
+    assert.doesNotMatch(html, /Switch tab/);
+    const failed = receipt({ steps: [step({ label: "Switch tab", status: "failed", command: "tab", args: recorded })] });
+    assert.ok(failed.includes(`Step 1, ${expected},`));
+    assert.equal(failed.includes(wrong), false);
+    assert.doesNotMatch(failed, /Switch tab/);
+  });
+}
+
 test("recorded run icons stay neutral unless a step failed", () => {
   const run: RunSummary = { id: "tabs", workflowId: "agent-browser", kind: "capture", pageEngine: "agent-browser", status: "passed" };
   const neutral = runsList([{ ...run, steps: [{ id: "list", status: "passed" }] }], []);
