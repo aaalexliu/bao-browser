@@ -65,6 +65,7 @@ let renderKey = "";
 let stateLoaded = false;
 let initialConnectionError = false;
 let receiptOffset = 0;
+let receiptQuery = "";
 let evidenceOpen = false;
 let runRequest = 0;
 let renderedDetail = "";
@@ -1340,6 +1341,39 @@ async function decide(btn: HTMLButtonElement, decision: "keep" | "revert"): Prom
   }
 }
 
+function bindReceipt(host: HTMLElement): void {
+  const search = host.querySelector<HTMLInputElement>("#receipt-search");
+  const rows = () => [...host.querySelectorAll<HTMLElement>(".receipt-steps li")];
+  const applySearch = () => {
+    const query = receiptQuery.trim().toLowerCase();
+    rows().forEach((row) => {
+      row.hidden = query.length > 0 && !(row.dataset.search || "").toLowerCase().includes(query);
+    });
+  };
+  if (search) {
+    search.value = receiptQuery;
+    search.oninput = () => {
+      receiptQuery = search.value;
+      applySearch();
+    };
+    applySearch();
+  }
+  host.querySelectorAll<HTMLButtonElement>("[data-receipt-from]").forEach((button) => {
+    button.onclick = () => {
+      const from = Number(button.dataset.receiptFrom || 0);
+      const to = Number(button.dataset.receiptTo || 0);
+      receiptQuery = "";
+      if (search) search.value = "";
+      rows().forEach((row) => {
+        row.hidden = false;
+        const step = Number(row.dataset.step || 0);
+        row.classList.toggle("in-chapter", step >= from && step <= to);
+      });
+      host.querySelector<HTMLElement>(`#receipt-step-${from}`)?.scrollIntoView({ block: "start" });
+    };
+  });
+}
+
 async function showRun(id: string): Promise<void> {
   const request = ++runRequest;
   try {
@@ -1384,6 +1418,7 @@ async function loadRun(id: string, request: number): Promise<void> {
       void showRun(id).then(() => document.querySelector<HTMLElement>("#receipt-step-heading")?.focus());
     };
   });
+  bindReceipt(host);
   host.querySelectorAll<HTMLElement>("[data-screen=heals]").forEach((button) => {
     button.onclick = () => navigate("heals");
   });
@@ -1972,6 +2007,7 @@ function selectRun(id: string, stepId = ""): void {
   openRun = id;
   selectedStep = stepId;
   receiptOffset = 0;
+  receiptQuery = "";
   evidenceOpen = Boolean(stepId);
   screen = "run";
 }
