@@ -715,11 +715,39 @@ export class AgentBrowserProxy {
           return results;
         }
         if (!stop) {
-          const discovered = await this.waitForOwner(session, deadline);
+          let active: { targetId: string; page: OwnerPage } | undefined;
+          let absent = false;
+          while (Date.now() < deadline && !session.abort.signal.aborted) {
+            try {
+              const found = await this.activePage(session);
+              if (!found) absent = true;
+              else active = found;
+              break;
+            } catch (error) {
+              if (error instanceof TaskTabClosed) throw error;
+            }
+            await new Promise((resolve) => setTimeout(resolve, Math.min(250, Math.max(1, deadline - Date.now()))));
+          }
+          if (!active) {
+            const discovered = session.abort.signal.aborted || absent ? this.ownerClosed(session) : await this.waitForOwner(session, deadline);
+            step = recording.begin(command as string, args);
+            this.latest = { runId: recording.id, step, steps: recording.steps };
+            results.push(...discovered);
+            if (ownerReply(results)?.instruction === TASK_TAB_CLOSED) failure = new Error("Bao's task tab was closed");
+            return results;
+          }
+          if (this.waitOf(session) === "off") session.ownerSince = session.ownerTouched = Date.now();
+          this.setWait(session, this.stopped(session, active));
+          session.ownerPage = active.page;
+          const opened = await this.settleWall(session, { retry: true, what: this.wallWords(session), url: this.reopenOf(session) });
           const moved = this.moved?.site;
           step = recording.begin(moved ? "open" : command as string, moved ? [moved] : args);
           this.latest = { runId: recording.id, step, steps: recording.steps };
-          results.push(...discovered);
+          if (opened) {
+            results.push(...this.waitOf(session) !== "off" ? this.ownerResult("halted", session) : [opened]);
+            return results;
+          }
+          results.push(...await this.waitForOwner(session, Math.max(deadline, Date.now() + Math.min(timeout, 5000))));
           if (ownerReply(results)?.instruction === TASK_TAB_CLOSED) failure = new Error("Bao's task tab was closed");
           return results;
         }
@@ -781,6 +809,11 @@ export class AgentBrowserProxy {
       }, () => this.waitOf(session) !== "off");
       if (command !== "close" && results[0]?.exitCode === 0) {
         inPage = this.waitOf(session) === "off" && command === "snapshot" && this.movable(session) && pageWall(results[0].stdout);
+        if (inPage && session.page && session.agentTarget) {
+          if (session.ownerSince === undefined) session.ownerSince = session.ownerTouched = Date.now();
+          this.setWait(session, { ...this.stopped(session, { targetId: session.agentTarget, page: session.page }), wall: true });
+          session.ownerPage = session.page;
+        }
         const opened = command === "open" && this.waitOf(session) !== "off" ? await this.settleWall(session)
           : inPage && session.page ? await this.settleWall(session, { what: "a sign-in or verification prompt", url: session.page.url }) : undefined;
         if (opened && (command === "open" || this.waitOf(session) === "off")) {
@@ -791,14 +824,6 @@ export class AgentBrowserProxy {
       if (this.waitOf(session) !== "off" && command !== "close" && (this.moved?.pick || command === "open" && session.moveError === undefined)) {
         results.splice(0, results.length, ...this.ownerResult("halted", session));
         return results;
-      }
-      if (inPage && session.page && session.raised !== undefined && this.waitOf(session) === "off") {
-        const active = await this.activePage(session).catch((error: unknown) => { if (error instanceof TaskTabClosed) throw error; return undefined; });
-        if (active) {
-          this.setWait(session, { ...this.stopped(session, active), wall: true });
-          session.ownerPage = active.page;
-          if (session.ownerSince === undefined) session.ownerSince = session.ownerTouched = Date.now();
-        }
       }
       if (command === "snapshot" && results[0]?.exitCode === 0) {
         const native = results[0].stdout;
@@ -1456,17 +1481,7 @@ export class AgentBrowserProxy {
       }
     }
     const staying = this.wallOf(session);
-    if (staying) {
-      if (session.raised === undefined) await this.ownerBanner(session, staying.targetId, true).catch(() => undefined);
-      return undefined;
-    }
-    if (options?.what && session.kind === "copy" && session.pick.route === "bao" && session.raised === undefined) {
-      const active = await this.activePage(session).catch((error: unknown) => { if (error instanceof TaskTabClosed) throw error; return undefined; });
-      if (!active) return undefined;
-      session.ownerPage = active.page;
-      session.ownerSince = session.ownerTouched = Date.now();
-      await this.ownerBanner(session, active.targetId, true).catch(() => undefined);
-    }
+    if (staying && session.raised === undefined) await this.ownerBanner(session, staying.targetId, true).catch(() => undefined);
     return undefined;
   }
 
@@ -1609,15 +1624,6 @@ export class AgentBrowserProxy {
       while (Date.now() < deadline) {
         if (session.abort.signal.aborted || cdp && !cdp.isOpen) return this.ownerClosed(session);
         try {
-          if (this.waitOf(session) === "off" || this.waitOf(session) === "pending") {
-            const active = await this.activePage(session);
-            if (!active) return this.ownerClosed(session);
-            if (this.waitOf(session) === "off") session.ownerSince = session.ownerTouched = Date.now();
-            this.setWait(session, this.stopped(session, active));
-            session.ownerPage = active.page;
-            const opened = await this.settleWall(session, { retry: true, what: this.wallWords(session), url: this.reopenOf(session) });
-            if (opened) return this.waitOf(session) !== "off" ? this.ownerResult("halted", session) : [opened];
-          }
           const waiting = this.wallOf(session);
           if (!waiting) return this.ownerClosed(session);
           if (!cdp) {

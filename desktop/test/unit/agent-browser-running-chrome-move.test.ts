@@ -73,6 +73,7 @@ const ACCOUNT = `- main
   - heading "Your account" [level=1, ref=e1]
   - link "Sign out" [ref=e2]
 `;
+const PNG_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aL1sAAAAASUVORK5CYII=";
 const NO_WALL = `- banner
   - link "Sign in" [ref=e1]
   - searchbox "Search" [ref=e2]
@@ -147,17 +148,32 @@ async function harness(t: TestContext, initial: "works" | "refused") {
   const raises: { port: number; method: string }[] = [];
   const order: string[] = [];
   let misses = 0;
+  let missed = 0;
+  let duringRaise: (() => Promise<void>) | undefined;
   const realConnect = sockets.connectCdp;
   t.mock.method(sockets, "connectCdp", async (port: number, browserPath: string, opts?: Parameters<typeof connectCdp>[2]) => {
     const cdp = await realConnect(port, browserPath, opts);
     const send = cdp.send.bind(cdp);
+    const progress = cdp.sendUntilProgress.bind(cdp);
     t.mock.method(cdp, "send", async (method: string, ...args: unknown[]) => {
-      if (method === "Target.getTargetInfo" && misses > 0) { misses -= 1; throw new Error("page metadata is not ready"); }
       if (method === "Target.activateTarget" || method === "Browser.setWindowBounds") {
         raises.push({ port, method });
         order.push(method);
+        if (method === "Target.activateTarget" && duringRaise) {
+          const run = duringRaise;
+          duringRaise = undefined;
+          await run();
+        }
       }
       return send(method, ...(args as []));
+    });
+    t.mock.method(cdp, "sendUntilProgress", async (method: string, ...args: unknown[]) => {
+      if (method === "Target.getTargetInfo" && misses > 0) {
+        misses -= 1;
+        missed += 1;
+        throw new Error("page metadata is not ready");
+      }
+      return progress(method, ...(args as []));
     });
     return cdp;
   });
@@ -202,6 +218,13 @@ ${LIST_TARGETS}
    const loaded=new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('fixture navigation timed out')),20000);cdp.on('Page.loadEventFired',sessionId,()=>{clearTimeout(timer);resolve();});});
    await cdp.send('Page.navigate',{url:new URL('/login', tab.url).href},sessionId); await loaded;
    console.log('press native output');
+  } else if(command==='screenshot'){
+   const png=Buffer.from(${JSON.stringify(PNG_B64)},'base64');
+   fs.writeFileSync(path.join(process.env.AGENT_BROWSER_SOCKET_DIR,'shot.png'), png);
+   await cdp.send('Page.enable',{},sessionId);
+   const loaded=new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('fixture navigation timed out')),20000);cdp.on('Page.loadEventFired',sessionId,()=>{clearTimeout(timer);resolve();});});
+   await cdp.send('Page.navigate',{url:new URL('/login', tab.url).href},sessionId); await loaded;
+   console.log('Screenshot saved to shot.png');
   } else console.log(command+' native output');
  } finally{cdp.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});
@@ -226,7 +249,8 @@ ${LIST_TARGETS}
   return { proxy, site, home, sourceRoot, baoDir, endpoint, ownerTabs, calls, pages, attaches: () => attaches, launched: () => [...launched],
     raises: () => raises, order: () => [...order],
     allow: () => { attach = "works"; }, slow: (ms: number) => { delay = ms; },
-    missNextRead: () => { misses += 1; } };
+    missNextRead: () => { misses += 1; }, metadataMisses: () => missed,
+    duringRaise: (run: () => Promise<void>) => { duringRaise = run; } };
 }
 
 const MOVED = `Bao's own browser hit a sign-in or verification prompt on 127.0.0.1; continued in your running Chrome (Chrome profile "Default", Owner) over remote debugging. Take a fresh snapshot before acting.`;
@@ -586,11 +610,67 @@ test("a transient first page read on wait_for_owner still moves a normal page an
   assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "bao"))[0]!.exitCode, 0);
   h.missNextRead();
   const [moved] = await h.proxy.execute("wait_for_owner", ["5000"], undefined, false, undefined, {}, h.proxy.activeRunId);
+  assert.equal(h.metadataMisses(), 1, "the first page-metadata read failed");
   assert.equal(moved!.stdout, `\u2713 Article\n  ${h.site}/article\n`);
   assert.equal(savedSteps(h.home).at(-1)!.native.command, "open", "a recovered move is an open step, not wait_for_owner");
   assert.equal(h.attaches(), 1, "a normal page still tries Running Chrome");
   assert.equal(h.raises().length, 0, "a successful move does not raise Bao");
   assert.ok(await baoClosed(h.baoDir));
+});
+
+test("a recovered page still leaves time to see the owner leave after a slow refused move", { timeout: scaledMs(60_000) }, async (t) => {
+  const h = await harness(t, "refused");
+  assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "bao"))[0]!.exitCode, 0);
+  h.missNextRead();
+  h.slow(3000);
+  const waiting = h.proxy.execute("wait_for_owner", ["2000"], undefined, false, undefined, {}, h.proxy.activeRunId);
+  for (const deadline = Date.now() + scaledMs(30_000); h.attaches() === 0 && Date.now() < deadline;) await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(h.attaches(), 1, "the recovered move began");
+  await navigateBao(h.baoDir, "/article", `${h.site}/account`);
+  const [ready] = await waiting;
+  assert.equal(h.metadataMisses(), 1, "the first page-metadata read failed");
+  assert.equal((JSON.parse(ready!.stdout) as { outcome: string }).outcome, "ready", "the refused move still left time to see the owner leave");
+  const step = savedSteps(h.home).at(-1)!;
+  assert.equal(step.native.command, "wait_for_owner", "a declined recovered move is not recorded as open");
+  assert.ok((step.endedAt ?? 0) - step.startedAt >= 750, "the recorded wait includes the time spent watching the page");
+});
+
+test("a screenshot that lands on a sign-in page keeps its file after the move", { timeout: scaledMs(60_000) }, async (t) => {
+  const h = await harness(t, "works");
+  assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "bao"))[0]!.exitCode, 0);
+  const [shot] = await h.proxy.execute("screenshot", [], undefined, false, undefined, {}, h.proxy.activeRunId);
+  assert.match(shot!.stdout, /Screenshot saved to shot\.png/);
+  assert.equal(h.attaches(), 0, "the screenshot only notes the wall");
+  assert.equal(h.raises().length, 0, "a wall noted after the screenshot is not raised in that command");
+  const [next] = await h.proxy.execute("click", ["@e5"], undefined, false, undefined, {}, h.proxy.activeRunId);
+  assert.equal(next!.stdout, `\u2713 Article\n  ${h.site}/article\n`, "the next command moves");
+  const run = new Library(h.home).listRuns()[0]!;
+  const step = (run.steps as RecordedAgentBrowserCommand[]).find((item) => item.native.command === "screenshot")!;
+  assert.equal(step.afterShot, undefined, "an owner wait takes no new page picture");
+  assert.equal(step.afterShotError, "Owner input is private; no page screenshot or snapshot was taken.");
+  const artifact = step.native.screenshots[0]!;
+  assert.deepEqual(await readFile(path.join(h.home, "shots", "runs", run.id, artifact.file)), Buffer.from(PNG_B64, "base64"));
+  assert.ok(await baoClosed(h.baoDir));
+});
+
+test("an owner who reaches the account page during the raise ends the wait", { timeout: scaledMs(60_000) }, async (t) => {
+  const h = await harness(t, "refused");
+  assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "bao"))[0]!.exitCode, 0);
+  const endpoint = await readDevToolsActivePort(path.join(h.baoDir, "DevToolsActivePort"));
+  const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
+  try {
+    const tab = (await cdp.send<{ targetInfos: { targetId: string; type: string; url: string }[] }>("Target.getTargets")).targetInfos
+      .find((target) => target.type === "page" && target.url.endsWith("/article"))!;
+    const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId: tab.targetId, flatten: true });
+    await cdp.send("Runtime.evaluate", { expression: `document.getElementById('snapshot').textContent = ${JSON.stringify(SIGN_IN_FORM)}`, returnByValue: true }, sessionId);
+    await cdp.send("Target.detachFromTarget", { sessionId });
+  } finally { cdp.close(); }
+  h.duringRaise(() => navigateBao(h.baoDir, "/article", `${h.site}/account`));
+  const [shot] = await h.proxy.execute("snapshot", [], undefined, true, undefined, {}, h.proxy.activeRunId);
+  assert.equal(shot!.stdout, SIGN_IN_FORM, "the declined in-page move keeps the snapshot stdout");
+  assert.ok(h.raises().length > 0, "the declined move still raises once");
+  const [done] = await h.proxy.execute("wait_for_owner", ["5000"], undefined, false, undefined, {}, h.proxy.activeRunId);
+  assert.equal((JSON.parse(done!.stdout) as { outcome: string }).outcome, "ready", "the page the owner reached during the raise is not the wall");
 });
 
 test("an owner wait does not measure a new heading with a native box read", { timeout: scaledMs(60_000) }, async (t) => {

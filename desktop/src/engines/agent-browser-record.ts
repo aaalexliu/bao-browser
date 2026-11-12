@@ -181,11 +181,6 @@ export class AgentBrowserRun {
     this.persist();
     // The session already ended. A picture error would sit next to the closed result and hide the cause.
     if (ownerReply(results)?.instruction === TASK_TAB_CLOSED) return;
-    if (privatePage) {
-      step.afterShotError = "Owner input is private; no page screenshot or snapshot was taken.";
-      this.persist();
-      return;
-    }
     if (step.native.command === "screenshot") {
       for (const result of results.filter((item) => item.exitCode === 0)) {
         const original = screenshotPath(result.stdout);
@@ -196,6 +191,11 @@ export class AgentBrowserRun {
           step.native.screenshots.push({ path: original, file });
         } catch { this.warn("requested screenshot copy"); }
       }
+    }
+    if (privatePage) {
+      step.afterShotError = "Owner input is private; no page screenshot or snapshot was taken.";
+      this.persist();
+      return;
     }
     try {
       const shot = await screenshot();
