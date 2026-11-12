@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import * as net from "node:net";
 import { Socket } from "node:net";
 import { tmpdir } from "node:os";
@@ -396,4 +396,161 @@ test("a recovered wait_for_owner read moves before it raises", { timeout: scaled
     await proxy.close().catch(() => undefined);
     await rm(root, { recursive: true, force: true });
   }
+});
+
+async function loggingNative(executable: string, log: string, box: boolean): Promise<void> {
+  await writeFile(executable, `#!${process.execPath}
+const fs = require("node:fs");
+const args = process.argv.slice(2);
+const command = args[args.indexOf("--idle-timeout") + 2];
+fs.appendFileSync(${JSON.stringify(log)}, command + "\\n");
+if (command === "tab" && args.includes("--json")) process.stdout.write(JSON.stringify({ data: { tabs: [{ active: true, targetId: "CHECKOUT" }] } }));
+else if (${box} && command === "get") process.stdout.write(JSON.stringify({ data: { x: 4, y: 8, width: 40, height: 24 } }));
+else process.stdout.write(command + " unchanged\\n");
+`, { mode: 0o700 });
+}
+
+async function nativeCommands(log: string): Promise<string[]> {
+  return (await readFile(log, "utf8").catch(() => "")).split("\n").filter(Boolean);
+}
+
+async function baoHandoff(t: TestContext, root: string, executable: string, answer: (method: string, params: Record<string, unknown> | undefined) => unknown): Promise<{ proxy: AgentBrowserProxy; order: string[] }> {
+  const order: string[] = [];
+  const sourceRoot = await sourceProfile(root);
+  t.mock.method(frontApplication, "pid", async () => 1);
+  t.mock.method(bao, "openBaoChromeForProxy", async () => {
+    const portFile = path.join(root, "DevToolsActivePort");
+    await writeFile(portFile, "12345\n/devtools/browser/handoff\n");
+    let closedWindow!: () => void;
+    const closed = new Promise<void>((resolve) => { closedWindow = resolve; });
+    return {
+      target: { kind: "bao" as const, portFile }, pid: 4242, closed,
+      isClosed: () => false, close: async () => { closedWindow(); }, keepOpen: async () => undefined,
+    };
+  });
+  t.mock.method(currentChrome, "openCurrentChrome", async () => {
+    order.push("move");
+    throw new Error("Chrome is not open. Open Google Chrome, then try again.");
+  });
+  t.mock.method(sockets, "connectCdp", async () => {
+    const cdp = new sockets.CdpSocket(new Socket());
+    t.mock.method(cdp, "send", async (method: string, params?: Record<string, unknown>) => {
+      if (method === "Target.activateTarget" || method === "Browser.setWindowBounds") order.push(method);
+      return answer(method, params);
+    });
+    followSend(t, cdp);
+    return cdp;
+  });
+  return { proxy: new AgentBrowserProxy({ home: path.join(root, "home"), sourceRoot, executable }), order };
+}
+
+test("a recovered page that is not a sign-in moves or raises, and the poll reads no page text", { timeout: scaledMs(8_000) }, async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-recovered-plain-"));
+  const executable = path.join(root, "agent-browser");
+  const log = path.join(root, "native.log");
+  await loggingNative(executable, log, false);
+  const article = { url: "http://127.0.0.1:9/article", title: "Article" };
+  const pageReads: string[] = [];
+  let arm = false;
+  let missed = false;
+  const { proxy, order } = await baoHandoff(t, root, executable, (method, params) => {
+    if (arm && method === "Runtime.evaluate") {
+      const expression = String(params?.expression ?? "");
+      if (!expression.includes("bao-owner-wait")) pageReads.push(expression);
+    }
+    if (method === "Target.getTargetInfo") {
+      if (arm && !missed) {
+        missed = true;
+        throw new Error("transient metadata miss");
+      }
+      return { targetInfo: article };
+    }
+    if (method === "Target.getTargets") return { targetInfos: [{ targetId: "CHECKOUT", ...article }] };
+    if (method === "Target.attachToTarget") return { sessionId: "fixture" };
+    if (method === "Browser.getWindowForTarget") return { windowId: 7 };
+    if (method === "Browser.getWindowBounds") return { bounds: { windowState: "normal" } };
+    return {};
+  });
+  try {
+    await proxy.execute("open", [article.url], "bao");
+    arm = true;
+    const before = (await nativeCommands(log)).length;
+    const waited = await proxy.execute("wait_for_owner", ["800"], undefined, false, undefined, {}, proxy.activeRunId);
+    const during = (await nativeCommands(log)).slice(before);
+    const moveAt = order.indexOf("move");
+    const raiseAt = order.findIndex((item) => item === "Target.activateTarget" || item === "Browser.setWindowBounds");
+    assert.equal(missed, true);
+    assert.equal(outcome(waited), "recording");
+    assert.equal(during.includes("snapshot"), false, during.join(","));
+    assert.deepEqual(pageReads, []);
+    assert.equal(order.filter((item) => item === "move").length, 1);
+    assert.ok(proxy.pickLines.some((line) => line.includes("a step that needs the owner")), proxy.pickLines.join("\n"));
+    assert.equal(proxy.pickLines.some((line) => line.includes("a sign-in page")), false);
+    assert.equal(order.filter((item) => item === "Target.activateTarget").length, 1);
+    assert.ok(raiseAt > moveAt, `raise at ${raiseAt} is not after move at ${moveAt}: ${order.join(",")}`);
+    if (process.platform === "darwin") assert.ok(order.indexOf("Browser.setWindowBounds") > moveAt);
+  } finally {
+    await proxy.close().catch(() => undefined);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+async function evidenceWall(t: TestContext, command: "click" | "fill" | "snapshot"): Promise<void> {
+  const root = await mkdtemp(path.join(tmpdir(), `bao-evidence-${command}-`));
+  const executable = path.join(root, "agent-browser");
+  const log = path.join(root, "native.log");
+  await loggingNative(executable, log, command !== "snapshot");
+  const article = { url: "http://127.0.0.1:9/article", title: "Article" };
+  const signIn = { url: "http://127.0.0.1:9/login", title: "Sign in" };
+  const pageReads: string[] = [];
+  let reads = 0;
+  let arm = false;
+  const { proxy, order } = await baoHandoff(t, root, executable, (method, params) => {
+    if (arm && method === "Runtime.evaluate") {
+      const expression = String(params?.expression ?? "");
+      if (!expression.includes("bao-owner-wait")) pageReads.push(expression);
+    }
+    if (method === "Target.getTargetInfo") {
+      if (arm) reads += 1;
+      const wallAt = command === "snapshot" ? 3 : 2;
+      return { targetInfo: arm && reads >= wallAt ? signIn : article };
+    }
+    if (method === "Target.getTargets") return { targetInfos: [{ targetId: "CHECKOUT", ...article }] };
+    if (method === "Target.attachToTarget") return { sessionId: "fixture" };
+    if (method === "Browser.getWindowForTarget") return { windowId: 7 };
+    if (method === "Browser.getWindowBounds") return { bounds: { windowState: "normal" } };
+    return {};
+  });
+  try {
+    await proxy.execute("open", [article.url], "bao");
+    arm = true;
+    const before = (await nativeCommands(log)).length;
+    const args = command === "fill" ? ["@email", "owner-only"] : command === "click" ? ["@pay"] : [];
+    const result = await proxy.execute(command, args, undefined, false, undefined, {}, proxy.activeRunId);
+    const during = (await nativeCommands(log)).slice(before);
+    const moveAt = order.indexOf("move");
+    const raiseAt = order.findIndex((item) => item === "Target.activateTarget" || item === "Browser.setWindowBounds");
+    assert.equal(outcome(result), "halted", `${command} returned ${result[0]?.stdout}`);
+    assert.equal(during.filter((item) => item === "snapshot").length, command === "snapshot" ? 1 : 0, during.join(","));
+    assert.equal(during.includes(command) && command !== "snapshot", false, during.join(","));
+    assert.deepEqual(pageReads, []);
+    assert.equal(order.filter((item) => item === "move").length, 1);
+    assert.ok(raiseAt > moveAt, `${command} raise at ${raiseAt} is not after move at ${moveAt}: ${order.join(",")}`);
+    assert.equal(order.slice(0, moveAt).includes("Target.activateTarget"), false);
+  } finally {
+    await proxy.close().catch(() => undefined);
+    await rm(root, { recursive: true, force: true });
+  }
+}
+
+test("a click evidence wall moves before it raises and does not use the old ref", async (t) => {
+  await evidenceWall(t, "click");
+});
+
+test("a fill evidence wall moves before it raises and does not use the old ref", async (t) => {
+  await evidenceWall(t, "fill");
+});
+
+test("a completion screenshot wall moves before it raises", async (t) => {
+  await evidenceWall(t, "snapshot");
 });
