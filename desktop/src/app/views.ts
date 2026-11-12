@@ -2023,8 +2023,10 @@ export function runsList(runs: RunSummary[], workflows: WorkflowSummary[], selec
     const heal = run.heals?.find((item) => healId ? item.id === healId : !run.decisions?.some((decision) => decision.healId === item.id));
     const spoken = plainAgentReason(run);
     const detail = spoken || (kind === "paused" ? reason : kind === "failed" ? stoppedAt || reason : kind === "healed" && heal ? heal.failedStep?.index === undefined ? "Review the repair." : `Step ${heal.failedStep.index + 1} moved.` : reason || runDuration(run));
-    const shown = spoken || (detail ? ownerStopText(detail) : "");
-    const agentLine = summaryFromAgent(run, spoken, detail) && shown ? `Agent said: ${shown}` : "";
+    const report = agentReport(run);
+    const fromAgent = summaryFromAgent(run, spoken, detail);
+    const shown = fromAgent && report ? report : spoken || (detail ? ownerStopText(detail) : "");
+    const agentLine = fromAgent && report ? `Agent said: ${report}` : "";
     const deadline = attentionLabel && kind === "paused" && ask && (openLive || ask.runId === run.id) ? ask.deadline : undefined;
     const promotion = healId ? selection.promotions?.find((item) => item.healId === healId && item.workflowId === run.workflowId) || (run.promotion?.healId === healId ? run.promotion : undefined) : undefined;
     const remaining = promotion?.status === "provisional" ? Math.max(0, (promotion.need ?? DEFAULT_PROMOTE_AFTER) - (promotion.replays ?? 0)) : 0;

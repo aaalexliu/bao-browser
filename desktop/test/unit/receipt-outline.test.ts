@@ -20,10 +20,12 @@ function step(input: {
   shot?: string;
   shotNote?: string;
   at?: number;
+  target?: string;
 }): OutlineStep {
   return {
     status: input.status || "passed",
     label: input.label,
+    caption: input.target ? { text: input.label, citation: { text: input.target } } : undefined,
     startedAt: input.at,
     endedAt: input.at === undefined ? undefined : input.at + 200,
     afterShot: input.shot,
@@ -72,16 +74,16 @@ test("a pizza run shows its pages, clicks, and the agent's own words", () => {
     envelope: { status: "passed", reason: "Created a list and verified it shows exactly 3 places." },
     steps: [
       step({ label: "Open www.google.com/maps", command: "open", args: ["https://www.google.com/maps"], title: "Google Maps", url: "https://www.google.com/maps", at: 11_000 }),
-      step({ label: "Click Saved", status: "failed", command: "click", args: ["@e1"], title: "Google Gemini", url: "https://gemini.google.com/app", stderr: "✗ Could not locate element with role=button name=Saved", at: 12_000 }),
-      step({ label: "Click Saved", command: "click", args: ["@e2"], title: "Google Maps", url: "https://www.google.com/maps", at: 13_000 }),
+      step({ label: "Click Saved", target: "Saved", status: "failed", command: "click", args: ["@e1"], title: "Google Gemini", url: "https://gemini.google.com/app", stderr: "✗ Could not locate element with role=button name=Saved", at: 12_000 }),
+      step({ label: "Click Saved", target: "Saved", command: "click", args: ["@e2"], title: "Google Maps", url: "https://www.google.com/maps", at: 13_000 }),
       step({ label: "Type", command: "fill", args: ["@e3", "nytimes pizza"], title: "Untitled list - Google Maps", url: "https://www.google.com/maps/search/nytimes+pizza", at: 14_000 }),
       step({ label: "Type", command: "fill", args: ["@e4", "Ceres Mott St"], title: "Google Maps", url: "https://www.google.com/maps/search/ceres", at: 15_000 }),
-      step({ label: "Click Ceres pizza", command: "click", args: ["@e5"], title: "Google Maps", url: "https://www.google.com/maps/search/ceres", at: 16_000 }),
+      step({ label: "Click Ceres pizza", target: "Ceres pizza", command: "click", args: ["@e5"], title: "Google Maps", url: "https://www.google.com/maps/search/ceres", at: 16_000 }),
       step({ label: "Type", command: "fill", args: ["@e6", "Amore Pizza 30-27 Stratton Street"], title: "Google Maps", url: "https://www.google.com/maps/search/amore", at: 17_000 }),
-      step({ label: "Click Amore Pizza 30-27 Stratton Street Flushing Queens", command: "click", args: ["@e7"], title: "Amore Pizza - Google Maps", url: "https://www.google.com/maps/place/Amore", shot: "amore.png", at: 18_000 }),
+      step({ label: "Click Amore Pizza 30-27 Stratton Street Flushing Queens", target: "Amore Pizza 30-27 Stratton Street Flushing Queens", command: "click", args: ["@e7"], title: "Amore Pizza - Google Maps", url: "https://www.google.com/maps/place/Amore", shot: "amore.png", at: 18_000 }),
       step({ label: "Type", command: "fill", args: ["@e8", "Brooklyn DOP 237 5th Ave"], title: "Google Maps", url: "https://www.google.com/maps/search/brooklyn", at: 19_000 }),
-      step({ label: "Click Brooklyn DOP 237 5th Ave", command: "click", args: ["@e9"], title: "Brooklyn DOP - Google Maps", url: "https://www.google.com/maps/place/Brooklyn", shot: "brooklyn.png", at: 20_000 }),
-      step({ label: "Click nytimes pizza Private · 3 places", command: "click", args: ["@e10"], title: "nytimes pizza - Google Maps", url: "https://www.google.com/maps/placelists/1", shot: "list.png", at: 21_000 }),
+      step({ label: "Click Brooklyn DOP 237 5th Ave", target: "Brooklyn DOP 237 5th Ave", command: "click", args: ["@e9"], title: "Brooklyn DOP - Google Maps", url: "https://www.google.com/maps/place/Brooklyn", shot: "brooklyn.png", at: 20_000 }),
+      step({ label: "Click nytimes pizza Private · 3 places", target: "nytimes pizza Private · 3 places", command: "click", args: ["@e10"], title: "nytimes pizza - Google Maps", url: "https://www.google.com/maps/placelists/1", shot: "list.png", at: 21_000 }),
     ],
   };
   const outline = receiptOutline(run);
@@ -129,7 +131,7 @@ test("a form lists every passed fill in order and hides email", () => {
     step({ label: "Type into \"Note\"", command: "fill", args: ["@note", "old note"], title: "Order", url: "https://fixture.test/order" }),
     step({ label: "Type into \"Note\"", command: "fill", args: ["@note", ""], title: "Order", url: "https://fixture.test/order" }),
     step({ label: "Type into \"Notes\"", command: "type", args: ["@notes", "Thank you for your help"], title: "Order", url: "https://fixture.test/order", summary: "Typed \"Thank you for your help\" into \"Notes\"." }),
-    step({ label: "Click Submit", command: "click", args: ["@submit"], title: "Order", url: "https://fixture.test/order" }),
+    step({ label: "Click Submit", target: "Submit", command: "click", args: ["@submit"], title: "Order", url: "https://fixture.test/order" }),
     step({ label: "Read the page", command: "snapshot", title: "Thank you. Your order could not be submitted.", url: "https://fixture.test/thanks" }),
   ];
   const outline = receiptOutline({ status: "passed", steps });
@@ -160,7 +162,7 @@ test("a ten-place run reads as the page's clicks", () => {
   for (let n = 1; n <= 10; n++) {
     const name = `Place ${n} Example Street`;
     steps.push(step({ label: "Type", command: "fill", args: ["@search", name], title: "Google Maps", url: "https://www.google.com/maps" }));
-    steps.push(step({ label: `Click ${name}`, command: "click", args: [`@e${n}`], title: "Google Maps", url: "https://www.google.com/maps", shot: n === 10 ? "last.png" : undefined }));
+    steps.push(step({ label: `Click ${name}`, target: name, command: "click", args: [`@e${n}`], title: "Google Maps", url: "https://www.google.com/maps", shot: n === 10 ? "last.png" : undefined }));
   }
   steps.splice(2, 0, step({ label: "Type", command: "fill", args: ["@search", "Missing Place Road"], title: "Google Maps", url: "https://www.google.com/maps" }));
   const outline = receiptOutline({ status: "passed", steps });
@@ -390,7 +392,7 @@ test("ten distinct place pages drop the repeated site suffix and name the step",
     const name = `Place ${index + 1} Example Street`;
     return [
       step({ label: "Type", command: "fill", args: ["@search", name], title: "Google Maps", url: "https://www.google.com/maps" }),
-      step({ label: `Click ${name}`, command: "click", args: [`@e${index + 1}`], title: `${name} - Google Maps`, url: `https://www.google.com/maps/place/${index + 1}` }),
+      step({ label: `Click ${name}`, target: name, command: "click", args: [`@e${index + 1}`], title: `${name} - Google Maps`, url: `https://www.google.com/maps/place/${index + 1}` }),
     ];
   }).flat();
   const html = receipt({ status: "passed", steps });
@@ -445,7 +447,8 @@ test("a short replay does not say it took 0 s, and agent words are labeled", () 
   assert.match(html, /class="run-state recorded">Recorded as passed<\/span> <span class="run-state failed">1 failed<\/span>/);
   assert.doesNotMatch(html, /class="run-state passed"|class="run-glyph passed"/);
   assert.match(html, /class="run-agent">Agent said: Added these 10 places/);
-  assert.match(html, /data-open-run="agent-field"[\s\S]*?class="run-agent">Agent said: Set Bao stopped\. Open Chrome to check the page before continuing\. on the form\./);
+  assert.match(html, /data-open-run="agent-field"[\s\S]*?class="run-agent">Agent said: Set first_name on the form\./);
+  assert.doesNotMatch(html, /Agent said: Set Bao stopped/);
 });
 
 test("chapter rows follow the recorded command, including a failed fill and a typed Cleared", () => {
@@ -456,7 +459,9 @@ test("chapter rows follow the recorded command, including a failed fill and a ty
       step({ label: "Read the page", command: "snapshot", title: "Example", url: "https://example.com" }),
       step({ label: "Type into \"Name\"", command: "fill", args: ["@name", "Ada"], title: "Example", url: "https://example.com" }),
       step({ label: "Press Enter", command: "press", args: ["Enter"], title: "Example", url: "https://example.com" }),
-      step({ label: "Click \"Save\"", command: "click", args: ["@save"], title: "Example", url: "https://example.com" }),
+      step({ label: "Click \"Save\"", target: "Save", command: "click", args: ["@save"], title: "Example", url: "https://example.com" }),
+      step({ label: "Click \"Save [draft]\"", target: "Save [draft]", command: "click", args: ["@draft"], title: "Example", url: "https://example.com" }),
+      step({ label: "Click the checkbox", command: "click", args: ["@box"], title: "Example", url: "https://example.com" }),
     ],
   });
   const listed = chapters(sequence);
@@ -464,7 +469,10 @@ test("chapter rows follow the recorded command, including a failed fill and a ty
   assert.match(listed, /Typed &quot;Ada&quot; into Name/);
   assert.match(listed, /Pressed &quot;Enter&quot;/);
   assert.match(listed, /Clicked &quot;Save&quot;/);
+  assert.match(listed, /Clicked &quot;Save \[draft\]&quot;/);
   assert.doesNotMatch(listed, /Clicked &quot;&quot;Save&quot;&quot;/);
+  assert.doesNotMatch(listed, /Clicked &quot;the checkbox&quot;/);
+  assert.match(listed, /Clicked a button/);
   assert.doesNotMatch(listed, /Read the page/);
   assert.doesNotMatch(listed, /Opened Example/);
 
@@ -496,9 +504,4 @@ test("chapter rows follow the recorded command, including a failed fill and a ty
   });
   assert.match(chapters(waited), /Waited/);
   assert.doesNotMatch(chapters(waited), /Opened /);
-  const moved = receipt({
-    status: "passed",
-    steps: [step({ label: "Navigate", command: "navigate", args: ["https://fixture.test/next"], title: "Next", url: "https://fixture.test/next" })],
-  });
-  assert.match(chapters(moved), /Opened https:\/\/fixture\.test\/next/);
 });

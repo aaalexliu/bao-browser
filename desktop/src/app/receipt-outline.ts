@@ -13,6 +13,7 @@ export interface OutlineStep {
   /** Why the kept picture is not of the active tab. */
   shotNote?: string;
   summary?: { text?: string; page?: { title?: string; url?: string } };
+  caption?: { text?: string; citation?: { text?: string } };
   native?: {
     command?: string;
     args?: string[];
@@ -139,10 +140,6 @@ function quoted(value: string): string {
   return `"${value}"`;
 }
 
-function selector(value: string): boolean {
-  return /^[@#.]/.test(value) || /[\[\]>#]/.test(value);
-}
-
 function fillLine(field: ReceiptField, cleared: boolean): string {
   if (cleared) return `Cleared ${field.label}`;
   if (field.masked) return `Typed a hidden value into ${field.label}`;
@@ -154,30 +151,31 @@ function recordedName(value: string): string {
   return trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"') ? trimmed.slice(1, -1).trim() : trimmed;
 }
 
-function clickLine(label: string, args: string[] = []): string {
-  const named = recordedName(/^Click\s+(.+)$/.exec(label)?.[1] || "");
-  if (named && !selector(named)) return `Clicked ${quoted(named)}`;
-  return /\blink\b/i.test(`${label} ${args.join(" ")}`) ? "Clicked a link" : "Clicked a button";
+function citedName(step: OutlineStep): string {
+  return recordedName(step.caption?.citation?.text || "");
 }
 
-function openCommand(step: OutlineStep): boolean {
-  return command(step) === "open" || command(step) === "goto" || command(step) === "navigate";
+function clickLine(step: OutlineStep): string {
+  const named = citedName(step);
+  if (named) return `Clicked ${quoted(named)}`;
+  const label = cleanLabel(step.label || "");
+  return /\blink\b/i.test(`${label} ${(step.native?.args || []).join(" ")}`) ? "Clicked a link" : "Clicked a button";
 }
 
 function openedLine(step: OutlineStep, fallback: string): string {
-  const arg = openCommand(step) ? step.native?.args?.[0]?.trim() : "";
+  const arg = command(step) === "open" ? step.native?.args?.[0]?.trim() : "";
   return `Opened ${arg || pageTitle(step) || pageUrl(step) || fallback}`;
 }
 
 function pressLine(step: OutlineStep): string {
-  const key = (step.native?.args || []).map((arg) => recordedName(arg)).find((arg) => arg && !arg.startsWith("-") && !/^@e\d+$/.test(arg));
-  return key ? `Pressed ${quoted(key)}` : "Pressed a key";
+  const key = recordedName(step.native?.args?.[0] || "");
+  return key && !/^@e\d+$/.test(key) ? `Pressed ${quoted(key)}` : "Pressed a key";
 }
 
 function readOnlyLine(step: OutlineStep): string | undefined {
   const cmd = command(step);
-  if (cmd === "snapshot" || cmd === "get") return "Read the page";
-  if (cmd === "wait" || cmd.startsWith("wait_")) return "Waited";
+  if (cmd === "snapshot") return "Read the page";
+  if (cmd === "wait_for_owner") return "Waited";
   return undefined;
 }
 
@@ -249,9 +247,9 @@ function actionRow(step: OutlineStep, title: string): { row: DraftRow; field?: R
   }
   if (isClick(step)) {
     const label = cleanLabel(step.label || "") || "Click";
-    return { row: { line: clickLine(label, step.native?.args), status }, click: { label, status } };
+    return { row: { line: clickLine(step), status }, click: { label, status } };
   }
-  if (openCommand(step)) return { row: { line: openedLine(step, title), status } };
+  if (command(step) === "open") return { row: { line: openedLine(step, title), status } };
   if (command(step) === "press") return { row: { line: pressLine(step), status } };
   const readOnly = readOnlyLine(step);
   if (readOnly) return { row: { line: readOnly, status, readOnly: true } };
