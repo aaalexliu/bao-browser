@@ -451,6 +451,41 @@
     .receipt-steps li > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
     .receipt-steps p { margin-block: 4px 0; white-space: pre-wrap; }
     .receipt-pages { display: flex; gap: 8px; flex-wrap: wrap; }
+    .receipt-outcome, .receipt-proof, .receipt-problems { margin: 0 0 18px; }
+    .receipt-outcome h3, .receipt-proof h3, .receipt-problems h3, .receipt-chapters h3, .receipt-agent h3, #receipt-step-heading { margin: 0 0 8px; font-size: 15px; }
+    .receipt-recorded, .receipt-claim { margin: 0 0 10px; }
+    #run-receipt .receipt-claim, #run-receipt .receipt-recorded, #run-receipt .receipt-conflict { max-width: none; }
+    .receipt-claim { border-left: 3px solid var(--line); padding-left: 10px; color: var(--quiet); hyphens: manual; }
+    .receipt-listed { margin: 0 0 12px; padding-left: 18px; color: var(--quiet); }
+    .receipt-shots { display: flex; justify-content: space-between; gap: 12px; overflow: auto; margin: 0 0 8px; }
+    .receipt-shots figure { margin: 0; flex: 1 1 168px; max-width: 168px; min-width: 112px; display: flex; flex-direction: column; }
+    .receipt-shots img { width: 100%; height: 96px; object-fit: cover; object-position: center; border: 1px solid var(--line); border-radius: 8px; background: transparent; }
+    .receipt-shots figcaption { margin-top: 4px; min-height: 2.6em; color: var(--quiet); font-size: 12px; line-height: 1.3; }
+    [data-theme="dark"] #run-receipt :is(.receipt-kicker, .receipt-meta, .receipt-count, .receipt-shots figcaption) { color: #d1d1d6; }
+    .receipt-count { margin: 0 0 8px; color: var(--quiet); font-size: 13px; }
+    .receipt-items { list-style: none; margin: 0; padding: 0; max-height: 240px; overflow-y: scroll; scrollbar-width: thin; border: 1px solid var(--line); border-radius: 8px; }
+    .receipt-items::-webkit-scrollbar, .receipt-chapters::-webkit-scrollbar { width: 8px; }
+    .receipt-items::-webkit-scrollbar-thumb, .receipt-chapters::-webkit-scrollbar-thumb { background: var(--line); border-radius: 8px; }
+    .receipt-items li { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; padding: 7px 10px; border-bottom: 1px solid var(--line); }
+    .receipt-items li span:first-child { min-width: 0; }
+    .receipt-items li:last-child { border-bottom: 0; }
+    .receipt-items .exception { color: var(--bad); }
+    .receipt-problems ul { margin: 0; padding-left: 18px; }
+    .receipt-problems li + li { margin-top: 8px; }
+    .receipt-chapters { display: flex; flex-direction: column; gap: 2px; margin: 0 0 16px; }
+    .receipt-chapter { margin: 0 0 12px; }
+    .receipt-chapter h3, .receipt-chapter button { margin: 0; }
+    .receipt-chapters button { display: flex; justify-content: space-between; gap: 12px; width: 100%; height: auto; min-height: 32px; text-align: start; background: transparent; border: 0; border-radius: 8px; padding: 6px 8px; }
+    .receipt-chapters button:hover, .receipt-chapters button:focus-visible { background: var(--select); }
+    .receipt-chapters button span:last-child { color: var(--quiet); white-space: nowrap; }
+    #receipt-search { width: 100%; margin: 0 0 10px; }
+    .receipt-command { margin: 4px 0 0; color: var(--quiet); font: 12px/1.4 ui-monospace, monospace; overflow-wrap: anywhere; }
+    .receipt-steps li.in-chapter { background: var(--select); }
+    .receipt-steps details { margin-top: 6px; }
+    .receipt-steps details img { display: block; max-width: 100%; margin-top: 8px; border: 1px solid var(--line); border-radius: 8px; }
+    @container detail (max-width: 560px) {
+      .receipt-items li, .receipt-chapters button { align-items: flex-start; }
+    }
     #run-evidence { margin-block-start: 24px; }
     #run-evidence > summary { cursor: pointer; font-weight: 600; padding-block: 8px; }
     #run-evidence > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

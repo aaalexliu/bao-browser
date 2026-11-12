@@ -65,6 +65,8 @@ let renderKey = "";
 let stateLoaded = false;
 let initialConnectionError = false;
 let receiptOffset = 0;
+let receiptQuery = "";
+let receiptSearchSelection: { start: number; end: number } | null = null;
 let evidenceOpen = false;
 let runRequest = 0;
 let renderedDetail = "";
@@ -342,6 +344,7 @@ function render(focusDetail = true): void {
       input.onblur = null;
       input.onchange = null;
     });
+    rememberReceiptSearch();
     mainEl().innerHTML = body;
     const nextRecovery = document.querySelector<HTMLDetailsElement>("#library-damaged details");
     if (nextRecovery && libraryRecovery) {
@@ -1340,6 +1343,58 @@ async function decide(btn: HTMLButtonElement, decision: "keep" | "revert"): Prom
   }
 }
 
+function rememberReceiptSearch(): void {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLInputElement) || active.id !== "receipt-search") return;
+  receiptSearchSelection = {
+    start: active.selectionStart ?? active.value.length,
+    end: active.selectionEnd ?? active.value.length,
+  };
+}
+
+function restoreReceiptSearch(host: ParentNode): void {
+  const selection = receiptSearchSelection;
+  receiptSearchSelection = null;
+  if (!selection) return;
+  const search = host.querySelector<HTMLInputElement>("#receipt-search");
+  if (!search) return;
+  search.focus({ preventScroll: true });
+  search.setSelectionRange(selection.start, selection.end);
+}
+
+function bindReceipt(host: HTMLElement): void {
+  const search = host.querySelector<HTMLInputElement>("#receipt-search");
+  const rows = () => [...host.querySelectorAll<HTMLElement>(".receipt-steps li")];
+  const applySearch = () => {
+    const query = receiptQuery.trim().toLowerCase();
+    rows().forEach((row) => {
+      row.hidden = query.length > 0 && !(row.dataset.search || "").toLowerCase().includes(query);
+    });
+  };
+  if (search) {
+    search.value = receiptQuery;
+    search.oninput = () => {
+      receiptQuery = search.value;
+      applySearch();
+    };
+    applySearch();
+  }
+  host.querySelectorAll<HTMLButtonElement>("[data-receipt-from]").forEach((button) => {
+    button.onclick = () => {
+      const from = Number(button.dataset.receiptFrom || 0);
+      const to = Number(button.dataset.receiptTo || 0);
+      receiptQuery = "";
+      if (search) search.value = "";
+      rows().forEach((row) => {
+        row.hidden = false;
+        const step = Number(row.dataset.step || 0);
+        row.classList.toggle("in-chapter", step >= from && step <= to);
+      });
+      host.querySelector<HTMLElement>(`#receipt-step-${from}`)?.scrollIntoView({ block: "start" });
+    };
+  });
+}
+
 async function showRun(id: string): Promise<void> {
   const request = ++runRequest;
   try {
@@ -1347,6 +1402,7 @@ async function showRun(id: string): Promise<void> {
   } catch {
     const host = document.getElementById("run-host");
     if (!host || screen !== "run" || openRun !== id || request !== runRequest) return;
+    receiptSearchSelection = null;
     host.innerHTML = receiptError();
     document.getElementById("retry-run")!.onclick = () => { void showRun(id).then(() => focusMain({ preventScroll: true })); };
   }
@@ -1362,10 +1418,14 @@ async function loadRun(id: string, request: number): Promise<void> {
   const receipt = receiptResponse?.ok ? await receiptResponse.json().catch(() => null) as ReturnType<typeof inspectRunView> | null : null;
   const response = await fetch("/api/workflows/" + encodeURIComponent(run.workflowId));
   const workflow = response.ok
-    ? await response.json() as { name: string; id: string; steps: { id: string; label?: string; action?: string }[]; recordedOnly?: boolean }
+    ? await response.json() as { name: string; id: string; steps: { id: string; action?: string; caption?: { text?: string; citation?: { text?: string } } }[]; recordedOnly?: boolean }
     : { name: runWorkflowName(run, state.workflows || []), id: run.workflowId, steps: run.steps || [], recordedOnly: true };
   const host = document.getElementById("run-host");
-  if (!host || screen !== "run" || openRun !== id || request !== runRequest) return;
+  if (!host || screen !== "run" || openRun !== id || request !== runRequest) {
+    if (screen !== "run" || openRun !== id) receiptSearchSelection = null;
+    return;
+  }
+  rememberReceiptSearch();
   const timings = (run.steps || []).map((step) => Math.max(0, (step.endedAt || 0) - (step.startedAt || 0)));
   const recorded = !workflow.recordedOnly && workflow.steps ? trajectoryFromWorkflow(workflow as unknown as WorkflowV2, timings) : [];
   const recent = (state.runs || []).filter((item) => item.workflowId === run.workflowId);
@@ -1373,7 +1433,8 @@ async function loadRun(id: string, request: number): Promise<void> {
   merged.set(run.id, run);
   const history = [...merged.values()].sort((a, b) => (a.at || 0) - (b.at || 0)).slice(-8);
   const reviewStepIds = reviewItems((state.runs || []).filter((item) => item.workflowId === run.workflowId)).map((item) => item.stepId);
-  host.innerHTML = (receipt ? runReceipt(receipt, workflow.name, run) : receiptError()) + `<details id="run-evidence"${evidenceOpen ? " open" : ""}><summary>Detailed evidence</summary>${runViewer(run, workflow, selectedStep, { recent: history, recorded, reviewStepIds })}</details>`;
+  host.innerHTML = (receipt ? runReceipt(receipt, workflow.name, run, workflow.recordedOnly ? undefined : workflow.steps) : receiptError()) + `<details id="run-evidence"${evidenceOpen ? " open" : ""}><summary>Detailed evidence</summary>${runViewer(run, workflow, selectedStep, { recent: history, recorded, reviewStepIds })}</details>`;
+  if (!receipt) receiptSearchSelection = null;
   const retry = document.getElementById("retry-run");
   if (retry) retry.onclick = () => { void showRun(id).then(() => focusMain({ preventScroll: true })); };
   const evidence = document.getElementById("run-evidence") as HTMLDetailsElement;
@@ -1384,6 +1445,8 @@ async function loadRun(id: string, request: number): Promise<void> {
       void showRun(id).then(() => document.querySelector<HTMLElement>("#receipt-step-heading")?.focus());
     };
   });
+  bindReceipt(host);
+  restoreReceiptSearch(host);
   host.querySelectorAll<HTMLElement>("[data-screen=heals]").forEach((button) => {
     button.onclick = () => navigate("heals");
   });
@@ -1972,6 +2035,7 @@ function selectRun(id: string, stepId = ""): void {
   openRun = id;
   selectedStep = stepId;
   receiptOffset = 0;
+  receiptQuery = "";
   evidenceOpen = Boolean(stepId);
   screen = "run";
 }
