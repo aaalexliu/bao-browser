@@ -4,7 +4,7 @@ import { chmod, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test, { type TestContext } from "node:test";
-import { agentsNote, askedApp, chromeDenied, ChromeFolderDenied, chromeFolderAccess } from "../../src/chrome-access";
+import { agentsNote, askedApp, chromeDenied, ChromeFolderDenied, chromeFolderAccess, FILES_AND_FOLDERS_PANE } from "../../src/chrome-access";
 import { endpointFromVersion, listenPid, parseListenPorts } from "../../src/cdp-live/endpoint";
 import { chooseChromeProfile } from "../../src/engines/browser-pick";
 import { copyChromeProfile } from "../../src/engines/chrome-profile-copy";
@@ -32,15 +32,28 @@ test("Bao names the app macOS asks, as Files & Folders lists it", () => {
 test("a refused read names the app macOS blocked and does not ask for a switch", () => {
   const file = "/Users/owner/Library/Application Support/Google/Chrome/DevToolsActivePort";
   const blocked = (reason: string, env: NodeJS.ProcessEnv) => new ChromeFolderDenied(reason, file, env).message;
-  assert.equal(blocked("EPERM", { ...BAO, BAO_CERT_SIGNED: "1" }),
-    `macOS blocked Bao from reading Chrome's data (EPERM on ${file}).`);
   assert.equal(blocked("EPERM", BAO),
     `macOS blocked Bao from reading Chrome's data (EPERM on ${file}).`);
   assert.equal(blocked("EPERM", CHATGPT),
     `macOS blocked ChatGPT from reading Chrome's data (EPERM on ${file}).`);
   assert.equal(blocked("EACCES", {}),
     `macOS blocked the app that started Bao from reading Chrome's data (EACCES on ${file}).`);
+  assert.doesNotMatch(blocked("EPERM", BAO), /Turn on|Files & Folders/);
   assert.doesNotMatch(blocked("EPERM", CHATGPT), /Turn on|Files & Folders/);
+});
+
+test("a certificate-signed refusal names Bao's switch and opens Files & Folders once", () => {
+  const file = "/Users/owner/Library/Application Support/Google/Chrome/DevToolsActivePort";
+  const signed = new ChromeFolderDenied("EPERM", file, { ...BAO, BAO_CERT_SIGNED: "1" });
+  assert.equal(signed.message,
+    `macOS blocked Bao from reading Chrome's data (EPERM on ${file}). Turn on System Settings > Privacy & Security > Files & Folders > Bao > Google Chrome, then try again.`);
+  const opened: string[] = [];
+  signed.present((url) => opened.push(url));
+  signed.present((url) => opened.push(url));
+  assert.deepEqual(opened, [FILES_AND_FOLDERS_PANE]);
+  const adHoc = new ChromeFolderDenied("EPERM", file, CHATGPT);
+  adHoc.present((url) => opened.push(`again:${url}`));
+  assert.deepEqual(opened, [FILES_AND_FOLDERS_PANE]);
 });
 
 test("whose switch agents use depends on how Bao is signed", () => {

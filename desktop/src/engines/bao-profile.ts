@@ -101,7 +101,9 @@ export const OFFLINE_IMPORT_ARGS = ["--disable-background-networking", "--no-pro
 async function readChromeLogin(options: { sourceRoot: string; directory: string }, site: string, destination?: string): Promise<SourceLoginState> {
   try { return await readSourceLogin(options, site, destination); }
   catch (failure) {
-    const error = chromeDenied(failure, options.sourceRoot) ?? failure;
+    const denied = chromeDenied(failure, options.sourceRoot);
+    if (denied) denied.present();
+    const error = denied ?? failure;
     const reason = error instanceof Error ? error.message : String(error);
     console.error(`Bao source sign-in import unavailable; keeping saved Bao state: ${reason}`);
     return { cookies: [], storage: [], error: reason };

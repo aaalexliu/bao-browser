@@ -412,7 +412,7 @@ export async function injectCookies(
 
 /** A sentence the window can show. It names the cause and the next press, never a cookie value. */
 export function explainImportError(err: unknown, profileDir?: string): string {
-  if (err instanceof ChromeFolderDenied) return err.message;
+  if (err instanceof ChromeFolderDenied) return err.present().message;
   const msg = err instanceof Error ? err.message : "";
   const dir = profileDir && !/[\\/]/.test(profileDir) && !profileDir.includes("..") ? profileDir : "that profile";
   switch (msg) {

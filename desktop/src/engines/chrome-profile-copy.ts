@@ -4,7 +4,7 @@ import { lstatSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import path from "node:path";
 import type { BrowserContext, Page } from "playwright";
-import { assertChromeReadable, chromeDenied } from "../chrome-access";
+import { assertChromeReadable, chromeDenied, ChromeFolderDenied } from "../chrome-access";
 import { readDevToolsActivePort } from "../cdp-live/endpoint";
 import { connectCdp } from "../cdp-live/socket";
 import { boundSessionSites, deleteChromeTokens, deleteCookieRows, signedOutPreferences } from "./bound-sign-in";
@@ -101,7 +101,12 @@ function copyColor(source: unknown): number {
 export async function copyChromeProfile(options: {
   sourceRoot: string; directory: string; home: string; restoreTabs?: boolean;
 }): Promise<CopiedProfile> {
-  const choices = await listChromeProfiles(options.sourceRoot);
+  let choices: ChromeProfileChoice[];
+  try { choices = await listChromeProfiles(options.sourceRoot); }
+  catch (error) {
+    if (error instanceof ChromeFolderDenied) throw error.present();
+    throw error;
+  }
   const choice = choices.find((entry) => entry.directory === options.directory);
   if (!choice) throw new Error("choose an existing Chrome profile before starting agent-browser");
   const source = path.join(options.sourceRoot, choice.directory);
@@ -265,7 +270,8 @@ export async function copyChromeProfile(options: {
     };
   } catch (error) {
     await close();
-    throw chromeDenied(error, options.sourceRoot) ?? error;
+    const denied = chromeDenied(error, options.sourceRoot);
+    throw denied ? denied.present() : error;
   }
 }
 

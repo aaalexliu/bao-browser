@@ -3,9 +3,10 @@
 // stat works and every open or listing fails with EPERM, and macOS shows no prompt.
 // desktop/packaging/macos/bao-run-node.h picks that app and names it in BAO_RESPONSIBLE_EXE.
 
+import { spawnSync } from "node:child_process";
 import { readdirSync, realpathSync } from "node:fs";
 import path from "node:path";
-import { chromeAccessSwitch } from "./chrome-switch";
+import { chromeAccessSwitch, FILES_AND_FOLDERS_PANE } from "./chrome-switch";
 
 export { chromeAccessSwitch, FILES_AND_FOLDERS_PANE } from "./chrome-switch";
 
@@ -35,17 +36,39 @@ export function agentsNote(env: NodeJS.ProcessEnv = process.env): string {
   return "Agents use the switch of the app that starts them, such as ChatGPT for Codex.";
 }
 
-/** The app macOS blocked, named the way the ticket states the cause. No switch to turn on. */
+/** The app macOS blocked. A certificate-signed Bao also names its own Files & Folders switch. */
 export function chromeFolderDeniedMessage(reason: string, file: string, env: NodeJS.ProcessEnv = process.env): string {
   const app = askedApp(env) ?? "the app that started Bao";
-  return `macOS blocked ${app} from reading Chrome's data (${reason} on ${file}).`;
+  const blocked = `macOS blocked ${app} from reading Chrome's data (${reason} on ${file}).`;
+  if (env.BAO_CERT_SIGNED !== "1") return blocked;
+  return `${blocked} Turn on ${chromeAccessSwitch("Bao")}, then try again.`;
+}
+
+export type SettingsOpener = (url: string) => void;
+
+function defaultSettingsOpener(url: string): void {
+  // Tests set BAO_TEST_BROWSER. This opener must not open System Settings on the machine that runs them.
+  if (process.env.BAO_TEST_BROWSER) return;
+  spawnSync("/usr/bin/open", [url], { stdio: "ignore", timeout: 10_000 });
 }
 
 /** macOS blocked the responsible app from reading a file in Google Chrome's folder. */
 export class ChromeFolderDenied extends Error {
+  readonly certSigned: boolean;
+  private opened = false;
   constructor(readonly reason: string, readonly file: string, env: NodeJS.ProcessEnv = process.env) {
     super(chromeFolderDeniedMessage(reason, file, env));
     this.name = "ChromeFolderDenied";
+    this.certSigned = env.BAO_CERT_SIGNED === "1";
+  }
+
+  /** Opens Files & Folders once, and only for a certificate-signed Bao. An ad-hoc denial opens nothing. */
+  present(open: SettingsOpener = defaultSettingsOpener): this {
+    if (!this.certSigned || this.opened) return this;
+    this.opened = true;
+    try { open(FILES_AND_FOLDERS_PANE); }
+    catch { /* The denial is still the answer. A failed open must not hide it. */ }
+    return this;
   }
 }
 

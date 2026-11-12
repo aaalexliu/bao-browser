@@ -256,7 +256,7 @@ export async function connectOwnedChrome(options: {
       pids = await deps.findChrome(options.root);
     }
   }
-  if (!pids.length && folderDenied) throw folderDenied;
+  if (!pids.length && folderDenied) throw folderDenied.present();
   if (pids.length !== 1) throw new Error(pids.length ? "More than one Chrome runs on this profile root" : "Chrome is not open. Open Google Chrome, then try again");
   const pid = pids[0]!;
   const executable = deps.executable(pid);
@@ -282,7 +282,7 @@ export async function connectOwnedChrome(options: {
       folderDenied = error;
     }
     if (!endpoint) endpoint = await endpointFromListener();
-    if (!endpoint && folderDenied) throw folderDenied;
+    if (!endpoint && folderDenied) throw folderDenied.present();
     const blocked = remoteDebuggingBlock(await deps.helper.permissions(false));
     if (blocked) throw new Error(blocked);
     if (await deps.helper.screenLocked()) throw new Error("The screen is locked. Unlock it, then try again.");
