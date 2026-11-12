@@ -638,7 +638,7 @@ export class AgentBrowserProxy {
           if (this.waitOf(session) === "off") session.ownerSince = session.ownerTouched = Date.now();
           this.setWait(session, await this.withWall(session, stop));
           session.ownerPage = read.page;
-          await this.ownerBanner(session, read.targetId, true, { raise: !this.movable(session) }).catch(() => undefined);
+          await this.ownerBanner(session, read.targetId, true).catch(() => undefined);
         }
         results.push(...await this.waitForOwner(session, page ? Math.max(deadline, Date.now() + Math.min(timeout, 5000)) : deadline));
         if (ownerReply(results)?.instruction === TASK_TAB_CLOSED) failure = new Error("Bao's task tab was closed");
@@ -1041,7 +1041,7 @@ export class AgentBrowserProxy {
     const stopped = bound ? `Bao did not open ${host} in its own browser because ${BOUND_REASON}` : `Bao's own browser hit ${what} on ${host}`;
     const profile = session.pick.profile;
     const copy = session.pick.route === "copy";
-    const fail = async (error: unknown) => {
+    const fail = (error: unknown) => {
       session.moveError = (error instanceof Error ? error.message : String(error)).replace(/\.$/, "");
       const open = { command: "open", ...(site ? { args: [site] } : {}), browser: "current", ...profile ? { profile: profile.directory } : {} };
       const next = copy
@@ -1071,7 +1071,6 @@ export class AgentBrowserProxy {
     }
     const old = { chrome: session.chrome, background: session.background, stateDir: session.stateDir };
     const waiting = this.waitOf(session) !== "off";
-    session.raised = undefined;
     Object.assign(session, next, wired, { browser: openedChoice(next.pick), missed: undefined, page: undefined });
     session.recording.pickBrowser(next.pick);
     if (waiting) this.setWait(session, "off");
@@ -1385,13 +1384,10 @@ export class AgentBrowserProxy {
           if (this.waitOf(session) === "off" || this.waitOf(session) === "pending") {
             const active = await this.activePage(session);
             if (!active) return this.ownerClosed(session);
-            const stop = this.stopped(session, active);
-            const opened = await this.moveAway(session, this.wallWords(session), stop.reopen, true);
-            if (opened) return this.waitOf(session) !== "off" ? this.ownerResult("halted", session) : [opened];
             if (this.waitOf(session) === "off") session.ownerSince = session.ownerTouched = Date.now();
-            this.setWait(session, stop);
+            this.setWait(session, this.stopped(session, active));
             session.ownerPage = active.page;
-            await this.ownerBanner(session, active.targetId, true, { raise: !this.movable(session) }).catch(() => undefined);
+            await this.ownerBanner(session, active.targetId, true);
           }
           const waiting = this.wallOf(session);
           if (!waiting) return this.ownerClosed(session);
@@ -1477,11 +1473,11 @@ export class AgentBrowserProxy {
     const taskId = session.kind === "current" ? session.targetId : undefined;
     try {
       await this.detectOwnerWall(session);
-      if (this.waitOf(session) !== "off") throw new Error(OWNER_PRIVATE);
     } catch (error) {
       if (session.kind !== "current" || session.abort.signal.aborted || !(error instanceof ActiveTargetMiss)) throw error;
       return this.taskTabPicture(session, session.targetId, visual);
     }
+    if (this.waitOf(session) !== "off") throw new Error(OWNER_PRIVATE);
     const tabs = await this.run(session, "tab", ["list", "--json"], 3000);
     if (tabs.exitCode !== 0) throw new Error(`Native tab list failed (exit ${tabs.exitCode}): ${tabs.stderr || tabs.stdout}`);
     const parsed = JSON.parse(tabs.stdout) as { data?: { tabs?: { active?: boolean; targetId?: string }[] } };
