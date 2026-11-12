@@ -46,9 +46,16 @@ async function fixture(t: TestContext, keepOpen = false) {
     return { target: { kind: "bao" as const, portFile }, closed, bytes: copy.bytes, copyMs: copy.copyMs, close,
       isClosed: () => gone, keepOpen: () => copy.keepOpen() };
   });
+  const targetReads: unknown[] = [];
   t.mock.method(sockets, "connectCdp", async () => {
     const cdp = new sockets.CdpSocket(new Socket());
-    t.mock.method(cdp, "send", async (method: string) => method === "Target.getTargetInfo" ? { targetInfo: { url: "http://127.0.0.1/", title: "Fixture" } } : method === "Target.attachToTarget" ? { sessionId: "fixture" } : { data: png.toString("base64") });
+    t.mock.method(cdp, "send", async (method: string, params?: Record<string, unknown>) => {
+      if (method === "Target.getTargetInfo") {
+        targetReads.push(params?.targetId);
+        return { targetInfo: { url: "http://127.0.0.1/", title: "Fixture" } };
+      }
+      return method === "Target.attachToTarget" ? { sessionId: "fixture" } : { data: png.toString("base64") };
+    });
     followSend(t, cdp);
     return cdp;
   });
@@ -80,13 +87,19 @@ else if (args.includes('wait')) {
 }
 else if (args.includes('fail') || args.includes('daemon-fail')) { process.stdout.write('native failure output\\n'); process.stderr.write('native error\\n'); process.exitCode = 1; }
 else if (command === 'snapshot' && fs.existsSync(${JSON.stringify(path.join(root, "page.txt"))})) process.stdout.write(fs.readFileSync(${JSON.stringify(path.join(root, "page.txt"))}, 'utf8'));
+else if (command === 'tab' && args.includes('--json') && fs.existsSync(${JSON.stringify(path.join(root, "tab-result.json"))})) {
+  const result = JSON.parse(fs.readFileSync(${JSON.stringify(path.join(root, "tab-result.json"))}, 'utf8'));
+  process.stdout.write(result.stdout);
+  process.stderr.write(result.stderr);
+  process.exitCode = result.exitCode;
+}
 else if (command === 'tab' && args.includes('--json')) process.stdout.write(JSON.stringify({data:{tabs:fs.existsSync(${JSON.stringify(path.join(root, "no-active"))})?[]:[{active:true,targetId:'ABC123'}]}}));
 else process.stdout.write(command === 'tab' ? 't1 Synthetic - http://127.0.0.1/\\n' : command + ' unchanged\\n');
 `, { mode: 0o700 });
   const proxy = new AgentBrowserProxy({ home: path.join(root, "home"), sourceRoot, executable, keepOpen: () => keepOpen });
   const calls = async () => (await readFile(log, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as { args: string[]; env: Record<string, string> });
   return {
-    root, sourceRoot, proxy, calls, copy: () => copiedDir, closeWindow: () => closeWindow(), closeCount: () => closeCount,
+    root, sourceRoot, proxy, calls, targetReads, copy: () => copiedDir, closeWindow: () => closeWindow(), closeCount: () => closeCount,
     async close() {
       try { await proxy.close(); }
       finally {
@@ -99,6 +112,31 @@ else process.stdout.write(command === 'tab' ? 't1 Synthetic - http://127.0.0.1/\
     },
   };
 }
+
+for (const scenario of [
+  { name: "native failure", stdout: "native output", stderr: "native error", exitCode: 2, error: /Native tab list failed \(exit 2\): native error/ },
+  { name: "invalid JSON", stdout: "not JSON", error: /Unexpected token/ },
+  { name: "null output", stdout: "null", error: /Cannot read properties of null \(reading 'data'\)/ },
+  { name: "missing data", stdout: "{}", error: /no active Bao page metadata/ },
+  { name: "non-array tabs", stdout: '{"data":{"tabs":{}}}', error: /tabs.find is not a function/ },
+  { name: "no active tab", stdout: '{"data":{"tabs":[{"targetId":"OTHER"}]}}', error: /no active Bao page metadata/ },
+  { name: "active tab without ID", stdout: '{"data":{"tabs":[{"active":true},{"active":true,"targetId":"ABC123"}]}}', error: /no active Bao page metadata/ },
+  { name: "multiple rows", stdout: '{"data":{"tabs":[{"targetId":"OTHER"},{"active":true,"targetId":"ABC123"},{"active":true,"targetId":"LAST"}]}}' },
+]) test(`native tab output preserves ${scenario.name}`, { timeout: scaledMs(5000) }, async (t) => {
+  const f = await fixture(t);
+  try {
+    await f.proxy.execute("open", ["http://127.0.0.1/"], "copy");
+    await writeFile(path.join(f.root, "tab-result.json"), JSON.stringify({ stdout: scenario.stdout, stderr: scenario.stderr ?? "", exitCode: scenario.exitCode ?? 0 }));
+    f.targetReads.length = 0;
+    const command = f.proxy.execute("snapshot", [], undefined, false, undefined, {}, f.proxy.activeRunId);
+    if (scenario.error) await assert.rejects(command, scenario.error);
+    else {
+      assert.equal((await command)[0]?.stdout, "snapshot unchanged\n");
+      assert.ok(f.targetReads.length > 0);
+      assert.deepEqual([...new Set(f.targetReads)], ["ABC123"]);
+    }
+  } finally { await f.close(); }
+});
 
 for (const ending of ["no-active", "missing-target", "disconnect", "abort-send", "dead-socket", "delayed-shutdown", "explicit-close"]) test(`owner wait handles ${ending} without leaving an active prompt`, { timeout: scaledMs(4000) }, async (t) => {
   const f = await fixture(t);

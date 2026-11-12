@@ -28,6 +28,7 @@ import { GLOBAL_BOOL_FLAGS, GLOBAL_VALUE_FLAGS, stripGlobalFlags, tabCommandActi
 import { diffView, findView, snapshotView } from "./snapshot-view";
 import { AGENT_DISCONNECTED, AGENT_IDLE_REASON, NEWER_TASK_REASON } from "../v1/stop-copy";
 import { openBackgroundCdp, type BackgroundCdp } from "./background-cdp";
+import { activeNativeTab, parseNativeTabs, type NativeTab } from "./agent-browser-tabs";
 
 export const AGENT_BROWSER_COMMANDS = ["open", "snapshot", "click", "fill", "press", "scroll", "tab", "screenshot", "wait_for_owner", "close"] as const;
 export type AgentBrowserCommand = typeof AGENT_BROWSER_COMMANDS[number];
@@ -47,9 +48,6 @@ const OTHER_TASK = "The browser now belongs to another task, so stop here.";
 export function otherTaskClosed(runId: string): string {
   return `${RUN_ENDED} Run ${runId} is not Bao's open browser session. ${OTHER_TASK}`;
 }
-
-/** One row of the native `tab list --json`. */
-type NativeTab = { tabId?: string; targetId?: string; label?: string | null; active?: boolean };
 
 export function validateAgentBrowserCommand(command: unknown, args: unknown): asserts args is string[] {
   if (!AGENT_BROWSER_COMMANDS.includes(command as AgentBrowserCommand)) throw new Error("unknown agent-browser command");
@@ -1397,7 +1395,7 @@ export class AgentBrowserProxy {
   private async nativeTabs(session: Session, ceiling?: AbortSignal): Promise<NativeTab[]> {
     const tabs = await this.run(session, "tab", ["list", "--json"], ceiling ? undefined : 5000, ceiling);
     if (tabs.exitCode !== 0) throw new Error(`Native tab list failed (exit ${tabs.exitCode}): ${tabs.stderr || tabs.stdout}`);
-    return (JSON.parse(tabs.stdout) as { data?: { tabs?: NativeTab[] } }).data?.tabs ?? [];
+    return parseNativeTabs(tabs.stdout);
   }
 
   /**
@@ -1626,8 +1624,8 @@ export class AgentBrowserProxy {
         tabs = await this.keepTab(session, tabs, signal);
         if (this.noTaskTabLeft(session, tabs) && await this.taskTabClosedInChrome(session)) throw new TaskTabClosed();
       }
-      const active = tabs.find((tab) => tab.active);
-      if (!active?.targetId) return undefined;
+      const active = activeNativeTab(tabs);
+      if (!active) return undefined;
       session.agentTarget = active.targetId;
       // Native tab titles can be URL-derived labels. Read the real title from Chrome, not that label.
       cdp = await this.connectSession(session, { timeoutMs: CDP_PROGRESS_CEILING_MS, signal });
@@ -1920,8 +1918,7 @@ export class AgentBrowserProxy {
     if (this.waitOf(session) !== "off") throw new Error(OWNER_PRIVATE);
     const tabs = await this.run(session, "tab", ["list", "--json"], 3000);
     if (tabs.exitCode !== 0) throw new Error(`Native tab list failed (exit ${tabs.exitCode}): ${tabs.stderr || tabs.stdout}`);
-    const parsed = JSON.parse(tabs.stdout) as { data?: { tabs?: { active?: boolean; targetId?: string }[] } };
-    const activeId = parsed.data?.tabs?.find((tab) => tab.active)?.targetId;
+    const activeId = activeNativeTab(parseNativeTabs(tabs.stdout))?.targetId;
     if (!activeId) throw new Error("no active page");
     const preferred = await this.pictureTarget(session, activeId, taskId);
     try {
@@ -2021,8 +2018,7 @@ export class AgentBrowserProxy {
       try {
         const tabs = await execute("tab", ["list", "--json"], 5000);
         if (tabs.exitCode !== 0) throw new Error(`Native task tab list failed: ${tabs.stderr || tabs.stdout}`);
-        const parsed = JSON.parse(tabs.stdout) as { data?: { tabs?: { active?: boolean; targetId?: string }[] } };
-        const targetId = parsed.data?.tabs?.find((tab) => tab.active)?.targetId;
+        const targetId = activeNativeTab(parseNativeTabs(tabs.stdout))?.targetId;
         if (!targetId) throw new Error("Native task tab has no target id");
         session.taskTabs.add(targetId);
         session.targetId = targetId;
