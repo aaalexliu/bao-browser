@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test, { type TestContext } from "node:test";
 import { agentsNote, askedApp, chromeDenied, ChromeFolderDenied, chromeFolderAccess } from "../../src/chrome-access";
-import { listenPid } from "../../src/cdp-live/endpoint";
+import { endpointFromVersion, listenPid, parseListenPorts } from "../../src/cdp-live/endpoint";
 import { chooseChromeProfile } from "../../src/engines/browser-pick";
 import { copyChromeProfile } from "../../src/engines/chrome-profile-copy";
 import { chromeProfiles } from "../support/chrome-profiles";
@@ -29,16 +29,18 @@ test("Bao names the app macOS asks, as Files & Folders lists it", () => {
   assert.equal(askedApp({}), undefined);
 });
 
-test("a refused read names the switch and the app it belongs to", () => {
+test("a refused read names the app macOS blocked and does not ask for a switch", () => {
   const file = "/Users/owner/Library/Application Support/Google/Chrome/DevToolsActivePort";
-  assert.equal(new ChromeFolderDenied("EPERM", file, { ...BAO, BAO_CERT_SIGNED: "1" }).message,
-    `macOS did not let Bao read Google Chrome's folder (EPERM on ${file}). Turn on System Settings > Privacy & Security > Files & Folders > Bao > Google Chrome, then try again.`);
-  assert.equal(new ChromeFolderDenied("EPERM", file, BAO).message,
-    `macOS did not let Bao read Google Chrome's folder (EPERM on ${file}). Turn on System Settings > Privacy & Security > Files & Folders > Bao > Google Chrome, then try again. If it is already on, turn it off and on again: macOS ties the switch to one build of an ad-hoc signed Bao.`);
-  assert.equal(new ChromeFolderDenied("EPERM", file, CHATGPT).message,
-    `macOS did not let Bao read Google Chrome's folder (EPERM on ${file}). macOS asks ChatGPT, the app that started Bao. Turn on System Settings > Privacy & Security > Files & Folders > ChatGPT > Google Chrome, then try again.`);
-  assert.equal(new ChromeFolderDenied("EACCES", file, {}).message,
-    `macOS did not let Bao read Google Chrome's folder (EACCES on ${file}). Turn on Google Chrome for the app that started Bao, such as your terminal or agent app, under System Settings > Privacy & Security > Files & Folders, then try again.`);
+  const blocked = (reason: string, env: NodeJS.ProcessEnv) => new ChromeFolderDenied(reason, file, env).message;
+  assert.equal(blocked("EPERM", { ...BAO, BAO_CERT_SIGNED: "1" }),
+    `macOS blocked Bao from reading Chrome's data (EPERM on ${file}).`);
+  assert.equal(blocked("EPERM", BAO),
+    `macOS blocked Bao from reading Chrome's data (EPERM on ${file}).`);
+  assert.equal(blocked("EPERM", CHATGPT),
+    `macOS blocked ChatGPT from reading Chrome's data (EPERM on ${file}).`);
+  assert.equal(blocked("EACCES", {}),
+    `macOS blocked the app that started Bao from reading Chrome's data (EACCES on ${file}).`);
+  assert.doesNotMatch(blocked("EPERM", CHATGPT), /Turn on|Files & Folders/);
 });
 
 test("whose switch agents use depends on how Bao is signed", () => {
@@ -65,7 +67,8 @@ test("the access check lists Chrome's folder and says allowed, missing, or refus
   const refused = await refusedRoot(t);
   const access = chromeFolderAccess(refused, BAO);
   assert.equal(access.state, "denied");
-  assert.match(access.state === "denied" ? access.message : "", /^macOS did not let Bao read Google Chrome's folder \(EACCES on .+\)\. Turn on System Settings > Privacy & Security > Files & Folders > Bao > Google Chrome/);
+  assert.match(access.state === "denied" ? access.message : "", /^macOS blocked Bao from reading Chrome's data \(EACCES on .+\)\.$/);
+  assert.doesNotMatch(access.state === "denied" ? access.message : "", /Turn on|Files & Folders/);
 });
 
 test("the profile question and a Chrome copy stop with the switch when Chrome's folder is refused", async (t) => {
@@ -74,6 +77,15 @@ test("the profile question and a Chrome copy stop with the switch when Chrome's 
   const home = await mkdtemp(path.join(tmpdir(), "bao-chrome-refused-home-"));
   t.after(() => rm(home, { recursive: true, force: true }));
   await assert.rejects(copyChromeProfile({ sourceRoot: root, directory: "Default", home }), ChromeFolderDenied);
+});
+
+test("a listening port is a debug endpoint only when /json/version says so", () => {
+  const line = "Google 15133 alexliu 233u IPv4 0x1 0t0 TCP 127.0.0.1:9222 (LISTEN)\nGoogle 15133 alexliu 12u IPv4 0x1 0t0 TCP *:443 (LISTEN)\nGoogle 9 alexliu 1u IPv4 0x1 0t0 TCP 127.0.0.1:1 (LISTEN)\n";
+  assert.deepEqual(parseListenPorts(line, 15133), [9222]);
+  assert.equal(endpointFromVersion(9222, 404, "")?.browserPath, "/devtools/browser");
+  assert.equal(endpointFromVersion(9222, 200, JSON.stringify({ webSocketDebuggerUrl: "ws://127.0.0.1:9222/devtools/browser/abc" }))?.browserPath, "/devtools/browser/abc");
+  assert.equal(endpointFromVersion(9222, 404, "<html>not the debug server</html>"), undefined);
+  assert.equal(endpointFromVersion(9222, 200, "not json"), undefined);
 });
 
 test("listenPid tells nothing listening apart from lsof failing", async (t) => {

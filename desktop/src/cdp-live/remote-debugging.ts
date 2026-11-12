@@ -17,9 +17,27 @@ import { listenPid, readDevToolsActivePort, type DevToolsEndpoint } from "./endp
 export const CHROME_APP_EXE = "/Google Chrome.app/Contents/MacOS/Google Chrome";
 
 /**
+ * One directory's path and its macOS /private twin. path.resolve does not follow the /tmp or /var symlink,
+ * and a refused folder must not be realpathed. Callers compare these keys instead.
+ */
+export function pathKeys(file: string): Set<string> {
+  const resolved = path.resolve(file);
+  const keys = new Set([resolved]);
+  if (resolved.startsWith("/private/")) keys.add(resolved.slice("/private".length));
+  else keys.add(`/private${resolved}`);
+  return keys;
+}
+
+function sameDirectory(left: string, right: string): boolean {
+  for (const key of pathKeys(left)) if (pathKeys(right).has(key)) return true;
+  return false;
+}
+
+/**
  * Browser processes of Google Chrome on this user-data dir, from `pid args` lines.
  * A renderer or helper has `--type=`. A headless Chrome, or one on another
  * --user-data-dir, such as a test or an agent's own Chrome, is not the daily Chrome.
+ * A path and its /private twin are the same directory, so a hold that realpathed /tmp still finds the Chrome.
  */
 export function chromePidsFromPs(text: string, userDataDir: string, defaultDir: string): number[] {
   const pids: number[] = [];
@@ -30,8 +48,8 @@ export function chromePidsFromPs(text: string, userDataDir: string, defaultDir: 
     const exe = args.split(" --")[0]?.trim() || "";
     if (!exe.endsWith(CHROME_APP_EXE) || /\s--type=/.test(args) || /\s--headless\b/.test(args)) continue;
     const named = /\s--user-data-dir=(.+?)(?=\s--|$)/.exec(args)?.[1]?.trim();
-    const dir = named ? path.resolve(named) : defaultDir;
-    if (path.resolve(dir) !== path.resolve(userDataDir)) continue;
+    const dir = named ? named : defaultDir;
+    if (!sameDirectory(dir, userDataDir)) continue;
     pids.push(Number(match[1]));
   }
   return pids;

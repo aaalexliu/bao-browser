@@ -1,4 +1,5 @@
 import { ChromeFolderDenied } from "../chrome-access";
+import { listeningProfileDirectory } from "../cdp-live/current-chrome";
 import { resolveNormalChrome } from "../launch";
 import type { SignInImport } from "./bao-profile";
 import { BOUND_REASON, boundSite } from "./bound-sign-in";
@@ -211,15 +212,21 @@ export class ChromeProfileQuestion extends Error {
 }
 
 /**
- * The Chrome profile a session reads sign-ins from or runs on. A named folder must exist. With no name, the only profile is used;
- * with more than one, Bao asks. It never falls back to "Default".
+ * The Chrome profile a session reads sign-ins from or runs on. A named folder must be one Chrome has. With no name, the only
+ * profile is used; with more than one, Bao asks. It never falls back to "Default". When the folder cannot be read and `fromListener`
+ * is set, the profile is the one the listening browser reports. A named profile that report does not confirm, or a report that
+ * fails, stops with that refusal.
  */
-export async function chooseChromeProfile(root: string, named: { directory: string; by: "agent" | "settings" } | undefined, settings?: string): Promise<ChosenProfile> {
+export async function chooseChromeProfile(root: string, named: { directory: string; by: "agent" | "settings" } | undefined, settings?: string, fromListener = false, axLog?: string): Promise<ChosenProfile> {
   let profiles: ChromeProfileChoice[];
   try { profiles = await listChromeProfiles(root); }
   catch (error) {
-    if (error instanceof ChromeFolderDenied) throw error;
-    throw new Error(`Bao could not read Chrome's profiles in ${root}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+    if (!(error instanceof ChromeFolderDenied)) {
+      throw new Error(`Bao could not read Chrome's profiles in ${root}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+    }
+    const directory = fromListener ? await listeningProfileDirectory(root, axLog) : undefined;
+    if (!directory || (named && named.directory !== directory)) throw error;
+    profiles = [{ directory, name: directory, email: "" }];
   }
   if (!profiles.length) throw new Error(`Chrome has no profile in ${root}.`);
   if (named) {

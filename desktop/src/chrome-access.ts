@@ -3,7 +3,7 @@
 // stat works and every open or listing fails with EPERM, and macOS shows no prompt.
 // desktop/packaging/macos/bao-run-node.h picks that app and names it in BAO_RESPONSIBLE_EXE.
 
-import { readdirSync } from "node:fs";
+import { readdirSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { chromeAccessSwitch } from "./chrome-switch";
 
@@ -35,10 +35,16 @@ export function agentsNote(env: NodeJS.ProcessEnv = process.env): string {
   return "Agents use the switch of the app that starts them, such as ChatGPT for Codex.";
 }
 
-/** macOS did not let Bao read a file in Google Chrome's folder. */
+/** The app macOS blocked, named the way the ticket states the cause. No switch to turn on. */
+export function chromeFolderDeniedMessage(reason: string, file: string, env: NodeJS.ProcessEnv = process.env): string {
+  const app = askedApp(env) ?? "the app that started Bao";
+  return `macOS blocked ${app} from reading Chrome's data (${reason} on ${file}).`;
+}
+
+/** macOS blocked the responsible app from reading a file in Google Chrome's folder. */
 export class ChromeFolderDenied extends Error {
   constructor(readonly reason: string, readonly file: string, env: NodeJS.ProcessEnv = process.env) {
-    super(`macOS did not let Bao read Google Chrome's folder (${reason} on ${file}). ${chromeAccessFix(env)}`);
+    super(chromeFolderDeniedMessage(reason, file, env));
     this.name = "ChromeFolderDenied";
   }
 }
@@ -55,6 +61,16 @@ export function chromeDenied(error: unknown, root: string, env: NodeJS.ProcessEn
   if (!code || !DENIED.has(code)) return undefined;
   if (file && !inside(root, file)) return undefined;
   return new ChromeFolderDenied(code, file ?? root, env);
+}
+
+/** The folder's real path, or the resolved path when macOS refuses the read. Callers that share a hold must agree. */
+export function chromeDataPath(root: string): string {
+  const resolved = path.resolve(root);
+  try { return realpathSync(resolved); }
+  catch (error) {
+    if (chromeDenied(error, resolved)) return resolved;
+    throw error;
+  }
 }
 
 /** Lists dir, the read macOS refuses, and throws ChromeFolderDenied when it is refused. */

@@ -112,6 +112,8 @@ async function fixture(on = false) {
     helper, findChrome: async () => state.pids, executable: () => "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     readPort: async () => ({ port: await trapPort(), browserPath: "/devtools/browser/fixture" }),
     listener: async () => state.on ? 7 : undefined,
+    listenPorts: async () => [],
+    probeVersion: async () => undefined,
     connect: async () => { state.connected = true; return socket; },
   };
   return { root, state, options, deps, socket };
@@ -1466,26 +1468,67 @@ test("Bao's task tab opens in a window of the chosen Chrome profile and never in
   assert.equal(await tabProfile(cdp, work.targetId), path.join(root, "Profile 1"));
 });
 
-test("a refused Chrome folder stops Running Chrome before the helper touches Chrome", async () => {
+test("a refused Chrome folder names the block and does not open chrome://inspect when nothing listens", async () => {
   const f = await fixture();
   const { chmod } = await import("node:fs/promises");
   await chmod(f.root, 0o000);
+  f.state.pids = [];
+  const started: string[] = [];
   try {
-    await assert.rejects(currentChrome.openCurrentChrome(f.options, f.deps),
-      (error: Error) => error.name === "ChromeFolderDenied" && error.message.startsWith(`macOS did not let Bao read Google Chrome's folder (EACCES on ${f.root}).`));
+    await assert.rejects(currentChrome.openCurrentChrome(f.options, { ...f.deps, startChrome: async (root) => { started.push(root); return true; } }),
+      (error: Error) => error.name === "ChromeFolderDenied" && error.message.startsWith(`macOS blocked the app that started Bao from reading Chrome's data (EACCES on ${f.root}).`) && !/Turn on|Files & Folders/.test(error.message));
     assert.deepEqual(f.state.helperCalls, []);
+    assert.deepEqual(started, [], "Chrome is not started when the folder is blocked and nothing listens");
     assert.equal(f.state.on, false, "remote debugging stays off");
   } finally { await chmod(f.root, 0o700); await rm(f.root, { recursive: true, force: true }); }
 });
 
-test("a refused DevToolsActivePort read is reported as refused, not as a closed debugging port", async () => {
+test("a refused DevToolsActivePort read still connects when Chrome already listens, and does not open chrome://inspect", async () => {
+  const f = await fixture(true);
+  const file = path.join(f.root, "DevToolsActivePort");
+  const seen: { port?: number; path?: string } = {};
+  try {
+    const chrome = await currentChrome.openCurrentChrome(f.options, { ...f.deps,
+      readPort: async () => { throw Object.assign(new Error(`EPERM: operation not permitted, open '${file}'`), { code: "EPERM", path: file }); },
+      listenPorts: async () => [9222],
+      probeVersion: async () => ({ status: 404, body: "" }),
+      connect: async (port, browserPath) => { seen.port = port; seen.path = browserPath; f.state.connected = true; return f.socket; },
+    });
+    assert.equal(seen.port, 9222);
+    assert.equal(seen.path, "/devtools/browser", "approval mode has no guid");
+    assert.equal(f.state.helperCalls.some(call => call[0] === "inspect-open-ax"), false);
+    assert.ok(f.state.helperCalls.every(call => call[0] === "debug-allow"));
+    chrome.detach();
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
+test("a command-line debugging port is taken from /json/version when the port file is refused", async () => {
+  const f = await fixture(true);
+  const file = path.join(f.root, "DevToolsActivePort");
+  const seen: { path?: string } = {};
+  try {
+    const chrome = await currentChrome.openCurrentChrome(f.options, { ...f.deps,
+      readPort: async () => { throw Object.assign(new Error(`EPERM: operation not permitted, open '${file}'`), { code: "EPERM", path: file }); },
+      listenPorts: async () => [9222],
+      probeVersion: async () => ({ status: 200, body: JSON.stringify({ webSocketDebuggerUrl: "ws://127.0.0.1:9222/devtools/browser/fixture-guid" }) }),
+      connect: async (_port, browserPath) => { seen.path = browserPath; f.state.connected = true; return f.socket; },
+    });
+    assert.equal(seen.path, "/devtools/browser/fixture-guid");
+    assert.equal(f.state.helperCalls.some(call => call[0] === "inspect-open-ax"), false);
+    chrome.detach();
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
+test("a refused port file with no debug listener names the block and does not open chrome://inspect", async () => {
   const f = await fixture(true);
   const file = path.join(f.root, "DevToolsActivePort");
   try {
     await assert.rejects(currentChrome.openCurrentChrome(f.options, { ...f.deps,
-      readPort: async () => { throw Object.assign(new Error(`EPERM: operation not permitted, open '${file}'`), { code: "EPERM", path: file }); } }),
-    (error: Error) => error.message.startsWith(`macOS did not let Bao read Google Chrome's folder (EPERM on ${file}).`) && !/debugging port/.test(error.message));
-    assert.deepEqual(f.state.helperCalls, [], "Bao does not open chrome://inspect when it cannot read the port file");
+      readPort: async () => { throw Object.assign(new Error(`EPERM: operation not permitted, open '${file}'`), { code: "EPERM", path: file }); },
+      listenPorts: async () => [9222],
+      probeVersion: async () => ({ status: 404, body: "<html>not the debug server</html>" }),
+    }), (error: Error) => error.name === "ChromeFolderDenied" && error.message.startsWith(`macOS blocked the app that started Bao from reading Chrome's data (EPERM on ${file}).`) && !/debugging port|Turn on/.test(error.message));
+    assert.deepEqual(f.state.helperCalls, []);
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
 

@@ -116,7 +116,7 @@ export async function doctorChecks(app: string, probe: Probe): Promise<Check[]> 
     ? { level: "ok", name: "chrome", detail: chrome }
     : { level: "warn", name: "chrome", detail: "Google Chrome is not installed. Every agent_browser route starts installed Google Chrome. A Bao profile and a copy are not a way around a missing Chrome." });
   if (probe.chromeRoot) {
-    // The sign-in import, Chrome copies, and Running Chrome all read this folder. macOS 27 asks first.
+    // Sign-in import and Chrome copies read this folder. Running Chrome reads DevToolsActivePort here when that file is readable.
     const access = chromeFolderAccess(probe.chromeRoot, probe.env);
     const note = agentsNote(probe.env);
     if (access.state === "allowed") checks.push({ level: "ok", name: "chrome folder", detail: `${askedApp(probe.env) ?? "this process"} can read ${access.root}.${note ? ` ${note}` : ""}` });

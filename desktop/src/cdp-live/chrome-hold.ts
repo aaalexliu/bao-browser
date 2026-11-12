@@ -5,10 +5,11 @@
 
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { closeSync, constants, existsSync, fchmodSync, fstatSync, linkSync, lstatSync, openSync, readFileSync, realpathSync, renameSync, unlinkSync, writeSync } from "node:fs";
+import { closeSync, constants, existsSync, fchmodSync, fstatSync, linkSync, lstatSync, openSync, readFileSync, renameSync, unlinkSync, writeSync } from "node:fs";
 import { chmod, mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { appBundleOf } from "../app/bundle";
+import { chromeDataPath } from "../chrome-access";
 import type { CurrentChrome } from "./current-chrome";
 import { shareConnection } from "./shared-connection";
 import { connectCdp } from "./socket";
@@ -50,8 +51,7 @@ interface HoldFixture {
 }
 
 export function holdDir(root: string): string {
-  const real = realpathSync(root);
-  return path.join(holdRoot(), createHash("sha256").update(real).digest("hex").slice(0, 32));
+  return path.join(holdRoot(), createHash("sha256").update(chromeDataPath(root)).digest("hex").slice(0, 32));
 }
 
 function pidAlive(pid: number): boolean {
@@ -359,7 +359,7 @@ async function dropUnchanged(dir: string, record: HoldRecord): Promise<void> {
 
 /** Joins the hold for this user-data-dir, starting it when Chrome has none. A second call does not open a second socket. */
 export async function joinOrStartHold(options: HoldOptions): Promise<CurrentChrome> {
-  const root = realpathSync(options.root);
+  const root = chromeDataPath(options.root);
   const dir = holdDir(root);
   await prepareHoldDir(dir);
   let missed = false;
@@ -402,6 +402,12 @@ async function connectFixture(root: string, fixture: HoldFixture): Promise<Curre
   };
 }
 
+/** The throwaway listener a test named. Absent in a normal session, so that session cannot skip the Allow sheet. */
+export function holdFixtureEndpoint(): { port: number; browserPath: string } | undefined {
+  const fixture = readFixture();
+  return fixture ? { port: fixture.port, browserPath: fixture.browserPath } : undefined;
+}
+
 function readFixture(): HoldFixture | undefined {
   // A test points the hold at a throwaway browser. A normal session never has these, so it cannot skip the Allow sheet.
   if (!process.env.BAO_TEST_BROWSER && !process.env.BAO_LANE) return undefined;
@@ -416,7 +422,7 @@ function readFixture(): HoldFixture | undefined {
 
 /** Owns the Chrome socket until that socket closes, and publishes the endpoint sessions join. */
 export async function serveHold(chrome: CurrentChrome, signal?: AbortSignal): Promise<void> {
-  const root = realpathSync(chrome.root);
+  const root = chromeDataPath(chrome.root);
   const dir = holdDir(root);
   const record: HoldRecord = {
     root, chromePid: chrome.pid, executable: chrome.executable,
@@ -455,7 +461,7 @@ export async function holdMain(
   const rootArg = flag(args, "--root");
   const axLog = flag(args, "--ax-log");
   if (!rootArg || !axLog) throw new Error("usage: bao chrome-hold --root dir --ax-log file");
-  const root = realpathSync(rootArg);
+  const root = chromeDataPath(rootArg);
   const dir = holdDir(root);
   await prepareHoldDir(dir);
   writePrivate(path.join(dir, "starting.json"), JSON.stringify({ holderPid: process.pid, startedAt: Date.now() }));
