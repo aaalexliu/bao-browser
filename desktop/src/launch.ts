@@ -720,6 +720,7 @@ type OwnedEndpointState =
 /** Own the process and browser endpoint without attaching to page renderers. */
 export async function launchOwnedChromeEndpoint(opts: OwnedChromeProcessOptions & { detached?: boolean }): Promise<{
   portFile: string;
+  pid: number | undefined;
   closed: Promise<void>;
   isClosed(): boolean;
   keepOpen(): void;
@@ -798,7 +799,7 @@ export async function launchOwnedChromeEndpoint(opts: OwnedChromeProcessOptions 
     if (state.phase !== "starting" || !ownedChromeRunning(owner)) throw new Error("Chrome closed during startup");
     state = { phase: "running" };
     return {
-      portFile, closed, close, keepOpen() {
+      portFile, pid, closed, close, keepOpen() {
         if (state.phase !== "running") return;
         state = { phase: "retained" };
         cdp?.close();

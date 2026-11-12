@@ -348,6 +348,7 @@ export async function openBaoChromeForProxy(options: ({ sourceRoot: string; dire
     const signIn = login && options.site ? await mergeLogin(new URL(options.site).origin, login) : undefined;
     return {
       target: { kind: "bao" as const, portFile: browser.portFile },
+      pid: browser.pid,
       closed: browser.closed, isClosed: browser.isClosed, close,
       async keepOpen() {
         const current = ownedLease();

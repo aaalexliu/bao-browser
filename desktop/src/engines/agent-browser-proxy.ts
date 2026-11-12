@@ -144,6 +144,8 @@ interface SessionData {
   missed?: string;
   /** Whether Bao brought the waiting window on top of the owner's apps for the latest handoff. */
   raised?: boolean;
+  /** The target the agent last had current. Chrome's selected tab can differ, because the background endpoint answers activateTarget itself. */
+  agentTarget?: string;
   commandDone?: Promise<void>;
   outcome?: AgentBrowserTaskOutcome;
   idleTimer?: ReturnType<typeof setTimeout>;
@@ -202,6 +204,37 @@ type ProxySeat =
  * owner's app keeps the keyboard until he clicks the window. A zoomed window comes back zoomed. A full-screen window has its
  * own Space, so Bao leaves it. Returns whether the window came back on top.
  */
+
+/** The pid line from `lsappinfo info -only pid`. A missing pid does not skip the raise. */
+export function parseFrontPid(text: string): number | undefined {
+  const match = text.match(/(?:^|\s)pid\s*=\s*(\d+)\b/);
+  if (!match) return undefined;
+  const pid = Number(match[1]);
+  return Number.isInteger(pid) && pid > 0 ? pid : undefined;
+}
+
+function execText(file: string, args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(file, args, { timeout: 2000, encoding: "utf8" }, (error, stdout) => error ? reject(error) : resolve(String(stdout)));
+  });
+}
+
+/** The front app's pid, from `lsappinfo`. A failed read does not skip the raise. */
+export const frontApplication = {
+  async pid(): Promise<number | undefined> {
+    if (process.platform !== "darwin") return undefined;
+    const asn = (await execText("/usr/bin/lsappinfo", ["front"])).trim();
+    if (!asn) return undefined;
+    return parseFrontPid(await execText("/usr/bin/lsappinfo", ["info", "-only", "pid", asn]));
+  },
+};
+
+async function chromeIsFront(pid: number | undefined): Promise<boolean> {
+  if (process.platform !== "darwin" || pid === undefined) return false;
+  try { return await frontApplication.pid() === pid; }
+  catch { return false; }
+}
+
 async function windowOnTop(cdp: CdpSocket, targetId: string): Promise<boolean> {
   const { windowId } = await cdp.send<{ windowId: number }>("Browser.getWindowForTarget", { targetId }, undefined, 2000);
   const { bounds: { windowState } } = await cdp.send<{ bounds: { windowState: string } }>("Browser.getWindowBounds", { windowId }, undefined, 2000);
@@ -339,6 +372,7 @@ export class AgentBrowserProxy {
     const seat = this.seat;
     if ((seat.phase === "live" || seat.phase === "closing") && seat.session === session) seat.ownerWait = wait;
     else if (seat.phase === "ended" && seat.reason === "disconnected" && seat.session === session) seat.ownerWait = wait;
+    if (wait === "off" || wait === "pending") session.raised = undefined;
     session.recording.ownerWaiting(wait !== "off");
   }
 
@@ -1007,13 +1041,14 @@ export class AgentBrowserProxy {
     const stopped = bound ? `Bao did not open ${host} in its own browser because ${BOUND_REASON}` : `Bao's own browser hit ${what} on ${host}`;
     const profile = session.pick.profile;
     const copy = session.pick.route === "copy";
-    const fail = (error: unknown) => {
+    const fail = async (error: unknown) => {
       session.moveError = (error instanceof Error ? error.message : String(error)).replace(/\.$/, "");
       const open = { command: "open", ...(site ? { args: [site] } : {}), browser: "current", ...profile ? { profile: profile.directory } : {} };
       const next = copy
         ? `The page stays in the Chrome copy, without this site's sign-in. To try your running Chrome yourself, call agent_browser with ${JSON.stringify({ command: "close", run_id: session.recording.id })}, then with ${JSON.stringify(open)}.`
         : "The session stays in Bao's window; Bao tries again on the next wait_for_owner.";
       this.moved = { line: `${stopped}. Bao could not continue in your running Chrome over remote debugging: ${session.moveError}. ${next}` };
+      await this.raiseDeclined(session);
       return undefined;
     };
     if (!profile) return fail("Bao could not read Chrome's profiles, so it does not know which Chrome profile to use");
@@ -1037,6 +1072,7 @@ export class AgentBrowserProxy {
     }
     const old = { chrome: session.chrome, background: session.background, stateDir: session.stateDir };
     const waiting = this.waitOf(session) !== "off";
+    session.raised = undefined;
     Object.assign(session, next, wired, { browser: openedChoice(next.pick), missed: undefined, page: undefined });
     session.recording.pickBrowser(next.pick);
     if (waiting) this.setWait(session, "off");
@@ -1230,6 +1266,7 @@ export class AgentBrowserProxy {
       }
       const active = tabs.find((tab) => tab.active);
       if (!active?.targetId) return undefined;
+      session.agentTarget = active.targetId;
       // Native tab titles can be URL-derived labels. Read the real title from Chrome, not that label.
       cdp = await this.connectSession(session, { timeoutMs: CDP_PROGRESS_CEILING_MS, signal });
       const { targetInfo } = await cdp.sendUntilProgress<{ targetInfo: { url: string; title: string } }>("Target.getTargetInfo", { targetId: active.targetId }, undefined, { signal });
@@ -1277,10 +1314,18 @@ export class AgentBrowserProxy {
     return report;
   }
 
+  /** Raises a declined move once. A session that can still move, or one already raised, stays as it is. */
+  private async raiseDeclined(session: Session): Promise<void> {
+    const wait = this.wallOf(session);
+    if (!wait || this.closingOf(session) || this.gone() || this.movable(session) || session.raised === true) return;
+    await this.ownerBanner(session, wait.targetId, true).catch(() => undefined);
+  }
+
   /** Writes only Bao's status banner. Never reads the form, page text, or field values. */
   private async ownerBanner(session: Session, targetId: string, waiting: boolean, options?: { raise?: boolean }): Promise<void> {
-    const raise = options?.raise !== false;
-    if (waiting && raise) session.raised = false;
+    const wantsRaise = options?.raise !== false;
+    const raise = wantsRaise && !this.movable(session);
+    if (waiting && wantsRaise) session.raised = false;
     const cdp = await this.connectSession(session, { timeoutMs: 2000, signal: session.abort.signal });
     let attached: string | undefined;
     try {
@@ -1289,7 +1334,10 @@ export class AgentBrowserProxy {
       if (raise && session.kind === "current" && session.relay) await cdp.send(waiting ? "Bao.showTab" : "Bao.settleTab", { targetId }, undefined, 2000);
       else if (raise && waiting) {
         await cdp.send("Target.activateTarget", { targetId }, undefined, 2000);
-        if (session.kind === "copy" && process.platform === "darwin") session.raised = await windowOnTop(cdp, targetId).catch(() => false);
+        // Focus emulation makes document.hasFocus() true on every connection, so the front app pid is the check.
+        if (session.kind === "copy" && process.platform === "darwin" && !await chromeIsFront(session.chrome.pid)) {
+          session.raised = await windowOnTop(cdp, targetId).catch(() => false);
+        }
       }
       const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true }, undefined, 2000);
       attached = sessionId;
@@ -1679,6 +1727,22 @@ export class AgentBrowserProxy {
     this.seat = { phase: "closing", session, ownerWait, keep, closes: seat.closes };
   }
 
+  /** Selects the agent's last tab on Bao's direct connection. That does not bring the window to the front. A failed select still keeps the window. */
+  private async showAgentTab(session: Session): Promise<void> {
+    if (session.kind !== "copy") return;
+    const targetId = session.agentTarget ?? session.targetId;
+    if (!targetId || session.chrome.isClosed()) return;
+    let cdp: CdpSocket | undefined;
+    try {
+      cdp = await this.connectSession(session, { timeoutMs: 2000 });
+      await cdp.send("Target.activateTarget", { targetId }, undefined, 2000);
+    } catch {
+      // The kept window stays on Chrome's selected tab if the direct connection is already gone.
+    } finally {
+      cdp?.close();
+    }
+  }
+
   private async cleanupBody(session: Session, keepOpen: boolean, closeTaskTabs: boolean): Promise<void> {
     session.abort.abort();
     await session.commandDone;
@@ -1704,8 +1768,10 @@ export class AgentBrowserProxy {
               }
             }
           } finally { session.chrome.detach(); }
-        } else if (keepOpen && !this.closingOf(session) && this.seat.closes.n === 0 && !session.chrome.isClosed()) await session.chrome.keepOpen();
-        else await session.chrome.close();
+        } else if (keepOpen && !this.closingOf(session) && this.seat.closes.n === 0 && !session.chrome.isClosed()) {
+          await this.showAgentTab(session);
+          await session.chrome.keepOpen();
+        } else await session.chrome.close();
       }
       await rm(session.stateDir, { recursive: true, force: true });
     } finally {
