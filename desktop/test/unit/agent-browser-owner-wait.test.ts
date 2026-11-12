@@ -315,6 +315,89 @@ test("a later wall re-injects its banner without activating or raising the windo
   } finally { await h.cleanup("copy", observer); }
 });
 
+test("a failed password at the same address restores the banner without raising the window or adding a second one", { timeout: scaledMs(45_000) }, async (t) => {
+  const front: string[] = [];
+  const reads: string[] = [];
+  let scripts = 0;
+  const send = CdpSocket.prototype.send;
+  t.mock.method(CdpSocket.prototype, "send", function (this: CdpSocket, ...args: Parameters<typeof send>) {
+    const method = args[0];
+    if (method === "Target.activateTarget" || method === "Browser.getWindowForTarget" || method === "Browser.setWindowBounds" || method === "Bao.showTab") front.push(method);
+    if (method === "Page.getFrameTree" || method === "DOM.getDocument" || method === "Runtime.evaluate") reads.push(method);
+    if (method === "Page.addScriptToEvaluateOnNewDocument") scripts += 1;
+    return send.apply(this, args);
+  });
+  const h = await ownerProxy(t);
+  const { proxy, fixture } = h;
+  let observer: Awaited<ReturnType<typeof chromium.connectOverCDP>> | undefined;
+  const proof = process.env.BAO_PROOF_DIR;
+  try {
+    assert.equal(outcome(await proxy.execute("open", [fixture.url("/owner/session")], "copy")), "halted");
+    assert.ok(front.includes("Target.activateTarget"), "the first wall still brings the window forward");
+    assert.equal(scripts, 1, "the first wall registers one reload script");
+    const runId = proxy.activeRunId!;
+    const since = proxy.ownerPage!.since;
+    const endpoint = await readDevToolsActivePort(path.join(h.copyDir, "DevToolsActivePort"));
+    observer = await chromium.connectOverCDP(`http://127.0.0.1:${endpoint.port}`);
+    const page = observer.contexts()[0]!.pages().find((item) => item.url().includes("/owner/session"))!;
+    page.setDefaultTimeout(5000);
+    assert.equal(await page.locator("#bao-owner-wait").count(), 1);
+    if (proof) await page.screenshot({ path: path.join(proof, "before-reload.png") });
+
+    front.length = 0;
+    reads.length = 0;
+    const scriptsAtWall = scripts;
+    await page.getByLabel("Password").fill("wrong-password");
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    await page.getByText("That password did not match.").waitFor();
+    assert.equal(new URL(page.url()).pathname, "/owner/session");
+    assert.equal(await page.title(), "Sign in");
+    await page.locator("#bao-owner-wait").waitFor();
+    assert.equal(await page.locator("#bao-owner-wait").count(), 1, "a same-address reload leaves one banner");
+    assert.match(await page.locator("#bao-owner-wait").innerText(), /waiting for you to sign in/);
+    assert.deepEqual(front, [], "a same-address reload does not activate or raise");
+    assert.equal(reads.includes("Page.getFrameTree"), false, "a reload is not noticed by reading frames");
+    assert.equal(reads.includes("DOM.getDocument"), false, "a reload is not noticed by reading the document");
+    assert.equal(reads.includes("Runtime.evaluate"), false, "a reload is not noticed by reading the page");
+    assert.equal(scripts, scriptsAtWall, "a reload does not register a second script");
+    if (proof) await page.screenshot({ path: path.join(proof, "after-reload.png") });
+
+    await page.evaluate(() => {
+      const frame = document.createElement("iframe");
+      frame.src = "/owner/session";
+      document.body.append(frame);
+    });
+    await page.frameLocator("iframe").locator("h1").waitFor();
+    assert.equal(await page.locator("#bao-owner-wait").count(), 1, "an iframe document does not add a banner in the top frame");
+    assert.equal(await page.frameLocator("iframe").locator("#bao-owner-wait").count(), 0, "an iframe document does not get its own banner");
+
+    front.length = 0;
+    reads.length = 0;
+    assert.equal(outcome(await proxy.execute("wait_for_owner", ["400"], undefined, false, undefined, {}, runId)), "waiting");
+    assert.equal(proxy.ownerPage!.since, since, "a same-address reload does not restart the wait");
+    assert.equal(await page.locator("#bao-owner-wait").count(), 1, "a poll of the same address does not add a second banner");
+    assert.deepEqual(front, [], "a poll does not activate or raise");
+    assert.equal(reads.includes("Page.getFrameTree"), false);
+    assert.equal(reads.includes("Runtime.evaluate"), false);
+
+    await page.evaluate(() => { document.title = "Dashboard"; });
+    assert.equal(outcome(await proxy.execute("wait_for_owner", ["2000"], undefined, false, undefined, {}, runId)), "ready");
+    assert.equal(await page.locator("#bao-owner-wait").count(), 0);
+    await page.reload();
+    await page.locator("h1").waitFor();
+    assert.equal(await page.locator("#bao-owner-wait").count(), 0, "a reload after the wait does not bring the banner back");
+
+    assert.equal(outcome(await proxy.execute("wait_for_owner", ["400"], undefined, false, undefined, {}, runId)), "waiting");
+    assert.equal(await page.locator("#bao-owner-wait").count(), 1, "a later wait starts with one banner");
+    front.length = 0;
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    await page.getByText("That password did not match.").waitFor();
+    await page.locator("#bao-owner-wait").waitFor();
+    assert.equal(await page.locator("#bao-owner-wait").count(), 1, "a later wait's reload does not stack a banner");
+    assert.deepEqual(front, [], "a later wait's reload does not activate or raise");
+  } finally { await h.cleanup("copy", observer); }
+});
+
 test("finish_task reports a wait the timer ended once, not on the next browser call", { timeout: scaledMs(30_000) }, async (t) => {
   const h = await ownerProxy(t);
   const { proxy, fixture } = h;

@@ -28,6 +28,10 @@ export async function startExperianFixture(t: TestContext, options: { loopbackHt
     if (url.pathname === "/owner/start") {
       res.writeHead(302, { location: url.searchParams.get("check") === "captcha" ? "/owner/check" : "/owner/sign-in" });
       res.end();
+    } else if (url.pathname === "/owner/session") {
+      req.resume();
+      const failed = req.method === "POST" ? "<p>That password did not match.</p>" : "";
+      send("Sign in", `<form method="post" action="/owner/session"><label>Email <input name="email" autocomplete="username"></label><label>Password <input name="password" type="password" autocomplete="current-password"></label><button>Sign in</button></form>${failed}`);
     } else if (url.pathname === "/owner/sign-in") {
       const action = url.searchParams.has("two-factor") ? "/owner/verify" : "/owner/complete";
       send("Sign in", `<form method="post" action="${action}"><label>Email <input name="email" autocomplete="username"></label><label>Password <input name="password" type="password" autocomplete="current-password"></label><button>Sign in</button></form>`);

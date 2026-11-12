@@ -226,6 +226,29 @@ function ownerWaitPage(wait: OwnerWait, ownerPage: OwnerPage | undefined): Owner
   return wait !== "off" && wait !== "pending" ? wait.page : ownerPage;
 }
 
+const OWNER_BANNER_STYLE = "position:fixed;bottom:16px;left:16px;right:16px;padding:16px 20px;background:#fff3dd;color:#492800;border:2px solid #e88600;border-radius:12px;font:600 15px/1.5 system-ui;box-shadow:0 4px 20px #0003;z-index:2147483647;pointer-events:none";
+
+/** Paints the owner-wait banner in the top frame. It writes that node and reads nothing from the page. */
+function ownerBannerScript(text: string): string {
+  return `(() => {
+    try { if (window.top !== window) return; } catch { return; }
+    const place = () => {
+      const root = document.documentElement;
+      if (!root) return;
+      document.getElementById("bao-owner-wait")?.remove();
+      const banner = document.createElement("div");
+      banner.id = "bao-owner-wait";
+      banner.setAttribute("role", "status");
+      banner.textContent = ${JSON.stringify(text)};
+      banner.style.cssText = ${JSON.stringify(OWNER_BANNER_STYLE)};
+      root.append(banner);
+    };
+    // A new document is still loading when Chrome runs this. Placing now loses the node to the parser.
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", place, { once: true });
+    else place();
+  })()`;
+}
+
 export class AgentBrowserProxy {
   private seat: ProxySeat = { phase: "ended", reason: "closed", closes: { n: 0 } };
   private readonly cleanups = new WeakMap<Session, Promise<void>>();
@@ -284,6 +307,19 @@ export class AgentBrowserProxy {
   /** A command Bao refused because it named no run, or a run that is not the open session. */
   get refused(): { runId?: string } | undefined { return this.refusal; }
   private moved: Moved | undefined;
+  /**
+   * The banner script on the waiting tab. Chrome runs it on the next document, including a reload
+   * that keeps the same address and title. Absent when no wait is showing a banner.
+   */
+  private reloadBanner: {
+    targetId: string;
+    source: string;
+    cdp: CdpSocket;
+    sessionId: string;
+    identifier: string;
+    /** This socket was opened for the script. The owner's Chrome socket is not closed with it. */
+    owned: boolean;
+  } | undefined;
 
   constructor(private readonly options: {
     home: string; sourceRoot?: string; executable?: string; keepOpen?: () => boolean; hasHold?: () => boolean;
@@ -1040,6 +1076,7 @@ export class AgentBrowserProxy {
     Object.assign(session, next, wired, { browser: openedChoice(next.pick), missed: undefined, page: undefined });
     session.recording.pickBrowser(next.pick);
     if (waiting) this.setWait(session, "off");
+    await this.disarmReloadBanner();
     this.watch(session);
     session.moveError = undefined;
     this.moved = { line: `${stopped}; continued in your running Chrome (Chrome profile "${profile.directory}", ${profile.name}) over remote debugging. Take a fresh snapshot before acting.`, pick: next.pick, site };
@@ -1205,6 +1242,7 @@ export class AgentBrowserProxy {
       this.setWait(session, "off");
       session.recording.ownerWaiting(false);
     }
+    await this.disarmReloadBanner();
     session.abort.abort();
     return [{ stdout: JSON.stringify({ outcome: "closed", instruction: TASK_TAB_CLOSED }), stderr: "", exitCode: 0 }];
   }
@@ -1277,10 +1315,72 @@ export class AgentBrowserProxy {
     return report;
   }
 
+  private bannerText(session: Session): string {
+    return `Bao is waiting for you to ${ownerTask(ownerWaitPage(this.waitOf(session), session.ownerPage))}. The agent will continue in this window. Only URL and title are read while waiting.`;
+  }
+
+  /**
+   * Leaves one banner script on the waiting tab. Chrome runs it on the next document, so a reload
+   * at the same address paints the banner again. This does not read the page or activate the tab.
+   */
+  private async armReloadBanner(session: Session, targetId: string, text: string): Promise<void> {
+    const source = ownerBannerScript(text);
+    const armed = this.reloadBanner;
+    if (armed?.targetId === targetId && armed.source === source && armed.cdp.isOpen) return;
+    if (armed?.targetId === targetId && armed.cdp.isOpen) {
+      try {
+        await armed.cdp.send("Page.removeScriptToEvaluateOnNewDocument", { identifier: armed.identifier }, armed.sessionId, 2000);
+        const { identifier } = await armed.cdp.send<{ identifier: string }>("Page.addScriptToEvaluateOnNewDocument", { source }, armed.sessionId, 2000);
+        armed.identifier = identifier;
+        armed.source = source;
+        return;
+      } catch {
+        await this.disarmReloadBanner();
+      }
+    } else if (armed) await this.disarmReloadBanner();
+    const owned = session.kind === "copy";
+    let cdp: CdpSocket | undefined;
+    let sessionId: string | undefined;
+    try {
+      if (owned) {
+        const endpoint = await readDevToolsActivePort(session.chrome.target.portFile);
+        cdp = await connectCdp(endpoint.port, endpoint.browserPath, { timeoutMs: 2000, signal: session.abort.signal });
+      } else cdp = session.chrome.cdp;
+      if (!cdp.isOpen) return;
+      ({ sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true }, undefined, 2000));
+      // Chrome runs this script on the next document only after Page is enabled. Bao does not read the events that enablement also sends.
+      await cdp.send("Page.enable", {}, sessionId, 2000);
+      const { identifier } = await cdp.send<{ identifier: string }>("Page.addScriptToEvaluateOnNewDocument", { source }, sessionId, 2000);
+      this.reloadBanner = { targetId, source, cdp, sessionId, identifier, owned };
+    } catch (error) {
+      if (cdp?.isOpen && sessionId) await cdp.send("Target.detachFromTarget", { sessionId }, undefined, 2000).catch(() => undefined);
+      if (owned) cdp?.close();
+      throw error;
+    }
+  }
+
+  /** Drops the reload script and, on a copy, the socket opened for it. */
+  private async disarmReloadBanner(): Promise<void> {
+    const armed = this.reloadBanner;
+    this.reloadBanner = undefined;
+    if (!armed) return;
+    try {
+      if (armed.cdp.isOpen) {
+        await armed.cdp.send("Page.removeScriptToEvaluateOnNewDocument", { identifier: armed.identifier }, armed.sessionId, 2000).catch(() => undefined);
+        await armed.cdp.send("Target.detachFromTarget", { sessionId: armed.sessionId }, undefined, 2000).catch(() => undefined);
+      }
+    } finally {
+      if (armed.owned) armed.cdp.close();
+    }
+  }
+
   /** Writes only Bao's status banner. Never reads the form, page text, or field values. */
   private async ownerBanner(session: Session, targetId: string, waiting: boolean, options?: { raise?: boolean }): Promise<void> {
     const raise = options?.raise !== false;
     if (waiting && raise) session.raised = false;
+    const text = this.bannerText(session);
+    if (waiting) await this.armReloadBanner(session, targetId, text).catch(() => undefined);
+    else await this.disarmReloadBanner();
     const cdp = await this.connectSession(session, { timeoutMs: 2000, signal: session.abort.signal });
     let attached: string | undefined;
     try {
@@ -1293,14 +1393,7 @@ export class AgentBrowserProxy {
       }
       const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true }, undefined, 2000);
       attached = sessionId;
-      const expression = waiting ? `(() => {
-        document.getElementById('bao-owner-wait')?.remove();
-        const banner = document.createElement('div');
-        banner.id = 'bao-owner-wait'; banner.setAttribute('role', 'status');
-        banner.textContent = ${JSON.stringify(`Bao is waiting for you to ${ownerTask(ownerWaitPage(this.waitOf(session), session.ownerPage))}. The agent will continue in this window. Only URL and title are read while waiting.`)};
-        banner.style.cssText = 'position:fixed;bottom:16px;left:16px;right:16px;padding:16px 20px;background:#fff3dd;color:#492800;border:2px solid #e88600;border-radius:12px;font:600 15px/1.5 system-ui;box-shadow:0 4px 20px #0003;z-index:2147483647;pointer-events:none';
-        document.documentElement.append(banner);
-      })()` : `document.getElementById('bao-owner-wait')?.remove()`;
+      const expression = waiting ? ownerBannerScript(text) : `document.getElementById('bao-owner-wait')?.remove()`;
       await cdp.send("Runtime.evaluate", { expression, returnByValue: true }, sessionId, 2000);
     } catch {
       // The durable Library notice remains visible if the page rejects the banner or closes.
@@ -1311,6 +1404,7 @@ export class AgentBrowserProxy {
   }
 
   private ownerClosed(session: Session): AgentBrowserCommandResult[] {
+    void this.disarmReloadBanner();
     const result = this.ownerResult("closed", session);
     session.abort.abort();
     session.workflow.unavailable("the owner wait did not finish");
@@ -1366,7 +1460,7 @@ export class AgentBrowserProxy {
             session.ownerPage = session.page = waiting.page;
             this.setWait(session, waiting);
             await this.ownerBanner(session, waiting.targetId, true, { raise: false });
-          }
+          } else if (ownerWall(page)) await this.armReloadBanner(session, waiting.targetId, this.bannerText(session)).catch(() => undefined);
           const ready = ownerCanResume(waiting.page, page);
           const signature = ready ? JSON.stringify([page.url, page.title]) : "";
           if (!ready || candidate !== signature) { candidate = signature; stableAt = Date.now(); }
@@ -1680,6 +1774,7 @@ export class AgentBrowserProxy {
   }
 
   private async cleanupBody(session: Session, keepOpen: boolean, closeTaskTabs: boolean): Promise<void> {
+    await this.disarmReloadBanner();
     session.abort.abort();
     await session.commandDone;
     await session.recording.endVideoCapture();
