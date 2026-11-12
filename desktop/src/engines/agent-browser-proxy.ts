@@ -203,16 +203,69 @@ function stripGlobalFlags(args: readonly string[]): { args: string[]; json: bool
   return { args: cleaned, json };
 }
 
-interface ParsedTab { action: "list" | "new" | "close" | "switch"; ref?: string; json: boolean; forwarded: string[] }
+interface ParsedTab { action: "list" | "new" | "close" | "switch"; ref?: string; json: boolean; flags: string[]; forwarded: string[] }
+
+/** Global flags pinned agent-browser 0.41.0 accepts on any command, in the caller's order, including each flag's value. */
+function acceptedCliFlags(args: readonly string[]): string[] {
+  const flags: string[] = [];
+  let seenCommand = false;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if (arg.startsWith("--restore=")) { flags.push(arg); continue; }
+    if (GLOBAL_VALUE_FLAGS.has(arg)) {
+      flags.push(arg);
+      const next = args[i + 1];
+      if (next !== undefined) flags.push(next);
+      i += 1;
+      continue;
+    }
+    if (arg === "--restore") {
+      flags.push(arg);
+      if (!seenCommand) {
+        const next = args[i + 1];
+        if (next && !next.startsWith("-") && !TOP_LEVEL_COMMANDS.has(next)) { flags.push(next); i += 1; }
+      }
+      continue;
+    }
+    if (GLOBAL_BOOL_FLAGS.has(arg)) {
+      flags.push(arg);
+      const next = args[i + 1];
+      if (next === "true" || next === "false") { flags.push(next); i += 1; }
+      continue;
+    }
+    if (!arg.startsWith("-") && TOP_LEVEL_COMMANDS.has(arg)) seenCommand = true;
+  }
+  return flags;
+}
+
+/** `tab new` words the pinned CLI accepts: the url, and `--label` with its value. Other dash words are not forwarded. */
+function tabNewWords(cleaned: readonly string[]): string[] {
+  const words = ["new"];
+  for (let i = 1; i < cleaned.length; i++) {
+    const arg = cleaned[i]!;
+    if (arg === "--label") {
+      words.push(arg);
+      if (cleaned[i + 1] !== undefined) words.push(cleaned[++i]!);
+      continue;
+    }
+    if (arg.startsWith("-")) continue;
+    words.push(arg);
+  }
+  return words;
+}
 
 /** One parse of a tab command, matching the pinned CLI: flags first, then list, new, close, or a switch reference. */
 function parseTabArgs(args: readonly string[]): ParsedTab {
   const { args: cleaned, json } = stripGlobalFlags(args);
   const head = cleaned[0];
-  if (head === undefined || head === "list") return { action: "list", json, forwarded: json ? ["list", "--json"] : head === "list" ? ["list"] : [] };
-  if (head === "new") return { action: "new", json, forwarded: cleaned };
-  if (head === "close") return { action: "close", ...(cleaned[1] ? { ref: cleaned[1] } : {}), json, forwarded: cleaned[1] ? ["close", cleaned[1]] : ["close"] };
-  return { action: "switch", ref: head, json, forwarded: [head] };
+  const action = head === undefined || head === "list" ? "list" : head === "new" ? "new" : head === "close" ? "close" : "switch";
+  const flags = acceptedCliFlags(args);
+  const ref = action === "close" ? cleaned[1] : action === "switch" ? head : undefined;
+  const words = action === "list" ? head === "list" || json || flags.length > 0 ? ["list"] : []
+    : action === "new" ? tabNewWords(cleaned)
+    : action === "close" ? ref ? ["close", ref] : ["close"]
+    : [head!];
+  return { action, ...(ref ? { ref } : {}), json, flags, forwarded: [...words, ...flags] };
 }
 
 const opensTab = (command: string, args: readonly string[]) => (command === "tab" && parseTabArgs(args).action === "new") || (command === "click" && args.includes("--new-tab"));
@@ -270,10 +323,10 @@ function resolveTabRef(ref: string, tabs: readonly NativeTab[]): NativeTab | { m
 /**
  * The owner's running Chrome over remote debugging. Bao closes only the tabs it opened. `targetId` is the tab the agent works in:
  * Bao's task tab, until a command that can open a tab follows a popup that command opened. That popup joins `taskTabs`.
- * `pending` holds targets absent from the target list taken when that native command started, and not classified yet.
- * `opening` is true only while that daemon command runs, never during wall handling, workflow capture, or an owner wait.
+ * `pending` holds targets in the list taken when that native command returned and absent from the list taken when it started.
+ * `ended` is that return list, and only until the command queues it.
  */
-type DebuggingChrome = { kind: "current"; relay?: undefined; chrome: CurrentChrome; taskTabs: Set<string>; targetId: string; pending: Set<string>; opening?: boolean; justClosed?: string };
+type DebuggingChrome = { kind: "current"; relay?: undefined; chrome: CurrentChrome; taskTabs: Set<string>; targetId: string; pending: Set<string>; ended?: ReadonlySet<string>; justClosed?: string };
 
 /** An opened browser, what it runs on and why, and on the owner's Chrome the task tab the native daemon binds to. */
 type Opened = { pick: BrowserPick } & (
@@ -1206,8 +1259,8 @@ export class AgentBrowserProxy {
   }
 
   /**
-   * Keeps the agent in its tab of the owner's Chrome. A fresh tab joins the task only when it was noted while the native daemon was
-   * running a command that can open one, and its opener is the agent's task tab. A tab that appears during wall handling, workflow
+   * Keeps the agent in its tab of the owner's Chrome. A fresh tab joins the task only when it is in the target list taken when a
+   * command that can open one returned, and not in the list taken when that command started, and its opener is the agent's task tab. A tab that appears during wall handling, workflow
    * capture, an owner wait, or between commands stays the owner's even when its opener is the task tab: Bao does not switch to it,
    * mark it, or close it. When the daemon is anywhere else, Bao switches it back to the agent's tab. That switch's Page.bringToFront
    * is answered on the daemon's connection, so Chrome does not rise. When no task tab remains, the caller ends the session instead of
@@ -1257,20 +1310,16 @@ export class AgentBrowserProxy {
     return tab.active ? tabs : this.nativeTabs(session, ceiling);
   }
 
-  /** Runs the agent's command. On the owner's Chrome, a new tab is queued as the agent's only while this native call runs. */
+  /** Runs the agent's command. On the owner's Chrome, a new tab is the agent's only when it is in the return list and not the entry list. */
   private async runNative(session: Session, command: string, args: string[]): Promise<AgentBrowserCommandResult> {
     if (session.kind !== "current" || session.relay || this.waitOf(session) !== "off" || !canOpenTab(command, args)) {
       return this.forward(session, command, args);
     }
-    session.opening = true;
-    try {
-      const baseline = await this.targetIds(session);
-      const result = await this.forward(session, command, args);
-      await this.queueFresh(session, baseline);
-      return result;
-    } finally {
-      session.opening = false;
-    }
+    session.ended = undefined;
+    const baseline = await this.targetIds(session);
+    const result = await this.forward(session, command, args);
+    await this.queueFresh(session, baseline);
+    return result;
   }
 
   private async targetIds(session: Session & DebuggingChrome): Promise<Set<string>> {
@@ -1278,11 +1327,13 @@ export class AgentBrowserProxy {
     return new Set(targetInfos.map((info) => info.targetId));
   }
 
-  /** Notes targets Chrome gained during this native command. A target already listed at the command's start stays the owner's. */
+  /** Notes targets in the list taken when the native command returned and absent from the list taken when it started. */
   private async queueFresh(session: Session & DebuggingChrome, baseline: ReadonlySet<string>): Promise<void> {
-    const { targetInfos } = await session.chrome.cdp.sendUntilProgress<{ targetInfos: ChromeTarget[] }>("Target.getTargets", {}, undefined, { signal: session.abort.signal });
-    for (const info of targetInfos) {
-      if (!baseline.has(info.targetId) && !session.taskTabs.has(info.targetId)) session.pending.add(info.targetId);
+    const ended = session.ended;
+    session.ended = undefined;
+    if (!ended) return;
+    for (const targetId of ended) {
+      if (!baseline.has(targetId) && !session.taskTabs.has(targetId)) session.pending.add(targetId);
     }
   }
 
@@ -1299,7 +1350,7 @@ export class AgentBrowserProxy {
    */
   private async forward(session: Session, command: string, args: string[]): Promise<AgentBrowserCommandResult> {
     const parsed = command === "tab" ? parseTabArgs(args) : undefined;
-    if (session.kind !== "current" || session.relay || !parsed || parsed.action === "new") return this.run(session, command, parsed?.action === "new" ? parsed.forwarded : args);
+    if (!parsed || session.kind !== "current" || session.relay || parsed.action === "new") return this.run(session, command, parsed ? parsed.forwarded : args);
     const tabs = await this.nativeTabs(session);
     const resolved = parsed.ref === undefined ? parsed.action === "close" ? tabs.find((tab) => tab.active) : undefined : resolveTabRef(parsed.ref, tabs);
     if (parsed.ref !== undefined && resolved && "message" in resolved) return { stdout: "", stderr: `\u2717 ${resolved.message}\n`, exitCode: 1 };
@@ -1321,7 +1372,7 @@ export class AgentBrowserProxy {
       const where = url ? `: ${url}` : "";
       return { stdout: "", stderr: `✗ ${ref} is a tab the owner opened. When the owner wants work done on a page he has open, open that page's URL in your task tab (it shares his sign-ins)${where}.\n`, exitCode: 1 };
     }
-    const forwarded = parsed.action === "list" ? parsed.forwarded : parsed.action === "close" ? named?.tabId ? ["close", named.tabId] : ["close"] : [named?.tabId ?? ""];
+    const forwarded = parsed.action === "list" ? parsed.forwarded : parsed.action === "close" ? [...(named?.tabId ? ["close", named.tabId] : ["close"]), ...parsed.flags] : [named?.tabId ?? "", ...parsed.flags];
     const result = await this.run(session, command, forwarded);
     if (result.exitCode !== 0) return result;
     if (parsed.action === "close" && named?.targetId && session.taskTabs.has(named.targetId)) {
@@ -1718,6 +1769,7 @@ export class AgentBrowserProxy {
       });
     });
     const result = await execute(command, args, readTimeoutMs, bound);
+    if (session.kind === "current" && !session.relay && canOpenTab(command, args)) session.ended = await this.targetIds(session);
     if (session.kind === "current" && !session.relay && opensTab(command, args) && result.exitCode === 0) {
       try {
         const tabs = await execute("tab", ["list", "--json"], 5000);

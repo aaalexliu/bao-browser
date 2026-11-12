@@ -424,6 +424,48 @@ test("a popup a press opens from the task tab becomes the agent's tab", async (t
   assert.deepEqual([...f.closed].sort(), ["keyed", "task"]);
 });
 
+test("a popup that appears during the tab read after tab new is not adopted and not closed", async (t) => {
+  const f = await fixture(t);
+  await f.proxy.execute("open", [MAPS], "current");
+  f.daemon.observe = (command, args) => {
+    if (command !== "tab" || !args.includes("--json") || !f.daemon.commands.some(entry => entry.command === "tab" && entry.args[0] === "new")) return;
+    if (f.targets.some(item => item.targetId === "late")) return;
+    f.targets.push({ targetId: "late", type: "page", url: "https://example.com/late", title: "Late owner", openerId: "opened", inWindow: true });
+  };
+  assert.equal((await f.proxy.execute("tab", ["new"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.exitCode, 0);
+  assert.equal(f.daemon.active, "opened", "a popup that appears during the post-command tab read does not become the agent's tab");
+  const listed = (await f.proxy.execute("tab", [], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout;
+  assert.match(listed, /Late owner/);
+  assert.doesNotMatch(listed, /\(Bao task tab\) Late owner/);
+  assert.equal(f.daemon.commands.some(entry => entry.command === "tab" && entry.args[0] === "t8"), false, "Bao does not switch to the popup");
+  assert.ok(await f.proxy.finishTask({ outcome: "passed", reason: "fixture" }, f.proxy.activeRunId));
+  assert.equal(f.closed.includes("late"), false, "finish does not close a tab that appeared after the native command returned");
+  assert.ok(f.closed.includes("opened"));
+  assert.ok(f.closed.includes("task"));
+});
+
+test("tab new --json and tab t1 --json keep --json in the argv sent to the daemon", async (t) => {
+  const f = await fixture(t);
+  await f.proxy.execute("open", [MAPS], "current");
+  const [created] = await f.proxy.execute("tab", ["new", "--json", "--label", "docs", "--not-a-flag"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  assert.equal(created!.exitCode, 0);
+  const opened = f.daemon.commands.find(entry => entry.command === "tab" && entry.args[0] === "new");
+  assert.ok(opened?.args.includes("--json"), "tab new --json still requests JSON");
+  assert.ok(opened?.args.includes("--label") && opened.args.includes("docs"), "tab new keeps --label");
+  assert.equal(opened?.args.includes("--not-a-flag"), false, "tab new does not forward a flag the CLI does not accept");
+  const [back] = await f.proxy.execute("tab", ["t1", "--json", "--quiet"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  assert.equal(back!.exitCode, 0);
+  assert.equal(f.daemon.active, "task");
+  const switched = f.daemon.commands.find(entry => entry.command === "tab" && entry.args[0] === "t1" && entry.args.includes("--json"));
+  assert.ok(switched, "tab t1 --json still requests JSON");
+  assert.ok(switched!.args.includes("--quiet"), "tab t1 keeps another flag the CLI accepts");
+  const [madeUp] = await f.proxy.execute("tab", ["t1", "--json", "--made-up"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  assert.equal(madeUp!.exitCode, 0);
+  const again = f.daemon.commands.filter(entry => entry.command === "tab" && entry.args[0] === "t1").at(-1)!;
+  assert.ok(again.args.includes("--json"));
+  assert.equal(again.args.includes("--made-up"), false);
+});
+
 test("tab new gets focus emulation, and an owner tab does not", async (t) => {
   const f = await fixture(t);
   await f.proxy.execute("open", [MAPS], "current");
