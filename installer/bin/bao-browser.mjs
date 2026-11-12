@@ -15,10 +15,13 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PKG = JSON.parse(readFileSync(path.join(HERE, "..", "package.json"), "utf8"));
-/** The command that runs this installer. bao-browser is not on npm, so it runs the copy attached to the latest release. */
-const NPX = "npx https://github.com/aaalexliu/bao-browser/releases/latest/download/bao-browser.tgz";
-const USAGE = `usage: ${NPX} [--dir DIR] [--yes | --agents a,b | --none] [--release FILE_OR_URL]
-       ${NPX} setup|doctor [args]   run the installed Bao's own setup or doctor
+/** release.json on the newest GitHub release. Tests point BAO_INSTALLER_LATEST at another one. */
+const LATEST = "https://github.com/aaalexliu/bao-browser/releases/latest/download/release.json";
+/** The command that runs this installer. npx caches the releases/latest tarball URL, so this reads release.json and runs the versioned tarball. */
+const INSTALL_SH = "https://raw.githubusercontent.com/aaalexliu/bao-browser/main/installer/install.sh";
+const INSTALL = `curl -fsSL ${INSTALL_SH} | sh`;
+const USAGE = `usage: curl -fsSL ${INSTALL_SH} | sh -s -- [--dir DIR] [--yes | --agents a,b | --none] [--release FILE_OR_URL]
+       curl -fsSL ${INSTALL_SH} | sh -s -- setup|doctor [args]   run the installed Bao's own setup or doctor
 
 With no command, download Bao.app ${PKG.version}, check it, place it, then pick agents.
 
@@ -223,7 +226,7 @@ async function replaceSigned(target, old, signer, yes) {
       ask.close();
     }
   } else process.stdout.write(`${loss}\n`);
-  process.stdout.write(`Kept ${target}. Nothing was installed. To replace it: quit Bao, remove ${target}, then run ${NPX} again.\n`);
+  process.stdout.write(`Kept ${target}. Nothing was installed. To replace it: quit Bao, remove ${target}, then run ${INSTALL} again.\n`);
   return false;
 }
 
@@ -282,7 +285,7 @@ function link(app) {
 
 function runApp(app, args) {
   const cli = path.join(app, "Contents", "MacOS", "bao-cli");
-  if (!existsSync(cli)) throw new InstallError(`${cli} is missing. Install Bao first: ${NPX}`);
+  if (!existsSync(cli)) throw new InstallError(`${cli} is missing. Install Bao first: ${INSTALL}`);
   const result = spawnSync(cli, args, { stdio: "inherit" });
   return result.status ?? 1;
 }
@@ -291,13 +294,60 @@ function installedApp() {
   return ["/Applications/Bao.app", path.join(home(), "Applications", "Bao.app")].find((app) => existsSync(app));
 }
 
+/** x.y.z only. Returns -1, 0, or 1. */
+function compareVersions(left, right) {
+  const parse = (value) => {
+    if (!/^\d+\.\d+\.\d+$/.test(value)) throw new InstallError(`Bao version ${value} is not x.y.z. Nothing was installed.`);
+    return value.split(".").map(Number);
+  };
+  const a = parse(left);
+  const b = parse(right);
+  for (let i = 0; i < 3; i += 1) {
+    if (a[i] !== b[i]) return a[i] < b[i] ? -1 : 1;
+  }
+  return 0;
+}
+
+function appVersion(app) {
+  const result = spawnSync("/usr/bin/plutil", ["-extract", "CFBundleShortVersionString", "raw", "-o", "-", path.join(app, "Contents", "Info.plist")], { encoding: "utf8" });
+  const version = result.stdout?.trim() || "";
+  if (result.status !== 0 || !version) throw new InstallError(`Cannot read the version of ${app}. Nothing was installed.`);
+  return version;
+}
+
+/** The newest release's version, or null when the default URL cannot be read. A set BAO_INSTALLER_LATEST must be readable. */
+async function newestVersion() {
+  const source = process.env.BAO_INSTALLER_LATEST || LATEST;
+  try {
+    return (await readRelease(source)).release.version;
+  } catch (err) {
+    if (process.env.BAO_INSTALLER_LATEST) throw err;
+    return null;
+  }
+}
+
 async function install(opts) {
   const started = Date.now();
   const key = platformKey();
   const { release, base } = await readRelease(opts.release || path.join(HERE, "..", "release.json"));
   const asset = release.platforms[key];
   if (!asset) throw new InstallError(`Bao ${release.version} has no build for ${key}. It has ${Object.keys(release.platforms).join(", ")}.`);
-  process.stdout.write(`${bold(`Bao ${release.version}`)} ${dim(`for ${key}, ${(asset.size / 1e6).toFixed(0)} MB`)}\n`);
+  const target = path.join(applicationsDir(opts.dir), "Bao.app");
+  const installed = existsSync(target) ? appVersion(target) : null;
+  const line = installed
+    ? `${bold(`Installing Bao ${release.version}`)} over ${installed} at ${target}`
+    : `${bold(`Installing Bao ${release.version}.`)} No Bao.app is installed yet.`;
+  process.stdout.write(`${line}\n`);
+  process.stdout.write(`${dim(`for ${key}, ${(asset.size / 1e6).toFixed(0)} MB`)}\n`);
+  const order = installed ? compareVersions(release.version, installed) : 1;
+  if (order < 0) throw new InstallError(`Refusing to install Bao ${release.version} over ${installed} at ${target}. That would downgrade.`);
+  if (order === 0) {
+    const newest = await newestVersion();
+    if (newest && compareVersions(newest, release.version) > 0) {
+      throw new InstallError(`Refusing to install Bao ${release.version} over ${installed} at ${target}. The newest release is ${newest}.`);
+    }
+    if (!newest) process.stdout.write(`${dim("Could not read the newest release, so this same-version install was not checked against it.")}\n`);
+  }
   const zip = await download(asset, release.version, key, base);
   step(`Checked size and SHA-256 ${dim(asset.sha256.slice(0, 16))}`);
   const dir = applicationsDir(opts.dir);
@@ -323,7 +373,7 @@ async function main() {
   if (opts.command === "setup" || opts.command === "doctor") {
     const named = opts.rest.indexOf("--app");
     const app = named >= 0 && opts.rest[named + 1] ? path.resolve(opts.rest[named + 1]) : installedApp();
-    if (!app) throw new InstallError(`Bao is not installed. Run: ${NPX}`);
+    if (!app) throw new InstallError(`Bao is not installed. Run: ${INSTALL}`);
     return runApp(app, [opts.command, ...opts.rest]);
   }
   return install(opts);

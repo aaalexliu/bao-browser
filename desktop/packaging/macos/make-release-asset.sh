@@ -7,7 +7,7 @@
 #   https://github.com/aaalexliu/bao-browser/releases/download/v0.2.0
 # Without it, release.json names the zip by file name, and the installer looks for
 # it beside release.json:
-#   npx https://github.com/aaalexliu/bao-browser/releases/latest/download/bao-browser.tgz --release path/to/release.json
+#   curl -fsSL https://raw.githubusercontent.com/aaalexliu/bao-browser/main/installer/install.sh | sh -s -- --release path/to/release.json
 set -euo pipefail
 APP="${1:?usage: make-release-asset.sh path/to/Bao.app OUT_DIR [BASE_URL]}"
 OUT="${2:?usage: make-release-asset.sh path/to/Bao.app OUT_DIR [BASE_URL]}"
