@@ -13,3 +13,6 @@ mkdir -p "$APP/Contents/MacOS"
   -o "$APP/Contents/MacOS/bao-cli" \
   "$ROOT/desktop/packaging/macos/bao-mcp.c" "$ROOT/desktop/packaging/macos/bao-launch.c"
 node "$ROOT/desktop/packaging/macos/prove-mcp-launcher.mjs" "$APP"
+/usr/bin/clang -fobjc-arc -Wall -Wextra -Werror -O2 -framework AppKit \
+  -o "$APP/Contents/MacOS/bao-front" \
+  "$ROOT/desktop/packaging/macos/bao-front.m"
