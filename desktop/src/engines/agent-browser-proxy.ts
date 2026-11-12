@@ -194,7 +194,7 @@ type ProxySeat =
   | { phase: "live"; session: Session; ownerWait: OwnerWait; closes: CloseQueue }
   | { phase: "closing"; session: Session; ownerWait: OwnerWait; keep: boolean; closes: CloseQueue }
   | { phase: "ended"; reason: "closed" | "current-ended"; closes: CloseQueue }
-  | { phase: "ended"; reason: "disconnected"; closes: CloseQueue; session?: Session; ownerWait?: OwnerWait; starting?: Promise<Session>; closeRequested?: boolean };
+  | { phase: "ended"; reason: "disconnected"; closes: CloseQueue; session?: Session; ownerWait?: OwnerWait; starting?: Promise<Session>; closeRequested?: boolean; priorEnded?: "current-ended" };
 
 /**
  * macOS does not let a Chrome that Bao launched in the background make itself the front app, so Target.activateTarget only
@@ -369,7 +369,8 @@ export class AgentBrowserProxy {
   private adopt(session: Session): void {
     const seat = this.seat;
     if (seat.phase === "ended" && seat.reason === "disconnected") {
-      this.seat = { ...seat, session, starting: undefined };
+      const { priorEnded: _priorEnded, ...kept } = seat;
+      this.seat = { ...kept, session, starting: undefined };
       return;
     }
     this.seat = { phase: "live", session, ownerWait: "off", closes: seat.closes };
@@ -389,8 +390,9 @@ export class AgentBrowserProxy {
     const seat = this.seat;
     if (seat.phase === "starting") this.seat = { phase: "ended", reason: seat.priorEnded ?? "closed", closes: seat.closes };
     else if (seat.phase === "ended" && seat.reason === "disconnected") {
-      const { starting: _starting, ...rest } = seat;
-      this.seat = rest;
+      const { starting: _starting, priorEnded, ...rest } = seat;
+      // A start that fails after disconnect must restore the Chrome-ended reason, the same way a start that fails without disconnect does.
+      this.seat = priorEnded && !rest.session ? { phase: "ended", reason: priorEnded, closes: seat.closes } : rest;
     }
   }
 
@@ -686,14 +688,17 @@ export class AgentBrowserProxy {
     const seat = this.seat;
     if (seat.phase === "starting") seat.abort.abort();
     else this.session?.abort.abort();
-    if (seat.phase === "ended" && seat.reason === "disconnected") return;
+    // Chrome already ended, and the task tab was left open. A later close still has to say so. Disconnect must not replace that reason.
+    if (seat.phase === "ended" && (seat.reason === "disconnected" || seat.reason === "current-ended")) return;
     const session = seat.phase === "live" || seat.phase === "closing" ? seat.session : undefined;
     const ownerWait = seat.phase === "live" || seat.phase === "closing" ? seat.ownerWait : undefined;
     const starting = seat.phase === "starting" ? seat.promise : undefined;
+    const priorEnded = seat.phase === "starting" ? seat.priorEnded : undefined;
     this.seat = {
       phase: "ended", reason: "disconnected", closes: seat.closes,
       ...(session ? { session, ownerWait } : {}),
       ...(starting ? { starting } : {}),
+      ...(priorEnded ? { priorEnded } : {}),
     };
   }
 

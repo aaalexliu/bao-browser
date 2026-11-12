@@ -211,6 +211,8 @@ const bound = JSON.parse(fs.readFileSync('bao.target', 'utf8')).targetId;
   assert.equal((await proxy.execute("snapshot", [], undefined, false, undefined, {}, proxy.activeRunId))[0]!.exitCode, 0);
 
   // A handoff opens the group so the owner can see the task tab, and leaves his own tab active.
+  // A recognized sign-in stays waiting, so the group is still open when this call returns. A page that is not a wall settles the group when the deadline ends the wait.
+  await chrome.inPage(await chrome.targetOf("/task"), "document.title = 'Sign in'");
   await proxy.execute("wait_for_owner", ["200"], undefined, false, undefined, {}, proxy.activeRunId);
   strip = await stripWhen(chrome, (s) => group(s)?.collapsed === false);
   assert.equal(group(strip)?.collapsed, false);

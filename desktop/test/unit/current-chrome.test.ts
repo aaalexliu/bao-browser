@@ -1083,6 +1083,9 @@ for (const [windowState, raise] of [["normal", ["minimized", "normal"]], ["minim
     t.mock.method(socket, "connectCdp", async () => ({ ...f.cdp, close() {} }));
     f.state.windowState = windowState;
     await f.proxy.execute("open", [], "copy");
+    // A recognized sign-in stays waiting, which is the result that says the window came forward. A page that is not a wall returns recording at this deadline and does not.
+    f.state.taskUrl = "https://fixture.invalid/login";
+    f.state.taskTitle = "Sign in";
     const [result] = await f.proxy.execute("wait_for_owner", ["50"], undefined, false, undefined, {}, f.proxy.activeRunId);
     assert.deepEqual(f.state.windowStates, raise, "a window from the Dock lands on top; a zoomed one returns zoomed; a full-screen Space stays put");
     const { instruction } = JSON.parse(result!.stdout) as { instruction: string };
