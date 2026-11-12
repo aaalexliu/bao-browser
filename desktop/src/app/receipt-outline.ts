@@ -10,6 +10,8 @@ export interface OutlineStep {
   startedAt?: number;
   endedAt?: number;
   afterShot?: string;
+  /** Why the kept picture is not of the active tab. */
+  shotNote?: string;
   summary?: { text?: string; page?: { title?: string; url?: string } };
   native?: {
     command?: string;
@@ -25,6 +27,7 @@ export interface OutlineRun {
   at?: number;
   task?: string;
   done?: string[];
+  receipts?: { stepId?: string; source?: string; expected?: string; actual?: string; pass?: boolean }[];
   envelope?: { status?: string; reason?: string; ask?: string };
   failure?: { reason?: string };
   steps?: OutlineStep[];
@@ -115,13 +118,19 @@ function fieldLabel(step: OutlineStep): string {
   const label = cleanLabel(step.label || "");
   const into = /^Type into "(.+)"$/.exec(label);
   if (into?.[1]) return into[1];
-  if (label === "Type" || label === "Fill") return "the text field";
+  if (label === "Type") return "the text field";
   return label || "field";
+}
+
+function fieldKey(step: OutlineStep): string {
+  const ref = step.native?.args?.[0];
+  const control = ref?.startsWith("@") ? ref : "";
+  return `${pageKey(step) || ""}|${control}|${fieldLabel(step)}`;
 }
 
 function fillValue(step: OutlineStep): string | undefined {
   if (step.status !== "passed") return undefined;
-  if (command(step) !== "fill" && command(step) !== "type") return undefined;
+  if (command(step) !== "fill") return undefined;
   const args = step.native?.args || [];
   const value = args.length >= 2 ? args[args.length - 1] : args[0];
   return typeof value === "string" ? value : undefined;
@@ -174,16 +183,6 @@ function countClick(label: string): boolean {
   return /\d+\s+(?:places|items)\b/i.test(displayLabel(label));
 }
 
-function consecutiveTokens(typed: string, label: string): boolean {
-  const wanted = tokens(typed);
-  const clicked = tokens(label);
-  if (wanted.length < 2) return false;
-  for (let start = 0; start <= clicked.length - wanted.length; start++) {
-    if (wanted.every((word, index) => clicked[start + index] === word)) return true;
-  }
-  return false;
-}
-
 function sharesSelection(typed: string, label: string): boolean {
   if (countClick(label)) return false;
   const wantedNumbers = numberTokens(typed);
@@ -191,8 +190,7 @@ function sharesSelection(typed: string, label: string): boolean {
   if (wantedNumbers.some((number) => !clickedNumbers.has(number))) return false;
   const wanted = typed.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
   const clicked = displayLabel(label).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
-  if (wanted.length >= 6 && clicked.includes(wanted)) return true;
-  return consecutiveTokens(typed, label);
+  return wanted.length >= 6 && clicked.includes(wanted);
 }
 
 function stderrLine(step: OutlineStep): string | undefined {
@@ -211,6 +209,7 @@ function clickTarget(step: OutlineStep): string | undefined {
 }
 
 function shotFile(step: OutlineStep): string | undefined {
+  if (step.shotNote?.trim()) return undefined;
   return step.afterShot && /^[\w.-]+\.(png|jpe?g)$/.test(step.afterShot) ? step.afterShot : undefined;
 }
 
@@ -225,6 +224,7 @@ function lastPageTitle(steps: OutlineStep[]): string | undefined {
 interface Fill {
   index: number;
   field: string;
+  key: string;
   value: string;
 }
 
@@ -232,7 +232,7 @@ function fillsOf(steps: OutlineStep[]): Fill[] {
   const fills: Fill[] = [];
   steps.forEach((step, index) => {
     const value = fillValue(step);
-    if (value !== undefined) fills.push({ index, field: fieldLabel(step), value });
+    if (value !== undefined) fills.push({ index, field: fieldLabel(step), key: fieldKey(step), value });
   });
   return fills;
 }
@@ -280,6 +280,7 @@ interface SelectionList {
 }
 
 function selectionList(steps: OutlineStep[], fills: Fill[]): SelectionList | undefined {
+  if (new Set(fills.map((fill) => fill.field)).size > 1) return undefined;
   const grouped = new Map<string, Fill[]>();
   for (const fill of fills) {
     const rows = grouped.get(fill.field) || [];
@@ -426,17 +427,22 @@ function positiveConfirmation(text: string): boolean {
   return false;
 }
 
+function actionDescription(text: string): boolean {
+  return /^(?:Typed|Clicked|Could not|Pressed|Scrolled|Went to|Read |Filled|Ran |Opened|Closed|Listed|Took |Switched|The wait|This wait|This run|Your Chrome|Bao)\b/.test(text)
+    || /\bTyped\s+"/.test(text);
+}
+
 function confirmationOf(step: OutlineStep): string | undefined {
-  const summary = step.summary?.text?.trim();
-  if (summary && positiveConfirmation(summary)) return summary;
   const title = pageOf(step)?.title?.trim();
   if (title && positiveConfirmation(title)) return title;
+  const summary = step.summary?.text?.trim();
+  if (summary && !actionDescription(summary) && positiveConfirmation(summary)) return summary;
   return undefined;
 }
 
 function formProof(steps: OutlineStep[], fills: Fill[]): Extract<ReceiptProof, { kind: "form" }> | undefined {
   const fields = new Map<string, Fill>();
-  for (const fill of fills) fields.set(fill.field, fill);
+  for (const fill of fills) fields.set(fill.key, fill);
   if (fields.size < 2) return undefined;
   let submitAt = -1;
   for (let i = 0; i < steps.length; i++) {
@@ -532,11 +538,22 @@ function finalShot(steps: OutlineStep[]): ReceiptShot[] {
   return [];
 }
 
-function recordedLines(steps: OutlineStep[], extra: string[]): string[] {
+function readBackLines(run: OutlineRun): string[] {
+  const lines: string[] = [];
+  for (const item of run.receipts || []) {
+    const saw = item.actual?.trim();
+    if (!saw) continue;
+    const text = /[.!?]$/.test(saw) ? saw : `${saw}.`;
+    lines.push(`Read back ${item.source || "value"}: ${text}`);
+  }
+  return lines;
+}
+
+function recordedLines(steps: OutlineStep[], extra: string[], readBack: string[]): string[] {
   const lines: string[] = [];
   const title = lastPageTitle(steps);
   if (title) lines.push(`Last recorded page: ${title}.`);
-  lines.push(...extra);
+  lines.push(...extra, ...readBack);
   if (!lines.length) lines.push("No page title or confirmation was recorded.");
   return lines;
 }
@@ -699,7 +716,7 @@ function mergeThin(ranges: Range[]): Range[] {
 export function receiptOutline(run: OutlineRun): ReceiptOutline {
   const steps = stepsOf(run);
   const { proof, shots, recordedExtra } = proofFor(steps);
-  const lines = recordedLines(steps, recordedExtra);
+  const lines = recordedLines(steps, recordedExtra, readBackLines(run));
   const claim = run.envelope?.reason?.trim();
   return {
     claim: claim || undefined,

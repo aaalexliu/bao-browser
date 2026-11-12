@@ -2173,6 +2173,7 @@ interface InspectorStep {
   startedAt?: number;
   endedAt?: number;
   afterShot?: string;
+  shotNote?: string;
   caption?: { text?: string };
   native?: StepView["native"];
 }
@@ -2210,9 +2211,12 @@ function receiptInspector(view: ReturnType<typeof inspectRunView>, run: RunSumma
     const command = [native?.command, ...args, timing, duration].filter(Boolean).join(" · ");
     const search = [label, native?.command, ...args, status, receiptReadBack(run, step.id)].filter(Boolean).join(" ");
     const shot = imageRef(run.id, step.afterShot);
+    const shotNote = step.shotNote?.trim();
+    const shotAlt = shotNote || label;
+    const shotHtml = shot ? shotNote ? `<figure><img src="${shot}" alt="${esc(shotAlt)}"><figcaption>${esc(shotNote)}</figcaption></figure>` : `<img src="${shot}" alt="${esc(label)}">` : "";
     const stderr = (native?.results || []).map((result) => result.stderr?.replace(/^[✗✓]\s*/, "").trim()).find(Boolean);
     const evidence = command || shot || stderr
-      ? `<details><summary>Evidence</summary>${command ? `<p class="receipt-command">${esc(native?.command || "")} ${esc((native?.args || []).join(" "))}</p>` : ""}${stderr ? `<p>${esc(stderr)}</p>` : ""}${shot ? `<img src="${shot}" alt="${esc(label)}">` : ""}</details>`
+      ? `<details><summary>Evidence</summary>${command ? `<p class="receipt-command">${esc(native?.command || "")} ${esc((native?.args || []).join(" "))}</p>` : ""}${stderr ? `<p>${esc(stderr)}</p>` : ""}${shotHtml}</details>`
       : "";
     return `<li id="receipt-step-${index + 1}" value="${index + 1}" data-step="${index + 1}" data-search="${esc(search)}"><div><strong>${esc(label)}</strong><span class="run-state">${esc(status)}</span></div>${reason ? `<p>${esc(ownerStopText(reason))}</p>` : ""}${command ? `<p class="receipt-command">${esc(command)}</p>` : ""}${evidence}</li>`;
   }).join("");

@@ -14,6 +14,7 @@ function step(input: {
   summary?: string;
   stderr?: string;
   shot?: string;
+  shotNote?: string;
   at?: number;
 }): OutlineStep {
   return {
@@ -22,6 +23,7 @@ function step(input: {
     startedAt: input.at,
     endedAt: input.at === undefined ? undefined : input.at + 200,
     afterShot: input.shot,
+    shotNote: input.shotNote,
     summary: input.title || input.url || input.summary ? { text: input.summary, page: { title: input.title, url: input.url } } : undefined,
     native: input.command ? {
       command: input.command,
@@ -410,4 +412,145 @@ test("a replay inspector keeps the label and read-back past the first page", () 
   assert.match(html, /Read back heading: expected Done, saw Done\. matches\./);
   assert.match(html, /data-search="[^"]*Open the last report/);
   assert.doesNotMatch(html, /Next steps|Previous steps/);
+});
+
+test("a typed thank-you is not a recorded submission", () => {
+  const steps = [
+    step({ label: "Type into \"Name\"", command: "fill", args: ["@name", "Ada Lovelace"], title: "Order", url: "https://fixture.test/order" }),
+    step({ label: "Type into \"Email\"", command: "fill", args: ["@email", "ada@fixture.test"], title: "Order", url: "https://fixture.test/order" }),
+    step({ label: "Click Submit", command: "click", args: ["@submit"], title: "Order", url: "https://fixture.test/order" }),
+    step({
+      label: "Type into \"Notes\"",
+      command: "fill",
+      args: ["@notes", "Thank you for your help"],
+      title: "Order",
+      url: "https://fixture.test/order",
+      summary: "Typed \"Thank you for your help\" into \"Notes\".",
+    }),
+  ];
+  const outline = receiptOutline({ status: "passed", steps });
+  assert.equal(outline.proof.kind, "form");
+  if (outline.proof.kind !== "form") return;
+  assert.equal(outline.proof.state, "A submit click passed. Confirmation was not captured.");
+  assert.equal(outline.proof.confirmation, undefined);
+  assert.doesNotMatch(receipt({ status: "passed", steps }), /<h3>Submitted<\/h3>/);
+});
+
+test("correcting one field through its options stays a form", () => {
+  const outline = receiptOutline({
+    status: "passed",
+    steps: [
+      step({ label: "Type into \"Name\"", command: "fill", args: ["@name", "Ada Lovelace"], title: "Application", url: "https://fixture.test/apply" }),
+      step({ label: "Type into \"Email\"", command: "fill", args: ["@email", "ada@fixture.test"], title: "Application", url: "https://fixture.test/apply" }),
+      step({ label: "Type into \"Country\"", command: "fill", args: ["@country", "United States"], title: "Application", url: "https://fixture.test/apply" }),
+      step({ label: "Click United States", command: "click", args: ["@us"], title: "Application", url: "https://fixture.test/apply" }),
+      step({ label: "Type into \"Country\"", command: "fill", args: ["@country", "United Kingdom"], title: "Application", url: "https://fixture.test/apply" }),
+      step({ label: "Click United Kingdom", command: "click", args: ["@uk"], title: "Application", url: "https://fixture.test/apply" }),
+      step({ label: "Click Submit", command: "click", args: ["@submit"], title: "Application", url: "https://fixture.test/apply" }),
+      step({ label: "Read the page", command: "snapshot", title: "Thank you", url: "https://fixture.test/thanks" }),
+    ],
+  });
+  assert.equal(outline.proof.kind, "form");
+  if (outline.proof.kind !== "form") return;
+  assert.equal(outline.proof.state, "Submitted");
+  assert.deepEqual(outline.proof.fields.map((field) => [field.label, field.value]), [
+    ["Name", "Ada Lovelace"],
+    ["Email", "Hidden"],
+    ["Country", "United Kingdom"],
+  ]);
+});
+
+test("the same label on two pages stays two fields", () => {
+  const outline = receiptOutline({
+    status: "passed",
+    steps: [
+      step({ label: "Type into \"Name\"", command: "fill", args: ["@name", "Ada Lovelace"], title: "Applicant", url: "https://fixture.test/apply/applicant" }),
+      step({ label: "Type into \"Email\"", command: "fill", args: ["@email", "ada@fixture.test"], title: "Applicant", url: "https://fixture.test/apply/applicant" }),
+      step({ label: "Type into \"Name\"", command: "fill", args: ["@name", "Grace Hopper"], title: "Reference", url: "https://fixture.test/apply/reference" }),
+    ],
+  });
+  assert.equal(outline.proof.kind, "form");
+  if (outline.proof.kind !== "form") return;
+  assert.equal(outline.proof.fields.length, 3);
+  assert.deepEqual(outline.proof.fields.map((field) => field.value), ["Ada Lovelace", "Hidden", "Grace Hopper"]);
+});
+
+test("a replay read-back is the outcome when no page was recorded", () => {
+  const run: OutlineRun = {
+    id: "replay-read",
+    status: "passed",
+    at: 1_000,
+    steps: [{ id: "step-1", status: "passed", startedAt: 1_000, endedAt: 1_200 }],
+    receipts: [{ stepId: "step-1", source: "heading", expected: "Thank you. Order submitted", actual: "Thank you. Order submitted", pass: true }],
+  };
+  const outline = receiptOutline(run);
+  assert.equal(outline.proof.kind, "text");
+  assert.match(outline.recorded, /Read back heading: Thank you\. Order submitted\./);
+  assert.doesNotMatch(outline.recorded, /No page title or confirmation was recorded/);
+  const html = receipt(run);
+  const outcome = html.match(/aria-label="Outcome"[\s\S]*?<\/section>/)?.[0] || "";
+  assert.match(outcome, /Read back heading: Thank you\. Order submitted\./);
+  assert.doesNotMatch(outcome, /No page title or confirmation was recorded/);
+  assert.doesNotMatch(html, /<h3>Submitted<\/h3>/);
+});
+
+test("a task-tab fallback is not captioned as the active place", () => {
+  const note = "The active tab could not be pictured, so Bao kept a picture of its task tab.";
+  const run: OutlineRun = {
+    status: "passed",
+    steps: [
+      step({ label: "Type", command: "fill", args: ["@search", "Amore Pizza"], title: "Google Maps", url: "https://www.google.com/maps" }),
+      step({ label: "Click Amore Pizza", command: "click", args: ["@amore"], title: "Amore Pizza - Google Maps", url: "https://www.google.com/maps/place/amore", shot: "fallback.png", shotNote: note }),
+      step({ label: "Type", command: "fill", args: ["@search", "Brooklyn DOP"], title: "Google Maps", url: "https://www.google.com/maps" }),
+      step({ label: "Click Brooklyn DOP", command: "click", args: ["@brooklyn"], title: "Brooklyn DOP - Google Maps", url: "https://www.google.com/maps/place/brooklyn", shot: "brooklyn.png" }),
+    ],
+  };
+  const outline = receiptOutline(run);
+  assert.equal(outline.shots.some((shot) => shot.file === "fallback.png"), false);
+  assert.equal(outline.shots.some((shot) => shot.label === "Amore Pizza - Google Maps"), false);
+  const html = receipt(run);
+  assert.match(html, /<figcaption>The active tab could not be pictured, so Bao kept a picture of its task tab\.<\/figcaption>/);
+  assert.doesNotMatch(html, /alt="Amore Pizza - Google Maps"|alt="Click Amore Pizza"/);
+});
+
+test("a different direction on the same street is not a confirmed selection", () => {
+  const outline = receiptOutline({
+    status: "passed",
+    steps: [
+      step({ label: "Type", command: "fill", args: ["@search", "123 E Franklin Street"], title: "Google Maps", url: "https://www.google.com/maps" }),
+      step({ label: "Click 123 W Franklin Street", command: "click", args: ["@west"], title: "Google Maps", url: "https://www.google.com/maps" }),
+      step({ label: "Type", command: "fill", args: ["@search", "Amore Pizza"], title: "Google Maps", url: "https://www.google.com/maps" }),
+      step({ label: "Click Amore Pizza", command: "click", args: ["@amore"], title: "Amore Pizza - Google Maps", url: "https://www.google.com/maps/place/amore" }),
+      step({ label: "Type", command: "fill", args: ["@search", "Brooklyn DOP"], title: "Google Maps", url: "https://www.google.com/maps" }),
+      step({ label: "Click Brooklyn DOP", command: "click", args: ["@brooklyn"], title: "Brooklyn DOP - Google Maps", url: "https://www.google.com/maps/place/brooklyn" }),
+    ],
+  });
+  assert.equal(outline.proof.kind, "list");
+  if (outline.proof.kind !== "list") return;
+  assert.equal(outline.proof.items.find((item) => item.name === "123 E Franklin Street")?.state, "not confirmed");
+  assert.equal(outline.proof.items.some((item) => item.state === "selected" && /123 W Franklin Street/.test(item.name)), false);
+});
+
+test("a native type command and a Fill label are not fill aliases", () => {
+  const typed = receiptOutline({
+    status: "passed",
+    steps: [
+      step({ label: "Type into \"Name\"", command: "type", args: ["@name", "Ada Lovelace"], title: "Order", url: "https://fixture.test/order" }),
+      step({ label: "Type into \"Email\"", command: "type", args: ["@email", "ada@fixture.test"], title: "Order", url: "https://fixture.test/order" }),
+    ],
+  });
+  assert.equal(typed.proof.kind, "text");
+  assert.doesNotMatch(typed.recorded, /Ada Lovelace|ada@fixture/);
+
+  const labeled = receiptOutline({
+    status: "passed",
+    steps: [
+      step({ label: "Fill", command: "fill", args: ["@a", "first value"], title: "Order", url: "https://fixture.test/order" }),
+      step({ label: "Type into \"Email\"", command: "fill", args: ["@email", "ada@fixture.test"], title: "Order", url: "https://fixture.test/order" }),
+    ],
+  });
+  assert.equal(labeled.proof.kind, "form");
+  if (labeled.proof.kind !== "form") return;
+  assert.equal(labeled.proof.fields.some((field) => field.label === "the text field"), false);
+  assert.equal(labeled.proof.fields.some((field) => field.label === "Fill" && field.value === "first value"), true);
 });
