@@ -57,8 +57,8 @@ Ubuntu 24.04 already has Chromium's system libraries, so the essential groups
 skip apt browser setup. The optional full check keeps main's canonical
 `playwright install --with-deps chromium`, including its extra fonts, so full
 suite layout tests retain their original environment. Only groups that declare
-`ffmpeg` in the manifest set up video tools. The core group contains video privacy checks, which need them; other groups
-never install them. Both workflows use the shared
+`ffmpeg` in the manifest set up video tools. The core group contains video privacy checks, which need them. The experian
+group needs them for the Running Chrome host-stop video cases. Both workflows use the shared
 [CI video-tools action](../.github/actions/setup-ffmpeg/action.yml), with a pinned
 static FFmpeg/ffprobe release, a content-keyed cache, and SHA-256 checks on every
 use. A cache miss downloads two files with a 20-second limit each instead of

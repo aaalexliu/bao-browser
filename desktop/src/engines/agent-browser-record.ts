@@ -17,7 +17,7 @@ import { HOST_STOP_VIDEO_UNAVAILABLE } from "./video-handoff";
 
 const hostStopRuns = new Set<AgentBrowserRun>();
 
-/** A host stop is exiting before this process can finish an in-progress tab video. */
+/** A host stop is exiting. Keep a finished tab video, or leave an in-progress encode to attach after exit. */
 export function abandonVideoOnHostStop(): void {
   for (const run of [...hostStopRuns]) run.abandonOnHostStop();
 }
