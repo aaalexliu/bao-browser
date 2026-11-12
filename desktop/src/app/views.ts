@@ -2091,9 +2091,14 @@ function receiptShotHtml(runId: string, outline: ReceiptOutline): string {
   return `<div class="receipt-shots"><figure><img src="${src}" alt="${esc(keepStreet(shot.label))}"><figcaption>${esc(keepStreet(shot.label))}</figcaption></figure></div>`;
 }
 
+function receiptPageSentence(title: string): string {
+  const text = title.trimEnd();
+  return /[.!?\u2026]$/.test(text) ? text : `${text}.`;
+}
+
 function receiptOutcomeHtml(outline: ReceiptOutline): string {
   const lines = [
-    outline.pageTitle ? `Last recorded page: ${outline.pageTitle}.` : "",
+    outline.pageTitle ? `Last recorded page: ${receiptPageSentence(outline.pageTitle)}` : "",
     outline.passed || outline.failed ? `${outline.passed} passed. ${outline.failed} failed.` : "",
     ...outline.readBack,
   ].filter(Boolean);

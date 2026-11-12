@@ -135,7 +135,8 @@ test("a form lists every passed fill in order and hides email", () => {
   assert.equal(outline.chapters[0]?.clicks[0]?.label, "Click Submit");
   assert.equal(outline.chapters[0]?.clicks[0]?.status, "passed");
   const html = receipt({ id: "synthetic-form", status: "passed", steps });
-  assert.match(html, /Last recorded page: Thank you\. Your order could not be submitted\./);
+  assert.match(html, /<p class="receipt-recorded">Last recorded page: Thank you\. Your order could not be submitted\.<\/p>/);
+  assert.doesNotMatch(html, /submitted\.\./);
   assert.match(chapters(html), /old note[\s\S]*Cleared/);
   assert.doesNotMatch(chapters(html), /ada@fixture\.test|other@bad\.test|s3cret-value|Thank you for your help/);
   assert.match(html, /<details><summary>Evidence<\/summary>[\s\S]*ada@fixture\.test/);
