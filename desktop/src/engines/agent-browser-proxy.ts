@@ -1237,7 +1237,8 @@ export class AgentBrowserProxy {
 
   /**
    * Keeps the agent in its tab of the owner's Chrome. A fresh tab joins the task only when it is in the target list taken when a
-   * command that can open one returned, and not in the list taken when that command started, and its opener is the agent's task tab. A tab that appears during wall handling, workflow
+   * command that can open one returned, and not in the list taken when that command started, and its opener is the tab the agent
+   * is on or a popup adopted in this same pass. A tab that appears during wall handling, workflow
    * capture, an owner wait, or between commands stays the owner's even when its opener is the task tab: Bao does not switch to it,
    * mark it, or close it. When the daemon is anywhere else, Bao switches it back to the agent's tab. That switch's Page.bringToFront
    * is answered on the daemon's connection, so Chrome does not rise. When no task tab remains, the caller ends the session instead of
