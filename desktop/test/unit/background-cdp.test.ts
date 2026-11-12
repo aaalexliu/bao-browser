@@ -4,9 +4,9 @@ import * as net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import sharp from "sharp";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { connectCdp } from "../../src/cdp-live/socket";
-import { inflateSync } from "node:zlib";
 import { keepBehind, openBackgroundCdp } from "../../src/engines/background-cdp";
 import { launchOwnedChromeEndpoint, pinTestBrowser } from "../../src/launch";
 import { scaledMs } from "../runtime";
@@ -105,58 +105,6 @@ test("the agent's endpoint keeps Chrome behind, gives each page focus, and hides
   }
 });
 
-/** Chrome's screenshot PNG. A blank or white stand-in would not be this red. */
-function pngPixel(png: Buffer, x: number, y: number): [number, number, number] {
-  assert.equal(png.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
-  let offset = 8;
-  let width = 0;
-  let height = 0;
-  let colorType = 0;
-  const idat: Buffer[] = [];
-  while (offset + 12 <= png.length) {
-    const length = png.readUInt32BE(offset);
-    const type = png.subarray(offset + 4, offset + 8).toString("ascii");
-    const data = png.subarray(offset + 8, offset + 8 + length);
-    if (type === "IHDR") {
-      width = data.readUInt32BE(0);
-      height = data.readUInt32BE(4);
-      colorType = data[9]!;
-    } else if (type === "IDAT") idat.push(data);
-    else if (type === "IEND") break;
-    offset += 12 + length;
-  }
-  const bpp = colorType === 6 ? 4 : colorType === 2 ? 3 : 0;
-  assert.ok(bpp > 0 && x < width && y < height, `png ${width}x${height} color ${colorType}`);
-  const raw = inflateSync(Buffer.concat(idat));
-  const stride = width * bpp;
-  const rows: Buffer[] = [];
-  let pos = 0;
-  for (let row = 0; row < height; row++) {
-    const filter = raw[pos++]!;
-    const scan = Buffer.from(raw.subarray(pos, pos + stride));
-    pos += stride;
-    const up = rows[row - 1];
-    for (let i = 0; i < stride; i++) {
-      const left = i >= bpp ? scan[i - bpp]! : 0;
-      const above = up?.[i] ?? 0;
-      const upperLeft = up && i >= bpp ? up[i - bpp]! : 0;
-      if (filter === 1) scan[i] = (scan[i]! + left) & 255;
-      else if (filter === 2) scan[i] = (scan[i]! + above) & 255;
-      else if (filter === 3) scan[i] = (scan[i]! + Math.floor((left + above) / 2)) & 255;
-      else if (filter === 4) {
-        const p = left + above - upperLeft;
-        const pa = Math.abs(p - left);
-        const pb = Math.abs(p - above);
-        const pc = Math.abs(p - upperLeft);
-        scan[i] = (scan[i]! + (pa <= pb && pa <= pc ? left : pb <= pc ? above : upperLeft)) & 255;
-      } else if (filter !== 0) throw new Error(`png filter ${filter}`);
-    }
-    rows.push(scan);
-  }
-  const i = x * bpp;
-  return [rows[y]![i]!, rows[y]![i + 1]!, rows[y]![i + 2]!];
-}
-
 test("a swallowed tab switch drives an unselected tab and does not forward the raising commands", { timeout: scaledMs(60_000) }, async () => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-background-tab-"));
   const chrome = await launchOwnedChromeEndpoint({ userDataDir: path.join(root, "chrome"), headless: true, background: "window" });
@@ -240,7 +188,11 @@ test("a swallowed tab switch drives an unselected tab and does not forward the r
     const typed = await send("Runtime.evaluate", { expression: "document.querySelector('[data-testid=field]').value", returnByValue: true }, sessionId) as { result: { value: string } };
     assert.equal(typed.result.value, "a", "typing lands in the unselected tab");
     const shot = await send("Page.captureScreenshot", { format: "png" }, sessionId) as { data: string };
-    const pixel = pngPixel(Buffer.from(shot.data, "base64"), 400, 300);
+    const decoded = await sharp(Buffer.from(shot.data, "base64")).raw().toBuffer({ resolveWithObject: true });
+    const { width, height, channels } = decoded.info;
+    assert.ok(width > 400 && height > 300 && channels >= 3, `png ${width}x${height} channels ${channels}`);
+    const i = (300 * width + 400) * channels;
+    const pixel = [decoded.data[i]!, decoded.data[i + 1]!, decoded.data[i + 2]!];
     assert.ok(pixel[0] > 160 && pixel[1] < 60 && pixel[2] < 60, `the screenshot shows the page, got ${pixel.join(",")}`);
     const still = await ticks(hidden);
     assert.ok(still <= 25, `click, typing, and the screenshot leave the tab unselected, got ${still} ticks`);
