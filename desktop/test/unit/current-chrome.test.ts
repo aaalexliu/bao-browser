@@ -571,7 +571,7 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
   await writeFile(executable, "", { mode: 0o700 });
   const stateDirs = new Set<string>();
   const state = { closed: false, tabs: 0, commands: [] as string[], trackingFails: false, cleanupFails: false, setupFails: false, activations: [] as unknown[],
-    windowState: undefined as string | undefined, windowStates: [] as unknown[], failActivate: false, failMaximize: false, closeTargetFails: false, hold: false, closes: 0, kept: 0, taskGone: false, noActivePage: false,
+    windowState: undefined as string | undefined, windowStates: [] as unknown[], windowBounds: [] as Record<string, unknown>[], failBoundsOnce: false, failActivate: false, failMaximize: false, closeTargetFails: false, hold: false, closes: 0, kept: 0, taskGone: false, noActivePage: false,
     activeTarget: "task", captures: [] as string[], failCapture: "", missActive: false, infoReads: 0, failInfoAfter: 0,
     taskUrl: "https://fixture.invalid/", taskTitle: "Task",
     onSnapshot: undefined as ((resume: () => void) => void) | undefined,
@@ -595,8 +595,14 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
       if (method === "Browser.getWindowForTarget" && state.windowState) return { windowId: 4 };
       if (method === "Browser.getWindowBounds" && state.windowState) return { bounds: { windowState: state.windowState } };
       if (method === "Browser.setWindowBounds") {
-        const next = (params.bounds as { windowState: string }).windowState;
+        const bounds = params.bounds as Record<string, unknown>;
+        const next = String(bounds.windowState);
+        state.windowBounds.push(bounds);
         state.windowStates.push(next);
+        if (state.failBoundsOnce) {
+          state.failBoundsOnce = false;
+          throw new Error("window not ready");
+        }
         if (state.failMaximize && next === "maximized") throw new Error("To maximize a minimized or fullscreen window, restore it to normal state first.");
       }
       if (method === "Target.getTargets") {
@@ -1098,6 +1104,7 @@ for (const [windowState, raise] of [["normal", ["minimized", "normal"]], ["minim
     f.state.taskTitle = "Sign in";
     const [result] = await f.proxy.execute("wait_for_owner", ["50"], undefined, false, undefined, {}, f.proxy.activeRunId);
     assert.deepEqual(f.state.windowStates, raise, "a window from the Dock lands on top; a zoomed one returns zoomed; a copy's full-screen window leaves that Space and comes to the front");
+    assert.equal(f.state.windowBounds.every((bounds) => Object.keys(bounds).every((key) => key === "windowState")), true, "a copy handoff restores window state and does not move or resize");
     const { instruction } = JSON.parse(result!.stdout) as { instruction: string };
     assert.equal(instruction.includes("Bao brought this window to the front"), raise.length > 0);
   });
@@ -1173,6 +1180,27 @@ test("a Mac copy's handoff still raises when selecting the waiting tab fails", a
   f.state.taskTitle = "Sign in";
   const [result] = await f.proxy.execute("wait_for_owner", ["50"], undefined, false, undefined, {}, f.proxy.activeRunId);
   assert.deepEqual(f.state.windowStates, ["minimized", "normal"]);
+  const { instruction } = JSON.parse(result!.stdout) as { instruction: string };
+  assert.equal(instruction.includes("Bao brought this window to the front"), true);
+});
+
+test("a Mac copy's handoff retry restores normal state and does not move or resize", async (t) => {
+  const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+  Object.defineProperty(process, "platform", { ...platform, value: "darwin" });
+  t.after(() => { Object.defineProperty(process, "platform", platform); });
+  const f = await lifecycleFixture(t);
+  const endpoint = await import("../../src/cdp-live/endpoint");
+  t.mock.method(endpoint, "readDevToolsActivePort", async () => ({ port: await trapPort(), browserPath: "/browser" }));
+  const socket = await import("../../src/cdp-live/socket");
+  t.mock.method(socket, "connectCdp", async () => ({ ...f.cdp, close() {} }));
+  f.state.windowState = "normal";
+  f.state.failBoundsOnce = true;
+  await f.proxy.execute("open", [], "copy");
+  f.state.taskUrl = "https://fixture.invalid/login";
+  f.state.taskTitle = "Sign in";
+  const [result] = await f.proxy.execute("wait_for_owner", ["50"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  assert.deepEqual(f.state.windowBounds[1], { windowState: "normal" }, "the retry after a failed restore sets only normal state");
+  assert.equal(f.state.windowBounds.every((bounds) => Object.keys(bounds).every((key) => key === "windowState")), true);
   const { instruction } = JSON.parse(result!.stdout) as { instruction: string };
   assert.equal(instruction.includes("Bao brought this window to the front"), true);
 });

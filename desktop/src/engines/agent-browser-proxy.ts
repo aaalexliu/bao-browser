@@ -231,8 +231,8 @@ async function chromeIsFront(pid: number | undefined): Promise<boolean> {
 
 /**
  * macOS does not let a Chrome that Bao launched in the background make itself the front app, so Target.activateTarget only
- * lifts its window behind the owner's. A window that comes back from the Dock comes back on top of every app's windows. The
- * owner's app keeps the keyboard until he clicks the window. A zoomed window comes back zoomed. A full-screen Bao profile
+ * lifts its window behind the owner's. A window that comes back from the Dock comes back on top of every app's windows. That
+ * Dock cycle leaves the keyboard with the owner's app. A zoomed window comes back zoomed. A full-screen Bao profile
  * window has its own Space, so Bao leaves it. A Chrome copy restores the owner's saved windows, so that handoff leaves full
  * screen and then does the same Dock cycle. Returns whether the window came back on top.
  */
@@ -261,7 +261,7 @@ async function raiseCopyWindow(cdp: CdpSocket, targetId: string): Promise<boolea
   } catch (first) {
     try {
       const { windowId } = await cdp.send<{ windowId: number }>("Browser.getWindowForTarget", { targetId }, undefined, 2000);
-      await cdp.send("Browser.setWindowBounds", { windowId, bounds: { windowState: "normal", left: 80, top: 80, width: 1100, height: 800 } }, undefined, 2000);
+      await cdp.send("Browser.setWindowBounds", { windowId, bounds: { windowState: "normal" } }, undefined, 2000);
       return await raise();
     } catch (retry) {
       const detail = retry instanceof Error ? retry.message : String(retry);

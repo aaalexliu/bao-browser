@@ -21,7 +21,7 @@ int main(int argc, char **argv) {
       return 1;
     }
     [app unhide];
-    BOOL ok = [app activateWithOptions:NSApplicationActivateAllWindows];
+    BOOL ok = [app activateWithOptions:0];
     if (!ok) {
       fprintf(stderr, "bao-front: activate failed\n");
       return 1;
