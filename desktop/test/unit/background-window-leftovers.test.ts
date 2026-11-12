@@ -7,6 +7,7 @@ import path from "node:path";
 import test, { type TestContext } from "node:test";
 import { AgentBrowserProxy, frontApplication, parseFrontPid } from "../../src/engines/agent-browser-proxy";
 import { openBackgroundCdp } from "../../src/engines/background-cdp";
+import * as copyFront from "../../src/engines/copy-front";
 import * as profiles from "../../src/engines/chrome-profile-copy";
 import { clientFrame, ServerFrameDecoder, serverFrame, type CdpSocket } from "../../src/cdp-live/socket";
 import * as sockets from "../../src/cdp-live/socket";
@@ -205,6 +206,57 @@ test("a handoff skips the Dock raise when Bao's Chrome is already the front app"
     assert.equal(methods.includes("Target.activateTarget"), true);
     assert.equal(methods.includes("Browser.setWindowBounds"), false);
     assert.equal(instruction(result).includes("brought this window to the front"), false);
+  } finally {
+    await proxy.close().catch(() => undefined);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a copy handoff brings that copy forward and does not Dock-cycle its window", { timeout: scaledMs(5_000) }, async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-copy-front-"));
+  const methods: string[] = [];
+  let brought = 0;
+  const sourceRoot = await sourceProfile(root);
+  const executable = await writeNative(root, "CHECKOUT");
+  t.mock.method(frontApplication, "pid", async () => 1);
+  t.mock.method(copyFront, "bringCopyFront", async () => { brought += 1; return true; });
+  t.mock.method(profiles, "openCopiedChromeForProxy", async (options: Parameters<typeof profiles.openCopiedChromeForProxy>[0]) => {
+    const copy = await profiles.copyChromeProfile(options);
+    const portFile = path.join(copy.userDataDir, "DevToolsActivePort");
+    await writeFile(portFile, "12345\n/devtools/browser/copy-front\n");
+    let closedWindow!: () => void;
+    const closed = new Promise<void>((resolve) => { closedWindow = resolve; });
+    return {
+      target: { kind: "bao" as const, portFile }, targetId: "CHECKOUT", pid: 4242, closed, bytes: copy.bytes, copyMs: copy.copyMs,
+      isClosed: () => false, close: async () => { closedWindow(); await copy.close(); }, keepOpen: () => copy.keepOpen(),
+    };
+  });
+  t.mock.method(sockets, "connectCdp", async () => {
+    const cdp = new sockets.CdpSocket(new Socket());
+    t.mock.method(cdp, "send", async (method: string) => {
+      methods.push(method);
+      if (method === "Target.getTargetInfo") return { targetInfo: { url: "http://127.0.0.1/login", title: "Sign in" } };
+      if (method === "Target.attachToTarget") return { sessionId: "fixture" };
+      if (method === "Browser.getWindowForTarget") return { windowId: 7 };
+      if (method === "Browser.getWindowBounds") return { bounds: { windowState: "normal" } };
+      return {};
+    });
+    followSend(t, cdp);
+    return cdp;
+  });
+  const proxy = new AgentBrowserProxy({ home: path.join(root, "home"), sourceRoot, executable });
+  try {
+    const result = await proxy.execute("open", ["http://127.0.0.1/login"], "copy");
+    assert.equal(outcome(result), "halted");
+    if (process.platform === "darwin") assert.equal(brought, 1, "a copy handoff still brings that copy forward");
+    else assert.equal(brought, 0, "a non-Mac handoff does not bring the copy forward");
+    assert.equal(methods.includes("Browser.setWindowBounds"), false, "a copy handoff does not Dock-cycle the window");
+    const again = methods.length;
+    const broughtOnce = brought;
+    await proxy.execute("snapshot", [], undefined, false, undefined, {}, proxy.activeRunId);
+    assert.equal(brought, broughtOnce, "a later command does not bring the copy forward again");
+    assert.equal(methods.includes("Browser.setWindowBounds"), false);
+    assert.equal(methods.length, again, "a later command does not select or raise again");
   } finally {
     await proxy.close().catch(() => undefined);
     await rm(root, { recursive: true, force: true });
