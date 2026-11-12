@@ -4,6 +4,7 @@ import { frameRpc, takeRpcChunk } from "./frame";
 import { Library } from "../v1/store";
 import { AGENT_BROWSER_COMMANDS, AgentBrowserProxy, otherTaskClosed, type AgentBrowserCommandResult } from "../engines/agent-browser-proxy";
 import { abandonVideoOnHostStop } from "../engines/agent-browser-record";
+import { sweepClaimedVideoFrames } from "../engines/video-handoff";
 import { BROWSER_CHOICES, BROWSER_CHOICE_DESCRIPTION, DEFAULT_BROWSER, PROFILE_DESCRIPTION, browserChoice, type BrowserChoice } from "../browser-choice";
 import { supportsViewer, UI_EXTENSION, VIEWER_MIME, VIEWER_RESOURCE, VIEWER_URI, viewerResource } from "./viewer";
 import { callViewerTool, isViewerTool, LIST_RUNS_TOOL, VIEWER_TOOLS } from "./viewer-tools";
@@ -125,6 +126,7 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
   const identity = resolveLibraryIdentity(args);
   const home = identity.active.path;
   process.env.BAO_HOME = home;
+  sweepClaimedVideoFrames(home);
   if (process.env.BAO_MCP_LIVE === "1") {
     const { liveMcpMain } = await import("../eval/live-mcp");
     await liveMcpMain();
