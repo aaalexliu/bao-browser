@@ -2,8 +2,8 @@ name: Mac release
 
 # Builds the prebuilt Bao.app (Apple silicon, Node inside) that the bao-browser installer installs.
 # A published GitHub release gets Bao-<version>-darwin-arm64.zip, release.json, and the
-# installer as bao-browser.tgz attached, so the latest release installs with
-#   npx https://github.com/aaalexliu/bao-browser/releases/latest/download/bao-browser.tgz
+# installer as bao-browser.tgz attached. installer/install.sh reads release.json from
+# releases/latest and runs that versioned tarball. npx on the releases/latest URL caches the first fetch.
 # A manual run uploads the zip and release.json as a workflow artifact. Pull requests never run it.
 on:
   release:

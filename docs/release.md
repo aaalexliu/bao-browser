@@ -1,6 +1,6 @@
 # Release Bao
 
-Users install Bao with the one `npx` command in the [README](../README.md#install). This page covers how that release is built, signed, and checked. [Build Bao on a Mac](mac-build.md) stays the contributor path.
+Users install Bao with the command in the [README](../README.md#install). This page covers how that release is built, signed, and checked. [Build Bao on a Mac](mac-build.md) stays the contributor path.
 
 ## Pieces
 
@@ -19,18 +19,20 @@ Users install Bao with the one `npx` command in the [README](../README.md#instal
 
 Bao's version is `version` in the root `package.json`. `desktop/packaging/macos/stamp-version.sh` writes it into the app's `Info.plist`, and `desktop/packaging/build-mcpb.mjs` writes it into the `bao.mcpb` manifest. Every build, local or release, reports it in the About panel, `bao --version`, `bao doctor`, and the MCP `initialize` reply. To release, bump that version on `main` first, then publish a release tagged `v` plus that version from that commit, such as `v1.2.3`.
 
-Publishing a GitHub release runs `mac-release.yml`. When the tag is not `v` plus the `package.json` version, the run still builds and attaches the files, using the tag's version, and posts a warning that names both versions. That warning means `main` missed the bump: set `package.json` to the tag's version on `main`. The run attaches `Bao-<version>-darwin-arm64.zip`, `release.json`, and the installer packed with that `release.json` as `bao-browser.tgz`. That `release.json` names the zip by its full release URL, so the latest release installs with:
+Publishing a GitHub release runs `mac-release.yml`. When the tag is not `v` plus the `package.json` version, the run still builds and attaches the files, using the tag's version, and posts a warning that names both versions. That warning means `main` missed the bump: set `package.json` to the tag's version on `main`. The run attaches `Bao-<version>-darwin-arm64.zip`, `release.json`, and the installer packed with that `release.json` as `bao-browser.tgz`. That `release.json` names the zip by its full release URL. `installer/install.sh` reads `release.json` from `releases/latest`, then runs the versioned `bao-browser.tgz`, so the latest release installs with:
 
 ```sh
-npx https://github.com/aaalexliu/bao-browser/releases/latest/download/bao-browser.tgz
+curl -fsSL https://raw.githubusercontent.com/aaalexliu/bao-browser/main/installer/install.sh | sh
 ```
+
+`npx` on the `releases/latest` tarball URL is the wrong command. npx caches that URL and keeps the first release it fetched. The installer prints the version it is about to install and the version already in `/Applications/Bao.app`, or in `~/Applications/Bao.app` when that is the only copy. It refuses a downgrade, and it refuses a same-version reinstall when a newer release exists or cannot be read.
 
 A rerun never replaces those files: a published `bao-browser` pins the zip's size and SHA-256, and a rebuilt zip never matches. When the release already has any of them, the run stops; publish a new release instead.
 
 A manual run (**Actions → Mac release → Run workflow**) builds the same files and uploads them as the `bao-mac-<sha>` artifact. Its `release.json` names the zip by file name, so the latest release's installer installs it from a download folder:
 
 ```sh
-npx https://github.com/aaalexliu/bao-browser/releases/latest/download/bao-browser.tgz --release ~/Downloads/bao-mac-<sha>/release.json
+curl -fsSL https://raw.githubusercontent.com/aaalexliu/bao-browser/main/installer/install.sh | sh -s -- --release ~/Downloads/bao-mac-<sha>/release.json
 ```
 
 The installer package is not on npm yet. The owner decides the npm account, signing, and license first. Publishing would be:

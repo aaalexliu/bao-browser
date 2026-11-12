@@ -72,7 +72,7 @@ function install(lab: Lab, ...args: string[]) {
 
 function installWith(lab: Lab, env: NodeJS.ProcessEnv, ...args: string[]) {
   return spawnSync(process.execPath, [INSTALLER, "--dir", lab.apps, "--release", lab.release, ...args], {
-    env: { HOME: lab.home, PATH: "/usr/bin:/bin", ...env },
+    env: { HOME: lab.home, PATH: "/usr/bin:/bin", BAO_INSTALLER_LATEST: lab.release, ...env },
     encoding: "utf8",
     timeout: scaledMs(60_000),
   });
@@ -88,6 +88,7 @@ test("the installer places the pinned app, links bao, and hands the picker flags
   assert.equal(run.status, 0, run.stderr);
   const app = path.join(box.apps, "Bao.app");
   assert.equal(version(app), "9.9.1");
+  assert.match(run.stdout, /Installing Bao 9\.9\.1\. No Bao\.app is installed yet\./);
   execFileSync("/usr/bin/codesign", ["--verify", "--strict", app]);
   assert.equal(readlinkSync(path.join(box.home, ".local", "bin", "bao")), path.join(app, "Contents", "MacOS", "bao-cli"));
   assert.equal(readFileSync(path.join(box.home, "bao-cli.log"), "utf8"), `setup --app ${app} --agents codex\n`);
@@ -117,6 +118,7 @@ test("a rerun reuses the checked download, and a new release replaces the app in
   assert.equal(install(box, "--none").status, 0);
   const again = install(box, "--none");
   assert.equal(again.status, 0, again.stderr);
+  assert.match(again.stdout, /Installing Bao 9\.9\.1 over 9\.9\.1 at /);
   assert.match(again.stdout, /Using the copy downloaded earlier/);
   const cache = path.join(box.home, "Library", "Caches", "bao", "downloads");
   writeFileSync(path.join(cache, "Bao-9.9.0-darwin-arm64.zip.part"), "cut short");
@@ -124,6 +126,7 @@ test("a rerun reuses the checked download, and a new release replaces the app in
   publish(box, "9.9.2");
   const update = install(box, "--none");
   assert.equal(update.status, 0, update.stderr);
+  assert.match(update.stdout, /Installing Bao 9\.9\.2 over 9\.9\.1 at /);
   assert.equal(version(path.join(box.apps, "Bao.app")), "9.9.2");
   assert.deepEqual(readdirSync(box.apps), ["Bao.app"]);
   assert.deepEqual(readdirSync(cache).sort(), ["Bao-9.9.2-darwin-arm64.zip", "notes.txt"]);
@@ -199,4 +202,44 @@ test("a release signed by another certificate with the same name keeps the insta
   assert.equal(same.status, 0, same.stderr);
   assert.doesNotMatch(same.stdout, /Kept /);
   assert.equal(version(app), "9.9.2");
+});
+
+test("a downgrade is refused and leaves the installed app", { skip }, (t) => {
+  const box = lab(t, "9.9.2");
+  assert.equal(install(box, "--none").status, 0);
+  publish(box, "9.9.1");
+  const run = install(box, "--none");
+  assert.equal(run.status, 1);
+  assert.match(run.stderr, /Refusing to install Bao 9\.9\.1 over 9\.9\.2 at .* That would downgrade/);
+  assert.equal(version(path.join(box.apps, "Bao.app")), "9.9.2");
+  assert.equal(existsSync(path.join(box.home, "bao-cli.log")), true);
+  const log = readFileSync(path.join(box.home, "bao-cli.log"), "utf8");
+  assert.equal(log.split("\n").filter(Boolean).length, 1);
+});
+
+test("a same-version reinstall is refused when a newer release exists", { skip }, (t) => {
+  const box = lab(t);
+  assert.equal(install(box, "--none").status, 0);
+  rmSync(path.join(box.home, "bao-cli.log"));
+  const newer = path.join(box.root, "newer.json");
+  writeFileSync(newer, `${JSON.stringify({ version: "9.9.2", platforms: { "darwin-arm64": { url: "file:///missing", size: 1, sha256: "ab" } } })}\n`);
+  const run = installWith(box, { BAO_INSTALLER_LATEST: newer }, "--none");
+  assert.equal(run.status, 1);
+  assert.match(run.stdout, /Installing Bao 9\.9\.1 over 9\.9\.1 at /);
+  assert.match(run.stderr, /Refusing to install Bao 9\.9\.1 over 9\.9\.1 at .* The newest release is 9\.9\.2/);
+  assert.equal(version(path.join(box.apps, "Bao.app")), "9.9.1");
+  assert.equal(existsSync(path.join(box.home, "bao-cli.log")), false);
+});
+
+test("a same-version reinstall stops when the newest release cannot be read", { skip }, (t) => {
+  const box = lab(t);
+  assert.equal(install(box, "--none").status, 0);
+  rmSync(path.join(box.home, "bao-cli.log"));
+  const missing = path.join(box.root, "missing-latest.json");
+  const run = installWith(box, { BAO_INSTALLER_LATEST: missing }, "--none");
+  assert.equal(run.status, 1);
+  assert.match(run.stderr, /Cannot read the newest release/);
+  assert.match(run.stderr, /Nothing was installed/);
+  assert.equal(version(path.join(box.apps, "Bao.app")), "9.9.1");
+  assert.equal(existsSync(path.join(box.home, "bao-cli.log")), false);
 });
