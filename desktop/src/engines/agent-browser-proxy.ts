@@ -233,8 +233,8 @@ async function chromeIsFront(pid: number | undefined): Promise<boolean> {
  * macOS does not let a Chrome that Bao launched in the background make itself the front app, so Target.activateTarget only
  * lifts its window behind the owner's. A window that comes back from the Dock comes back on top of every app's windows. That
  * Dock cycle leaves the keyboard with the owner's app. A zoomed window comes back zoomed. A full-screen Bao profile
- * window has its own Space, so Bao leaves it. A Chrome copy restores the owner's saved windows, so that handoff leaves full
- * screen and then does the same Dock cycle. Returns whether the window came back on top.
+ * window has its own Space, so Bao leaves it. A copy handoff does not use this cycle: minimizing one of its windows brings
+ * the copy's other windows forward. Returns whether the window came back on top.
  */
 async function windowOnTop(cdp: CdpSocket, targetId: string, options?: { leaveFullscreen?: boolean }): Promise<boolean> {
   const { windowId } = await cdp.send<{ windowId: number }>("Browser.getWindowForTarget", { targetId }, undefined, 2000);
@@ -253,21 +253,23 @@ async function windowOnTop(cdp: CdpSocket, targetId: string, options?: { leaveFu
   return true;
 }
 
-/** The copy handoff. A failed tab select does not skip the raise. One retry covers a window that was still leaving full screen. */
-async function raiseCopyWindow(cdp: CdpSocket, targetId: string): Promise<boolean> {
-  const raise = () => windowOnTop(cdp, targetId, { leaveFullscreen: true });
+/** Leave full screen or the Dock. Do not minimize a visible window: that brings the copy's other windows forward. */
+async function uncoverCopyWindow(cdp: CdpSocket, targetId: string): Promise<void> {
+  const once = async () => {
+    const { windowId } = await cdp.send<{ windowId: number }>("Browser.getWindowForTarget", { targetId }, undefined, 2000);
+    const { bounds } = await cdp.send<{ bounds?: { windowState?: string } }>("Browser.getWindowBounds", { windowId }, undefined, 2000);
+    if (bounds?.windowState !== "fullscreen" && bounds?.windowState !== "minimized") return;
+    await cdp.send("Browser.setWindowBounds", { windowId, bounds: { windowState: "normal" } }, undefined, 2000);
+  };
   try {
-    return await raise();
+    await once();
   } catch (first) {
     try {
-      const { windowId } = await cdp.send<{ windowId: number }>("Browser.getWindowForTarget", { targetId }, undefined, 2000);
-      await cdp.send("Browser.setWindowBounds", { windowId, bounds: { windowState: "normal" } }, undefined, 2000);
-      return await raise();
+      await once();
     } catch (retry) {
       const detail = retry instanceof Error ? retry.message : String(retry);
       const prior = first instanceof Error ? first.message : String(first);
-      console.error(`bao copy handoff did not bring the window to the front: ${detail}${detail === prior ? "" : `; first try: ${prior}`}`);
-      return false;
+      console.error(`bao copy handoff did not uncover the window: ${detail}${detail === prior ? "" : `; first try: ${prior}`}`);
     }
   }
 }
@@ -1356,8 +1358,8 @@ export class AgentBrowserProxy {
         if (session.kind === "copy" && process.platform === "darwin" && !await chromeIsFront(session.chrome.pid)) {
           const pick = session.pick;
           if (copyHandoff && pick.route === "copy") {
-            await raiseCopyWindow(cdp, targetId);
-            // The Dock cycle can succeed while macOS leaves the copy behind. Claim the raise only if this copy's own process comes forward.
+            await uncoverCopyWindow(cdp, targetId);
+            // Default activation brings the key window forward. Claim the raise only if this copy's own process comes forward.
             session.raised = await copyFront.bringCopyFront(pick.chrome, pick.userDataDir);
           } else session.raised = await windowOnTop(cdp, targetId).catch(() => false);
         }

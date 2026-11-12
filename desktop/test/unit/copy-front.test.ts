@@ -26,15 +26,17 @@ const PROBE = `#import <AppKit/AppKit.h>
 - (BOOL)activateWithOptions:(NSUInteger)options;
 @end
 
+static BOOL didUnhide;
+
 @implementation BaoFrontProbe
-- (void)unhide {}
+- (void)unhide { didUnhide = YES; }
 - (BOOL)activateWithOptions:(NSUInteger)options {
   const char *path = getenv("BAO_FRONT_PROBE");
   if (!path) return NO;
   NSArray<NSString *> *all = [[NSProcessInfo processInfo] arguments];
   if (all.count < 1) return NO;
   NSArray<NSString *> *argv = [all subarrayWithRange:NSMakeRange(1, all.count - 1)];
-  NSData *data = [NSJSONSerialization dataWithJSONObject:@{ @"options": @(options), @"argv": argv } options:0 error:NULL];
+  NSData *data = [NSJSONSerialization dataWithJSONObject:@{ @"options": @(options), @"argv": argv, @"unhide": @(didUnhide) } options:0 error:NULL];
   if (!data) return NO;
   return [data writeToFile:[NSString stringWithUTF8String:path] atomically:YES];
 }
@@ -77,7 +79,7 @@ test("a copy handoff spawns bao-front with that pid only and activates with the 
     writeFileSync(path.join(dir, "probe.m"), PROBE);
     writeFileSync(path.join(dir, "oracle.m"), ORACLE);
     const compile = (args: string[]) => execFileSync("cc", ["-fobjc-arc", "-Wall", "-Wextra", "-Werror", ...args], { stdio: "inherit", timeout: scaledMs(60_000) });
-    compile(["-O2", "-framework", "AppKit", path.join(MACOS, "bao-front.m"), "-o", front]);
+    compile(["-O2", "-framework", "AppKit", "-framework", "CoreGraphics", path.join(MACOS, "bao-front.m"), "-o", front]);
     compile(["-dynamiclib", "-framework", "AppKit", path.join(dir, "probe.m"), "-o", probe]);
     compile(["-framework", "AppKit", path.join(dir, "oracle.m"), "-o", oracle]);
     const allWindows = Number(execFileSync(oracle, { encoding: "utf8", timeout: scaledMs(10_000) }).trim());
@@ -90,10 +92,11 @@ test("a copy handoff spawns bao-front with that pid only and activates with the 
     process.env.BAO_FRONT_PROBE = seenPath;
     const ok = await bringCopyFront(exe, copy, [{ pid, ppid: 1, command: `${exe} --user-data-dir=${copy}` }]);
     assert.equal(ok, true);
-    const seen = JSON.parse(readFileSync(seenPath, "utf8")) as { options: number; argv: string[] };
+    const seen = JSON.parse(readFileSync(seenPath, "utf8")) as { options: number; argv: string[]; unhide: boolean };
     assert.deepEqual(seen.argv, [String(pid)], "the handoff spawns bao-front with that pid and no other argument");
     assert.equal(seen.options & allWindows, 0, "activation does not ask for every window");
     assert.equal(seen.options, 0, "activation uses the default option, which sets no flags");
+    assert.equal(seen.unhide, false, "unhide orders every window of a Chrome copy forward even when the app is not hidden");
   } finally {
     if (prior.tool === undefined) delete process.env.BAO_FRONT_TOOL;
     else process.env.BAO_FRONT_TOOL = prior.tool;

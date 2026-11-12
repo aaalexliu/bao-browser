@@ -1087,8 +1087,8 @@ for (const keepOpen of [false, true]) test(`a copied session whose waiting tab c
   assert.equal(f.library.listRuns()[0]!.envelope?.reason, "session_closed");
 });
 
-for (const [windowState, raise] of [["normal", ["minimized", "normal"]], ["minimized", ["normal"]], ["maximized", ["minimized", "normal", "maximized"]], ["fullscreen", ["normal", "minimized", "normal"]]] as const) {
-  test(`a Mac copy's handoff brings a ${windowState} window back on top only when it can, and says so only then`, async (t) => {
+for (const [windowState, uncover] of [["normal", []], ["minimized", ["normal"]], ["maximized", []], ["fullscreen", ["normal"]]] as const) {
+  test(`a Mac copy's handoff leaves a ${windowState} window visible without minimizing it, and says so only when activation succeeds`, async (t) => {
     const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
     Object.defineProperty(process, "platform", { ...platform, value: "darwin" });
     t.after(() => { Object.defineProperty(process, "platform", platform); });
@@ -1103,10 +1103,11 @@ for (const [windowState, raise] of [["normal", ["minimized", "normal"]], ["minim
     f.state.taskUrl = "https://fixture.invalid/login";
     f.state.taskTitle = "Sign in";
     const [result] = await f.proxy.execute("wait_for_owner", ["50"], undefined, false, undefined, {}, f.proxy.activeRunId);
-    assert.deepEqual(f.state.windowStates, raise, "a window from the Dock lands on top; a zoomed one returns zoomed; a copy's full-screen window leaves that Space and comes to the front");
+    assert.deepEqual(f.state.windowStates, uncover, "a visible copy window is not minimized, because that brings the copy's other windows forward; full screen and the Dock still become normal");
     assert.equal(f.state.windowBounds.every((bounds) => Object.keys(bounds).every((key) => key === "windowState")), true, "a copy handoff restores window state and does not move or resize");
+    assert.equal(f.front.calls, 1);
     const { instruction } = JSON.parse(result!.stdout) as { instruction: string };
-    assert.equal(instruction.includes("Bao brought this window to the front"), raise.length > 0);
+    assert.equal(instruction.includes("Bao brought this window to the front"), true);
   });
 }
 
@@ -1139,12 +1140,12 @@ test("a Mac copy's handoff does not claim a raise when that copy's process stays
   f.state.taskTitle = "Sign in";
   const [result] = await f.proxy.execute("wait_for_owner", ["50"], undefined, false, undefined, {}, f.proxy.activeRunId);
   assert.equal(f.front.calls, 1);
-  assert.deepEqual(f.state.windowStates, ["minimized", "normal"]);
+  assert.deepEqual(f.state.windowStates, [], "a failed activation still does not minimize the waiting window");
   const { instruction } = JSON.parse(result!.stdout) as { instruction: string };
   assert.equal(instruction.includes("Bao brought this window to the front"), false);
 });
 
-test("a Mac copy's handoff still raises when Chrome refuses to zoom the window again", async (t) => {
+test("a Mac copy's handoff does not zoom or minimize a maximized window", async (t) => {
   const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
   Object.defineProperty(process, "platform", { ...platform, value: "darwin" });
   t.after(() => { Object.defineProperty(process, "platform", platform); });
@@ -1159,7 +1160,7 @@ test("a Mac copy's handoff still raises when Chrome refuses to zoom the window a
   f.state.taskUrl = "https://fixture.invalid/login";
   f.state.taskTitle = "Sign in";
   const [result] = await f.proxy.execute("wait_for_owner", ["50"], undefined, false, undefined, {}, f.proxy.activeRunId);
-  assert.deepEqual(f.state.windowStates, ["minimized", "normal", "maximized"], "a refused zoom does not send the window to the Dock again");
+  assert.deepEqual(f.state.windowStates, [], "a maximized copy window stays maximized; minimizing it would bring the copy's other windows forward");
   const { instruction } = JSON.parse(result!.stdout) as { instruction: string };
   assert.equal(instruction.includes("Bao brought this window to the front"), true);
 });
@@ -1179,7 +1180,7 @@ test("a Mac copy's handoff still raises when selecting the waiting tab fails", a
   f.state.taskUrl = "https://fixture.invalid/login";
   f.state.taskTitle = "Sign in";
   const [result] = await f.proxy.execute("wait_for_owner", ["50"], undefined, false, undefined, {}, f.proxy.activeRunId);
-  assert.deepEqual(f.state.windowStates, ["minimized", "normal"]);
+  assert.deepEqual(f.state.windowStates, [], "a missed tab select still does not minimize the waiting window");
   const { instruction } = JSON.parse(result!.stdout) as { instruction: string };
   assert.equal(instruction.includes("Bao brought this window to the front"), true);
 });
@@ -1193,7 +1194,7 @@ test("a Mac copy's handoff retry restores normal state and does not move or resi
   t.mock.method(endpoint, "readDevToolsActivePort", async () => ({ port: await trapPort(), browserPath: "/browser" }));
   const socket = await import("../../src/cdp-live/socket");
   t.mock.method(socket, "connectCdp", async () => ({ ...f.cdp, close() {} }));
-  f.state.windowState = "normal";
+  f.state.windowState = "fullscreen";
   f.state.failBoundsOnce = true;
   await f.proxy.execute("open", [], "copy");
   f.state.taskUrl = "https://fixture.invalid/login";
