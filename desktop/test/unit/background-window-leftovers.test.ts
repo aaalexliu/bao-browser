@@ -213,7 +213,7 @@ test("a handoff skips the Dock raise when Bao's Chrome is already the front app"
   }
 });
 
-test("a Bao-profile sign-in wall does not raise until the move to running Chrome declines", { timeout: scaledMs(5_000) }, async (t) => {
+test("an open on a sign-in wall raises at discovery, and a declined move does not raise again", { timeout: scaledMs(5_000) }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-move-raise-"));
   const order: string[] = [];
   const sourceRoot = await sourceProfile(root);
@@ -250,15 +250,12 @@ test("a Bao-profile sign-in wall does not raise until the move to running Chrome
   try {
     const result = await proxy.execute("open", ["http://127.0.0.1/login"], "bao");
     const moveAt = order.indexOf("move");
-    const raiseAt = order.findIndex((item) => item === "Target.activateTarget" || item === "Browser.setWindowBounds");
-    assert.ok(moveAt >= 0, "the move was attempted");
+    const raiseAt = order.indexOf("Target.activateTarget");
+    assert.ok(moveAt >= 0, "the later move was attempted");
     assert.equal(outcome(result), "halted");
-    assert.ok(order.includes("Target.activateTarget"), "a declined move still selects the tab");
-    assert.ok(raiseAt > moveAt, `raise at ${raiseAt} is not after move at ${moveAt}: ${order.join(",")}`);
-    if (process.platform === "darwin") {
-      assert.ok(order.includes("Browser.setWindowBounds"));
-      assert.match(instruction(result), /brought this window to the front/);
-    }
+    assert.equal(order.filter((item) => item === "Target.activateTarget").length, 1);
+    assert.ok(raiseAt >= 0 && raiseAt < moveAt, `discovery raise at ${raiseAt} is not before move at ${moveAt}: ${order.join(",")}`);
+    if (process.platform === "darwin") assert.match(instruction(result), /brought this window to the front/);
   } finally {
     await proxy.close().catch(() => undefined);
     await rm(root, { recursive: true, force: true });
@@ -528,29 +525,71 @@ async function evidenceWall(t: TestContext, command: "click" | "fill" | "snapsho
     const args = command === "fill" ? ["@email", "owner-only"] : command === "click" ? ["@pay"] : [];
     const result = await proxy.execute(command, args, undefined, false, undefined, {}, proxy.activeRunId);
     const during = (await nativeCommands(log)).slice(before);
-    const moveAt = order.indexOf("move");
-    const raiseAt = order.findIndex((item) => item === "Target.activateTarget" || item === "Browser.setWindowBounds");
-    assert.equal(outcome(result), "halted", `${command} returned ${result[0]?.stdout}`);
+    const receipt = proxy.lastCommand?.step.summary?.text ?? "";
+    if (command === "snapshot") {
+      assert.equal(result[0]?.stdout, "snapshot unchanged\n");
+      assert.equal(result[0]?.stdout.includes("halted"), false);
+      assert.equal(receipt.includes("Your turn"), false);
+    } else {
+      assert.equal(outcome(result), "halted", `${command} returned ${result[0]?.stdout}`);
+      assert.match(receipt, /Your turn/);
+      assert.equal(receipt.includes("Clicked"), false, receipt);
+      assert.equal(receipt.includes("Typed"), false, receipt);
+    }
     assert.equal(during.filter((item) => item === "snapshot").length, command === "snapshot" ? 1 : 0, during.join(","));
     assert.equal(during.includes(command) && command !== "snapshot", false, during.join(","));
     assert.deepEqual(pageReads, []);
-    assert.equal(order.filter((item) => item === "move").length, 1);
-    assert.ok(raiseAt > moveAt, `${command} raise at ${raiseAt} is not after move at ${moveAt}: ${order.join(",")}`);
-    assert.equal(order.slice(0, moveAt).includes("Target.activateTarget"), false);
+    assert.equal(order.includes("move"), false, order.join(","));
+    assert.equal(order.filter((item) => item === "Target.activateTarget").length, 1);
   } finally {
     await proxy.close().catch(() => undefined);
     await rm(root, { recursive: true, force: true });
   }
 }
 
-test("a click evidence wall moves before it raises and does not use the old ref", async (t) => {
+test("a click evidence wall is halted, raises, and does not move", async (t) => {
   await evidenceWall(t, "click");
 });
 
-test("a fill evidence wall moves before it raises and does not use the old ref", async (t) => {
+test("a fill evidence wall is halted, raises, and does not move", async (t) => {
   await evidenceWall(t, "fill");
 });
 
-test("a completion screenshot wall moves before it raises", async (t) => {
+test("a completion screenshot wall keeps the command result and does not move", async (t) => {
   await evidenceWall(t, "snapshot");
+});
+
+test("wait_for_owner's first read moves before it raises, and a declined move raises once", { timeout: scaledMs(8_000) }, async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-first-read-"));
+  const executable = path.join(root, "agent-browser");
+  const log = path.join(root, "native.log");
+  await loggingNative(executable, log, false);
+  const article = { url: "http://127.0.0.1:9/article", title: "Article" };
+  const signIn = { url: "http://127.0.0.1:9/login", title: "Sign in" };
+  let arm = false;
+  const { proxy, order } = await baoHandoff(t, root, executable, (method) => {
+    if (method === "Target.getTargetInfo") return { targetInfo: arm ? signIn : article };
+    if (method === "Target.getTargets") return { targetInfos: [{ targetId: "CHECKOUT", ...signIn }] };
+    if (method === "Target.attachToTarget") return { sessionId: "fixture" };
+    if (method === "Browser.getWindowForTarget") return { windowId: 7 };
+    if (method === "Browser.getWindowBounds") return { bounds: { windowState: "normal" } };
+    return {};
+  });
+  try {
+    await proxy.execute("open", [article.url], "bao");
+    arm = true;
+    const before = (await nativeCommands(log)).length;
+    const waited = await proxy.execute("wait_for_owner", ["800"], undefined, false, undefined, {}, proxy.activeRunId);
+    const during = (await nativeCommands(log)).slice(before);
+    const moveAt = order.indexOf("move");
+    const raiseAt = order.indexOf("Target.activateTarget");
+    assert.equal(outcome(waited), "waiting");
+    assert.equal(during.includes("snapshot"), false, during.join(","));
+    assert.equal(order.filter((item) => item === "move").length, 1);
+    assert.equal(order.filter((item) => item === "Target.activateTarget").length, 1);
+    assert.ok(raiseAt > moveAt, `raise at ${raiseAt} is not after move at ${moveAt}: ${order.join(",")}`);
+  } finally {
+    await proxy.close().catch(() => undefined);
+    await rm(root, { recursive: true, force: true });
+  }
 });
