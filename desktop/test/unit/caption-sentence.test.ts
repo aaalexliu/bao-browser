@@ -24,6 +24,22 @@ test("a type sentence cites the field name from the snapshot", () => {
   assert.equal(combo.citation?.text, "Search issues");
 });
 
+for (const [verb, expected] of [
+  ["list", "Listed tabs"],
+  ["new", "Opened a new tab"],
+  ["close", "Closed a tab"],
+  ["2", "Switched tab"],
+] as const) {
+  test(`tab ${verb} names its recorded verb`, () => {
+    assert.deepEqual(commandSentence("tab", verb, undefined), { text: expected });
+  });
+}
+
+test("tab without a verb lists tabs", () => {
+  assert.equal(commandSentence("tab", undefined, undefined).text, "Listed tabs");
+  assert.equal(commandSentence("tab", "--json", undefined).text, "Listed tabs");
+});
+
 test("open uses the host and path", () => {
   assert.equal(commandSentence("open", "https://github.com/aaalexliu/bao-browser", undefined).text, "Open github.com/aaalexliu/bao-browser");
 });

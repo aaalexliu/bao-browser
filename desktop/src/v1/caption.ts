@@ -150,6 +150,13 @@ export function isElementRef(value: string | undefined): boolean {
   return !!value && /^@e\d+$/.test(value.trim());
 }
 
+export function tabSentence(verb: string | undefined): string {
+  if (!verb || verb === "list" || verb === "--json") return "Listed tabs";
+  if (verb === "new") return "Opened a new tab";
+  if (verb === "close") return "Closed a tab";
+  return "Switched tab";
+}
+
 /** Sentence for a pass-through command. The name comes from the snapshot line for that ref. */
 export function commandSentence(command: string, arg: string | undefined, snapshot: string | undefined): { text: string; citation?: { text: string; source: "text" } } {
   if (command === "open") return { text: openSentence(arg) };
@@ -159,7 +166,7 @@ export function commandSentence(command: string, arg: string | undefined, snapsh
   if (command === "close") return { text: "Close the page" };
   if (command === "scroll") return { text: "Scroll the page" };
   if (command === "screenshot") return { text: "Capture the page" };
-  if (command === "tab") return { text: "Switch tab" };
+  if (command === "tab") return { text: tabSentence(arg) };
   const line = refLine(arg, snapshot);
   const named = refName(line);
   if (command === "fill") return named
