@@ -9,6 +9,7 @@ import { existsSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import path from "node:path";
 import { ChromeFolderDenied, assertChromeReadable, chromeDenied } from "../chrome-access";
+import { confirmedProfileDirectories } from "./remote-debugging";
 import { chromeProfilesRoot } from "../engines/chrome-profile-copy";
 import { killCommandToken, LAUNCH_SERVICES_RESTART, launchServicesStalled, processesNaming } from "../launch";
 import { chromeHelper, CHROME_BUNDLE, helperBin, INSPECT_URL, logAx, type ChromeAx } from "./ax";
@@ -353,8 +354,22 @@ export async function connectOwnedChrome(options: {
   }
 }
 
-function realpath(file: string): string | undefined {
-  try { return realpathSync(file); } catch { return undefined; }
+function pathKeys(file: string): Set<string> {
+  const resolved = path.resolve(file);
+  const keys = new Set([resolved]);
+  if (resolved.startsWith("/private/")) keys.add(resolved.slice("/private".length));
+  else keys.add(`/private${resolved}`);
+  return keys;
+}
+
+/** True when both paths name one profile. A refused folder is compared as text, including macOS /tmp and /private/tmp. */
+function sameProfilePath(reported: string, wanted: string, root: string): boolean {
+  for (const key of pathKeys(reported)) if (pathKeys(wanted).has(key)) return true;
+  try { return realpathSync(wanted) === realpathSync(reported); }
+  catch (error) {
+    if (chromeDenied(error, root)) return false;
+    throw error;
+  }
 }
 
 /** The profile folder of Chrome's default debugging context, read from a hidden chrome://version tab the owner never sees. */
@@ -382,10 +397,13 @@ async function defaultContextProfile(cdp: CdpSocket): Promise<string | undefined
  */
 export async function openTaskTab(chrome: Pick<CurrentChrome, "cdp" | "executable" | "root">, directory: string,
   signal?: AbortSignal): Promise<{ targetId: string; background: boolean }> {
-  const wanted = realpathSync(path.join(chrome.root, directory));
+  const wanted = path.resolve(path.join(chrome.root, directory));
   const { defaultBrowserContextId } = await chrome.cdp.send<{ defaultBrowserContextId?: string }>("Target.getBrowserContexts", {}, undefined, 5000);
   const inDefault = await defaultContextProfile(chrome.cdp).catch(() => undefined);
-  if (defaultBrowserContextId && inDefault && realpath(inDefault) === wanted) {
+  const versionNamesIt = Boolean(inDefault && path.isAbsolute(inDefault) && sameProfilePath(inDefault, wanted, chrome.root));
+  const confirmed = confirmedProfileDirectories(chrome.root);
+  const processNamesIt = (!inDefault || !path.isAbsolute(inDefault)) && confirmed.length === 1 && confirmed[0] === directory;
+  if (defaultBrowserContextId && (versionNamesIt || processNamesIt)) {
     const { targetId } = await chrome.cdp.send<{ targetId: string }>("Target.createTarget", { url: "about:blank", background: true }, undefined, 5000);
     const { targetInfo } = await chrome.cdp.send<{ targetInfo: { browserContextId?: string } }>("Target.getTargetInfo", { targetId }, undefined, 5000);
     if (targetInfo.browserContextId === defaultBrowserContextId) return { targetId, background: true };

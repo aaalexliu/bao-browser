@@ -14,6 +14,7 @@ import {
   CHROME_NOT_OPEN,
   SCREEN_LOCKED,
   chromePidsFromPs,
+  profileDirectoriesFromPs,
   dailyChromePids,
   checkboxKnown,
   explainRemoteDebuggingError,
@@ -42,6 +43,22 @@ test("the daily Chrome is the browser process on its user-data dir, not a render
   assert.deepEqual(chromePidsFromPs(ps, DIR, DIR), [101]);
   assert.deepEqual(chromePidsFromPs(`  106 /Applications/Google Chrome.app/Contents/MacOS/Google Chrome --user-data-dir=${DIR} --profile-directory=Default`, DIR, DIR), [106]);
   assert.deepEqual(chromePidsFromPs(ps, "/tmp/test-profile", DIR), [104]);
+});
+
+test("a Chrome command line names its profile directory and does not invent Default", () => {
+  const root = "/tmp/chrome";
+  const ps = [
+    `11 /chrome --user-data-dir=${root} --profile-directory=Profile 1`,
+    `12 /chrome --type=renderer --user-data-dir=${root} --profile-directory=Profile 1 --lang=en`,
+    `13 /chrome --user-data-dir=/tmp/other --profile-directory=Default`,
+    `14 /chrome --user-data-dir=${root} --profile-directory=Guest`,
+    `15 /chrome --user-data-dir=${root}`,
+    "",
+  ].join("\n");
+  assert.deepEqual(profileDirectoriesFromPs(ps, root), ["Profile 1"]);
+  assert.deepEqual(profileDirectoriesFromPs(`11 /chrome --user-data-dir=/var/folders/x/T/chrome --profile-directory=Profile 1`, "/private/var/folders/x/T/chrome"), ["Profile 1"]);
+  const both = `${ps}\n16 /chrome --user-data-dir=${root} --profile-directory=Default`;
+  assert.deepEqual(profileDirectoriesFromPs(both, root), ["Default", "Profile 1"]);
 });
 
 /** A daily Chrome whose inspect page Bao can open, and whose checkbox BaoOSHelper can press. */

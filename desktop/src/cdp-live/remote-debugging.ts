@@ -37,6 +37,47 @@ export function chromePidsFromPs(text: string, userDataDir: string, defaultDir: 
   return pids;
 }
 
+const PROFILE_DIRECTORY = /^(?:Default|Profile \d+)$/;
+
+function pathKeys(file: string): Set<string> {
+  const resolved = path.resolve(file);
+  const keys = new Set([resolved]);
+  if (resolved.startsWith("/private/")) keys.add(resolved.slice("/private".length));
+  else keys.add(`/private${resolved}`);
+  return keys;
+}
+
+function samePath(left: string, right: string): boolean {
+  for (const key of pathKeys(left)) if (pathKeys(right).has(key)) return true;
+  return false;
+}
+
+/** Profile folders a Chrome command line names for this user-data-dir. Other directories are ignored. Never invents Default. */
+export function profileDirectoriesFromPs(text: string, userDataDir: string): string[] {
+  const found = new Set<string>();
+  for (const line of text.split("\n")) {
+    const args = line.trim();
+    if (!args) continue;
+    const dataDir = /(?:^|\s)--user-data-dir=(.*?)(?=\s--|$)/.exec(args)?.[1]?.trim();
+    if (!dataDir || !samePath(dataDir, userDataDir)) continue;
+    const directory = /(?:^|\s)--profile-directory=(.*?)(?=\s--|$)/.exec(args)?.[1]?.trim();
+    if (directory && PROFILE_DIRECTORY.test(directory)) found.add(directory);
+  }
+  return [...found].sort((a, b) => a.localeCompare(b));
+}
+
+/** Profile folders the running Chrome names for this user-data-dir. Empty when the process list cannot be read. */
+export function confirmedProfileDirectories(root: string): string[] {
+  const found = new Set<string>();
+  for (const key of pathKeys(root)) {
+    try {
+      const text = processesNaming(key).map((row) => `${row.pid} ${row.command}`).join("\n");
+      for (const directory of profileDirectoriesFromPs(text, root)) found.add(directory);
+    } catch { /* this spelling is absent, or the process list cannot be read */ }
+  }
+  return [...found].sort((a, b) => a.localeCompare(b));
+}
+
 export async function dailyChromePids(userDataDir: string, defaultDir: string): Promise<number[]> {
   const rows = processesNaming(CHROME_APP_EXE);
   return chromePidsFromPs(rows.map((row) => `${row.pid} ${row.command}`).join("\n"), userDataDir, defaultDir);

@@ -3,7 +3,7 @@
 // stat works and every open or listing fails with EPERM, and macOS shows no prompt.
 // desktop/packaging/macos/bao-run-node.h picks that app and names it in BAO_RESPONSIBLE_EXE.
 
-import { readdirSync } from "node:fs";
+import { readdirSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { chromeAccessSwitch } from "./chrome-switch";
 
@@ -61,6 +61,16 @@ export function chromeDenied(error: unknown, root: string, env: NodeJS.ProcessEn
   if (!code || !DENIED.has(code)) return undefined;
   if (file && !inside(root, file)) return undefined;
   return new ChromeFolderDenied(code, file ?? root, env);
+}
+
+/** The folder's real path, or the resolved path when macOS refuses the read. Callers that share a hold must agree. */
+export function chromeDataPath(root: string): string {
+  const resolved = path.resolve(root);
+  try { return realpathSync(resolved); }
+  catch (error) {
+    if (chromeDenied(error, resolved)) return resolved;
+    throw error;
+  }
 }
 
 /** Lists dir, the read macOS refuses, and throws ChromeFolderDenied when it is refused. */
