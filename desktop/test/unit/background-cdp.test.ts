@@ -4,6 +4,7 @@ import * as net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import sharp from "sharp";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { connectCdp } from "../../src/cdp-live/socket";
 import { keepBehind, openBackgroundCdp } from "../../src/engines/background-cdp";
@@ -95,6 +96,112 @@ test("the agent's endpoint keeps Chrome behind, gives each page focus, and hides
       assert.equal((await fetch(`http://127.0.0.1:${background.endpoint.port}${route}`)).status, 404, `${route} would raise a tab or hand out Chrome's own port`);
     }
     assert.ok(received.every((message) => message.id === undefined || message.id <= id), "Bao's own replies never reach the agent");
+  } finally {
+    socket.close();
+    direct.close();
+    background.close();
+    await chrome.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a swallowed tab switch drives an unselected tab and does not forward the raising commands", { timeout: scaledMs(60_000) }, async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-background-tab-"));
+  const chrome = await launchOwnedChromeEndpoint({ userDataDir: path.join(root, "chrome"), headless: true, background: "window" });
+  const endpoint = await readDevToolsActivePort(chrome.portFile);
+  const background = await openBackgroundCdp(endpoint);
+  const direct = await connectCdp(endpoint.port, endpoint.browserPath);
+  const socket = new WebSocket(`ws://127.0.0.1:${background.endpoint.port}${background.endpoint.browserPath}`);
+  const received: { id?: number; result?: Record<string, unknown> }[] = [];
+  const waiting = new Map<number, (message: { result?: Record<string, unknown>; error?: unknown }) => void>();
+  let id = 0;
+  socket.addEventListener("message", (event) => {
+    const message = JSON.parse(String(event.data)) as { id?: number; result?: Record<string, unknown>; error?: unknown };
+    received.push(message);
+    if (message.id !== undefined) waiting.get(message.id)?.(message);
+  });
+  const send = (method: string, params: Record<string, unknown> = {}, sessionId?: string) => new Promise<Record<string, unknown>>((resolve, reject) => {
+    const next = ++id;
+    waiting.set(next, (message) => message.error ? reject(new Error(JSON.stringify(message.error))) : resolve(message.result!));
+    socket.send(JSON.stringify({ id: next, method, params, ...sessionId ? { sessionId } : {} }));
+  });
+  const read = async <T>(targetId: string, expression: string, timeout = 5_000): Promise<T> => {
+    const { sessionId } = await direct.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true });
+    const result = await direct.send<{ result: { value: T } }>("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true }, sessionId, timeout);
+    await direct.send("Target.detachFromTarget", { sessionId }).catch(() => undefined);
+    return result.result.value;
+  };
+  const visibility = (targetId: string) => read<string>(targetId, "document.visibilityState");
+  try {
+    await new Promise((resolve, reject) => {
+      socket.addEventListener("open", resolve, { once: true });
+      socket.addEventListener("error", () => reject(new Error("agent socket failed")), { once: true });
+    });
+    const { targetInfos } = await direct.send<{ targetInfos: { targetId: string; type: string }[] }>("Target.getTargets");
+    const pages = targetInfos.filter((target) => target.type === "page");
+    assert.equal(pages.length, 1, "the window starts on one tab");
+    const shown = pages[0]!.targetId;
+    const page = "data:text/html," + encodeURIComponent(
+      "<body style=\"margin:0;background:#c81414\"><button data-testid=go style=\"position:absolute;left:20px;top:20px;width:120px;height:40px\">Go</button><input data-testid=field style=\"position:absolute;left:20px;top:80px;width:200px;height:30px\"><script>document.querySelector('[data-testid=go]').addEventListener('click',()=>{document.querySelector('[data-testid=go]').textContent='Done'})</script>",
+    );
+    const { targetId: hidden } = await direct.send<{ targetId: string }>("Target.createTarget", { url: page, background: true });
+    const ready = Date.now() + 5_000;
+    let button = false;
+    while (!button && Date.now() < ready) {
+      try {
+        const { sessionId } = await direct.send<{ sessionId: string }>("Target.attachToTarget", { targetId: hidden, flatten: true });
+        const read = await direct.send<{ result: { value: boolean } }>("Runtime.evaluate", {
+          expression: "!!document.querySelector('[data-testid=go]')", returnByValue: true,
+        }, sessionId);
+        button = read.result.value;
+        await direct.send("Target.detachFromTarget", { sessionId }).catch(() => undefined);
+      } catch { /* the renderer is still starting */ }
+      if (!button) await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.equal(button, true, "the restored tab painted its button");
+    // Selection is exclusive: Target.activateTarget hides the tab the window already showed. Focus emulation can make the
+    // driven tab report itself visible, and on Linux it also runs that tab's timers, so neither of those is selection.
+    const windowStays = async (where: string) => {
+      assert.equal(await visibility(shown), "visible", `${where} leaves the window on the tab it already showed`);
+    };
+    assert.equal(await visibility(shown), "visible", "the window starts on the tab it already showed");
+    assert.equal(await visibility(hidden), "hidden", "the restored tab is not the selected tab");
+    const { sessionId } = await send("Target.attachToTarget", { targetId: hidden, flatten: true }) as { sessionId: string };
+    assert.equal(await visibility(shown), "visible", "attaching leaves the window on the tab it already showed");
+    assert.equal(await visibility(hidden), "hidden", "attaching does not select the restored tab");
+    assert.deepEqual(await send("Page.bringToFront", {}, sessionId), {});
+    assert.equal(received.filter((message) => message.id === id).length, 1, "bringToFront is answered once, not forwarded");
+    assert.deepEqual(await send("Target.activateTarget", { targetId: hidden }), {});
+    assert.equal(received.filter((message) => message.id === id).length, 1, "activateTarget is answered once, not forwarded");
+    await windowStays("the switch");
+    await send("Emulation.setDeviceMetricsOverride", { width: 800, height: 600, deviceScaleFactor: 1, mobile: false }, sessionId);
+    const box = await send("Runtime.evaluate", {
+      expression: "(() => { const el = document.querySelector('[data-testid=go]'); const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2, w: r.width }; })()",
+      returnByValue: true,
+    }, sessionId) as { result: { value: { x: number; y: number; w: number } } };
+    assert.ok(box.result.value.w > 0, "the button has a box");
+    await send("Input.dispatchMouseEvent", { type: "mousePressed", x: box.result.value.x, y: box.result.value.y, button: "left", clickCount: 1 }, sessionId);
+    await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: box.result.value.x, y: box.result.value.y, button: "left", clickCount: 1 }, sessionId);
+    const label = await send("Runtime.evaluate", { expression: "document.querySelector('[data-testid=go]').textContent", returnByValue: true }, sessionId) as { result: { value: string } };
+    assert.equal(label.result.value, "Done", "a click lands in the unselected tab");
+    const field = await send("Runtime.evaluate", {
+      expression: "(() => { const el = document.querySelector('[data-testid=field]'); const r = el.getBoundingClientRect(); return { x: r.x + 8, y: r.y + r.height / 2 }; })()",
+      returnByValue: true,
+    }, sessionId) as { result: { value: { x: number; y: number } } };
+    await send("Input.dispatchMouseEvent", { type: "mousePressed", x: field.result.value.x, y: field.result.value.y, button: "left", clickCount: 1 }, sessionId);
+    await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: field.result.value.x, y: field.result.value.y, button: "left", clickCount: 1 }, sessionId);
+    await send("Input.dispatchKeyEvent", { type: "keyDown", key: "a", text: "a", unmodifiedText: "a" }, sessionId);
+    await send("Input.dispatchKeyEvent", { type: "keyUp", key: "a" }, sessionId);
+    const typed = await send("Runtime.evaluate", { expression: "document.querySelector('[data-testid=field]').value", returnByValue: true }, sessionId) as { result: { value: string } };
+    assert.equal(typed.result.value, "a", "typing lands in the unselected tab");
+    const shot = await send("Page.captureScreenshot", { format: "png" }, sessionId) as { data: string };
+    const decoded = await sharp(Buffer.from(shot.data, "base64")).raw().toBuffer({ resolveWithObject: true });
+    const { width, height, channels } = decoded.info;
+    assert.ok(width > 400 && height > 300 && channels >= 3, `png ${width}x${height} channels ${channels}`);
+    const i = (300 * width + 400) * channels;
+    const pixel = [decoded.data[i]!, decoded.data[i + 1]!, decoded.data[i + 2]!];
+    assert.ok(pixel[0] > 160 && pixel[1] < 60 && pixel[2] < 60, `the screenshot shows the page, got ${pixel.join(",")}`);
+    await windowStays("click, typing, and the screenshot");
   } finally {
     socket.close();
     direct.close();

@@ -288,8 +288,9 @@ export async function agentTab(portFile: string): Promise<string> {
 /**
  * Pass-through startup owns Chrome without attaching Playwright to restored tabs. With restored tabs, the agent's page opens in
  * `targetId`, a new background tab beside them, so the native daemon leaves every restored tab untouched and Bao knows the
- * bound target. Focus emulation on the native endpoint keeps that tab running behind the owner's apps. With only startup
- * pages, `targetId` is the startup tab.
+ * bound target. Focus emulation on the native endpoint keeps that tab running behind the owner's apps. A later `tab`
+ * switch attaches to the restored tab and turns on the same focus emulation. It does not select that tab, so the tab
+ * shown in the window stays the one Chrome restored. With only startup pages, `targetId` is the startup tab.
  */
 export async function openCopiedChromeForProxy(options: {
   sourceRoot: string; directory: string; home: string; detached?: boolean; restoreTabs?: boolean;
