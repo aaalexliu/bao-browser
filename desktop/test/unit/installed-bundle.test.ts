@@ -203,14 +203,16 @@ test("notarize and staple run only when the notary secrets are set", () => {
   const dir = mkdtempSync(path.join(tmpdir(), "bao-notarize-"));
   const bin = path.join(dir, "bin");
   const app = path.join(dir, "Bao.app");
-  const log = path.join(dir, "xcrun.log");
+  const log = path.join(dir, "commands.jsonl");
   mkdirSync(bin);
   mkdirSync(app);
-  writeFileSync(path.join(bin, "xcrun"), `#!/bin/sh
-printf '%s\n' "$*" >> "${log}"
-exit 0
+  for (const command of ["ditto", "xcrun"]) {
+    writeFileSync(path.join(bin, command), `#!${process.execPath}
+const fs = require("node:fs");
+fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify([${JSON.stringify(command)}, ...process.argv.slice(2)]) + "\\n");
 `);
-  chmodSync(path.join(bin, "xcrun"), 0o755);
+    chmodSync(path.join(bin, command), 0o755);
+  }
   const key = Buffer.from("not-a-real-key").toString("base64");
   try {
     const skipped = spawnSync("bash", ["desktop/packaging/macos/notarize-app.sh", app], {
@@ -227,6 +229,7 @@ exit 0
       encoding: "utf8",
       env: signingEnv(dir, {
         PATH: `${bin}:${process.env.PATH}`,
+        TMPDIR: dir,
         BAO_NOTARY_KEY_P8: key,
         BAO_NOTARY_KEY_ID: "KEYID",
         BAO_NOTARY_ISSUER_ID: "ISSUER",
@@ -235,9 +238,16 @@ exit 0
       }),
     });
     assert.equal(ran.status, 0, `${ran.stderr}\n${ran.stdout}`);
-    const calls = readFileSync(log, "utf8");
-    assert.match(calls, /notarytool submit .* --wait --key /);
-    assert.match(calls, /stapler staple /);
+    const calls = readFileSync(log, "utf8").trim().split("\n").map((line) => JSON.parse(line) as string[]);
+    const archive = calls[0]?.at(-1);
+    assert.ok(archive);
+    assert.equal(calls.length, 3);
+    const work = path.dirname(archive);
+    assert.deepEqual(calls, [
+      ["ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", app, path.join(work, "Bao-notarize.zip")],
+      ["xcrun", "notarytool", "submit", archive, "--wait", "--key", path.join(work, "AuthKey.p8"), "--key-id", "KEYID", "--issuer", "ISSUER"],
+      ["xcrun", "stapler", "staple", app],
+    ]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
