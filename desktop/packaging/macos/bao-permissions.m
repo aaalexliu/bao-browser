@@ -15,9 +15,9 @@ static NSString *const kHeadless = @"No screen here, so Bao did not open its per
 static NSString *const kAccessibilityURL = @"x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";
 static NSString *const kFilesURL = @"x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders";
 static NSString *const kAccessibilityTitle = @"Device Control and Data Access";
-static NSString *const kAccessibilityPurpose = @"ticks Chrome's remote-debugging box and presses Chrome's Allow, so agents can use the Chrome you're signed in to.";
+static NSString *const kAccessibilityPurpose = @"Ticks Chrome's remote-debugging box and presses Chrome's Allow, so agents can use the Chrome you're signed in to.";
 static NSString *const kFilesTitle = @"Google Chrome's data";
-static NSString *const kFilesPurpose = @"finds your running Chrome and its profiles, and copies a site's sign-in into Bao's own browser when you ask.";
+static NSString *const kFilesPurpose = @"Finds your running Chrome and its profiles, and copies a site's sign-in into Bao's own browser when you ask.";
 static NSString *const kDragLine = @"Drag Bao into the list above, then turn it on";
 static NSString *const kFilesLine = @"Under Bao, turn on Google Chrome";
 
@@ -90,6 +90,51 @@ static NSRect settingsFrame(void) {
   return found;
 }
 
+static NSImage *genericAppIcon(void) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+  return [NSWorkspace.sharedWorkspace iconForFileType:@"app"];
+#pragma clang diagnostic pop
+}
+
+/* The app the user drags, then /Applications/Bao.app. Nil when both are the
+ * generic app icon, which is what Bao.app returns today: it has no icns. */
+static NSImage *customBaoIcon(NSString *dragPath) {
+  NSData *generic = genericAppIcon().TIFFRepresentation;
+  NSArray *paths = @[dragPath ?: @"", @"/Applications/Bao.app"];
+  for (NSString *path in paths) {
+    if (path.length == 0 || ![[NSFileManager defaultManager] fileExistsAtPath:path]) continue;
+    NSImage *icon = [NSWorkspace.sharedWorkspace iconForFile:path];
+    if (icon && ![icon.TIFFRepresentation isEqualToData:generic]) return icon;
+  }
+  return nil;
+}
+
+static void drawBaoMark(NSRect rect, NSColor *ink) {
+  NSBezierPath *path = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(rect, 1, 1) xRadius:10 yRadius:10];
+  [[NSColor colorWithCalibratedWhite:1 alpha:1] setFill];
+  [path fill];
+  [[NSColor colorWithCalibratedWhite:0.82 alpha:1] setStroke];
+  path.lineWidth = 1;
+  [path stroke];
+  NSDictionary *attrs = @{
+    NSFontAttributeName: [NSFont systemFontOfSize:13 weight:NSFontWeightBold],
+    NSForegroundColorAttributeName: ink,
+  };
+  NSString *mark = @"Bao";
+  NSSize size = [mark sizeWithAttributes:attrs];
+  [mark drawAtPoint:NSMakePoint(NSMidX(rect) - size.width / 2, NSMidY(rect) - size.height / 2) withAttributes:attrs];
+}
+
+static void drawBaoIcon(NSRect rect, NSString *dragPath) {
+  NSImage *icon = customBaoIcon(dragPath);
+  if (icon) {
+    [icon drawInRect:NSInsetRect(rect, 2, 2)];
+    return;
+  }
+  drawBaoMark(rect, [NSColor colorWithCalibratedWhite:0.12 alpha:1]);
+}
+
 @interface BaoDragTile : NSView <NSDraggingSource>
 @property(copy) NSString *appPath;
 @property NSPoint down;
@@ -110,7 +155,13 @@ static NSRect settingsFrame(void) {
   NSURL *url = [NSURL fileURLWithPath:self.appPath];
   NSDraggingItem *item = [[NSDraggingItem alloc] initWithPasteboardWriter:url];
   item.draggingFrame = self.bounds;
-  NSImage *icon = [NSWorkspace.sharedWorkspace iconForFile:self.appPath];
+  NSImage *icon = customBaoIcon(self.appPath);
+  if (!icon) {
+    icon = [[NSImage alloc] initWithSize:self.bounds.size];
+    [icon lockFocus];
+    drawBaoMark(NSMakeRect(0, 0, self.bounds.size.width, self.bounds.size.height), [NSColor colorWithCalibratedWhite:0.12 alpha:1]);
+    [icon unlockFocus];
+  }
   item.imageComponentsProvider = ^NSArray<NSDraggingImageComponent *> *{
     NSDraggingImageComponent *component = [NSDraggingImageComponent draggingImageComponentWithKey:NSDraggingImageComponentIconKey];
     component.contents = icon;
@@ -120,12 +171,44 @@ static NSRect settingsFrame(void) {
   [self beginDraggingSessionWithItems:@[item] event:event source:self];
 }
 - (void)drawRect:(NSRect)dirty {
-  NSBezierPath *path = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(self.bounds, 1, 1) xRadius:10 yRadius:10];
-  [[NSColor colorWithCalibratedWhite:1 alpha:0.14] setFill];
-  [path fill];
-  if (self.appPath.length == 0) return;
-  NSImage *icon = [NSWorkspace.sharedWorkspace iconForFile:self.appPath];
-  [icon drawInRect:NSInsetRect(self.bounds, 6, 6)];
+  drawBaoIcon(self.bounds, self.appPath);
+}
+@end
+
+@interface BaoGuideView : NSView
+@property(copy) NSString *line;
+@property(copy) NSString *iconPath;
+@property BOOL showTile;
+@end
+
+@implementation BaoGuideView
+- (BOOL)isOpaque { return YES; }
+- (BOOL)dark {
+  NSString *name = [self.effectiveAppearance bestMatchFromAppearancesWithNames:@[NSAppearanceNameAqua, NSAppearanceNameDarkAqua]];
+  return [name isEqualToString:NSAppearanceNameDarkAqua];
+}
+- (void)drawRect:(NSRect)dirty {
+  BOOL dark = [self dark];
+  NSColor *bg = dark ? [NSColor colorWithCalibratedWhite:0.14 alpha:1] : [NSColor colorWithCalibratedWhite:0.96 alpha:1];
+  NSColor *fg = dark ? NSColor.whiteColor : [NSColor colorWithCalibratedWhite:0.1 alpha:1];
+  [bg setFill];
+  NSRectFill(self.bounds);
+  NSDictionary *arrowAttrs = @{
+    NSFontAttributeName: [NSFont systemFontOfSize:16 weight:NSFontWeightSemibold],
+    NSForegroundColorAttributeName: fg,
+  };
+  NSDictionary *textAttrs = @{
+    NSFontAttributeName: [NSFont systemFontOfSize:14 weight:NSFontWeightMedium],
+    NSForegroundColorAttributeName: fg,
+  };
+  CGFloat textX = 16;
+  if (self.showTile) {
+    drawBaoIcon(NSMakeRect(16, 14, 48, 48), self.iconPath);
+    textX = 76;
+  }
+  NSRect textRect = NSMakeRect(textX + 22, 16, NSWidth(self.bounds) - textX - 38, 44);
+  [@"↑" drawAtPoint:NSMakePoint(textX, NSMidY(textRect) - 8) withAttributes:arrowAttrs];
+  [self.line drawInRect:textRect withAttributes:textAttrs];
 }
 @end
 
@@ -158,15 +241,29 @@ static NSRect settingsFrame(void) {
   for (NSView *view in @[self.titleLabel, self.purposeLabel, self.action, self.allowed]) [self addSubview:view];
   return self;
 }
+- (CGFloat)textBlockHeightForWidth:(CGFloat)width {
+  CGFloat textWidth = width - 16 - 96;
+  NSSize title = [self.titleLabel.cell cellSizeForBounds:NSMakeRect(0, 0, textWidth, 80)];
+  NSSize purpose = [self.purposeLabel.cell cellSizeForBounds:NSMakeRect(0, 0, textWidth, 240)];
+  return ceil(title.height) + 6 + ceil(purpose.height);
+}
+- (CGFloat)fittedHeightForWidth:(CGFloat)width {
+  return 16 + [self textBlockHeightForWidth:width] + 16;
+}
 - (void)layout {
   [super layout];
   NSRect bounds = self.bounds;
-  CGFloat textWidth = NSWidth(bounds) - 32 - 88;
-  self.titleLabel.frame = NSMakeRect(16, NSHeight(bounds) - 36, textWidth, 20);
-  self.purposeLabel.frame = NSMakeRect(16, 14, textWidth, NSHeight(bounds) - 54);
-  self.action.frame = NSMakeRect(NSWidth(bounds) - 92, (NSHeight(bounds) - 28) / 2, 76, 28);
+  CGFloat textWidth = NSWidth(bounds) - 16 - 96;
+  NSSize title = [self.titleLabel.cell cellSizeForBounds:NSMakeRect(0, 0, textWidth, 80)];
+  NSSize purpose = [self.purposeLabel.cell cellSizeForBounds:NSMakeRect(0, 0, textWidth, 240)];
+  CGFloat titleH = ceil(title.height);
+  CGFloat purposeH = ceil(purpose.height);
+  self.titleLabel.frame = NSMakeRect(16, NSHeight(bounds) - 16 - titleH, textWidth, titleH);
+  self.purposeLabel.frame = NSMakeRect(16, 16, textWidth, purposeH);
+  CGFloat mid = 16 + (purposeH + 6 + titleH) / 2;
+  self.action.frame = NSMakeRect(NSWidth(bounds) - 16 - 76, mid - 14, 76, 28);
   [self.allowed sizeToFit];
-  self.allowed.frame = NSMakeRect(NSWidth(bounds) - 16 - NSWidth(self.allowed.frame), (NSHeight(bounds) - NSHeight(self.allowed.frame)) / 2, NSWidth(self.allowed.frame), NSHeight(self.allowed.frame));
+  self.allowed.frame = NSMakeRect(NSWidth(bounds) - 16 - NSWidth(self.allowed.frame), mid - NSHeight(self.allowed.frame) / 2, NSWidth(self.allowed.frame), NSHeight(self.allowed.frame));
 }
 - (void)showAllowed:(BOOL)on button:(NSString *)button {
   self.action.hidden = on;
@@ -257,33 +354,24 @@ static NSRect settingsFrame(void) {
     self.guide.collectionBehavior = NSWindowCollectionBehaviorCanJoinAllSpaces | NSWindowCollectionBehaviorFullScreenAuxiliary | NSWindowCollectionBehaviorTransient;
     self.guide.hidesOnDeactivate = NO;
     self.guide.floatingPanel = YES;
-    self.guide.opaque = NO;
-    self.guide.backgroundColor = [NSColor colorWithCalibratedWhite:0.12 alpha:0.96];
+    self.guide.opaque = YES;
     self.guide.hasShadow = YES;
     self.guide.movable = NO;
+    BaoGuideView *view = [[BaoGuideView alloc] initWithFrame:NSMakeRect(0, 0, 520, 76)];
+    self.guide.contentView = view;
   }
-  NSView *content = self.guide.contentView;
-  for (NSView *view in content.subviews.copy) [view removeFromSuperview];
-  NSTextField *arrow = [NSTextField labelWithString:@"↑"];
-  arrow.font = [NSFont systemFontOfSize:16 weight:NSFontWeightSemibold];
-  arrow.textColor = NSColor.whiteColor;
-  NSString *line = self.dock == 2 ? kFilesLine : kDragLine;
-  NSTextField *label = [NSTextField wrappingLabelWithString:line];
-  label.font = [NSFont systemFontOfSize:14 weight:NSFontWeightMedium];
-  label.textColor = NSColor.whiteColor;
-  if (self.dock == 1) {
+  BaoGuideView *view = (BaoGuideView *)self.guide.contentView;
+  view.line = self.dock == 2 ? kFilesLine : kDragLine;
+  view.iconPath = self.appPath;
+  view.showTile = self.dock == 1;
+  for (NSView *child in view.subviews.copy) [child removeFromSuperview];
+  if (view.showTile) {
     BaoDragTile *tile = [[BaoDragTile alloc] initWithFrame:NSMakeRect(16, 14, 48, 48)];
     tile.appPath = self.appPath;
     tile.toolTip = @"Drag Bao into the list";
-    [content addSubview:tile];
-    arrow.frame = NSMakeRect(76, 46, 24, 20);
-    label.frame = NSMakeRect(100, 14, 400, 40);
-  } else {
-    arrow.frame = NSMakeRect(16, 28, 24, 20);
-    label.frame = NSMakeRect(44, 16, 452, 40);
+    [view addSubview:tile];
   }
-  [content addSubview:arrow];
-  [content addSubview:label];
+  [view setNeedsDisplay:YES];
   [self placeGuide];
   [self.guide orderFront:nil];
 }
@@ -306,6 +394,7 @@ static NSRect settingsFrame(void) {
   if (!view || path.length == 0) return;
   NSRect bounds = view.bounds;
   if (NSIsEmptyRect(bounds)) return;
+  [view display];
   NSBitmapImageRep *rep = [view bitmapImageRepForCachingDisplayInRect:bounds];
   if (!rep) return;
   [view cacheDisplayInRect:bounds toBitmapImageRep:rep];
@@ -333,14 +422,15 @@ int bao_permissions_show(const BaoPermissionsOpts *opts) {
   }
   @autoreleasepool {
     NSApplication *app = NSApplication.sharedApplication;
+    if (opts->appearance == 1) app.appearance = [NSAppearance appearanceNamed:NSAppearanceNameAqua];
+    if (opts->appearance == 2) app.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
     BaoPermissions *controller = [BaoPermissions new];
     controller.seam = opts->seam;
     controller.dock = opts->dock;
     controller.appPath = bundlePath();
     app.delegate = controller;
     [app setActivationPolicy:NSApplicationActivationPolicyRegular];
-    NSRect frame = NSMakeRect(0, 0, 560, 268);
-    NSWindow *window = [[NSWindow alloc] initWithContentRect:frame styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable backing:NSBackingStoreBuffered defer:NO];
+    NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 560, 280) styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable backing:NSBackingStoreBuffered defer:NO];
     window.title = @"Bao";
     window.delegate = controller;
     window.restorable = NO;
@@ -348,8 +438,14 @@ int bao_permissions_show(const BaoPermissionsOpts *opts) {
     controller.window = window;
     BaoCard *access = [[BaoCard alloc] initWithTitle:kAccessibilityTitle purpose:kAccessibilityPurpose];
     BaoCard *files = [[BaoCard alloc] initWithTitle:kFilesTitle purpose:kFilesPurpose];
-    access.frame = NSMakeRect(20, 140, 520, 108);
-    files.frame = NSMakeRect(20, 20, 520, 108);
+    CGFloat cardWidth = 520;
+    CGFloat accessHeight = [access fittedHeightForWidth:cardWidth];
+    CGFloat filesHeight = [files fittedHeightForWidth:cardWidth];
+    CGFloat gap = 12;
+    CGFloat margin = 20;
+    files.frame = NSMakeRect(margin, margin, cardWidth, filesHeight);
+    access.frame = NSMakeRect(margin, margin + filesHeight + gap, cardWidth, accessHeight);
+    [window setContentSize:NSMakeSize(cardWidth + margin * 2, margin + filesHeight + gap + accessHeight + margin)];
     access.action.target = controller;
     access.action.action = @selector(allowAccessibility:);
     files.action.target = controller;

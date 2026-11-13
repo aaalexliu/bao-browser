@@ -35,6 +35,7 @@ int bao_note_responsible(void);
 int bao_run_helper(const char *self, int argc, char *argv[]);
 
 /* bao --permissions [--owned] [--check] [--seam denied|allowed] [--dock accessibility|chrome]
+ * [--appearance light|dark]
  * The copy that answers for itself shows the permission window, or prints a
  * line and exits 0 when this process has no window server. */
 int bao_permissions_main(const char *self, int argc, char *argv[]);

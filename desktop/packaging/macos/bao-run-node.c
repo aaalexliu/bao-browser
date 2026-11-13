@@ -139,13 +139,15 @@ int bao_permissions_main(const char *self, int argc, char *argv[]) {
     args[n] = NULL;
     return spawn_and_wait(self, args, 1);
   }
-  BaoPermissionsOpts opts = {0, 0, 0, NULL};
+  BaoPermissionsOpts opts = {0, 0, 0, 0, NULL};
   for (int i = 2; i < argc; i++) {
     if (strcmp(argv[i], "--check") == 0) opts.check = 1;
     else if (strcmp(argv[i], "--seam") == 0 && i + 1 < argc) {
       opts.seam = strcmp(argv[++i], "allowed") == 0 ? 2 : 1;
     } else if (strcmp(argv[i], "--dock") == 0 && i + 1 < argc) {
       opts.dock = strcmp(argv[++i], "chrome") == 0 ? 2 : 1;
+    } else if (strcmp(argv[i], "--appearance") == 0 && i + 1 < argc) {
+      opts.appearance = strcmp(argv[++i], "dark") == 0 ? 2 : 1;
     } else if (strcmp(argv[i], "--shot") == 0 && i + 1 < argc) {
       opts.shot = argv[++i];
     }
