@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -11,9 +11,10 @@ import { connectCdp } from "../../src/cdp-live/socket";
 import { AgentBrowserRun } from "../../src/engines/agent-browser-record";
 import { ChromeProfileQuestion } from "../../src/engines/browser-pick";
 import {
-  agentProfileText, capTabs, readListeningProfileTabs, readProfileTabs, tabHost, trimField,
+  agentProfileText, capTabs, listProfileTabs, readListeningProfileTabs, readProfileTabs, tabHost, trimField,
   type ProfileTab, type TabSocket,
 } from "../../src/engines/profile-tabs";
+import { openTabsFromSnss } from "../../src/engines/snss-tabs";
 import { profileQuestionResult } from "../../src/mcp/tool-card";
 import { getRun } from "../../src/mcp/catalog";
 import { testChromium } from "../../src/test-browser.js";
@@ -192,3 +193,155 @@ test("the opening call's profile and reason are on the run and in get_run", asyn
     await rm(home, { recursive: true, force: true });
   }
 });
+
+function snssCommand(id: number, payload: Buffer): Buffer {
+  const frame = Buffer.alloc(3 + payload.length);
+  frame.writeUInt16LE(1 + payload.length, 0);
+  frame[2] = id;
+  payload.copy(frame, 3);
+  return frame;
+}
+
+function navigationCommand(tab: number, url: string, title: string, index = 0): Buffer {
+  const urlBytes = Buffer.from(url, "utf8");
+  const titleUnits = Buffer.from(title, "utf16le");
+  const urlPad = (4 - (urlBytes.length % 4)) % 4;
+  const body = Buffer.alloc(8 + 4 + urlBytes.length + urlPad + 4 + titleUnits.length);
+  body.writeUInt32LE(tab, 0);
+  body.writeInt32LE(index, 4);
+  body.writeInt32LE(urlBytes.length, 8);
+  urlBytes.copy(body, 12);
+  const titleAt = 12 + urlBytes.length + urlPad;
+  body.writeInt32LE(title.length, titleAt);
+  titleUnits.copy(body, titleAt + 4);
+  const payload = Buffer.alloc(4 + body.length);
+  payload.writeUInt32LE(body.length, 0);
+  body.copy(payload, 4);
+  return snssCommand(6, payload);
+}
+
+function snssFile(...commands: Buffer[]): Buffer {
+  const header = Buffer.alloc(8);
+  header.write("SNSS", 0, "latin1");
+  header.writeUInt32LE(3, 4);
+  return Buffer.concat([header, ...commands]);
+}
+
+test("a closed tab in a session file is not listed, and a query is not either", async () => {
+  const gone = navigationCommand(1, `https://robinhood.com/stocks?code=${secret}`, "Robinhood");
+  const kept = navigationCommand(2, `https://complysci.com/home?id=${secret}`, "ComplySci");
+  const closed = Buffer.alloc(4);
+  closed.writeUInt32LE(1, 0);
+  const open = openTabsFromSnss(snssFile(gone, kept, snssCommand(16, closed)));
+  assert.deepEqual(open, [{ url: `https://complysci.com/home?id=${secret}`, title: "ComplySci" }]);
+  const current = Buffer.alloc(8);
+  current.writeUInt32LE(3, 0);
+  const back = openTabsFromSnss(snssFile(
+    navigationCommand(3, "https://robinhood.com/stocks", "Robinhood", 0),
+    navigationCommand(3, `https://mail.example.test/inbox?id=${secret}`, "Inbox", 1),
+    snssCommand(7, current),
+  ));
+  assert.deepEqual(back, [{ url: "https://robinhood.com/stocks", title: "Robinhood" }]);
+  const root = await mkdtemp(path.join(tmpdir(), "bao-snss-synthetic-"));
+  try {
+    const sessions = path.join(root, "Default", "Sessions");
+    await mkdir(sessions, { recursive: true });
+    await writeFile(path.join(sessions, "Session_1"), snssFile(gone, kept, snssCommand(16, closed)));
+    const listing = await listProfileTabs(root, ["Default"]);
+    const packed = JSON.stringify(listing);
+    assert.equal(packed.includes(secret), false, packed);
+    assert.equal(packed.includes("?"), false, packed);
+    assert.deepEqual(listing.byDirectory.Default?.tabs, [{ title: "ComplySci", host: "complysci.com" }]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a session file Chrome wrote names the profile, and the query stays out", { timeout: 60_000 }, async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-snss-chrome-"));
+  const page = createServer((req, response) => {
+    const title = req.url?.startsWith("/work") ? "ComplySci" : "Robinhood";
+    response.setHeader("content-type", "text/html");
+    response.end(`<title>${title}</title><p>ok</p>`);
+  });
+  await new Promise<void>((resolve) => page.listen(0, "127.0.0.1", resolve));
+  const pagePort = (page.address() as AddressInfo).port;
+  const children: ChildProcess[] = [];
+  const prior = process.env.BAO_LANE;
+  try {
+    await writeProfileSession(root, "Default", children, `http://127.0.0.1:${pagePort}/stocks?code=${secret}`);
+    await writeProfileSession(root, "Profile 2", children, `http://127.0.0.1:${pagePort}/work?id=${secret}`);
+    process.env.BAO_LANE = "hermetic";
+    const listing = await listProfileTabs(root, ["Default", "Profile 2"]);
+    const packed = JSON.stringify(listing);
+    assert.equal(packed.includes(secret), false, packed);
+    assert.equal(packed.includes("?"), false, packed);
+    assert.equal(listing.note, undefined, packed);
+    assert.deepEqual(listing.byDirectory.Default?.tabs, [{ title: "Robinhood", host: "127.0.0.1" }]);
+    assert.deepEqual(listing.byDirectory["Profile 2"]?.tabs, [{ title: "ComplySci", host: "127.0.0.1" }]);
+  } finally {
+    if (prior === undefined) delete process.env.BAO_LANE;
+    else process.env.BAO_LANE = prior;
+    for (const child of children) child.kill("SIGKILL");
+    page.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("an unreadable Chrome folder keeps the listener counts and says so", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-snss-denied-"));
+  const prior = process.env.BAO_LANE;
+  try {
+    await mkdir(path.join(root, "Default"));
+    await chmod(path.join(root, "Default"), 0);
+    process.env.BAO_LANE = "hermetic";
+    const listing = await listProfileTabs(root, ["Default"]);
+    assert.equal(listing.unread, "remote debugging is off");
+    assert.equal(listing.note, "Chrome's folder is not readable, so tabs were not read from disk.");
+    assert.equal(listing.byDirectory.Default, undefined);
+    const text = agentProfileText(root, [{ directory: "Default", name: "Home", email: "" }], undefined, listing);
+    assert.match(text, /open tabs were not read \(remote debugging is off\)/);
+    assert.match(text, /Chrome's folder is not readable/);
+  } finally {
+    if (prior === undefined) delete process.env.BAO_LANE;
+    else process.env.BAO_LANE = prior;
+    await chmod(path.join(root, "Default"), 0o700).catch(() => undefined);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+async function writeProfileSession(root: string, profile: string, children: ChildProcess[], url: string): Promise<void> {
+  const exe = process.env.BAO_TEST_BROWSER || testChromium.executablePath();
+  const child = spawn(exe, [
+    `--user-data-dir=${root}`, "--remote-debugging-port=0", "--headless=new", `--profile-directory=${profile}`,
+    "--use-mock-keychain", "--password-store=basic", "--no-first-run", "--no-default-browser-check", url,
+  ], { stdio: "ignore" });
+  children.push(child);
+  const endpoint = await waitForEndpoint(path.join(root, "DevToolsActivePort"));
+  const cdp = await connectCdp(endpoint.port, endpoint.browserPath, { timeoutMs: 5000 });
+  try {
+    await waitForHost(cdp, "127.0.0.1");
+    await waitForSavedUrl(path.join(root, profile, "Sessions"), url);
+    await cdp.send("Browser.close", {}, undefined, 3000);
+  } finally {
+    cdp.close();
+  }
+  await new Promise<void>((resolve) => child.once("exit", () => resolve()));
+  await rm(path.join(root, "DevToolsActivePort"), { force: true });
+}
+
+async function waitForSavedUrl(dir: string, url: string): Promise<void> {
+  const deadline = Date.now() + 8_000;
+  let last = "no session file";
+  while (Date.now() < deadline) {
+    const names = await readdir(dir).catch(() => []);
+    const session = names.filter((name) => name.startsWith("Session_")).sort().at(-1);
+    if (session) {
+      const open = openTabsFromSnss(await readFile(path.join(dir, session)));
+      last = open ? open.map((tab) => tab.url).join(" ") : "unreadable session file";
+      if (open?.some((tab) => tab.url === url)) return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`Chrome did not write ${url} to ${dir}: ${last}`);
+}

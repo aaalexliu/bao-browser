@@ -19,7 +19,7 @@ import { chromeProfilesRoot, openCopiedChromeForProxy } from "./chrome-profile-c
 import { ChromeFolderDenied } from "../chrome-access";
 import { baoAgentProfileDir, openBaoChromeForProxy, type SignInImport } from "./bao-profile";
 import { baoPick, boundOpenPlan, boundRoute, chromeApp, ChromeProfileQuestion, chooseChromeProfile, failedPickLine, fallbackPlan, fallsBack, openOrFallBack, pickLine, RoutesFailed, shortPickLine, signInLine, signInSource, type BrowserPick, type BrowserPlan, type RouteWhy } from "./browser-pick";
-import { readListeningProfileTabs } from "./profile-tabs";
+import { listProfileTabs } from "./profile-tabs";
 import { BOUND_REASON, boundSite, purgeBoundSites } from "./bound-sign-in";
 import { OWNER_WAIT_LIMIT_MS, ownerWall, ownerWallOnAddress, ownerCanResume, ownerTask, ownerWaitTimeout, ownerWaitInstruction, type OwnerPage } from "../cdp-live/owner-wait";
 import { pageWall } from "../cdp-live/page-wall";
@@ -1091,11 +1091,11 @@ export class AgentBrowserProxy {
 
   /**
    * Tabs for the profile question. A failed read still asks. It does not open a browser or turn debugging on.
-   * The socket the read opens is closed before this returns, and the Chrome hold is not started.
+   * Session files name every profile. The listener, if one is already up, only fills titles. Its socket is closed before this returns.
    */
   private async withOpenTabs(error: ChromeProfileQuestion): Promise<ChromeProfileQuestion> {
     try {
-      return error.withListing(await readListeningProfileTabs(error.root, error.profiles.map((profile) => profile.directory)));
+      return error.withListing(await listProfileTabs(error.root, error.profiles.map((profile) => profile.directory)));
     } catch {
       return error.withListing({ byDirectory: {}, unread: "remote debugging is off" });
     }

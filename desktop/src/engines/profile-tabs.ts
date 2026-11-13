@@ -2,6 +2,7 @@ import { realpathSync } from "node:fs";
 import path from "node:path";
 import { connectCdp, type CdpSocket } from "../cdp-live/socket";
 import { readDevToolsActivePort, type DevToolsEndpoint } from "../cdp-live/endpoint";
+import { readSavedProfileTabs, type SavedTab } from "./snss-tabs";
 
 /**
  * Ten tabs is enough to spot the site the task needs, such as robinhood.com.
@@ -31,7 +32,14 @@ export interface ProfileTabListing {
   unread?: string;
   /** Page targets whose profile folder could not be read. Their URLs are not included. */
   unmatched?: number;
+  /** Extra sentence. Does not hide tabs the listing already has. */
+  note?: string;
 }
+
+const SAVED_NOTE = {
+  denied: "Chrome's folder is not readable, so tabs were not read from disk.",
+  unreadable: "A session file could not be read, so tabs were not read from disk.",
+} as const;
 
 interface TargetInfo {
   targetId?: string;
@@ -171,6 +179,49 @@ async function contextDirectory(cdp: TabSocket, contextId: string | undefined, r
 }
 
 /**
+ * Open tabs for the profile question. Reads each profile's session files, so an unfocused profile is named without opening a window.
+ * A failed disk read keeps the listener counts, when Chrome is already listening, and says why the files were not used.
+ */
+export async function listProfileTabs(root: string, directories: readonly string[]): Promise<ProfileTabListing> {
+  let saved;
+  try {
+    saved = await readSavedProfileTabs(root, directories);
+  } catch {
+    saved = { ok: false as const, reason: "unreadable" as const };
+  }
+  const live = await readListeningProfileTabs(root, directories);
+  if (!saved.ok) return { ...live, note: SAVED_NOTE[saved.reason] };
+  return withLiveTitles(savedListing(saved.byDirectory), live);
+}
+
+function savedListing(byDirectory: Record<string, SavedTab[]>): ProfileTabListing {
+  const listed: Record<string, ProfileTabGroup> = {};
+  for (const [directory, tabs] of Object.entries(byDirectory)) listed[directory] = capTabs(tabs.flatMap(savedTab));
+  return { byDirectory: listed };
+}
+
+function savedTab(tab: SavedTab): ProfileTab[] {
+  const host = tabHost(tab.url);
+  return host ? [{ title: safeTitle(tab.title), host }] : [];
+}
+
+/** Live titles replace saved ones for the same host. A live tab the session file has not flushed yet is added to that profile. */
+function withLiveTitles(saved: ProfileTabListing, live: ProfileTabListing): ProfileTabListing {
+  if (live.unread) return saved;
+  const byDirectory = { ...saved.byDirectory };
+  for (const [directory, liveGroup] of Object.entries(live.byDirectory)) {
+    const group = byDirectory[directory] ?? { tabs: [], omitted: 0 };
+    const hosts = new Set(group.tabs.map((tab) => tab.host));
+    const titled = group.tabs.map((tab) => {
+      const liveTab = liveGroup.tabs.find((item) => item.host === tab.host && item.title);
+      return liveTab ? { ...tab, title: liveTab.title } : tab;
+    });
+    byDirectory[directory] = capTabs([...titled, ...liveGroup.tabs.filter((tab) => !hosts.has(tab.host))]);
+  }
+  return { byDirectory };
+}
+
+/**
  * Tabs from a debugger that is already listening on this Chrome folder.
  * A hermetic run does not scan or connect: a test that did would raise the owner's Allow sheet.
  * This connects its own socket and closes it before returning. It does not turn debugging on,
@@ -219,7 +270,8 @@ export function agentProfileText(root: string, profiles: { directory: string; na
     return `${name}: ${body}${more}${mark}`;
   });
   const unmatched = read.unmatched ? [`${read.unmatched} open tabs could not be matched to a profile.`] : [];
-  return [head, ...lines, ...unmatched].join("\n");
+  const note = read.note ? [read.note] : [];
+  return [head, ...lines, ...unmatched, ...note].join("\n");
 }
 
 /** The example folder is a call shape, not the profile the model should pick. */
