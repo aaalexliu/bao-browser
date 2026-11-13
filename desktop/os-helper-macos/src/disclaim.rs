@@ -1,10 +1,10 @@
-//! Start the helper as its own TCC responsible process without LaunchServices.
+//! Disclaim path for a helper that Bao did not start.
 //!
-//! A plain child inherits its parent's TCC identity, so Bao used to launch the
-//! helper with `open -a`. That path stalls when LaunchServices cannot resume the
-//! stopped app it spawned. Instead the helper respawns itself with the
-//! disclaim spawn attribute, so TCC checks the helper's own grant, and the
-//! caller keeps a real pid, real pipes, and a real exit code.
+//! A plain child inherits its parent's TCC identity. Bao used to launch the
+//! helper with `open -a`, which stalls when LaunchServices cannot resume the
+//! stopped app. `respawn` still disclaims, so that path is checked as
+//! BaoOSHelper. The caller keeps a real pid, pipes, and exit code.
+//! Bao's `--run-helper` sets `BAO_HELPER_INHERIT` and does not call this.
 
 use std::ffi::CString;
 use std::os::unix::ffi::OsStrExt;

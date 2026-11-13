@@ -91,7 +91,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-mod
 
 ### Signing identity `bao dev signing`
 
-Both package scripts sign with `BAO_SIGN_IDENTITY`, which defaults to the login-keychain certificate `bao dev signing`. Keep that certificate. The grant follows it plus the bundle id. A new self-signed certificate is a different app, and the helper grant does not follow it. Developer ID renewal follows the team requirement in [Release Bao](release.md#signing). `BAO_SIGN_IDENTITY=-` signs ad-hoc, as a release without a signing secret does; [Release Bao](release.md#signing) explains what that costs.
+Both package scripts sign with `BAO_SIGN_IDENTITY`, which defaults to the login-keychain certificate `bao dev signing`. Keep that certificate. The grant follows it plus the bundle id. A new self-signed certificate is a different app, and the grant does not follow it. Device Control and Data Access follows Bao (`dev.bao.desktop`); [Device Control and Data Access](permissions.md#device-control-and-data-access) owns that check. Developer ID renewal follows the team requirement in [Release Bao](release.md#signing). `BAO_SIGN_IDENTITY=-` signs ad-hoc, as a release without a signing secret does; [Release Bao](release.md#signing) explains what that costs.
 
 ```sh
 security find-certificate -c 'bao dev signing' >/dev/null && echo 'certificate present'
