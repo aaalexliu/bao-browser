@@ -11,6 +11,7 @@ import path from "node:path";
 import { appBundleOf } from "../app/bundle";
 import { chromeDataPath } from "../chrome-access";
 import type { CurrentChrome } from "./current-chrome";
+import { productionTurnOff, takeLease, testProcess, turnOffIfIdle, type SwitchLease } from "./debug-switch";
 import { shareConnection } from "./shared-connection";
 import { connectCdp } from "./socket";
 
@@ -357,28 +358,49 @@ async function dropUnchanged(dir: string, record: HoldRecord): Promise<void> {
   });
 }
 
+function bindLease(chrome: CurrentChrome, lease: SwitchLease): CurrentChrome {
+  const detach = chrome.detach.bind(chrome);
+  let released = false;
+  chrome.detach = () => {
+    if (!released) {
+      released = true;
+      lease.release();
+    }
+    detach();
+  };
+  return chrome;
+}
+
 /** Joins the hold for this user-data-dir, starting it when Chrome has none. A second call does not open a second socket. */
 export async function joinOrStartHold(options: HoldOptions): Promise<CurrentChrome> {
   const root = chromeDataPath(options.root);
   const dir = holdDir(root);
   await prepareHoldDir(dir);
-  let missed = false;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const record = await ensureHold(dir, root, options);
-    try {
-      return await joinRecord(record, options.signal);
-    } catch (error) {
-      if (options.signal?.aborted) throw error;
-      if (connectionRefused(error)) {
-        await dropUnchanged(dir, record);
-        continue;
+  // finish_task, close, MCP disconnect, idle end, and a handled stop all detach this session.
+  // A quit or a crash leaves the lease file; the hold reaps a dead pid.
+  const lease = takeLease(dir);
+  try {
+    let missed = false;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const record = await ensureHold(dir, root, options);
+      try {
+        return bindLease(await joinRecord(record, options.signal), lease);
+      } catch (error) {
+        if (options.signal?.aborted) throw error;
+        if (connectionRefused(error)) {
+          await dropUnchanged(dir, record);
+          continue;
+        }
+        if (await readLive(dir, root)) throw error;
+        if (missed) throw error;
+        missed = true;
       }
-      if (await readLive(dir, root)) throw error;
-      if (missed) throw error;
-      missed = true;
     }
+    throw new Error("Bao's Chrome connection closed before the session joined");
+  } catch (error) {
+    lease.release();
+    throw error;
   }
-  throw new Error("Bao's Chrome connection closed before the session joined");
 }
 
 async function connectFixture(root: string, fixture: HoldFixture): Promise<CurrentChrome> {
@@ -420,8 +442,10 @@ function readFixture(): HoldFixture | undefined {
   return fixture;
 }
 
+const SWITCH_POLL_MS = 250;
+
 /** Owns the Chrome socket until that socket closes, and publishes the endpoint sessions join. */
-export async function serveHold(chrome: CurrentChrome, signal?: AbortSignal): Promise<void> {
+export async function serveHold(chrome: CurrentChrome, signal?: AbortSignal, turnOff?: () => Promise<void>): Promise<void> {
   const root = chromeDataPath(chrome.root);
   const dir = holdDir(root);
   const record: HoldRecord = {
@@ -438,7 +462,20 @@ export async function serveHold(chrome: CurrentChrome, signal?: AbortSignal): Pr
     if (signal?.aborted) resolve();
     else signal?.addEventListener("abort", () => resolve(), { once: true });
   });
-  await Promise.race([chrome.closed, stopped]);
+  if (turnOff) {
+    while (!signal?.aborted && !chrome.isClosed()) {
+      if (await turnOffIfIdle(dir, turnOff)) break;
+      await Promise.race([
+        chrome.closed,
+        stopped,
+        new Promise((resolve) => setTimeout(resolve, SWITCH_POLL_MS)),
+      ]);
+    }
+    // The last session released, or this process was signaled, or Chrome quit. A dead lease is a session that did not detach.
+    await turnOffIfIdle(dir, turnOff);
+  } else {
+    await Promise.race([chrome.closed, stopped]);
+  }
   chrome.detach();
   await withHoldLock(dir, async () => {
     const current = await readJson<HoldRecord>(path.join(dir, "hold.json"));
@@ -474,7 +511,7 @@ export async function holdMain(
     if (fixture) chrome = await connectFixture(root, fixture);
     else if (openChrome) chrome = await openChrome({ root, axLog });
     else throw new Error("bao chrome-hold was started without its Chrome opener");
-    await serveHold(chrome, stopping.signal);
+    await serveHold(chrome, stopping.signal, () => productionTurnOff(path.join(root, "DevToolsActivePort"), axLog));
     process.exit(0);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -484,5 +521,21 @@ export async function holdMain(
       if (!starting || starting.holderPid === process.pid) await rm(path.join(dir, "starting.json"), { force: true });
     });
     throw error;
+  }
+}
+
+/** Next Bao start: a crash that skipped the off leaves the claim. Turn it off when nothing still holds it. */
+export async function settleDebugSwitch(): Promise<void> {
+  if (testProcess() || process.platform !== "darwin") return;
+  try {
+    const { chromeProfilesRoot } = await import("../engines/chrome-profile-copy");
+    const root = chromeDataPath(chromeProfilesRoot());
+    const dir = holdDir(root);
+    if (!existsSync(path.join(dir, "switch.json"))) return;
+    const record = await readJson<HoldRecord>(path.join(dir, "hold.json"));
+    const holderAlive = !!record && isRecord(record, root) && pidAlive(record.holderPid);
+    await turnOffIfIdle(dir, () => productionTurnOff(path.join(root, "DevToolsActivePort"), path.join(dir, "ax.jsonl")), { holderAlive });
+  } catch (error) {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
   }
 }

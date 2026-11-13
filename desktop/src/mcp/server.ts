@@ -123,6 +123,8 @@ interface Context {
 }
 
 export async function mcpMain(args: readonly string[] = []): Promise<void> {
+  const { settleDebugSwitch } = await import("../cdp-live/chrome-hold");
+  await settleDebugSwitch();
   const env = { ...process.env };
   const identity = resolveLibraryIdentity(args);
   const home = identity.active.path;

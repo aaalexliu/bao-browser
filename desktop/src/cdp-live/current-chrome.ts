@@ -16,6 +16,7 @@ import { REMOTE_CHECKBOX } from "./consent";
 import type { AxNode } from "../proxy/os-macos";
 import { endpointOnPid, listenPid, listenPorts, probeDevToolsVersion, readDevToolsActivePort, type DevToolsEndpoint, type VersionProbe } from "./endpoint";
 import { CHROME_APP_EXE, dailyChromePids, pathKeys } from "./remote-debugging";
+import { rememberSwitch, withSwitchLock } from "./debug-switch";
 import { holdDir, holdFixtureEndpoint, joinOrStartHold } from "./chrome-hold";
 import { shareConnection } from "./shared-connection";
 import { connectCdp, type CdpSocket } from "./socket";
@@ -288,7 +289,20 @@ export async function connectOwnedChrome(options: {
     if (blocked && blocked.startsWith("Device Control")) throw new Error(accessibilityMissing(await presentMissingMacPermission()));
     if (blocked) throw new Error(blocked);
     if (await deps.helper.screenLocked()) throw new Error("The screen is locked. Unlock it, then try again.");
-    if (!endpoint) {
+    const claimDir = Object.keys(overrides).length === 0 ? holdDir(options.root) : undefined;
+    const enableIfNeeded = async (): Promise<void> => {
+      if (claimDir) {
+        let fresh: DevToolsEndpoint | undefined;
+        try { fresh = await endpointFromFile(); }
+        catch (error) {
+          if (!(error instanceof ChromeFolderDenied)) throw error;
+        }
+        if (!fresh) fresh = await endpointFromListener();
+        endpoint = fresh;
+        // Written before the checkbox changes, so a crash mid-enable still leaves Bao's claim.
+        rememberSwitch(claimDir, !endpoint);
+      }
+      if (endpoint) return;
       const helper = deps.helper;
       options.signal?.throwIfAborted();
       await helper.exec(["inspect-open-ax", "--pid", String(pid)], 30_000);
@@ -312,7 +326,9 @@ export async function connectOwnedChrome(options: {
         if (Date.now() >= portDeadline) throw new Error("Chrome did not open its debugging port");
         await new Promise((resolve) => setTimeout(resolve, 250));
       }
-    }
+    };
+    if (claimDir) await withSwitchLock(claimDir, enableIfNeeded);
+    else await enableIfNeeded();
     const cdp = await withConsent(deps.helper, pid, options.axLog, async (parent) => {
       const signal = AbortSignal.any([parent, AbortSignal.timeout(25_000)]);
       const socket = await deps.connect(endpoint!.port, endpoint!.browserPath, { timeoutMs: 20_000, signal });
