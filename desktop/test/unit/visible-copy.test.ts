@@ -170,7 +170,4 @@ test("the capture bar is an accessory and the bundled browser is named Bao", () 
   assert.equal(bar.includes("dockTile"), false);
   assert.match(script, /Set :CFBundleName Bao/);
   assert.match(script, /Set :CFBundleDisplayName Bao/);
-  assert.match(script, /codesign --force --sign "\$IDENTITY" "\$CHROME"/);
-  assert.equal(/codesign[^\n]*--deep/.test(script), false);
-  assert.equal(/codesign[^\n]*BaoOSHelper/.test(script), false);
 });

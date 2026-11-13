@@ -182,6 +182,43 @@ require("node:fs").appendFileSync(${JSON.stringify(log)}, JSON.stringify(process
   }
 });
 
+test("Chromium signing is inside-out, uses runtime entitlements, and leaves the helper untouched", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "bao-chromium-sign-"));
+  const browser = path.join(dir, "Chromium.app");
+  const framework = path.join(browser, "Contents/Frameworks/Chromium Framework.framework");
+  const main = path.join(browser, "Contents/MacOS/Chromium");
+  const library = path.join(framework, "Versions/A/Chromium Framework");
+  const helper = path.join(browser, "Contents/Resources/BaoOSHelper.app/Contents/MacOS/BaoOSHelper");
+  const bin = path.join(dir, "bin");
+  const log = path.join(dir, "codesign.jsonl");
+  const entitlements = path.resolve("desktop/packaging/macos/entitlements-chromium.plist");
+  try {
+    mkdirSync(bin);
+    // A Mach-O 64-bit ARM executable header, recognized by file on macOS and Linux.
+    const header = Buffer.from("cffaedfe0c000001000000000200000000000000000000000000000000000000", "hex");
+    for (const file of [main, library, helper]) {
+      mkdirSync(path.dirname(file), { recursive: true });
+      writeFileSync(file, header);
+    }
+    writeFileSync(path.join(bin, "codesign"), `#!${process.execPath}
+require("node:fs").appendFileSync(${JSON.stringify(log)}, JSON.stringify(process.argv.slice(2)) + "\\n");
+`);
+    chmodSync(path.join(bin, "codesign"), 0o755);
+    const result = spawnSync("bash", ["desktop/packaging/macos/sign-runtime.sh", "--inside-out", "--entitlements", entitlements, browser], {
+      encoding: "utf8",
+      env: signingEnv(dir, { PATH: `${bin}:${process.env.PATH}`, BAO_SIGN_IDENTITY: "test signing identity", BAO_APPLE_TEAM_ID: TEAM }),
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const calls = readFileSync(log, "utf8").trim().split("\n").map((line) => JSON.parse(line) as string[]);
+    assert.deepEqual(calls, [library, main, framework, browser].map((target) => [
+      "--force", "--options", "runtime", "--sign", "test signing identity", "--timestamp", "--entitlements", entitlements, target,
+    ]));
+    assert.deepEqual(readFileSync(helper), header);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("a release with no signing secret stays ad-hoc and does not pin a helper hash", () => {
   const dir = mkdtempSync(path.join(tmpdir(), "bao-ci-sign-"));
   try {
