@@ -15,6 +15,7 @@ pinTestBrowser();
 
 const JANUARY = "JANUARY-PDF\n";
 const OCTOBER = "OCTOBER-PDF\n";
+const REPORT = "<!doctype html><title>Report</title><p>October report</p>\n";
 
 async function listen(server: Server): Promise<string> {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -125,6 +126,7 @@ test("a download saves the handler's file, captures window.open, and falls back 
   const root = await mkdtemp(path.join(tmpdir(), "bao-transfer-click-"));
   const page = `<!doctype html><title>Statements</title>
 <a id=plain href=/october.pdf>October</a>
+<a id=report href=/report.html download>Report</a>
 <a id=month href=/january.pdf>Month</a>
 <a id=popup href=/gate target=_blank>Popup</a>
 <a id=cross target=_blank>Cross</a>
@@ -150,6 +152,7 @@ halt.addEventListener("submit", (event) => event.preventDefault());
     if (request.url === "/october.pdf") { response.setHeader("content-type", "application/pdf"); response.end(OCTOBER); return; }
     if (request.url === "/january.pdf") { response.setHeader("content-type", "application/pdf"); response.end(JANUARY); return; }
     if (request.url === "/gate") { response.setHeader("content-type", "text/html"); response.end("<!doctype html><title>Gate</title>"); return; }
+    if (request.url === "/report.html") { response.setHeader("content-type", "text/html"); response.end(REPORT); return; }
     const asked = new URL(request.url ?? "/", "http://127.0.0.1");
     if (asked.pathname === "/statement") {
       const months = asked.searchParams.getAll("month");
@@ -237,6 +240,12 @@ halt.addEventListener("submit", (event) => event.preventDefault());
     assert.equal(plain.text, OCTOBER);
     assert.match(plain.outcome.result.stdout, /did not open a tab/);
     assert.deepEqual(plain.contexts, [], "a plain link download opens no tab");
+
+    const report = await save(workTab, "#report", "report.html");
+    assert.equal(report.text, REPORT);
+    assert.doesNotMatch(report.text, /Statements/);
+    assert.match(report.outcome.result.stdout, /did not open a tab/);
+    assert.deepEqual(report.contexts, [], "an HTML download attribute opens no tab");
 
     const month = await save(workTab, "#month", "month.pdf");
     assert.equal(month.text, OCTOBER);

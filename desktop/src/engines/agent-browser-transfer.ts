@@ -88,15 +88,15 @@ async function writeStash(cdp: CdpSocket, targetId: string, file: string, key: s
   await writeFile(file, Buffer.from(parts.join(""), "base64"));
 }
 
-/** Fetches `url` in the page with the page's cookies. An HTML page that is not an attachment is not the file. */
-async function fetchLink(cdp: CdpSocket, targetId: string, file: string, url: string): Promise<"file" | "page"> {
+/** Fetches `url` in the page with the page's cookies. An HTML page is not the file unless it is an attachment or the link asked to download it. */
+async function fetchLink(cdp: CdpSocket, targetId: string, file: string, url: string, download: boolean): Promise<"file" | "page"> {
   const key = `__bao_file_${Date.now()}`;
   const fetched = await inPage<{ kind: "file"; total: number } | { kind: "page" }>(cdp, targetId, `(async () => {
     const response = await fetch(${JSON.stringify(url)}, { credentials: "include" });
     if (!response.ok) throw new Error("the file fetch returned HTTP " + response.status);
     const type = (response.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
     const disposition = (response.headers.get("content-disposition") || "").toLowerCase();
-    if (type === "text/html" && !disposition.includes("attachment")) return { kind: "page" };
+    if (!${download ? "true" : "false"} && type === "text/html" && !disposition.includes("attachment")) return { kind: "page" };
     const blob = await response.blob();
     const data = await new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -160,6 +160,7 @@ const ARM_CLICK = `(() => {
     if (url.protocol !== "http:" && url.protocol !== "https:") return;
     event.preventDefault();
     window.__baoDownloadHref = url.href;
+    window.__baoDownloadNamed = link.hasAttribute("download");
   };
   const onSubmit = (event) => {
     if (event.defaultPrevented) return;
@@ -191,20 +192,22 @@ const TAKE_CLICK = `(() => {
   if (typeof window.__baoPriorOpen === "function") window.open = window.__baoPriorOpen;
   const href = typeof window.__baoDownloadHref === "string" ? window.__baoDownloadHref : "";
   const opened = typeof window.__baoOpened === "string" ? window.__baoOpened : "";
+  const download = window.__baoDownloadNamed === true;
   delete window.__baoDownloadHref;
   delete window.__baoOpened;
+  delete window.__baoDownloadNamed;
   delete window.__baoDownloadClick;
   delete window.__baoDownloadSubmit;
   delete window.__baoPriorOpen;
-  return { href: href, opened: opened };
+  return { href: href, opened: opened, download: download };
 })()`;
 
-function capturedUrl(value: unknown): string {
-  if (!value || typeof value !== "object") return "";
-  const record = value as { href?: unknown; opened?: unknown };
+function capturedClick(value: unknown): { url: string; download: boolean } {
+  if (!value || typeof value !== "object") return { url: "", download: false };
+  const record = value as { href?: unknown; opened?: unknown; download?: unknown };
   const opened = typeof record.opened === "string" ? record.opened : "";
   const href = typeof record.href === "string" ? record.href : "";
-  return opened || href;
+  return { url: opened || href, download: !opened && record.download === true };
 }
 
 async function closeOpened(cdp: CdpSocket, agentTab: string, before: { targets: ReadonlySet<string> }): Promise<void> {
@@ -329,15 +332,18 @@ export async function downloadByClick(cdp: CdpSocket, agentTab: string, saved: s
     }
     let clicked: AgentBrowserCommandResult;
     let href = "";
+    let named = false;
     try {
       clicked = await click();
     } finally {
-      href = capturedUrl(await inPage(cdp, agentTab, TAKE_CLICK).catch(() => undefined));
+      const captured = capturedClick(await inPage(cdp, agentTab, TAKE_CLICK).catch(() => undefined));
+      href = captured.url;
+      named = captured.download;
     }
     if (clicked.exitCode !== 0) return { result: clicked };
     if (href && !started) {
       try {
-        const kind = await fetchLink(cdp, agentTab, saved, href);
+        const kind = await fetchLink(cdp, agentTab, saved, href, named);
         if (kind === "file") {
           await closeOpened(cdp, agentTab, before);
           return linkSaved(saved, href);
