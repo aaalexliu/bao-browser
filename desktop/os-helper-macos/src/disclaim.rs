@@ -85,6 +85,10 @@ fn spawn_self() -> Result<i32, String> {
 }
 
 /// The child must not outlive the process its caller is waiting on.
+pub(crate) fn watch_caller() {
+    exit_with_parent();
+}
+
 fn exit_with_parent() {
     let parent = unsafe { libc::getppid() };
     if parent == 1 {

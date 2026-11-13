@@ -97,7 +97,7 @@ test("app status and UI never ask for retired Chrome helper permissions", { time
   }
 });
 
-test("Settings shows whether Bao can read Google Chrome's folder and opens Files & Folders", { timeout: scaledMs(60_000), skip: process.platform !== "darwin" && "Files & Folders is a macOS setting" }, async (t) => {
+test("Settings shows whether Bao can read Google Chrome's folder and offers Set up", { timeout: scaledMs(60_000), skip: process.platform !== "darwin" && "Files & Folders is a macOS setting" }, async (t) => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-chrome-folder-"));
   const profiles = path.join(home, "profiles");
   await mkdir(path.join(profiles, "Default"), { recursive: true });
@@ -118,7 +118,8 @@ test("Settings shows whether Bao can read Google Chrome's folder and opens Files
     assert.match(await row.innerText(), /✓ Allowed/);
     assert.match(await row.innerText(), /Agents use their own app's switch, such as ChatGPT for Codex\./);
     assert.doesNotMatch(await row.innerText(), /Turn on/);
-    assert.equal(await row.locator("#chrome-folder-settings").getAttribute("href"), "x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders");
+    assert.equal(await row.locator(".mac-permissions-setup").innerText(), "Set up");
+    assert.equal(await row.locator("#chrome-folder-settings").count(), 0);
 
     await chmod(profiles, 0o000);
     await page.reload();

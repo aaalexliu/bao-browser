@@ -52,6 +52,7 @@ export interface AxHit {
   screenCapture?: boolean;
   exe?: string;
   parentExe?: string;
+  responsibleExe?: string;
   prompted?: boolean;
   before?: AxFrame;
   after?: AxFrame;
@@ -104,11 +105,24 @@ function canonical(file: string): string {
   }
 }
 
+function baoResponsible(exe: string | undefined): boolean {
+  return Boolean(exe && /\/Bao\.app\/Contents\/MacOS\/bao$/.test(canonical(exe)));
+}
+
 function accepted(command: string | undefined, hit: AxHit): AxHit {
-  if ((command === "permissions" || command === "permissions-ax") && !(hit.exe && hit.parentExe && canonical(hit.exe) === canonical(hit.parentExe))) {
+  // A permissions report is trusted only when macOS is asking about Bao.
+  // An old helper that disclaimed itself has no such responsible executable.
+  if ((command === "permissions" || command === "permissions-ax") && !baoResponsible(hit.responsibleExe)) {
     throw new Error(HELPER_TOO_OLD);
   }
   return hit;
+}
+
+function baoBeside(helperApp: string): string | undefined {
+  const app = /^(.*\.app)\/Contents\/Resources\/[^/]+\.app$/.exec(path.resolve(helperApp))?.[1];
+  if (!app) return undefined;
+  const bao = path.join(app, "Contents", "MacOS", "bao");
+  return existsSync(bao) ? bao : undefined;
 }
 
 /** The executable inside a helper bundle. */
@@ -121,11 +135,14 @@ function killGroup(child: ChildProcess): void {
   try { process.kill(-child.pid, "SIGKILL"); } catch { /* the group already exited */ }
 }
 
-/** Spawns the helper directly, not through LaunchServices. BaoOSHelper respawns itself as its own
- * responsible process, so TCC still checks the helper's grant. The helper leads its own process
- * group, and a timeout kills that group, so no helper outlives the call. */
+/** Starts the helper under bao --run-helper when this app has that launcher, so macOS asks
+ * about Bao. A checkout with no Bao.app binary starts the helper executable itself. The process
+ * leads its own group, and a timeout kills that group, so no helper outlives the call. */
 function run(bin: string, args: string[], timeoutMs = bin.endsWith(".app") ? 45_000 : 20_000): Promise<AxHit> {
   const exe = helperExecutable(bin);
+  const bao = bin.endsWith(".app") ? baoBeside(bin) : undefined;
+  const command = bao ?? exe;
+  const commandArgs = bao ? ["--run-helper", bin, "--", ...args] : args;
   return new Promise((resolve, reject) => {
     let settled = false;
     const settle = (finish: () => void) => {
@@ -134,12 +151,12 @@ function run(bin: string, args: string[], timeoutMs = bin.endsWith(".app") ? 45_
       clearTimeout(timer);
       finish();
     };
-    const child = spawn(exe, args, { stdio: ["ignore", "pipe", "pipe"], detached: true });
+    const child = spawn(command, commandArgs, { stdio: ["ignore", "pipe", "pipe"], detached: true });
     let out = "";
     let err = "";
     child.stdout?.on("data", (chunk: Buffer) => { out += chunk.toString(); });
     child.stderr?.on("data", (chunk: Buffer) => { err += chunk.toString(); });
-    child.on("error", (error) => settle(() => reject(new Error(`could not start ${path.basename(exe)}: ${error.message}`))));
+    child.on("error", (error) => settle(() => reject(new Error(`could not start ${path.basename(command)}: ${error.message}`))));
     const timer = setTimeout(() => settle(() => {
       killGroup(child);
       reject(new Error(`os helper timed out: ${args[0]}`));

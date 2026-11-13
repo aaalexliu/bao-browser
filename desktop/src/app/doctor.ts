@@ -1,11 +1,12 @@
 // bao doctor: checks one installed Bao.app the way an agent would use it. It reads signatures,
-// configs and files, and starts bao-mcp once for an MCP handshake. It asks for no macOS permission.
+// configs and files, and starts bao-mcp once for an MCP handshake. Grant checks do not prompt.
 
 import { spawn, spawnSync } from "node:child_process";
 import { accessSync, constants, existsSync } from "node:fs";
 import path from "node:path";
 import { agentsNote, askedApp, chromeFolderAccess } from "../chrome-access";
 import { appVersion, mcpLauncher } from "./bundle";
+import { ACCESSIBILITY_GRANT, openPermissionWindow, readMacGrants } from "./mac-permissions";
 import { baoCommand, defaultProbe, detectTargets, parseSetup, type Probe } from "./setup";
 
 type Level = "ok" | "warn" | "fail";
@@ -105,11 +106,30 @@ export async function doctorChecks(app: string, probe: Probe): Promise<Check[]> 
     ? { level: "ok", name: "node", detail: `bundled ${run(bundled, ["--version"]).stdout.trim()} at ${bundled}` }
     : { level: "warn", name: "node", detail: `not bundled; this copy uses Node from the Mac (${process.execPath} ${process.version})` });
   const helper = path.join(app, "Contents", "Resources", "BaoOSHelper.app");
-  if (existsSync(helper)) {
+  const helperMissing = !existsSync(helper);
+  if (!helperMissing) {
     const check = signatureCheck("helper", helper);
-    checks.push({ ...check, detail: `${check.detail}. Running Chrome (browser=current) is the default and uses it to press the Allow sheet, with an Accessibility grant. Optional: the native Mac app driver (bao mcp-ax) and bao remote-debugging` });
+    if (check.level !== "ok") checks.push(check);
+  }
+  const grants = probe.macGrants ? probe.macGrants() : readMacGrants(app, probe.env);
+  let openedWindow = false;
+  const openWindow = () => {
+    if (openedWindow) return;
+    openedWindow = true;
+    (probe.openPermissions ?? openPermissionWindow)(app);
+  };
+  if (!grants) {
+    checks.push({ level: "warn", name: "accessibility", detail: helperMissing
+      ? `${ACCESSIBILITY_GRANT} was not checked. Bao's helper is not installed, so Running Chrome cannot press Chrome's Allow.`
+      : `${ACCESSIBILITY_GRANT} was not checked from this process. On this Mac, run bao doctor.` });
+  } else if (!grants.accessibility) {
+    const opened = (probe.openPermissions ?? openPermissionWindow)(app);
+    openedWindow = true;
+    checks.push({ level: "warn", name: "accessibility", detail: opened.opened
+      ? `${ACCESSIBILITY_GRANT} is not on for Bao. Opened the permission window.`
+      : `${ACCESSIBILITY_GRANT} is not on for Bao. ${opened.line}` });
   } else {
-    checks.push({ level: "warn", name: "helper", detail: "not installed. Running Chrome is the default and needs the helper's Accessibility grant for the Allow press. A Bao profile or a copy does not need the helper." });
+    checks.push({ level: "ok", name: "accessibility", detail: `${ACCESSIBILITY_GRANT} is on for Bao.` });
   }
   const chrome = probe.appDirs.map((dir) => path.join(dir, "Google Chrome.app")).find((dir) => existsSync(dir));
   checks.push(chrome
@@ -120,7 +140,10 @@ export async function doctorChecks(app: string, probe: Probe): Promise<Check[]> 
     const access = chromeFolderAccess(probe.chromeRoot, probe.env);
     const note = agentsNote(probe.env);
     if (access.state === "allowed") checks.push({ level: "ok", name: "chrome folder", detail: `${askedApp(probe.env) ?? "this process"} can read ${access.root}.${note ? ` ${note}` : ""}` });
-    else if (access.state !== "missing") checks.push({ level: "warn", name: "chrome folder", detail: `${access.message}${note ? ` ${note}` : ""}` });
+    else if (access.state !== "missing") {
+      checks.push({ level: "warn", name: "chrome folder", detail: `${access.message}${note ? ` ${note}` : ""}` });
+      openWindow();
+    }
   }
   const bao = baoCommand(probe, app);
   for (const target of detectTargets(probe)) {

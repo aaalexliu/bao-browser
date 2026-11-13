@@ -97,7 +97,7 @@ export const SCREEN_LOCKED = "The screen is locked. Unlock it, then try again.";
 export const CHROME_NOT_OPEN = "Chrome is not open. Open Google Chrome, then try again";
 export const AUTOMATION_DENIED = "BaoOSHelper is not allowed to control Google Chrome. Turn it on in System Settings > Privacy & Security > Automation > BaoOSHelper > Google Chrome, then try again.";
 export const AUTOMATION_PROMPT = "A macOS prompt is on screen. Allow BaoOSHelper to control Google Chrome.";
-export const ACCESSIBILITY_MISSING = "BaoOSHelper accessibility is not granted. Turn it on for BaoOSHelper in System Settings > Privacy & Security > Accessibility, then try again.";
+export const ACCESSIBILITY_MISSING = "Device Control and Data Access is not on for Bao. On this Mac, run bao setup.";
 
 /** Null when the checkbox value does not say on or off. An empty value is not off. */
 export function checkboxKnown(value: string): boolean | null {
@@ -110,9 +110,9 @@ export function checkboxKnown(value: string): boolean | null {
 export function explainRemoteDebuggingError(err: unknown): Error {
   const message = err instanceof Error ? err.message : String(err);
   if (/screen is locked/i.test(message)) return new Error(SCREEN_LOCKED);
-  if (/accessibility is not granted/i.test(message)) return new Error(ACCESSIBILITY_MISSING);
+  if (/accessibility is not granted|Device Control and Data Access is not on/i.test(message)) return new Error(ACCESSIBILITY_MISSING);
   if (/helper asked for a permission prompt/i.test(message)) {
-    return new Error("BaoOSHelper asked for a permission prompt. Grant Accessibility, then try again.");
+    return new Error("Bao asked for a permission prompt. Turn on Device Control and Data Access for Bao, then try again.");
   }
   if (/Chrome is not open/.test(message)) return new Error(CHROME_NOT_OPEN);
   if (/not allowed to control Google Chrome/.test(message)) return new Error(AUTOMATION_DENIED);

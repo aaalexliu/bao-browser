@@ -270,7 +270,11 @@ async function remoteDebugging(args: string[]): Promise<unknown> {
   const { remoteDebuggingBlock } = await import("../helper-capabilities");
   const helper = chromeHelper();
   const block = remoteDebuggingBlock(await helper.permissions(false));
-  if (block) throw new Error(explainRemoteDebuggingError(new Error(block)).message);
+  if (block) {
+    const { presentMissingMacPermission } = await import("../app/mac-permissions");
+    if (block.startsWith("Device Control")) presentMissingMacPermission();
+    throw new Error(explainRemoteDebuggingError(new Error(block)).message);
+  }
   const agent = "bao-remote-debugging";
   const axLog = path.join(resolveHome(args), "live-session", "ax.jsonl");
   await acquireCdpLock(agent, { timeoutMs: 5_000 });

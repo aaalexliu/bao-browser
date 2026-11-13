@@ -12,7 +12,7 @@ test("remote-debugging CLI ignores Screen Recording", () => {
 });
 
 test("remote-debugging CLI still requires Accessibility and refuses a permission prompt", () => {
-  assert.equal(remoteDebuggingBlock({ accessibility: false, screenCapture: true }), "BaoOSHelper accessibility is not granted");
+  assert.equal(remoteDebuggingBlock({ accessibility: false, screenCapture: true }), "Device Control and Data Access is not on for Bao");
   assert.equal(remoteDebuggingBlock({ accessibility: true, prompted: true, screenCapture: false }), "helper asked for a permission prompt");
 });
 

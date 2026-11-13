@@ -63,7 +63,7 @@ codesign -d -r- /Applications/Bao.app/Contents/Resources/BaoOSHelper.app
 codesign -dv /Applications/Bao.app/Contents/Resources/BaoOSHelper.app
 ```
 
-Compare the helper's identity with [Rebuild with an existing grant](mac-build.md#rebuild-with-an-existing-grant), or [Release Bao](release.md#signing) for Developer ID. The grant follows that identity, not a CDHash. Packaging checks `desktop/packaging/helper-identity.js` before compiling or signing. The helper is gitignored. This Bao needs a rebuilt BaoOSHelper that respawns itself with the disclaim spawn attribute. Do not copy the helper from an older installed app before packaging: that build does not disclaim.
+Compare the helper's identity with [Rebuild with an existing grant](mac-build.md#rebuild-with-an-existing-grant), or [Release Bao](release.md#signing) for Developer ID. The grant follows that identity, not a CDHash. Packaging checks `desktop/packaging/helper-identity.js` before compiling or signing. The helper is gitignored. This Bao needs a rebuilt BaoOSHelper that does not disclaim when Bao starts it. Do not copy the helper from an older installed app before packaging: that build disclaims, and Bao rejects its permissions report.
 
 For the existing extension host's separate grant check, use [extension.md](extension.md). Do not change its permissions as a pass-through workaround.
 

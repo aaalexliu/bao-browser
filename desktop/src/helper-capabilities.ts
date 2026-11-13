@@ -70,7 +70,7 @@ export function remoteDebuggingBlock(perms: {
   screenCapture?: boolean;
 }): string | undefined {
   if (perms.prompted) return "helper asked for a permission prompt";
-  if (perms.accessibility !== true) return "BaoOSHelper accessibility is not granted";
+  if (perms.accessibility !== true) return "Device Control and Data Access is not on for Bao";
   return undefined;
 }
 

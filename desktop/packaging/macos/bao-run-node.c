@@ -1,3 +1,4 @@
+#include "bao-permissions.h"
 #include "bao-run-node.h"
 #include "bao-launch.h"
 
@@ -72,6 +73,84 @@ static int spawn_and_wait(const char *path, char *const argv[], int disclaim) {
     return 128 + sig;
   }
   return 1;
+}
+
+static int app_executable(const char *app, char *out, size_t n) {
+  const char *base = strrchr(app, '/');
+  base = base ? base + 1 : app;
+  size_t len = strlen(base);
+  if (len < 5 || strcmp(base + len - 4, ".app") != 0 || len - 4 >= 256) return -1;
+  char name[256];
+  memcpy(name, base, len - 4);
+  name[len - 4] = '\0';
+  int wrote = snprintf(out, n, "%s/Contents/MacOS/%s", app, name);
+  return wrote < 0 || (size_t)wrote >= n ? -1 : 0;
+}
+
+int bao_run_helper(const char *self, int argc, char *argv[]) {
+  int i = 2;
+  int owned = i < argc && strcmp(argv[i], "--owned") == 0;
+  if (owned) i++;
+  if (i >= argc) {
+    fprintf(stderr, "usage: bao --run-helper [--owned] Helper.app -- [args]\n");
+    return 2;
+  }
+  const char *app = argv[i++];
+  if (i < argc && strcmp(argv[i], "--") == 0) i++;
+  if (!owned) {
+    char *args[64];
+    int n = 0;
+    args[n++] = (char *)self;
+    args[n++] = "--run-helper";
+    args[n++] = "--owned";
+    args[n++] = (char *)app;
+    args[n++] = "--";
+    for (; i < argc && n < 63; i++) args[n++] = argv[i];
+    args[n] = NULL;
+    return spawn_and_wait(self, args, 1);
+  }
+  char exe[4096];
+  if (app_executable(app, exe, sizeof exe) != 0 || access(exe, X_OK) != 0) {
+    fprintf(stderr, "helper executable missing\n");
+    return 1;
+  }
+  setenv("BAO_HELPER_INHERIT", "1", 1);
+  char *args[64];
+  int n = 0;
+  args[n++] = exe;
+  for (; i < argc && n < 63; i++) args[n++] = argv[i];
+  args[n] = NULL;
+  return spawn_and_wait(exe, args, 0);
+}
+
+int bao_permissions_main(const char *self, int argc, char *argv[]) {
+  int owned = 0;
+  for (int i = 2; i < argc; i++) if (strcmp(argv[i], "--owned") == 0) owned = 1;
+  if (!owned) {
+    char *args[64];
+    int n = 0;
+    args[n++] = (char *)self;
+    args[n++] = "--permissions";
+    args[n++] = "--owned";
+    for (int i = 2; i < argc && n < 63; i++) {
+      if (strcmp(argv[i], "--owned") == 0) continue;
+      args[n++] = argv[i];
+    }
+    args[n] = NULL;
+    return spawn_and_wait(self, args, 1);
+  }
+  BaoPermissionsOpts opts = {0, 0, 0, NULL};
+  for (int i = 2; i < argc; i++) {
+    if (strcmp(argv[i], "--check") == 0) opts.check = 1;
+    else if (strcmp(argv[i], "--seam") == 0 && i + 1 < argc) {
+      opts.seam = strcmp(argv[++i], "allowed") == 0 ? 2 : 1;
+    } else if (strcmp(argv[i], "--dock") == 0 && i + 1 < argc) {
+      opts.dock = strcmp(argv[++i], "chrome") == 0 ? 2 : 1;
+    } else if (strcmp(argv[i], "--shot") == 0 && i + 1 < argc) {
+      opts.shot = argv[++i];
+    }
+  }
+  return bao_permissions_show(&opts);
 }
 
 int bao_note_responsible(void) {

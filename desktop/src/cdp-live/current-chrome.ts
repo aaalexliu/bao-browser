@@ -19,6 +19,7 @@ import { CHROME_APP_EXE, dailyChromePids, pathKeys } from "./remote-debugging";
 import { holdDir, holdFixtureEndpoint, joinOrStartHold } from "./chrome-hold";
 import { shareConnection } from "./shared-connection";
 import { connectCdp, type CdpSocket } from "./socket";
+import { accessibilityMissing, presentMissingMacPermission } from "../app/mac-permissions";
 import { remoteDebuggingBlock } from "../helper-capabilities";
 
 interface CurrentChromeDeps {
@@ -284,6 +285,7 @@ export async function connectOwnedChrome(options: {
     if (!endpoint) endpoint = await endpointFromListener();
     if (!endpoint && folderDenied) throw folderDenied.present();
     const blocked = remoteDebuggingBlock(await deps.helper.permissions(false));
+    if (blocked && blocked.startsWith("Device Control")) throw new Error(accessibilityMissing(presentMissingMacPermission()));
     if (blocked) throw new Error(blocked);
     if (await deps.helper.screenLocked()) throw new Error("The screen is locked. Unlock it, then try again.");
     if (!endpoint) {
