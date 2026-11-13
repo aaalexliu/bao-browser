@@ -162,6 +162,7 @@ const ARM_CLICK = `(() => {
     window.__baoDownloadHref = url.href;
   };
   const onSubmit = (event) => {
+    if (event.defaultPrevented) return;
     const form = event.target;
     if (!(form instanceof HTMLFormElement)) return;
     const submitter = event.submitter;
@@ -169,9 +170,10 @@ const ARM_CLICK = `(() => {
     if (target !== "_blank") return;
     event.preventDefault();
     const method = ((submitter && submitter.getAttribute("formmethod")) || form.getAttribute("method") || "get").toLowerCase();
-    if (method === "post") return;
+    if (method !== "get") return;
     try {
-      const action = new URL((submitter && submitter.getAttribute("formaction")) || form.action, location.href);
+      const action = new URL(submitter && submitter.hasAttribute("formaction") ? submitter.formAction : form.action);
+      action.search = new URLSearchParams(submitter ? new FormData(form, submitter) : new FormData(form)).toString();
       if (action.protocol === "http:" || action.protocol === "https:") window.__baoDownloadHref = action.href;
     } catch { return; }
   };
@@ -232,8 +234,8 @@ async function openBackground(cdp: CdpSocket, url: string, browserContextId: str
     }
     const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true }, undefined, 5000);
     try {
-      const navigated = await cdp.send<{ errorText?: string }>("Page.navigate", { url }, sessionId, 10_000);
-      if (navigated.errorText) {
+      const navigated = await cdp.send<{ errorText?: string; isDownload?: boolean }>("Page.navigate", { url }, sessionId, 10_000);
+      if (navigated.errorText && navigated.isDownload !== true) {
         await close();
         return undefined;
       }

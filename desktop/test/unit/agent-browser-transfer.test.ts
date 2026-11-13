@@ -36,6 +36,7 @@ async function evaluate<T>(cdp: CdpSocket, targetId: string, expression: string)
 function fakeCdp(handlers: {
   onEvaluate: (expression: string) => unknown;
   onCreate?: (params: Record<string, unknown>) => unknown;
+  onNavigate?: (params: Record<string, unknown>) => unknown;
   targetInfo?: (targetId: string) => { browserContextId?: string };
 }) {
   const calls: { method: string; params: Record<string, unknown> }[] = [];
@@ -49,6 +50,7 @@ function fakeCdp(handlers: {
       if (method === "Target.getBrowserContexts") return { browserContextIds: ["work"], defaultBrowserContextId: "personal" };
       if (method === "Runtime.evaluate") return handlers.onEvaluate(String(params.expression ?? ""));
       if (method === "Target.createTarget") return handlers.onCreate?.(params) ?? { targetId: "stray" };
+      if (method === "Page.navigate") return handlers.onNavigate?.(params) ?? {};
       return {};
     },
   } as unknown as CdpSocket;
@@ -97,21 +99,64 @@ test("a cross-origin download does not navigate when the new tab is in another b
   }
 });
 
-test("a download saves the handler's file, captures window.open, and falls back in that tab's browser context", { timeout: scaledMs(90_000) }, async () => {
+test("a failed background navigation closes the tab and does not save", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-transfer-nav-fail-"));
+  const { cdp, calls } = fakeCdp({
+    onEvaluate: (expression) => {
+      if (expression.includes("await fetch")) return { exceptionDetails: { text: "Failed to fetch" } };
+      if (expression.includes("return {")) return { result: { value: { href: "http://files.example/missing.pdf", opened: "" } } };
+      return { result: { value: undefined } };
+    },
+    targetInfo: () => ({ browserContextId: "work" }),
+    onNavigate: () => ({ errorText: "net::ERR_NAME_NOT_RESOLVED" }),
+  });
+  try {
+    const outcome = await downloadByClick(cdp, "tab", path.join(root, "missing.pdf"), async () => ({ stdout: "", stderr: "", exitCode: 0 }));
+    assert.equal(outcome.result.exitCode, 1);
+    assert.match(outcome.result.stderr, /this tab's Chrome profile/);
+    assert.equal(calls.some((call) => call.method === "Page.navigate"), true);
+    assert.equal(calls.some((call) => call.method === "Target.closeTarget" && call.params.targetId === "stray"), true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a download saves the handler's file, captures window.open, and falls back in that tab's browser context", { timeout: scaledMs(120_000) }, async () => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-transfer-click-"));
   const page = `<!doctype html><title>Statements</title>
 <a id=plain href=/october.pdf>October</a>
 <a id=month href=/january.pdf>Month</a>
 <a id=popup href=/gate target=_blank>Popup</a>
 <a id=cross target=_blank>Cross</a>
+<a id=attach target=_blank>Attach</a>
+<form id=ask method=get target=_blank action="/statement?month=2026-01">
+<input name=month value=2026-10>
+<input name=skipped value=2026-01 disabled>
+<button type=submit id=ask-submit name=format value=pdf>Save</button>
+</form>
+<form id=other method=get target=_blank action=/january.pdf>
+<input name=month value=2026-10>
+<button type=submit id=other-submit formaction="/statement?month=2026-01" name=format value=pdf>Other</button>
+</form>
+<form id=halt method=get target=_blank action=/october.pdf>
+<button type=submit id=halt-submit>Halt</button>
+</form>
 <script>
 month.addEventListener("click", () => { month.href = "/october.pdf"; });
 popup.addEventListener("click", (event) => { event.preventDefault(); window.open("/october.pdf"); });
+halt.addEventListener("submit", (event) => event.preventDefault());
 </script>`;
   const site = createServer((request, response) => {
     if (request.url === "/october.pdf") { response.setHeader("content-type", "application/pdf"); response.end(OCTOBER); return; }
     if (request.url === "/january.pdf") { response.setHeader("content-type", "application/pdf"); response.end(JANUARY); return; }
     if (request.url === "/gate") { response.setHeader("content-type", "text/html"); response.end("<!doctype html><title>Gate</title>"); return; }
+    const asked = new URL(request.url ?? "/", "http://127.0.0.1");
+    if (asked.pathname === "/statement") {
+      const months = asked.searchParams.getAll("month");
+      response.setHeader("content-type", "application/pdf");
+      response.end(months.length === 1 && months[0] === "2026-10" && asked.searchParams.get("format") === "pdf" && !asked.searchParams.has("skipped") ? OCTOBER : JANUARY);
+      return;
+    }
     response.setHeader("content-type", "text/html");
     response.end(request.url === "/files" ? page : "<!doctype html><title>Owner</title>");
   });
@@ -119,6 +164,11 @@ popup.addEventListener("click", (event) => { event.preventDefault(); window.open
     if (request.url === "/statement.pdf") {
       response.setHeader("content-type", "application/pdf");
       response.end(`who=${request.headers.cookie ?? ""}`);
+      return;
+    }
+    if (request.url === "/statement.bin") {
+      response.writeHead(200, { "content-type": "application/octet-stream", "content-disposition": "attachment; filename=\"statement.bin\"" });
+      response.end(`attach=${request.headers.cookie ?? ""}\n`);
       return;
     }
     response.writeHead(404);
@@ -155,7 +205,8 @@ popup.addEventListener("click", (event) => { event.preventDefault(); window.open
     assert.ok(personalContext && personalContext !== work, "the default context is a different browser context");
     for (const tab of [workTab, personalTab]) {
       while (await evaluate(cdp, tab, "document.readyState") !== "complete") await new Promise((resolve) => setTimeout(resolve, 20));
-      await evaluate(cdp, tab, `document.querySelector("#cross").href = ${JSON.stringify(`${crossBase}/statement.pdf`)}`);
+      await evaluate(cdp, tab, `document.querySelector("#cross").href = ${JSON.stringify(`${crossBase}/statement.pdf`)};
+        document.querySelector("#attach").href = ${JSON.stringify(`${crossBase}/statement.bin`)};`);
     }
     const setCookie = async (targetId: string, value: string) => {
       const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true });
@@ -210,6 +261,32 @@ popup.addEventListener("click", (event) => { event.preventDefault(); window.open
     assert.match(personalFile.text, /who=personal/);
     assert.doesNotMatch(personalFile.text, /who=work/);
     assert.deepEqual([...new Set(personalFile.contexts)], [personalContext], "a default-context fallback does not use the other context");
+
+    const asked = await save(workTab, "#ask-submit", "asked.pdf");
+    assert.equal(asked.text, OCTOBER);
+    assert.notEqual(asked.text, JANUARY);
+    assert.equal(asked.outcome.from && "url" in asked.outcome.from ? asked.outcome.from.url : "", `${base}/statement?month=2026-10&format=pdf`);
+    assert.deepEqual(asked.contexts, [], "a GET form download opens no tab");
+
+    const other = await save(workTab, "#other-submit", "other.pdf");
+    assert.equal(other.text, OCTOBER);
+    assert.notEqual(other.text, JANUARY);
+    assert.equal(other.outcome.from && "url" in other.outcome.from ? other.outcome.from.url : "", `${base}/statement?month=2026-10&format=pdf`);
+    assert.deepEqual(other.contexts, [], "a formaction download opens no tab");
+
+    const haltedBefore = born.length;
+    const halted = await downloadByClick(cdp, workTab, path.join(root, "halted.pdf"), click(workTab, "#halt-submit"));
+    assert.equal(halted.result.exitCode, 1);
+    assert.match(halted.result.stderr, /started no download/);
+    assert.equal(await evaluate(cdp, workTab, "location.pathname"), "/files", "a canceled form is not fetched");
+    const haltedContexts = (await Promise.all(born.slice(haltedBefore))).filter((id): id is string => typeof id === "string");
+    assert.deepEqual(haltedContexts, [], "a canceled form opens no tab");
+
+    const attached = await save(workTab, "#attach", "attach.bin");
+    assert.match(attached.text, /attach=who=work/);
+    assert.doesNotMatch(attached.text, /personal/);
+    assert.match(attached.outcome.result.stdout, /background tab/);
+    assert.deepEqual([...new Set(attached.contexts)], [work], "an attachment download stays in the agent tab's browser context");
     assert.deepEqual(await ownerState(), { visibility: "visible", events: [] }, "none of these downloads switch the owner's tab");
   } finally {
     stopBorn();
