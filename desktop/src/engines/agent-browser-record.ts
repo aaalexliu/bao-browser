@@ -8,7 +8,6 @@ import { AGENT_CLOSED_ASK, AGENT_STEP_FAILED, AGENT_WAIT_ENDED } from "../v1/sto
 import { RUN_SCHEMA_ID, stepTitle, type StepCaption } from "../v1/schema";
 import { Library, type StoredRun } from "../v1/store";
 import { shotFile, shotFormat, type ShotBox } from "../v1/shots";
-import { hidePaths } from "./agent-browser-files";
 import { describeStep, landmarkKeys, ownerReply, TASK_TAB_CLOSED, type OwnerWaitPage, type StepSummary } from "./agent-browser-describe";
 import type { AgentBrowserCommandResult } from "./agent-browser-proxy";
 import type { BrowserPick } from "./browser-pick";
@@ -35,8 +34,6 @@ export interface StepContext {
   mark?: ShotBox;
   /** The line that says Bao moved the session to the owner's running Chrome during this step. */
   moved?: string;
-  /** File paths the stored results keep only as file names. */
-  hide?: readonly string[];
 }
 
 export interface RecordedAgentBrowserCommand {
@@ -151,11 +148,6 @@ export class AgentBrowserRun {
   async complete(step: RecordedAgentBrowserCommand, results: AgentBrowserCommandResult[], stateDir: string,
     screenshot: () => Promise<Buffer | { bytes: Buffer; viewport?: Viewport; note?: string }>, error?: unknown, privatePage = false,
     context: StepContext = {}): Promise<void> {
-    const hide = context.hide;
-    if (hide) {
-      results = results.map((result) => ({ ...result, stdout: hidePaths(result.stdout, hide), stderr: hidePaths(result.stderr, hide) }));
-      if (error !== undefined) error = hidePaths(error instanceof Error ? error.message : String(error), hide);
-    }
     step.endedAt = Date.now();
     step.native.results = results;
     const snap = step.native.command === "snapshot"

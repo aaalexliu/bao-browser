@@ -29,7 +29,8 @@ import { diffView, findView, snapshotView } from "./snapshot-view";
 import { AGENT_DISCONNECTED, AGENT_IDLE_REASON, NEWER_TASK_REASON } from "../v1/stop-copy";
 import { openBackgroundCdp, type BackgroundCdp } from "./background-cdp";
 import { activeNativeTab, parseNativeTabs, type NativeTab } from "./agent-browser-tabs";
-import { fileArgs, isFileCommand, type FileArgs } from "./agent-browser-files";
+import { fileArgs, isFileCommand, type FileArgs, type FileCommand } from "./agent-browser-files";
+import { downloadByClick, NOT_FILE_INPUT, uploadThroughChooser } from "./agent-browser-transfer";
 
 export const AGENT_BROWSER_COMMANDS = ["open", "snapshot", "click", "fill", "press", "scroll", "tab", "screenshot", "upload", "download", "wait_for_owner", "close"] as const;
 export type AgentBrowserCommand = typeof AGENT_BROWSER_COMMANDS[number];
@@ -215,8 +216,8 @@ function parseTabArgs(args: readonly string[]): ParsedTab {
 
 const opensTab = (command: string, args: readonly string[]) => (command === "tab" && parseTabArgs(args).action === "new") || (command === "click" && args.includes("--new-tab"));
 
-/** A command that can open a tab while the native daemon is running it: open, click, press, download, tab new, or click --new-tab. */
-const canOpenTab = (command: string, args: readonly string[]) => command === "open" || command === "click" || command === "press" || command === "download" || (command === "tab" && parseTabArgs(args).action === "new");
+/** A command that can open a tab while the native daemon is running it: open, click, press, tab new, or click --new-tab. */
+const canOpenTab = (command: string, args: readonly string[]) => command === "open" || command === "click" || command === "press" || (command === "tab" && parseTabArgs(args).action === "new");
 
 type TabRef = { kind: "id"; id: number } | { kind: "label"; name: string } | { kind: "target"; id: string } | { kind: "invalid"; message: string };
 
@@ -758,7 +759,6 @@ export class AgentBrowserProxy {
       }
       files = await fileArgs(command, args, this.session.recording.downloadsDir);
     }
-    const shownArgs = files?.recorded ?? args;
     const nativeArgs = files?.forwarded ?? args;
     const continuing = !!this.session;
     // The route and profile are settled before any run record, so a question about the profile opens and records nothing.
@@ -896,7 +896,7 @@ export class AgentBrowserProxy {
           return results;
         }
       }
-      step ??= recording.begin(command as string, shownArgs);
+      step ??= recording.begin(command as string, nativeArgs);
       this.latest = { runId: recording.id, step, steps: recording.steps };
       if (command === "open") {
         const site = webSite(args[0]);
@@ -924,10 +924,11 @@ export class AgentBrowserProxy {
         }
       }
       let inPage = false;
-      await session.workflow.record(command as string, shownArgs, step.id, async () => {
+      await session.workflow.record(command as string, nativeArgs, step.id, async () => {
         const result = command === "close" && (session.kind === "current" || session.chrome.isClosed())
           ? { stdout: session.kind === "current" ? "Disconnected from the owner's own Chrome. Only Bao's task tabs close; the owner's tabs and windows stay open." : "", stderr: "", exitCode: 0 }
-          : await this.runFiles(session, command as string, nativeArgs);
+          : files ? await this.transfer(session, command as FileCommand, files)
+            : await this.runNative(session, command as string, nativeArgs);
         results.push(result);
         if (files?.saved && result.exitCode === 0) this.saved = files.saved;
         if (command !== "close" && result.exitCode === 0) await this.noteWall(session, command === "open" ? webSite(args[0]) : undefined);
@@ -968,7 +969,7 @@ export class AgentBrowserProxy {
       if (error instanceof TaskTabClosed) {
         const agentClosedTab = command === "tab" && parseTabArgs(args).action === "close" && results.some((result) => result.exitCode === 0);
         results.splice(0, results.length, ...await this.endTaskTab(session));
-        step ??= recording.begin(command as string, shownArgs);
+        step ??= recording.begin(command as string, nativeArgs);
         this.latest = { runId: recording.id, step, steps: recording.steps };
         if (!agentClosedTab) failure = new Error("Bao's task tab was closed");
         return results;
@@ -982,7 +983,7 @@ export class AgentBrowserProxy {
           try {
             await session.recording.complete(step, results, session.stateDir, () => this.screenshot(session, step!.native.command, visual), failure,
               this.waitOf(session) !== "off" || command === "wait_for_owner", { ...context, page: session.page, owner: this.ownerPage, current: session.kind === "current",
-                ...this.moved?.pick ? { moved: this.moved.line } : {}, ...files ? { hide: files.hide } : {} });
+                ...this.moved?.pick ? { moved: this.moved.line } : {} });
           } catch (completeError) {
             // A hung command already failed with AbortError. The completion
             // screenshot throws page closed after disconnect and must not replace it.
@@ -1487,16 +1488,24 @@ export class AgentBrowserProxy {
   }
 
   /**
-   * agent-browser points Chrome's downloads at its own folder for a download and leaves them there. On the owner's Chrome that would
-   * send his own later downloads into Bao's folder, so Bao hands download settings back to Chrome after each download.
+   * An upload to a file input runs natively. An upload through any other element, and every download, runs on Bao's own
+   * connection to the agent's tab: Running Chrome's shared connection, or a direct one to a Bao profile or copy. The native CLI
+   * only clicks there, because its own download waits 30 s on a PDF that Chrome shows instead of downloading, and holds the daemon.
    */
-  private async runFiles(session: Session, command: string, args: string[]): Promise<AgentBrowserCommandResult> {
-    if (command !== "download" || session.kind !== "current" || session.relay) return this.runNative(session, command, args);
+  private async transfer(session: Session, command: FileCommand, files: FileArgs): Promise<AgentBrowserCommandResult> {
+    if (command === "upload") {
+      const native = await this.runNative(session, "upload", files.forwarded);
+      if (native.exitCode === 0 || !NOT_FILE_INPUT.test(native.stderr)) return native;
+    }
+    const active = await this.activePage(session);
+    if (!active) throw new Error("no active Bao page metadata");
+    const cdp = await this.connectSession(session, { timeoutMs: 5000, signal: session.abort.signal });
+    const click = () => this.runNative(session, "click", files.click);
     try {
-      return await this.runNative(session, command, args);
+      return command === "upload" ? await uploadThroughChooser(cdp, active.targetId, files.files, click)
+        : await downloadByClick(cdp, active.targetId, files.saved!, click);
     } finally {
-      await session.chrome.cdp.send("Browser.setDownloadBehavior", { behavior: "default" }, undefined, 5000)
-        .catch((error: unknown) => process.stderr.write(`Bao could not return Chrome's download settings to Chrome: ${error instanceof Error ? error.message : String(error)}\n`));
+      if (session.kind === "copy") cdp.close();
     }
   }
 

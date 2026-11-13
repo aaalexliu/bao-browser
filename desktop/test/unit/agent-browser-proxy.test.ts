@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Socket } from "node:net";
@@ -87,7 +87,6 @@ else if (args.includes('wait')) {
   }, 10);
 }
 else if (args.includes('fail') || args.includes('daemon-fail')) { process.stdout.write('native failure output\\n'); process.stderr.write('native error\\n'); process.exitCode = 1; }
-else if (command === 'download') { fs.writeFileSync(args.at(-1), '%PDF-1.4 fixture'); process.stdout.write('\u2713 Download saved to ' + fs.realpathSync(args.at(-1)) + '\\n'); }
 else if (command === 'upload' && !args.slice(args.indexOf('upload') + 2).every((file) => fs.existsSync(file))) { process.stderr.write('\u2717 File not found: ' + args.at(-1) + '\\n'); process.exitCode = 1; }
 else if (command === 'snapshot' && fs.existsSync(${JSON.stringify(path.join(root, "page.txt"))})) process.stdout.write(fs.readFileSync(${JSON.stringify(path.join(root, "page.txt"))}, 'utf8'));
 else if (command === 'tab' && args.includes('--json') && fs.existsSync(${JSON.stringify(path.join(root, "tab-result.json"))})) {
@@ -801,44 +800,34 @@ test("proxy rejects malformed commands and attempts to replace its fixed session
   } finally { await f.close(); }
 });
 
-test("on a copy, a download lands in the run's downloads folder, an upload takes it by name, and the run keeps only file names", async (t) => {
+test("an upload to a file input runs natively with absolute paths, and the run keeps that argv with file names in its captions", async (t) => {
   const f = await fixture(t);
   try {
     await f.proxy.execute("open", ["http://127.0.0.1/"], "copy");
     const runId = f.proxy.activeRunId!;
     const downloads = path.join(f.root, "home", "downloads", runId);
-    const saved = path.join(downloads, "statement.pdf");
-    const [download] = await f.proxy.execute("download", ["@e5", "statement.pdf"], undefined, false, undefined, {}, runId);
-    assert.equal(download!.exitCode, 0, download!.stderr);
-    assert.match(download!.stdout, /Download saved to \/.*\/statement\.pdf\n$/, "the agent reads the native output with the full path");
-    assert.equal(f.proxy.savedFile, saved);
-    assert.equal(await readFile(saved, "utf8"), "%PDF-1.4 fixture");
-    assert.equal((await f.proxy.execute("download", ["@e5", "statement.pdf"], undefined, false, undefined, {}, runId))[0]!.exitCode, 0);
-    assert.equal(f.proxy.savedFile, path.join(downloads, "statement (2).pdf"), "a second download keeps the first file");
-    const [upload] = await f.proxy.execute("upload", ["input[type=file]", "statement.pdf"], undefined, false, undefined, {}, runId);
+    await mkdir(downloads, { recursive: true });
+    await writeFile(path.join(downloads, "statement.pdf"), "%PDF");
+    const w2 = path.join(f.root, "w2.pdf");
+    await writeFile(w2, "%PDF");
+    const [upload] = await f.proxy.execute("upload", ["input[type=file]", "statement.pdf", w2], undefined, false, undefined, {}, runId);
     assert.equal(upload!.exitCode, 0, upload!.stderr);
     assert.equal(f.proxy.savedFile, undefined);
     const [missing] = await f.proxy.execute("upload", ["#f", path.join(f.root, "gone", "w2.pdf")], undefined, false, undefined, {}, runId);
     assert.equal(missing!.exitCode, 1);
-    assert.ok(missing!.stderr.includes(path.join(f.root, "gone", "w2.pdf")), "the agent reads the native error with its own path");
     await assert.rejects(f.proxy.execute("upload", ["#f", "never.pdf"], undefined, false, undefined, {}, runId), /downloaded no file named never\.pdf/);
     await assert.rejects(f.proxy.execute("download", ["@e5", "../statement.pdf"], undefined, false, undefined, {}, runId), /plain file name/);
 
     const calls = (await f.calls()).map((call) => call.args.slice(call.args.indexOf("--idle-timeout") + 2));
-    assert.deepEqual(calls.filter((args) => args[0] === "download" || args[0] === "upload"), [
-      ["download", "@e5", saved], ["download", "@e5", path.join(downloads, "statement (2).pdf")],
-      ["upload", "input[type=file]", saved], ["upload", "#f", path.join(f.root, "gone", "w2.pdf")],
+    assert.deepEqual(calls.filter((args) => args[0] === "upload"), [
+      ["upload", "input[type=file]", path.join(downloads, "statement.pdf"), w2], ["upload", "#f", path.join(f.root, "gone", "w2.pdf")],
     ]);
-    const stored = await readFile(path.join(f.root, "home", "runs", `${runId}.json`), "utf8");
-    for (const folder of [downloads, await realpath(downloads), path.join(f.root, "gone")]) assert.ok(!stored.includes(folder), `the run file does not name ${folder}`);
     const steps = new Library(path.join(f.root, "home")).readRun(runId).steps as unknown as RecordedAgentBrowserCommand[];
     assert.deepEqual(steps.slice(1).map((step) => [step.caption.text, step.summary?.text, step.native.args]), [
-      ["Download statement.pdf", 'Downloaded "statement.pdf".', ["@e5", "statement.pdf"]],
-      ["Download statement (2).pdf", 'Downloaded "statement (2).pdf".', ["@e5", "statement (2).pdf"]],
-      ["Upload statement.pdf", 'Uploaded "statement.pdf".', ["input[type=file]", "statement.pdf"]],
-      ["Upload w2.pdf", 'Could not upload "w2.pdf".', ["#f", "w2.pdf"]],
+      ["Upload statement.pdf, w2.pdf", 'Uploaded "statement.pdf, w2.pdf".', ["input[type=file]", path.join(downloads, "statement.pdf"), w2]],
+      ["Upload w2.pdf", 'Could not upload "w2.pdf".', ["#f", path.join(f.root, "gone", "w2.pdf")]],
     ]);
-    assert.equal(steps.at(-1)!.summary?.error, "\u2717 File not found: w2.pdf");
+    assert.equal(steps.at(-1)!.summary?.error, `\u2717 File not found: ${path.join(f.root, "gone", "w2.pdf")}`, "the run keeps the real path the native error names");
   } finally { await f.close(); }
 });
 

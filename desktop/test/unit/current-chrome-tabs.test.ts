@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import childProcess from "node:child_process";
 import { EventEmitter } from "node:events";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -93,6 +93,8 @@ async function fixture(t: TestContext) {
     url: target.url, type: target.type, active: target.targetId === daemon.active }));
   const closed: string[] = [];
   const sent: { method: string; params: Record<string, unknown> }[] = [];
+  const listeners: { method: string; handler: (params: Record<string, unknown>) => void }[] = [];
+  const emit = (method: string, params: Record<string, unknown>) => { for (const listener of listeners.filter(item => item.method === method)) listener.handler(params); };
   const cdp = {
     isOpen: true,
     disconnected: new Promise<void>(() => undefined),
@@ -184,7 +186,7 @@ async function fixture(t: TestContext) {
       daemon.active = "opened";
       reply("✓ New tab\n");
     } else {
-      if (command === "click" || command === "download") daemon.clicked?.();
+      if (command === "click") daemon.clicked?.();
       if (command === "press") daemon.pressed?.();
       const code = daemon.exit;
       daemon.exit = 0;
@@ -197,7 +199,13 @@ async function fixture(t: TestContext) {
   const home = path.join(root, "home");
   const proxy = new AgentBrowserProxy({ home, sourceRoot: root, executable });
   t.after(() => proxy.end());
-  return { proxy, targets, daemon, closed, sent, home };
+  // Without events the tab video stops at once. A test that needs Chrome's events turns them on after open.
+  const listen = () => Object.assign(cdp, { on(method: string, _sessionId: string | undefined, handler: (params: Record<string, unknown>) => void) {
+    const listener = { method, handler };
+    listeners.push(listener);
+    return () => { listeners.splice(listeners.indexOf(listener), 1); };
+  } });
+  return { proxy, targets, daemon, closed, sent, home, emit, listeners, listen };
 }
 
 test("Chrome's Gemini panel and side panels stay out of the agent's tab list, and Bao's task tab says so", async (t) => {
@@ -369,21 +377,33 @@ test("a popup the agent follows from its task tab is a Bao task tab, and finish_
   assert.deepEqual([...f.closed].sort(), ["popup", "popup2", "task"], "Bao closes the followed popups and the task tab, not the owner's tabs");
 });
 
-test("a download on the owner's Chrome gives Chrome back its own download settings, also when it fails, and follows a popup it opens", async (t) => {
+test("a download on the owner's Chrome points Chrome's downloads at the run only for that click, also when the click fails", async (t) => {
   const f = await fixture(t);
   await f.proxy.execute("open", [MAPS], "current");
-  const resets = () => f.sent.filter(call => call.method === "Browser.setDownloadBehavior").map(call => call.params);
-  f.daemon.clicked = () => f.targets.push({ targetId: "popup", type: "page", url: "https://example.com/statement", title: "Statement", openerId: "task", inWindow: true });
-  assert.equal((await f.proxy.execute("download", ["@e2", "statement.pdf"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.exitCode, 0);
-  assert.deepEqual(resets(), [{ behavior: "default" }], "Bao's own connection resets Chrome's downloads after the download");
-  await f.proxy.execute("snapshot", ["-i"], undefined, false, undefined, {}, f.proxy.activeRunId);
-  assert.equal(f.daemon.commands.at(-1)!.on, "popup", "the agent follows the tab its download opened");
+  f.listen();
+  const behavior = () => f.sent.filter(call => call.method === "Browser.setDownloadBehavior").map(call => call.params.behavior);
+  f.daemon.clicked = () => {
+    const folder = String(f.sent.filter(call => call.method === "Browser.setDownloadBehavior").at(-1)!.params.downloadPath);
+    void writeFile(path.join(folder, "guid-1"), "statement").then(() => {
+      f.emit("Browser.downloadWillBegin", { guid: "guid-1", url: "https://example.com/statement.pdf", suggestedFilename: "statement.pdf" });
+      f.emit("Browser.downloadProgress", { guid: "guid-1", state: "completed" });
+    });
+  };
+  const listening = f.listeners.length;
+  const [saved] = await f.proxy.execute("download", ["@e2", "statement.pdf"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  assert.equal(saved!.exitCode, 0, saved!.stderr);
+  const file = path.join(f.home, "downloads", f.proxy.activeRunId!, "statement.pdf");
+  assert.equal(saved!.stdout, `\u2713 Download saved to ${file}\n`);
+  assert.equal(await readFile(file, "utf8"), "statement");
+  assert.deepEqual(behavior(), ["allowAndName", "default"], "Bao's own connection gives Chrome its download settings back after the click");
+  assert.deepEqual(f.daemon.commands.filter(item => item.command === "click").map(item => item.args), [["@e2"]], "the native CLI only clicks");
+  assert.equal(f.listeners.length, listening, "the download leaves no listener on the owner's connection");
   f.daemon.clicked = undefined;
   f.daemon.exit = 1;
   assert.equal((await f.proxy.execute("download", ["@e3", "other.pdf"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.exitCode, 1);
-  assert.deepEqual(resets(), [{ behavior: "default" }, { behavior: "default" }], "a failed download resets too");
+  assert.deepEqual(behavior(), ["allowAndName", "default", "allowAndName", "default"], "a failed click resets too");
   assert.equal((await f.proxy.execute("click", ["@e4"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.exitCode, 0);
-  assert.equal(resets().length, 2, "a click is not a download");
+  assert.equal(behavior().length, 4, "a click is not a download");
 });
 
 test("a sign-in popup opened while moving to Running Chrome is followed, and finish closes it", async (t) => {

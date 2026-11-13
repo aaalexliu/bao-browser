@@ -1,7 +1,7 @@
-// File paths for agent-browser upload and download. Bao picks where a download lands and keeps only file names in the run.
+// File paths for agent-browser upload and download. Bao picks where a download lands.
 
 import { existsSync } from "node:fs";
-import { mkdir, realpath } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { GLOBAL_BOOL_FLAGS, GLOBAL_VALUE_FLAGS } from "../v1/tab-command";
@@ -10,14 +10,13 @@ export type FileCommand = "upload" | "download";
 
 export const isFileCommand = (command: unknown): command is FileCommand => command === "upload" || command === "download";
 
-/** A file command's argv for the native CLI and for the run. */
+/** A file command's argv for the native CLI and the run, with each file as an absolute path. */
 export interface FileArgs {
-  /** Sent to agent-browser: each file as an absolute path. */
   forwarded: string[];
-  /** Kept in the run: each file as its name only. */
-  recorded: string[];
-  /** Path spellings that stored output must not keep. */
-  hide: string[];
+  /** The global flags and selector without the files: the click that opens a file chooser. */
+  click: string[];
+  /** The upload's files. */
+  files: string[];
   /** Where a download writes its file. */
   saved?: string;
 }
@@ -53,13 +52,6 @@ function freeName(dir: string, name: string): string {
   return candidate;
 }
 
-/** The path with its symlinks resolved, as Chrome and agent-browser print it. A missing file resolves through its folder. */
-async function resolved(file: string): Promise<string> {
-  try { return await realpath(file); } catch {}
-  try { return path.join(await realpath(path.dirname(file)), path.basename(file)); } catch {}
-  return file;
-}
-
 const bareName = (word: string) => word !== "" && word !== "." && word !== ".." && !word.includes("/");
 
 /**
@@ -70,8 +62,7 @@ export async function fileArgs(command: FileCommand, args: readonly string[], do
   const operands = operandIndexes(args);
   const [, ...fileAt] = operands;
   const forwarded = [...args];
-  const recorded = [...args];
-  const hide = new Set<string>([downloads, await resolved(downloads)]);
+  const click = args.filter((_, i) => !fileAt.includes(i));
   if (command === "download") {
     if (operands.length !== 2) throw new Error("download takes a selector and one file name, such as download @e5 statement.pdf.");
     const i = fileAt[0]!;
@@ -80,12 +71,10 @@ export async function fileArgs(command: FileCommand, args: readonly string[], do
     await mkdir(downloads, { recursive: true });
     const saved = path.join(downloads, freeName(downloads, name));
     forwarded[i] = saved;
-    recorded[i] = path.basename(saved);
-    for (const spelling of [saved, await resolved(saved)]) hide.add(spelling);
-    return { forwarded, recorded, hide: [...hide], saved };
+    return { forwarded, click, files: [], saved };
   }
-  if (!fileAt.length) throw new Error("upload takes a selector and at least one file, such as upload input[type=file] statement.pdf.");
-  for (const i of fileAt) {
+  if (!fileAt.length) throw new Error("upload takes a selector and at least one file, such as upload @e3 statement.pdf.");
+  const files = fileAt.map((i) => {
     const word = args[i]!;
     const file = path.isAbsolute(word) ? word
       : word.startsWith("~/") ? path.join(homedir(), word.slice(2))
@@ -93,14 +82,7 @@ export async function fileArgs(command: FileCommand, args: readonly string[], do
     if (!file) throw new Error(`upload takes an absolute path, a ~/ path, or the name of a file this run downloaded, not ${word}.`);
     if (bareName(word) && !existsSync(file)) throw new Error(`This run downloaded no file named ${word}. Give an absolute path, a ~/ path, or the name of a file this run downloaded.`);
     forwarded[i] = file;
-    recorded[i] = path.basename(file);
-    for (const spelling of [word, file, await resolved(file)]) hide.add(spelling);
-  }
-  return { forwarded, recorded, hide: [...hide] };
-}
-
-/** Replaces each hidden path in `text` with its file name. Longer paths go first, so a file path wins over its folder. */
-export function hidePaths(text: string, hide: readonly string[]): string {
-  const paths = [...hide].filter((spelling) => spelling.includes("/")).sort((left, right) => right.length - left.length);
-  return paths.reduce((out, spelling) => out.split(spelling).join(path.basename(spelling)), text);
+    return file;
+  });
+  return { forwarded, click, files };
 }

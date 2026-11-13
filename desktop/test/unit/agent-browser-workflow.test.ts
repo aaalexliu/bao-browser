@@ -21,6 +21,7 @@ import { scaledMs } from "../runtime";
 
 const binary = process.env.AGENT_BROWSER_PROXY_BINARY;
 const STATEMENT = "%PDF-1.4 synthetic statement";
+const VIEWED = "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Kids[]/Count 0>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n";
 interface Result { content: { type: string; text?: string }[]; isError: boolean; structuredContent?: { command: string; run_id: string; step_id: string } }
 const text = (result: Result) => result.content.map((item) => item.text || "").join("\n");
 
@@ -52,9 +53,9 @@ async function fixture(ui = false) {
       res.end(`<!doctype html><title>Stores</title><div ${container}>${content}</div><p id="selected">No store selected</p>`);
       return;
     }
-    if (url.pathname === "/statement.pdf") {
-      res.writeHead(200, { "content-type": "application/pdf", "content-disposition": "attachment; filename=server-name.pdf" });
-      res.end(STATEMENT);
+    if (url.pathname === "/statement.pdf" || url.pathname === "/view.pdf") {
+      res.writeHead(200, { "content-type": "application/pdf", ...url.pathname === "/statement.pdf" ? { "content-disposition": "attachment; filename=server-name.pdf" } : {} });
+      res.end(url.pathname === "/view.pdf" ? VIEWED : STATEMENT);
       return;
     }
     if (url.pathname === "/uploaded") {
@@ -65,6 +66,7 @@ async function fixture(ui = false) {
     }
     if (url.pathname === "/files") {
       res.end(`<!doctype html><title>Statements</title><a id="dl" href="/statement.pdf" download>Get statement</a>
+        <a id="newtab" href="/view.pdf" target="_blank">October statement</a> <a id="same" href="/view.pdf">View statement</a>
         <button onclick="document.querySelector('#hidden').click()">Upload Statement</button>
         <input id="hidden" type="file" accept="application/pdf" style="display:none" onchange="const f=this.files[0];f.text().then(t=>fetch('/uploaded?name='+encodeURIComponent(f.name),{method:'POST',body:t}))">`);
       return;
@@ -472,7 +474,7 @@ test("finished native captures explain why unsupported actions cannot become wor
   } finally { await f.close(); }
 });
 
-test("the native CLI downloads a file into the run's folder and uploads it by name to a hidden file input", { skip: !binary, timeout: scaledMs(90_000) }, async () => {
+test("on a copy the agent downloads a file or a PDF Chrome shows, and uploads it through the page's upload button", { skip: !binary, timeout: scaledMs(120_000) }, async () => {
   const f = await fixture();
   try {
     await passed(f, "open", [`${f.url}files`]);
@@ -486,18 +488,23 @@ test("the native CLI downloads a file into the run's folder and uploads it by na
 
     const [ref] = snapshotRefs(await passed(f, "snapshot", ["-i"]), /button "Upload Statement"/);
     assert.ok(ref, "the snapshot lists the upload button but not its hidden input");
-    const button = await f.call("upload", [`@${ref}`, "statement.pdf"]);
-    assert.equal(button.isError, true, "a button ref is not a file input");
-    assert.match(text(button), /Node is not a file input element/);
-    await passed(f, "upload", ["input[type=file]", "statement.pdf"]);
+    assert.match(await passed(f, "upload", [`@${ref}`, "statement.pdf"]), /file chooser the click opened/);
     const until = Date.now() + scaledMs(5000);
     while (!f.uploads.length && Date.now() < until) await new Promise((resolve) => setTimeout(resolve, 50));
-    assert.deepEqual(f.uploads, [{ name: "statement.pdf", body: STATEMENT }], "the page read the downloaded bytes from its hidden input");
+    assert.deepEqual(f.uploads, [{ name: "statement.pdf", body: STATEMENT }], "the page read the downloaded bytes from the input behind its button");
+
+    const folder = path.dirname(saved);
+    assert.match(await passed(f, "download", ["#newtab", "october.pdf"]), /in a new tab, which Bao closed/);
+    assert.equal(await readFile(path.join(folder, "october.pdf"), "utf8"), VIEWED);
+    assert.match(await passed(f, "snapshot", ["-i"]), /Upload Statement/, "the agent is back on its page after Bao closed the viewer tab");
+    assert.match(await passed(f, "download", ["#same", "viewed.pdf"]), /in this tab, which still shows it/);
+    assert.equal(await readFile(path.join(folder, "viewed.pdf"), "utf8"), VIEWED);
 
     assert.match(await passed(f, "close"), /Not saved as a workflow: command-2 \(download\): it moved a file, which Bao cannot replay yet\./);
     const capture = f.library.listRuns()[0]!;
-    const stored = await readFile(path.join(f.home, "runs", `${capture.id}.json`), "utf8");
-    assert.ok(!stored.includes(path.dirname(saved)), "the run keeps file names only");
+    const steps = capture.steps as RecordedAgentBrowserCommand[];
+    assert.deepEqual(steps.find((step) => step.native.command === "download")!.native.args, ["#dl", saved], "the run keeps the real argv, full path included");
+    assert.equal(steps.find((step) => step.native.command === "upload")!.caption.text, "Upload statement.pdf");
   } finally { await f.close(); }
 });
 
