@@ -494,10 +494,10 @@ test("on a copy the agent downloads a file or a PDF Chrome shows, uploads it thr
     assert.deepEqual(f.uploads, [{ name: "statement.pdf", body: STATEMENT }], "the page read the downloaded bytes from the input behind its button");
 
     const folder = path.dirname(saved);
-    assert.match(await passed(f, "download", ["#newtab", "october.pdf"]), /in a new tab, which Bao closed/);
+    assert.match(await passed(f, "download", ["#newtab", "october.pdf"]), /did not open a tab/);
     assert.equal(await readFile(path.join(folder, "october.pdf"), "utf8"), VIEWED);
-    assert.match(await passed(f, "snapshot", ["-i"]), /Upload Statement/, "the agent is back on its page after Bao closed the viewer tab");
-    assert.match(await passed(f, "download", ["#same", "viewed.pdf"]), /in this tab, which still shows it/);
+    assert.match(await passed(f, "snapshot", ["-i"]), /Upload Statement/, "a link download leaves the agent on its page");
+    assert.match(await passed(f, "download", ["#same", "viewed.pdf"]), /did not open a tab/);
     assert.equal(await readFile(path.join(folder, "viewed.pdf"), "utf8"), VIEWED);
 
     const closing = await passed(f, "close");
@@ -512,10 +512,10 @@ test("on a copy the agent downloads a file or a PDF Chrome shows, uploads it thr
     const files = steps.filter((step) => step.transfer).map((step) => step.transfer!);
     const sha = (text: string) => createHash("sha256").update(text).digest("hex");
     assert.deepEqual(files, [
-      { command: "download", source: "download", url: `${f.url}statement.pdf`, files: [{ path: saved, bytes: STATEMENT.length, sha256: sha(STATEMENT) }] },
+      { command: "download", source: "link", url: `${f.url}statement.pdf`, files: [{ path: saved, bytes: STATEMENT.length, sha256: sha(STATEMENT) }] },
       { command: "upload", source: "file-chooser", files: [{ path: saved, bytes: STATEMENT.length, sha256: sha(STATEMENT) }] },
-      { command: "download", source: "pdf-viewer", url: `${f.url}view.pdf`, files: [{ path: path.join(folder, "october.pdf"), bytes: VIEWED.length, sha256: sha(VIEWED) }] },
-      { command: "download", source: "pdf-viewer", url: `${f.url}view.pdf`, files: [{ path: path.join(folder, "viewed.pdf"), bytes: VIEWED.length, sha256: sha(VIEWED) }] },
+      { command: "download", source: "link", url: `${f.url}view.pdf`, files: [{ path: path.join(folder, "october.pdf"), bytes: VIEWED.length, sha256: sha(VIEWED) }] },
+      { command: "download", source: "link", url: `${f.url}view.pdf`, files: [{ path: path.join(folder, "viewed.pdf"), bytes: VIEWED.length, sha256: sha(VIEWED) }] },
     ], "each file step keeps its full path, size, SHA-256, and how Bao moved it");
     const download = steps.find((step) => step.native.command === "download")!;
     assert.deepEqual(download.native.args, ["#dl", saved], "the run keeps the real argv, full path included");

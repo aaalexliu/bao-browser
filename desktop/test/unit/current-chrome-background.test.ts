@@ -188,6 +188,12 @@ test("on the owner's Chrome the agent uploads through an upload button and downl
   });
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const other = createServer((request, response) => {
+    if (request.url === "/statement.pdf") { response.setHeader("content-type", "application/pdf"); response.end(STATEMENT_PDF); return; }
+    response.writeHead(404); response.end();
+  });
+  await new Promise<void>(resolve => other.listen(0, "127.0.0.1", resolve));
+  const cross = `http://127.0.0.1:${(other.address() as AddressInfo).port}`;
   await chromeProfiles(path.join(root, "chrome"));
   const chrome = await launchOwnedChromeEndpoint({ userDataDir: path.join(root, "chrome"), headless: true, args: ["--no-startup-window"] });
   const endpoint = await readDevToolsActivePort(chrome.portFile);
@@ -225,28 +231,35 @@ test("on the owner's Chrome the agent uploads through an upload button and downl
     assert.deepEqual(uploads.sort(), ["?via=button&name=export.csv a,b\n1,2\n", "?via=label&name=w2.pdf W-2 bytes"], "the page read both files, and no file panel opened");
 
     assert.deepEqual(await ownerState(), { visibility: "visible", events: [] }, "a download and both uploads leave the owner's tab in front");
-    // A target=_blank click opens its tab in front, as any popup does. The owner's tab comes back when Bao closes the viewer tab.
-    assert.match(await run("download", ["#newtab", "october.pdf"]), /in a new tab, which Bao closed/);
+    assert.match(await run("download", ["#newtab", "october.pdf"]), /did not open a tab/);
     assert.equal(await readFile(path.join(downloads, "october.pdf"), "utf8"), STATEMENT_PDF);
     const statementTabs = async () => (await probe.send<{ targetInfos: { type: string; url: string }[] }>("Target.getTargets")).targetInfos
       .filter(target => target.type === "page" && target.url.endsWith("/statement.pdf")).length;
-    assert.equal(await statementTabs(), 0, "the viewer tab the click opened is closed");
+    assert.equal(await statementTabs(), 0, "a link download opens no viewer tab");
+    assert.deepEqual(await ownerState(), { visibility: "visible", events: [] }, "a new-tab link download does not switch the owner's tab");
 
     await evaluate(probe, owner, `(() => { const a = document.createElement('a'); a.href = '/attachment'; document.body.append(a); a.click(); })()`);
     await new Promise(resolve => setTimeout(resolve, 1000));
     assert.deepEqual((await readdir(downloads)).sort(), ["export.csv", "october.pdf"], "the owner's own download did not land in Bao's folder");
 
-    assert.match(await run("download", ["#same", "viewed.pdf"]), /in this tab, which still shows it/);
+    assert.match(await run("download", ["#same", "viewed.pdf"]), /did not open a tab/);
     assert.equal(await readFile(path.join(downloads, "viewed.pdf"), "utf8"), STATEMENT_PDF);
-    assert.equal((await ownerState()).visibility, "visible");
+    const stayed = (await probe.send<{ targetInfos: { type: string; url: string; targetId: string }[] }>("Target.getTargets")).targetInfos
+      .find(target => target.type === "page" && target.url.endsWith("/files"));
+    assert.ok(stayed, "a same-tab link download leaves the agent on its page");
+    await evaluate(probe, stayed.targetId, `(() => { const a = document.createElement("a"); a.id = "cross"; a.href = ${JSON.stringify(`${cross}/statement.pdf`)}; a.target = "_blank"; a.textContent = "Cross"; document.body.append(a); })()`);
+    assert.match(await run("download", ["#cross", "cross.pdf"]), /background tab/);
+    assert.equal(await readFile(path.join(downloads, "cross.pdf"), "utf8"), STATEMENT_PDF);
+    assert.deepEqual(await ownerState(), { visibility: "visible", events: [] }, "a cross-origin link opens in a background tab and does not switch the owner's tab");
     const stored = new Library(home).listRuns()[0]!;
     const moved = (stored.steps as RecordedAgentBrowserCommand[]).flatMap((step) => step.transfer ? [step.transfer] : []);
     assert.deepEqual(moved.map((item) => [item.command, item.source, "url" in item ? item.url : undefined, item.files.map((file) => file.path)]), [
-      ["download", "download", `${base}/attachment`, [path.join(downloads, "export.csv")]],
+      ["download", "link", `${base}/attachment`, [path.join(downloads, "export.csv")]],
       ["upload", "file-chooser", undefined, [path.join(downloads, "export.csv")]],
       ["upload", "file-chooser", undefined, [w2]],
-      ["download", "pdf-viewer", `${base}/statement.pdf`, [path.join(downloads, "october.pdf")]],
-      ["download", "pdf-viewer", `${base}/statement.pdf`, [path.join(downloads, "viewed.pdf")]],
+      ["download", "link", `${base}/statement.pdf`, [path.join(downloads, "october.pdf")]],
+      ["download", "link", `${base}/statement.pdf`, [path.join(downloads, "viewed.pdf")]],
+      ["download", "pdf-viewer", `${cross}/statement.pdf`, [path.join(downloads, "cross.pdf")]],
     ], "the run says how each file moved");
   } finally {
     await proxy.end();
@@ -254,6 +267,7 @@ test("on the owner's Chrome the agent uploads through an upload button and downl
     cdp.close();
     await chrome.close();
     server.close();
+    other.close();
     await rm(root, { recursive: true, force: true });
   }
 });

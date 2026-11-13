@@ -7,7 +7,7 @@ import type { CdpSocket } from "../cdp-live/socket";
 import type { AgentBrowserCommandResult } from "./agent-browser-proxy";
 
 /** A download's result, and where its file came from when it saved one. */
-export type DownloadOutcome = { result: AgentBrowserCommandResult; from?: { source: "download"; url?: string } | { source: "pdf-viewer"; url: string } };
+export type DownloadOutcome = { result: AgentBrowserCommandResult; from?: { source: "download"; url?: string } | { source: "pdf-viewer"; url: string } | { source: "link"; url: string } };
 
 type Click = () => Promise<AgentBrowserCommandResult>;
 
@@ -77,6 +77,41 @@ async function pdfPage(cdp: CdpSocket, agentTab: string, before: { url: string; 
   return undefined;
 }
 
+/** Writes base64 the page stashed on `key` to `file`, then drops that stash. */
+async function writeStash(cdp: CdpSocket, targetId: string, file: string, key: string, total: number): Promise<void> {
+  const parts: string[] = [];
+  try {
+    for (let at = 0; at < total; at += CHUNK) parts.push(await inPage<string>(cdp, targetId, `window[${JSON.stringify(key)}].slice(${at}, ${at + CHUNK})`, 30_000));
+  } finally {
+    await inPage(cdp, targetId, `delete window[${JSON.stringify(key)}]`).catch(() => undefined);
+  }
+  await writeFile(file, Buffer.from(parts.join(""), "base64"));
+}
+
+/** Fetches `url` in the page with the page's cookies. An HTML page that is not an attachment is not the file. */
+async function fetchLink(cdp: CdpSocket, targetId: string, file: string, url: string): Promise<"file" | "page"> {
+  const key = `__bao_file_${Date.now()}`;
+  const fetched = await inPage<{ kind: "file"; total: number } | { kind: "page" }>(cdp, targetId, `(async () => {
+    const response = await fetch(${JSON.stringify(url)}, { credentials: "include" });
+    if (!response.ok) throw new Error("the file fetch returned HTTP " + response.status);
+    const type = (response.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+    const disposition = (response.headers.get("content-disposition") || "").toLowerCase();
+    if (type === "text/html" && !disposition.includes("attachment")) return { kind: "page" };
+    const blob = await response.blob();
+    const data = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+    window[${JSON.stringify(key)}] = String(data).slice(String(data).indexOf(",") + 1);
+    return { kind: "file", total: window[${JSON.stringify(key)}].length };
+  })()`, 60_000);
+  if (fetched.kind === "page") return "page";
+  await writeStash(cdp, targetId, file, key, fetched.total);
+  return "file";
+}
+
 /** Fetches the PDF a tab shows with the page's own cookies and writes it to `file`. Bytes cross CDP as base64 in chunks. */
 async function savePdf(cdp: CdpSocket, targetId: string, file: string): Promise<void> {
   const key = `__bao_pdf_${Date.now()}`;
@@ -93,19 +128,90 @@ async function savePdf(cdp: CdpSocket, targetId: string, file: string): Promise<
     window[${JSON.stringify(key)}] = String(data).slice(String(data).indexOf(",") + 1);
     return window[${JSON.stringify(key)}].length;
   })()`, 60_000);
-  const parts: string[] = [];
-  try {
-    for (let at = 0; at < total; at += CHUNK) parts.push(await inPage<string>(cdp, targetId, `window[${JSON.stringify(key)}].slice(${at}, ${at + CHUNK})`, 30_000));
-  } finally {
-    await inPage(cdp, targetId, `delete window[${JSON.stringify(key)}]`).catch(() => undefined);
-  }
-  await writeFile(file, Buffer.from(parts.join(""), "base64"));
+  await writeStash(cdp, targetId, file, key, total);
 }
 
 /**
- * Clicks an element and saves what it gives: a download Chrome starts, or a PDF Chrome shows in its viewer in the agent's tab or in
- * a tab the click opened. Bao points Chrome's downloads at `saved`'s folder only for this command and gives Chrome back its own
- * download settings after, so the owner's later downloads go where Chrome puts them. A tab the click opened for a PDF closes.
+ * Cancels the default action of a click on an http(s) link and records its URL. Chrome activates a tab that this click would
+ * open, and answering Page.bringToFront does not stop that. The listener is removed by `TAKE_LINK`.
+ */
+const ARM_LINK = `(() => {
+  const handle = (event) => {
+    const node = event.target instanceof Element ? event.target : null;
+    const link = node && node.closest("a[href]");
+    if (!link) return;
+    let url;
+    try { url = new URL(link.href, location.href); } catch { return; }
+    if (url.protocol !== "http:" && url.protocol !== "https:") return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    window.__baoDownloadHref = url.href;
+  };
+  window.__baoDownloadClick = handle;
+  document.addEventListener("click", handle, true);
+})()`;
+
+const TAKE_LINK = `(() => {
+  const handle = window.__baoDownloadClick;
+  if (typeof handle === "function") document.removeEventListener("click", handle, true);
+  const href = typeof window.__baoDownloadHref === "string" ? window.__baoDownloadHref : "";
+  delete window.__baoDownloadHref;
+  delete window.__baoDownloadClick;
+  return href;
+})()`;
+
+async function closeOpened(cdp: CdpSocket, agentTab: string, before: { targets: ReadonlySet<string> }): Promise<void> {
+  const opened = (await pages(cdp)).filter((info) => !before.targets.has(info.targetId) && info.openerId === agentTab);
+  for (const info of opened) await cdp.send("Target.closeTarget", { targetId: info.targetId }, undefined, 5000).catch(() => undefined);
+}
+
+/** Opens `url` without selecting it. A page fetch cannot read a cross-origin file; Chrome's own navigation can. */
+async function openBackground(cdp: CdpSocket, url: string): Promise<string | undefined> {
+  try {
+    const created = await cdp.send<{ targetId: string }>("Target.createTarget", { url, background: true }, undefined, 5000);
+    return created.targetId;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Saves a file from a background tab: a download Chrome starts there, or a PDF that tab shows. The tab is not the agent's, and it was
+ * not opened by the click, so the click's opener check does not see it.
+ */
+async function saveBackground(cdp: CdpSocket, targetId: string, saved: string, href: string, read: () => { guid?: string; url?: string }, states: ReadonlyMap<string, string>): Promise<DownloadOutcome | undefined> {
+  const startBy = Date.now() + START_MS;
+  while (Date.now() < startBy) {
+    const guid = read().guid;
+    if (guid) {
+      const finishBy = Date.now() + FINISH_MS;
+      while (!states.has(guid) && Date.now() < finishBy) await delay(100);
+      const state = states.get(guid);
+      if (state !== "completed") return { result: failed(state === "canceled" ? "Chrome canceled the download." : `The download did not finish within ${FINISH_MS / 60_000} minutes.`) };
+      await rename(path.join(path.dirname(saved), guid), saved);
+      return { result: { stdout: `\u2713 Download saved to ${saved}\n  Bao opened the link in a background tab and did not switch tabs (${href}).\n`, stderr: "", exitCode: 0 },
+        from: { source: "download", url: read().url ?? href } };
+    }
+    const type = await inPage<string>(cdp, targetId, "document.contentType", 2000).catch(() => undefined);
+    if (type === "application/pdf") {
+      await savePdf(cdp, targetId, saved);
+      return { result: { stdout: `\u2713 Download saved to ${saved}\n  Bao opened the link in a background tab, fetched the PDF with the page's sign-in, and closed that tab (${href}).\n`, stderr: "", exitCode: 0 },
+        from: { source: "pdf-viewer", url: href } };
+    }
+    await delay(250);
+  }
+  return undefined;
+}
+
+const linkSaved = (saved: string, url: string): DownloadOutcome => ({ result: { stdout: `\u2713 Download saved to ${saved}\n  Bao fetched the link with the page's sign-in and did not open a tab (${url}).\n`, stderr: "", exitCode: 0 },
+  from: { source: "link", url } });
+
+/**
+ * Clicks an element and saves what it gives. A click on an http(s) link does not navigate: Bao fetches that URL in the page with the
+ * page's cookies, so no tab opens and the owner's tab stays where it was. A link the page cannot fetch, such as a cross-origin file,
+ * opens in a background tab that Bao closes. Any other element is clicked, and Bao saves a download Chrome starts or a PDF Chrome
+ * shows. Bao points Chrome's downloads at `saved`'s folder only for this command and gives Chrome back its own download settings
+ * after, so the owner's later downloads go where Chrome puts them.
  */
 export async function downloadByClick(cdp: CdpSocket, agentTab: string, saved: string, click: Click): Promise<DownloadOutcome> {
   const folder = path.dirname(saved);
@@ -126,8 +232,36 @@ export async function downloadByClick(cdp: CdpSocket, agentTab: string, saved: s
   ];
   try {
     await cdp.send("Browser.setDownloadBehavior", { behavior: "allowAndName", downloadPath: folder, eventsEnabled: true }, undefined, 5000);
-    const clicked = await click();
+    await inPage(cdp, agentTab, ARM_LINK).catch(() => undefined);
+    let clicked: AgentBrowserCommandResult;
+    let href = "";
+    try {
+      clicked = await click();
+    } finally {
+      href = await inPage<string>(cdp, agentTab, TAKE_LINK).catch(() => "");
+    }
     if (clicked.exitCode !== 0) return { result: clicked };
+    if (href) {
+      try {
+        const kind = await fetchLink(cdp, agentTab, saved, href);
+        if (kind === "file") {
+          await closeOpened(cdp, agentTab, before);
+          return linkSaved(saved, href);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (/HTTP \d+/.test(message)) return { result: failed(message) };
+      }
+      const background = await openBackground(cdp, href);
+      if (!background) return { result: failed(`Bao could not fetch the link (${href}).`) };
+      try {
+        const outcome = await saveBackground(cdp, background, saved, href, () => ({ guid: started, url }), states);
+        if (outcome) return outcome;
+        return { result: failed(`The link started no download and showed no PDF within ${START_MS / 1000} s (${href}).`) };
+      } finally {
+        await cdp.send("Target.closeTarget", { targetId: background }, undefined, 5000).catch(() => undefined);
+      }
+    }
     const startBy = Date.now() + START_MS;
     while (!started && Date.now() < startBy) {
       const pdf = await pdfPage(cdp, agentTab, before);

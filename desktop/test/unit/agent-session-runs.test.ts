@@ -127,6 +127,9 @@ test("a receipt shows each file a download saved or an upload attached, with its
       { id: "command-2", status: "passed", label: "Upload october.pdf, w2.pdf", caption: { text: "Upload october.pdf, w2.pdf" }, startedAt: 3, endedAt: 4,
         native: { command: "upload", args: ["@e7", statement, "/Users/alex/Documents/w2.pdf"], results: [], isError: false, screenshots: [] },
         transfer: { command: "upload", source: "file-chooser", files: [{ path: statement, bytes: 48213, sha256: sha }, { path: "/Users/alex/Documents/w2.pdf", unread: "EPERM: operation not permitted" }] } },
+      { id: "command-3", status: "passed", label: "Download statement.pdf", caption: { text: "Download statement.pdf" }, startedAt: 5, endedAt: 6,
+        native: { command: "download", args: ["#newtab", statement], results: [], isError: false, screenshots: [] },
+        transfer: { command: "download", source: "link", url: "https://robinhood.example/statements/2026-10.pdf", files: [{ path: statement, bytes: 48213, sha256: sha }] } },
     ];
     library.saveRun({ id: "run-files", workflowId: "agent-browser", kind: "capture", pageEngine: "agent-browser", status: "passed", at: 1, heals: [], steps } as never);
     const html = runReceipt(inspectRunView(library, { run_id: "run-files" }), "Statements", library.readRun("run-files") as unknown as RunSummary);
@@ -137,6 +140,8 @@ test("a receipt shows each file a download saved or an upload attached, with its
     const upload = html.match(/id="receipt-step-2"[\s\S]*?<\/section>/)?.[0] ?? "";
     assert.match(upload, /Attached 2 files\. Bao clicked the target, caught the file chooser it opened, and set it there\. No file panel opened\./);
     assert.match(upload, /Bao could not read it after the step: EPERM: operation not permitted/);
+    const link = html.match(/id="receipt-step-3"[\s\S]*?<\/section>/)?.[0] ?? "";
+    assert.match(link, /Saved 1 file\. Bao fetched the link from https:\/\/robinhood\.example\/statements\/2026-10\.pdf with the page&#39;s sign-in and did not open a tab\./);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
