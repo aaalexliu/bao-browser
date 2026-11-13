@@ -12,7 +12,7 @@ test("remote-debugging CLI ignores Screen Recording", () => {
 });
 
 test("remote-debugging CLI still requires Accessibility and refuses a permission prompt", () => {
-  assert.equal(remoteDebuggingBlock({ accessibility: false, screenCapture: true }), "BaoOSHelper accessibility is not granted");
+  assert.equal(remoteDebuggingBlock({ accessibility: false, screenCapture: true }), "Device Control and Data Access is not on for Bao");
   assert.equal(remoteDebuggingBlock({ accessibility: true, prompted: true, screenCapture: false }), "helper asked for a permission prompt");
 });
 
@@ -117,7 +117,7 @@ test("only current optional native capabilities remain, independent of Chrome Au
       assert.deepEqual(helper.capabilities.map((row) => row.id), ["window-capture", "mcp-ax"]);
       assert.ok(helper.capabilities.every((row) => row.optional));
       assert.equal(helper.capabilities[0].status, screenCapture ? "window capture ready" : "optional window capture needs Screen Recording (not needed for Chrome)");
-      assert.equal(helper.capabilities[1].status, accessibility && screenCapture ? "MCP driver ready" : "optional native-app MCP driver needs Accessibility and Screen Recording (not needed for Chrome)");
+      assert.equal(helper.capabilities[1].status, accessibility && screenCapture ? "MCP driver ready" : "optional native-app MCP driver needs Device Control and Data Access and Screen Recording (not needed for Chrome)");
       const html = rail({ helper });
       assert.equal(html.includes('aria-label="Optional Mac permissions not granted"'), false);
       assert.match(html, /Nothing running/);

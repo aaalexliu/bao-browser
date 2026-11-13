@@ -929,6 +929,15 @@ export async function startApp(opts: {
         if (timed.filled) library.saveTrail(id, timed.events);
         return json(res, timed.events);
       }
+      if (req.method === "POST" && url.pathname === "/api/mac-permissions") {
+        if (foreignOrigin(req)) return json(res, { error: "local clients only" }, 403);
+        const { openPermissionWindow } = await import("./mac-permissions");
+        const fromEnv = /^(.*\.app)\/Contents\/MacOS\/bao$/.exec(process.env.BAO_RESPONSIBLE_EXE || "")?.[1];
+        const running = fromEnv || appBundleOf(__filename);
+        if (!running) return json(res, { error: "Run bao setup on this Mac." }, 409);
+        const opened = await openPermissionWindow(running);
+        return json(res, opened.opened ? { opened: true } : { opened: false, line: opened.line });
+      }
       if (req.method === "GET" && url.pathname === "/api/chrome-profiles") {
         if (foreignOrigin(req)) return json(res, { error: "local clients only" }, 403);
         const profiles = profileSourceRoot ? await listChromeProfiles(profileSourceRoot).catch(() => []) : [];

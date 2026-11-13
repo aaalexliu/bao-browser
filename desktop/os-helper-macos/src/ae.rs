@@ -115,7 +115,7 @@ extern "C" {
 
 fn explain(status: i32) -> String {
     if status == NOT_PERMITTED {
-        "BaoOSHelper is not allowed to control Google Chrome. Turn it on in System Settings > Privacy & Security > Automation > BaoOSHelper > Google Chrome, then try again.".into()
+        "Bao is not allowed to control Google Chrome. Turn it on in System Settings > Privacy & Security > Automation > Bao > Google Chrome, then try again.".into()
     } else if status == WOULD_PROMPT {
         "Automation permission for Google Chrome has not yet been asked.".into()
     } else {
@@ -472,7 +472,7 @@ mod tests {
     #[test]
     fn denied_automation_names_the_settings_path() {
         let text = super::explain(-1743);
-        assert!(text.contains("System Settings > Privacy & Security > Automation > BaoOSHelper > Google Chrome"));
+        assert!(text.contains("System Settings > Privacy & Security > Automation > Bao > Google Chrome"));
         assert_eq!(super::explain(-1744), "Automation permission for Google Chrome has not yet been asked.");
         assert_eq!(super::explain(-600), "Apple Event failed (-600)");
         assert_eq!(super::explain(-1708), "Apple Event failed (-1708)");

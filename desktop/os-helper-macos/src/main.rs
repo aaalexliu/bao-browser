@@ -246,9 +246,17 @@ fn emit(args: &[String], value: &Value) {
     }
 }
 
+fn inheriting() -> bool {
+    std::env::var("BAO_HELPER_INHERIT").ok().as_deref() == Some("1")
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if let Some(outcome) = disclaim::respawn() {
+    // bao --run-helper starts this process under a Bao that already answers for itself.
+    // Disclaiming here would make macOS check BaoOSHelper instead of Bao.
+    if inheriting() {
+        disclaim::watch_caller();
+    } else if let Some(outcome) = disclaim::respawn() {
         match outcome {
             Ok(code) => std::process::exit(code),
             Err(err) => {

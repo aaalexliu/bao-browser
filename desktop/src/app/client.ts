@@ -561,7 +561,7 @@ function settings(): string {
       <p class="quiet" id="chrome-profile-help">App runs on a Fresh Chrome copy or Running Chrome, and run_workflow, use this profile. An agent using agent_browser names its own.</p>
       <label class="extensions-choice"><input id="chrome-profile-extensions" data-settings-draft type="checkbox" aria-describedby="chrome-extensions-help" ${state.settings?.chromeProfileExtensions?.[state.settings?.chromeProfile || ""] === true ? "checked" : ""} ${state.settings?.pageEngine !== "agent-browser" || !state.settings?.chromeProfile ? "disabled" : ""}> Load my Chrome extensions</label>
       <p class="quiet" id="chrome-extensions-help">Shopping and coupon extensions can cover pages and block the agent.</p>
-      <p class="quiet" id="agent-browser-route">The default route is Running Chrome. An agent-browser run uses your own Google Chrome in a new task tab, unless the agent names Bao profile or Fresh Chrome copy. Running Chrome needs the helper's Accessibility permission, not Automation or Screen Recording. A Fresh Chrome copy run leaves your original Chrome untouched, turns sync off in the copy, and deletes the copy when the session ends unless you keep the window open after the agent disconnects or Bao MCP stops. A kept copy stays on disk until the next agent session cleans it up, even if you close its window by hand. A Fresh Chrome copy needs no remote-debugging switch, Accessibility, or Automation. When no browser is named and Running Chrome cannot be used, for example without the Accessibility permission, the run uses the Bao profile.</p>
+      <p class="quiet" id="agent-browser-route">The default route is Running Chrome. An agent-browser run uses your own Google Chrome in a new task tab, unless the agent names Bao profile or Fresh Chrome copy. Running Chrome needs Bao's Device Control and Data Access permission, not Automation or Screen Recording. A Fresh Chrome copy run leaves your original Chrome untouched, turns sync off in the copy, and deletes the copy when the session ends unless you keep the window open after the agent disconnects or Bao MCP stops. A kept copy stays on disk until the next agent session cleans it up, even if you close its window by hand. A Fresh Chrome copy needs no remote-debugging switch, Accessibility, or Automation. When no browser is named and Running Chrome cannot be used, for example without Device Control and Data Access, the run uses the Bao profile.</p>
       ${state.profileCopy ? `<p class="meta">Last copy: ${(state.profileCopy.bytes / 1024 / 1024).toFixed(1)} MiB in ${(state.profileCopy.copyMs / 1000).toFixed(1)} seconds. ${state.profileCopy.status === "deleted" ? "Copy deleted." : "Run open."}</p>` : ""}
       <button id="save-engine" type="button">Save engine choice</button>
       <p id="engine-feedback" role="status"></p>
@@ -582,7 +582,7 @@ function settings(): string {
       <option value="light" ${theme === "light" ? "selected" : ""}>Light</option>
       <option value="dark" ${theme === "dark" ? "selected" : ""}>Dark</option>
     </select></label>
-    <p id="settings-helper">${state.helper?.platform === "darwin" ? `${state.helper?.label === "helper available" ? "Mac helper available" : "Mac helper unavailable"}. Bao profiles and Chrome copies need no Accessibility, Automation, or Screen Recording permission. Running Chrome needs the helper's Accessibility permission, not Automation or Screen Recording.` : "The Mac helper is only available on macOS. Chrome agents do not need it."}</p>`);
+    <p id="settings-helper">${state.helper?.platform === "darwin" ? `${state.helper?.label === "helper available" ? "Mac helper available" : "Mac helper unavailable"}. Bao profiles and Chrome copies need no Accessibility, Automation, or Screen Recording permission. Running Chrome needs Bao's Device Control and Data Access permission, not Automation or Screen Recording.` : "The Mac helper is only available on macOS. Chrome agents do not need it."}</p>`);
 }
 
 function importSheet(): string {
@@ -651,6 +651,16 @@ function paintSettingsValidation(): void {
 }
 
 function bindSettings(): void {
+  document.querySelectorAll<HTMLButtonElement>(".mac-permissions-setup").forEach((button) => {
+    button.onclick = async () => {
+      button.disabled = true;
+      try {
+        await fetch("/api/mac-permissions", { method: "POST" });
+      } finally {
+        button.disabled = false;
+      }
+    };
+  });
   document.querySelectorAll<HTMLAnchorElement>("[data-settings-jump]").forEach((link) => {
     if (link.dataset.settingsJump === settingsSection) link.setAttribute("aria-current", "true");
     else link.removeAttribute("aria-current");

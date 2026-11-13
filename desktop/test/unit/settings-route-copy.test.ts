@@ -30,10 +30,10 @@ test("Settings technical details names Running Chrome as the default route", asy
   await route.waitFor();
   const text = (await route.innerText()).replace(/\s+/g, " ").trim();
   const expected = [
-    "The default route is Running Chrome. An agent-browser run uses your own Google Chrome in a new task tab, unless the agent names Bao profile or Fresh Chrome copy. Running Chrome needs the helper's Accessibility permission, not Automation or Screen Recording.",
+    "The default route is Running Chrome. An agent-browser run uses your own Google Chrome in a new task tab, unless the agent names Bao profile or Fresh Chrome copy. Running Chrome needs Bao's Device Control and Data Access permission, not Automation or Screen Recording.",
     "A Fresh Chrome copy run leaves your original Chrome untouched, turns sync off in the copy, and deletes the copy when the session ends unless you keep the window open after the agent disconnects or Bao MCP stops. A kept copy stays on disk until the next agent session cleans it up, even if you close its window by hand.",
     "A Fresh Chrome copy needs no remote-debugging switch, Accessibility, or Automation.",
-    "When no browser is named and Running Chrome cannot be used, for example without the Accessibility permission, the run uses the Bao profile.",
+    "When no browser is named and Running Chrome cannot be used, for example without Device Control and Data Access, the run uses the Bao profile.",
   ].join(" ");
   assert.equal(text, expected, "a paragraph that calls every run a fresh copy, or that drops the copy lifecycle or the Bao profile fallback, would fail");
   assert.equal(await page.locator("#page-engine-settings").locator("#agent-browser-route").count(), 1);

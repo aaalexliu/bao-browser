@@ -174,6 +174,7 @@ test("a locked screen fails before any key or press", async () => {
 
 test("errors name a locked screen, a missing grant, and Chrome not running", () => {
   assert.equal(explainRemoteDebuggingError(new Error("The screen is locked. Unlock it, then try again")).message, SCREEN_LOCKED);
+  assert.equal(explainRemoteDebuggingError(new Error("Device Control and Data Access is not on for Bao")).message, ACCESSIBILITY_MISSING);
   assert.equal(explainRemoteDebuggingError(new Error("BaoOSHelper accessibility is not granted")).message, ACCESSIBILITY_MISSING);
   assert.equal(explainRemoteDebuggingError(new Error(CHROME_NOT_OPEN)).message, CHROME_NOT_OPEN);
   assert.equal(explainRemoteDebuggingError(new Error("not allowed to control Google Chrome")).message, AUTOMATION_DENIED);

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -46,6 +46,7 @@ function bundle(root: string, cert: boolean): { bao: string; mcp: string; cli: s
     "void bao_focus_pid(int pid) { (void)pid; }",
     "int bao_notify_prepare(const char *path) { (void)path; return -1; }",
     "int bao_window_run(const char *url, int pid) { (void)url; (void)pid; return 1; }",
+    "int bao_permissions_show(const void *opts) { (void)opts; return 1; }",
   ].join("\n"));
   const compile = (args: string[]) => execFileSync("cc", [...C_FLAGS, ...args], { stdio: "inherit", timeout: scaledMs(60_000) });
   const bao = path.join(macos, "bao");
@@ -226,6 +227,41 @@ test("bao --run-node runs only the bundle's cli.js, with Bao's own Node and no c
     assert.deepEqual(seen.responsible, { pid: seen.ppid, exe: app.bao });
     assert.equal(echoed, "ping");
     assert.deepEqual(bad.ran(), []);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("bao --run-helper starts only the bundled helper and refuses a caller path", { skip: skip() }, () => {
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), "bao-run-helper-")));
+  try {
+    const app = bundle(root, false);
+    const helperExe = path.join(root, "Bao.app/Contents/Resources/BaoOSHelper.app/Contents/MacOS/BaoOSHelper");
+    mkdirSync(path.dirname(helperExe), { recursive: true });
+    const marker = path.join(root, "helper-ran");
+    writeFileSync(helperExe, `#!/bin/sh\nprintf '%s\\n' "$BAO_HELPER_INHERIT" "$@" > ${JSON.stringify(marker)}\n`);
+    chmodSync(helperExe, 0o755);
+    const reader = path.join(root, "Reader.app/Contents/MacOS/Reader");
+    mkdirSync(path.dirname(reader), { recursive: true });
+    const foreign = path.join(root, "foreign-ran");
+    writeFileSync(reader, `#!/bin/sh\nprintf 'ran\\n' > ${JSON.stringify(foreign)}\n`);
+    chmodSync(reader, 0o755);
+    const bundled = path.join(root, "Bao.app/Contents/Resources/BaoOSHelper.app");
+
+    const refused = spawnSync(app.bao, ["--run-helper", reader, "--", "stolen"], { env: env(root), encoding: "utf8", timeout: scaledMs(20_000) });
+    assert.equal(refused.status, 2);
+    assert.match(refused.stderr, /starts only Bao's own BaoOSHelper\.app/);
+    assert.equal(existsSync(foreign), false, "a caller-chosen helper ran");
+    assert.equal(existsSync(marker), false, "the bundled helper ran for a refused path");
+
+    const named = spawnSync(app.bao, ["--run-helper", bundled, "--", "named"], { env: env(root), encoding: "utf8", timeout: scaledMs(20_000) });
+    assert.equal(named.status, 2);
+    assert.equal(existsSync(marker), false, "passing the bundled path still ran it");
+
+    const ran = spawnSync(app.bao, ["--run-helper", "--", "hello"], { env: env(root), encoding: "utf8", timeout: scaledMs(20_000) });
+    assert.equal(ran.status, 0, ran.stderr);
+    assert.equal(readFileSync(marker, "utf8"), "1\nhello\n");
+    assert.equal(existsSync(foreign), false);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

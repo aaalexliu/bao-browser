@@ -303,9 +303,11 @@ left a stopped helper at `_dyld_start` under launchd, and `open -W` printed
 `GetProcessPID() returned -600` but still exited 0.
 
 The Node client now spawns `BaoOSHelper.app/Contents/MacOS/BaoOSHelper` directly,
-in its own process group. The helper respawns itself with
-`responsibility_spawnattrs_setdisclaim`, so TCC checks the helper's own grant,
-not its caller's. A fresh build signed with the existing identity at a temp path
+in its own process group. On that date the helper respawned itself with
+`responsibility_spawnattrs_setdisclaim`, so TCC checked the helper's own grant.
+A fresh build signed with the existing identity at a temp path
 reported `accessibility: true` on that Mac while the counter was still wrapped.
 A timeout kills the whole group, so no helper outlives its call. The disclaimed
-child exits when its first process exits.
+child exits when its first process exits. Bao no longer uses that disclaim when
+it starts the helper. [Device Control and Data Access](../../docs/permissions.md#device-control-and-data-access)
+owns the current check.

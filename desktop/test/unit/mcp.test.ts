@@ -582,7 +582,7 @@ test("non-UI clients retain the catalog and identify their active Library, inclu
       assert.match(guidance!, /native daemon restart returns to the task tab but loses refs; take a fresh snapshot/);
       assert.match(guidance!, /If Bao's task tab was closed, start a new session with open and an explicit browser/);
       assert.match(guidance!, /browser=current (only on the first open to drive|drives) the owner's own running Chrome over remote debugging/);
-      assert.match(guidance!, /(BaoOSHelper uses its|Bao's helper enables debugging and presses Allow through) existing Accessibility access/);
+      assert.match(guidance!, /Bao's Device Control and Data Access grant/);
       assert.match(guidance!, /with profile on the first open/);
       assert.match(guidance!, /exact calls to fall back to browser=current on the same Chrome profile/);
       assert.match(guidance!, /browser=bao session stops at a sign-in or check[^.]+Bao first moves the session by itself to the owner's running Chrome over remote debugging on the same Chrome profile/);

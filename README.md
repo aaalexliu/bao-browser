@@ -86,7 +86,7 @@ run history, and receipts in MCP Apps hosts.
 - [Contributing](CONTRIBUTING.md) covers source ownership and local checks.
 - [Testing](docs/TESTING.md) covers focused checks and the opt-in full suite.
 - [Desktop extension](docs/extension.md) covers install and driver selection.
-- [Permissions](docs/permissions.md) covers helper grants.
+- [Permissions](docs/permissions.md) covers Mac permissions.
 
 Older root-extension design notes remain as historical records, not current
 installation or acceptance instructions.

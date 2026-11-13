@@ -42,6 +42,7 @@ test("reopen recovers a crashed window's server without killing other listeners"
       void bao_show_alert(const char *title, const char *body) { fprintf(stderr, "%s: %s\\n", title, body); }
       void bao_focus_pid(int pid) { printf("focus %d\\n", pid); }
       int bao_notify_prepare(const char *path) { (void)path; return -1; }
+      int bao_permissions_show(const void *opts) { (void)opts; return 1; }
       int bao_window_run(const char *url, int pid) {
         (void)url;
         puts("window"); fflush(stdout);

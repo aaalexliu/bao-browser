@@ -91,7 +91,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-mod
 
 ### Signing identity `bao dev signing`
 
-Both package scripts sign with `BAO_SIGN_IDENTITY`, which defaults to the login-keychain certificate `bao dev signing`. Keep that certificate. The grant follows it plus the bundle id. A new self-signed certificate is a different app, and the helper grant does not follow it. Developer ID renewal follows the team requirement in [Release Bao](release.md#signing). `BAO_SIGN_IDENTITY=-` signs ad-hoc, as a release without a signing secret does; [Release Bao](release.md#signing) explains what that costs.
+Both package scripts sign with `BAO_SIGN_IDENTITY`, which defaults to the login-keychain certificate `bao dev signing`. Keep that certificate. The grant follows it plus the bundle id. A new self-signed certificate is a different app, and the grant does not follow it. Device Control and Data Access follows Bao (`dev.bao.desktop`); [Device Control and Data Access](permissions.md#device-control-and-data-access) owns that check. Developer ID renewal follows the team requirement in [Release Bao](release.md#signing). `BAO_SIGN_IDENTITY=-` signs ad-hoc, as a release without a signing secret does; [Release Bao](release.md#signing) explains what that costs.
 
 ```sh
 security find-certificate -c 'bao dev signing' >/dev/null && echo 'certificate present'
@@ -168,7 +168,7 @@ It copies Playwright Chromium to `Contents/Resources/Chromium.app` and signs tha
 
 ## Rebuild with an existing grant
 
-Use this when this Mac already has the helper grant. Reuse the signed helper only when its commands match this Bao and it respawns itself with the disclaim spawn attribute. This Bao needs that rebuilt BaoOSHelper. A helper copied from an older install does not disclaim. If its source has changed, rebuild it with `desktop/os-helper-macos/package-app.sh` and the existing `bao dev signing` identity before packaging. That script includes the Automation entitlement from `desktop/os-helper-macos/entitlements.plist`. Do not pass `--deep` to `codesign` or replace the helper with an ad-hoc signature or a raw binary. Keep the signing identity described under [Signing identity](#signing-identity-bao-dev-signing); release identities follow [Release Bao](release.md#signing). An old helper answers `unknown command`, or a permissions report whose parent is not the helper; Bao then says `BaoOSHelper is older than this Bao; rebuild it`.
+Use this when this Mac already has the helper grant. Reuse the signed helper only when its commands match this Bao and it does not disclaim when Bao starts it. This Bao needs that rebuilt BaoOSHelper. A helper copied from an older install disclaims, and Bao rejects its permissions report. If its source has changed, rebuild it with `desktop/os-helper-macos/package-app.sh` and the existing `bao dev signing` identity before packaging. That script includes the Automation entitlement from `desktop/os-helper-macos/entitlements.plist`. Do not pass `--deep` to `codesign` or replace the helper with an ad-hoc signature or a raw binary. Keep the signing identity described under [Signing identity](#signing-identity-bao-dev-signing); release identities follow [Release Bao](release.md#signing). An old helper answers `unknown command`, or a permissions report whose responsible process is not `Bao.app/Contents/MacOS/bao`; Bao then says `BaoOSHelper is older than this Bao; rebuild it`.
 
 ```sh
 npm install

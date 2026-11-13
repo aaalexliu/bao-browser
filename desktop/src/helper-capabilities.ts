@@ -21,7 +21,7 @@ export const CAPABILITIES: readonly Capability[] = [
   {
     id: "mcp-ax",
     ready: "MCP driver ready",
-    blocked: "optional native-app MCP driver needs Accessibility and Screen Recording (not needed for Chrome)",
+    blocked: "optional native-app MCP driver needs Device Control and Data Access and Screen Recording (not needed for Chrome)",
     grants: ["accessibility", "screen-recording"],
     optional: true,
   },
@@ -70,7 +70,7 @@ export function remoteDebuggingBlock(perms: {
   screenCapture?: boolean;
 }): string | undefined {
   if (perms.prompted) return "helper asked for a permission prompt";
-  if (perms.accessibility !== true) return "BaoOSHelper accessibility is not granted";
+  if (perms.accessibility !== true) return "Device Control and Data Access is not on for Bao";
   return undefined;
 }
 

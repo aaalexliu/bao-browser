@@ -61,6 +61,18 @@ pub fn screen_prompt_once() -> bool {
     unsafe { CGRequestScreenCaptureAccess() }
 }
 
+fn responsible_exe() -> String {
+    #[link(name = "System", kind = "dylib")]
+    extern "C" {
+        fn responsibility_get_pid_responsible_for_pid(pid: i32) -> i32;
+    }
+    let pid = unsafe { responsibility_get_pid_responsible_for_pid(std::process::id() as i32) };
+    if pid <= 0 {
+        return String::new();
+    }
+    pid_path(pid)
+}
+
 fn pid_path(pid: i32) -> String {
     let mut buf = vec![0u8; 4096];
     let n = unsafe { proc_pidpath(pid, buf.as_mut_ptr() as *mut c_void, buf.len() as u32) };
@@ -84,6 +96,7 @@ pub fn report(prompt: bool, accessibility_only: bool) -> Value {
         "pid": pid,
         "ppid": ppid,
         "parentExe": parent,
+        "responsibleExe": responsible_exe(),
     });
     if !accessibility_only {
         let screen_before = screen_trusted();

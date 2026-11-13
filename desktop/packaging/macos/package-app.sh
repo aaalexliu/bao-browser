@@ -105,10 +105,10 @@ bash "$ROOT/desktop/packaging/macos/sign-runtime.sh" --inside-out --entitlements
 CERT_FLAG=""
 [[ "$IDENTITY" == "-" ]] || CERT_FLAG="-DBAO_CERT_SIGNED"
 /usr/bin/clang -fobjc-arc -O2 $CERT_FLAG \
-  -framework Foundation -framework AppKit -framework WebKit -framework UserNotifications \
+  -framework Foundation -framework AppKit -framework WebKit -framework UserNotifications -framework ApplicationServices \
   -o "$APP/Contents/MacOS/bao" \
   desktop/packaging/macos/bao-main.c desktop/packaging/macos/bao-launch.c desktop/packaging/macos/bao-run-node.c \
-  desktop/packaging/macos/bao-window.m desktop/packaging/macos/bao-notify.m
+  desktop/packaging/macos/bao-window.m desktop/packaging/macos/bao-notify.m desktop/packaging/macos/bao-permissions.m
 # The agents' MCP entry. Built and run once, with a temp HOME that holds only a test
 # library, before it and Bao.app are signed.
 bash desktop/packaging/macos/build-mcp-launcher.sh "$APP"

@@ -29,4 +29,16 @@ int bao_run_node(const char *self, int argc, char *argv[]);
  * as bao_run_node does for Node. Returns the pid macOS asks about. */
 int bao_note_responsible(void);
 
+/* bao --run-helper [--owned] -- [args...]
+ * Disclaims a copy of this executable, then that copy starts this bundle's
+ * BaoOSHelper.app without the helper disclaiming. A caller-chosen path is
+ * refused. macOS then asks about Bao, not BaoOSHelper. */
+int bao_run_helper(const char *self, int argc, char *argv[]);
+
+/* bao --permissions [--owned] [--check] [--seam denied|allowed] [--dock accessibility|chrome]
+ * [--appearance light|dark]
+ * The copy that answers for itself shows the permission window, or prints a
+ * line and exits 0 when this process has no window server. */
+int bao_permissions_main(const char *self, int argc, char *argv[]);
+
 #endif

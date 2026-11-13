@@ -5,6 +5,7 @@ import path from "node:path";
 import { PassThrough } from "node:stream";
 import test, { type TestContext } from "node:test";
 import { doctorChecks, signer } from "../../src/app/doctor";
+import { openPermissionWindow } from "../../src/app/mac-permissions";
 import { applyTarget, chosenByFlags, detectOthers, detectTargets, parseSetup, pickInTerminal, setupMain, type Probe, type SetupIo, type Target } from "../../src/app/setup";
 
 interface Lab {
@@ -27,7 +28,7 @@ function lab(t: TestContext): Lab {
   for (const dir of [home, bin, path.dirname(launcher)]) mkdirSync(dir, { recursive: true });
   writeFileSync(launcher, "#!/bin/sh\nexit 0\n");
   chmodSync(launcher, 0o755);
-  return { probe: { home, env: { HOME: home, PATH: bin }, pathDirs: [bin], appDirs: [apps] }, app, launcher, apps, bin };
+  return { probe: { home, env: { HOME: home, PATH: bin }, pathDirs: [bin], appDirs: [apps], openPermissions: () => ({ opened: true, line: "" }) }, app, launcher, apps, bin };
 }
 
 function tool(dir: string, name: string): void {
@@ -203,41 +204,22 @@ test("doctor tells the owner what Claude Code is missing instead of a setup comm
   assert.equal((await doctorChecks(app, probe)).find((check) => check.name === "codex")?.detail, `found (~/.codex) but not set up. Run ${cli} setup --agents codex`);
 });
 
-test("setup asks for Files & Folders > Bao > Google Chrome only when Bao cannot read Chrome's folder, and the owner can skip it", async (t) => {
+test("setup opens the permission window instead of asking in the terminal, and a missing screen prints a line", async (t) => {
   const { probe, app } = lab(t);
-  const chromeRoot = path.join(probe.home, "Library", "Application Support", "Google", "Chrome");
-  mkdirSync(path.join(chromeRoot, "Default"), { recursive: true });
-  const opened: string[] = [];
-  const env = { ...probe.env, BAO_RESPONSIBLE_EXE: "/Applications/Bao.app/Contents/MacOS/bao", BAO_CERT_SIGNED: "1" };
-  const withChrome: Probe = { ...probe, env, chromeRoot, openUrl: (url) => opened.push(url) };
-  const run = async (keys: string[], tty = true): Promise<string> => {
+  const calls: string[] = [];
+  const run = async (line: string): Promise<string> => {
     const out: string[] = [];
-    const stdin = Object.assign(new PassThrough(), { isTTY: tty, setRawMode: () => stdin });
-    const io = { env, out: (text: string) => out.push(text), err: (text: string) => out.push(text), stdin, stdout: { isTTY: tty, columns: 80, write: () => true } } as unknown as SetupIo;
-    const done = setupMain(["--app", app, "--none"], io, withChrome);
-    for (const key of keys) {
-      await new Promise((resolve) => setTimeout(resolve, 20));
-      if (key === "allow") chmodSync(chromeRoot, 0o700);
-      else stdin.write(key);
-    }
-    assert.equal(await done, 0);
+    const io = { env: probe.env, out: (text: string) => out.push(text), err: (text: string) => out.push(text), stdin: { isTTY: false }, stdout: { isTTY: false } } as unknown as SetupIo;
+    const withWindow: Probe = { ...probe, openPermissions: (target) => { calls.push(target); return line ? { opened: false, line } : { opened: true, line: "" }; } };
+    assert.equal(await setupMain(["--app", app], io, withWindow), 0);
     return out.join("");
   };
-  const intro = `No app was changed. Run \`${path.join(app, "Contents", "MacOS", "bao-cli")} setup\` any time to add Bao to an agent.\n\n== Google Chrome's folder (optional)\n`;
-  assert.equal(await run([]), `${intro}Bao can read your Chrome profiles in ${chromeRoot}. Nothing to do. Agents that start Bao use this switch too.\n`);
-
-  chmodSync(chromeRoot, 0o000);
-  try {
-    const why = `${intro}Bao reads your Chrome profiles to import a site's sign-in and to use Running Chrome. macOS 27 and later ask before an app reads them.\n`
-      + `Now: Bao cannot read them. Turn on System Settings > Privacy & Security > Files & Folders > Bao > Google Chrome, then try again. Agents that start Bao use this switch too.\n`
-      + "Skip this and Bao still opens its own profile. It tells the agent what to turn on when a step needs Chrome's folder.\n";
-    const prompt = "o opens System Settings, c checks again, enter skips: ";
-    assert.equal(await run(["\r"]), `${why}${prompt}\nSkipped.\n`);
-    assert.equal(await run(["o", "c", "allow", "c"]), `${why}${prompt}\n${prompt}\nNow: Bao still cannot read them.\n${prompt}\nNow: Bao can read your Chrome profiles.\n`);
-    assert.deepEqual(opened, ["x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders"]);
-    chmodSync(chromeRoot, 0o000);
-    assert.equal(await run([], false), why, "with no terminal, setup says what to turn on and asks nothing");
-  } finally { chmodSync(chromeRoot, 0o700); }
+  const opened = await run("");
+  assert.deepEqual(calls, [app]);
+  assert.doesNotMatch(opened, /Reply o|o opens System Settings/);
+  const headless = "No screen here, so Bao did not open its permission window. On this Mac, run bao setup.";
+  assert.match(await run(headless), new RegExp(headless));
+  assert.equal(calls.length, 2);
 });
 
 test("doctor says whether Bao can read Chrome's folder and names the blocked app when it cannot", async (t) => {
@@ -260,17 +242,20 @@ test("doctor says whether Bao can read Chrome's folder and names the blocked app
   assert.equal(await doctorChecks(app, { ...probe, env, chromeRoot: path.join(probe.home, "absent") }).then((rows) => rows.find((row) => row.name === "chrome folder")), undefined);
 });
 
-test("doctor warns that Running Chrome, the default, needs the helper when it is missing", async (t) => {
+test("doctor names a missing Device Control and Data Access grant instead of ok helper", async (t) => {
   const { probe, app, launcher } = lab(t);
   writeFileSync(launcher, `#!/bin/sh\nread line\nprintf '%s\\n' '{"jsonrpc":"2.0","id":1,"result":{}}'\nread line\nread line\nprintf '%s\\n' '{"jsonrpc":"2.0","id":2,"result":{"tools":[]}}'\n`);
   const checks = await doctorChecks(app, probe);
-  const helper = checks.find((row) => row.name === "helper");
-  assert.equal(helper?.level, "warn");
-  assert.equal(helper?.detail, "not installed. Running Chrome is the default and needs the helper's Accessibility grant for the Allow press. A Bao profile or a copy does not need the helper.");
-  mkdirSync(path.join(app, "Contents", "Resources", "BaoOSHelper.app"), { recursive: true });
-  const present = (await doctorChecks(app, probe)).find((row) => row.name === "helper");
-  assert.match(present?.detail ?? "", /Running Chrome \(browser=current\) is the default and uses it to press the Allow sheet, with an Accessibility grant\. Optional: the native Mac app driver \(bao mcp-ax\) and bao remote-debugging$/);
-  assert.doesNotMatch(present?.detail ?? "", /Optional: Running Chrome/);
+  const missing = checks.find((row) => row.name === "accessibility");
+  assert.equal(missing?.level, "warn");
+  assert.match(missing?.detail ?? "", /Device Control and Data Access/);
+  assert.equal(checks.find((row) => row.name === "helper"), undefined);
+  const opened: string[] = [];
+  const denied = await doctorChecks(app, { ...probe, macGrants: () => ({ accessibility: false, chromeFolder: "allowed" }), openPermissions: (target) => { opened.push(target); return { opened: true, line: "" }; } });
+  const grant = denied.find((row) => row.name === "accessibility");
+  assert.match(grant?.detail ?? "", /Device Control and Data Access is not on for Bao/);
+  assert.doesNotMatch(denied.map((row) => `${row.level} ${row.name}`).join("\n"), /^ok helper/m);
+  assert.deepEqual(opened, [app]);
   const chrome = checks.find((row) => row.name === "chrome");
   assert.equal(chrome?.level, "warn");
   assert.equal(chrome?.detail, "Google Chrome is not installed. Every agent_browser route starts installed Google Chrome. A Bao profile and a copy are not a way around a missing Chrome.");
@@ -278,4 +263,47 @@ test("doctor warns that Running Chrome, the default, needs the helper when it is
   mkdirSync(installed);
   const found = (await doctorChecks(app, probe)).find((row) => row.name === "chrome");
   assert.deepEqual(found, { level: "ok", name: "chrome", detail: installed });
+});
+
+test("a headless permission process returns the line it prints", async (t) => {
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), "bao-perm-headless-")));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const app = path.join(root, "Bao.app");
+  const bao = path.join(app, "Contents/MacOS/bao");
+  mkdirSync(path.dirname(bao), { recursive: true });
+  writeFileSync(bao, "#!/bin/sh\nprintf '%s\\n' 'headless-marker-no-window'\n");
+  chmodSync(bao, 0o755);
+  assert.deepEqual(await openPermissionWindow(app), { opened: false, line: "headless-marker-no-window" });
+});
+
+test("a permission process that cannot start does not report the window as open", async (t) => {
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), "bao-perm-spawn-")));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const app = path.join(root, "Bao.app");
+  const bao = path.join(app, "Contents/MacOS/bao");
+  mkdirSync(path.dirname(bao), { recursive: true });
+  writeFileSync(bao, "not executable\n");
+  chmodSync(bao, 0o644);
+  const result = await openPermissionWindow(app);
+  assert.equal(result.opened, false);
+  assert.notEqual(result.line, "");
+});
+
+test("an open permission window returns while that process is still running", async (t) => {
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), "bao-perm-open-")));
+  const pidFile = path.join(root, "pid");
+  t.after(() => {
+    const pid = Number(readFileSync(pidFile, "utf8"));
+    if (pid) { try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ } }
+    rmSync(root, { recursive: true, force: true });
+  });
+  const app = path.join(root, "Bao.app");
+  const bao = path.join(app, "Contents/MacOS/bao");
+  mkdirSync(path.dirname(bao), { recursive: true });
+  writeFileSync(bao, `#!/bin/sh\necho $$ > ${JSON.stringify(pidFile)}\nsleep 30\n`);
+  chmodSync(bao, 0o755);
+  const started = Date.now();
+  assert.deepEqual(await openPermissionWindow(app), { opened: true, line: "" });
+  assert.ok(Date.now() - started < 5_000);
+  assert.equal(Number(readFileSync(pidFile, "utf8")) > 0, true);
 });

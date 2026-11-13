@@ -165,6 +165,8 @@ int main(int argc, char *argv[]) {
   unsetenv("NODE_PATH");
   /* bao-mcp and bao-cli start Node here, before any window code runs. */
   if (argc > 1 && strcmp(argv[1], "--run-node") == 0) return bao_run_node(resolved, argc - 2, argv + 2);
+  if (argc > 1 && strcmp(argv[1], "--run-helper") == 0) return bao_run_helper(resolved, argc, argv);
+  if (argc > 1 && strcmp(argv[1], "--permissions") == 0) return bao_permissions_main(resolved, argc, argv);
   /* Contents/MacOS/bao -> Contents */
   dirname_inplace(resolved);
   dirname_inplace(resolved);

@@ -67,8 +67,8 @@ function acceptHelper(report, identity, certHash, teamId) {
   if (!report.exists) return { ok: false, reason: "helper is absent" };
   if (!report.isBundle) return { ok: false, reason: "helper must be the signed BaoOSHelper.app bundle" };
   const team = String(teamId || "").trim();
-  // An ad-hoc build signs everything ad-hoc. macOS then keys a helper grant to one build, so it
-  // does not survive an update. Running Chrome, the default, uses that grant.
+  // An ad-hoc build signs everything ad-hoc. macOS then keys Bao's grant to one build, so
+  // Device Control and Data Access does not survive an update. Running Chrome uses that grant.
   if (identity === ADHOC) {
     if (team) return { ok: false, reason: "BAO_APPLE_TEAM_ID is set, so this is not an ad-hoc build" };
     if (!report.adhoc) return { ok: false, reason: "an ad-hoc build (BAO_SIGN_IDENTITY=-) needs an ad-hoc helper" };
@@ -166,7 +166,7 @@ function main() {
     process.stderr.write(`package-app.sh: ${verdict.reason}\n`);
     process.exit(1);
   }
-  if (identity === ADHOC) process.stderr.write("package-app.sh: ad-hoc build. macOS will not keep the helper's Accessibility grant across updates.\n");
+  if (identity === ADHOC) process.stderr.write("package-app.sh: ad-hoc build. macOS will not keep Bao's Device Control and Data Access grant across updates.\n");
 }
 
 if (require.main === module) main();

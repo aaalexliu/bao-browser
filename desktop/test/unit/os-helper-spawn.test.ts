@@ -74,31 +74,50 @@ test("a stopped helper that times out is killed with its whole process group", a
   }
 });
 
-test("a permissions report from a helper that did not disclaim fails closed", async () => {
+test("a permissions report is trusted only when macOS is asking about Bao", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-helper-spawn-"));
   try {
     const exe = "/Applications/Bao.app/Contents/Resources/BaoOSHelper.app/Contents/MacOS/BaoOSHelper";
-    const caller = "/Applications/Bao.app/Contents/MacOS/bao";
-    const undisclaimed = await fakeHelperApp(root, `printf '%s\n' '${JSON.stringify({ ok: true, accessibility: false, exe, parentExe: caller })}'`);
-    await assert.rejects(new MacOsHelper(undisclaimed).exec(["permissions-ax"]), /BaoOSHelper is older than this Bao; rebuild it/);
-    const omitted = await fakeHelperApp(path.join(root, "omitted"), `printf '%s\n' '${JSON.stringify({ ok: true, accessibility: false, exe })}'`);
+    const bao = "/Applications/Bao.app/Contents/MacOS/bao";
+    const oldHelper = await fakeHelperApp(root, `printf '%s\n' '${JSON.stringify({ ok: true, accessibility: false, exe, parentExe: exe })}'`);
+    await assert.rejects(new MacOsHelper(oldHelper).exec(["permissions-ax"]), /BaoOSHelper is older than this Bao; rebuild it/);
+    const omitted = await fakeHelperApp(path.join(root, "omitted"), `printf '%s\n' '${JSON.stringify({ ok: true, accessibility: false, exe, responsibleExe: exe })}'`);
     await assert.rejects(new MacOsHelper(omitted).permissions(false), /BaoOSHelper is older than this Bao; rebuild it/);
-    const disclaimed = await fakeHelperApp(path.join(root, "disclaimed"), `printf '%s\n' '${JSON.stringify({ ok: true, accessibility: false, exe, parentExe: exe })}'`);
-    const hit = await new MacOsHelper(disclaimed).exec(["permissions-ax"]);
+    const inherited = await fakeHelperApp(path.join(root, "inherited"), `printf '%s\n' '${JSON.stringify({ ok: true, accessibility: false, exe, parentExe: bao, responsibleExe: bao })}'`);
+    const hit = await new MacOsHelper(inherited).exec(["permissions-ax"]);
     assert.equal(hit.accessibility, false);
-    assert.equal(hit.parentExe, exe);
-    const realDir = path.join(root, "real");
-    await mkdir(realDir);
-    const linked = path.join(root, "linked");
-    await symlink(realDir, linked);
-    const linkedExe = path.join(linked, "BaoOSHelper");
-    await writeFile(linkedExe, "");
-    const resolved = realpathSync(linkedExe);
-    assert.notEqual(linkedExe, resolved);
-    const viaLink = await fakeHelperApp(path.join(root, "via-link"), `printf '%s\n' '${JSON.stringify({ ok: true, accessibility: true, exe: linkedExe, parentExe: resolved })}'`);
+    assert.equal(hit.responsibleExe, bao);
+    const real = path.join(root, "Bao.app", "Contents", "MacOS");
+    await mkdir(real, { recursive: true });
+    const linked = path.join(root, "link.app", "Contents", "MacOS");
+    await mkdir(path.dirname(linked), { recursive: true });
+    await symlink(real, linked);
+    const linkedBao = path.join(linked, "bao");
+    await writeFile(path.join(real, "bao"), "");
+    const resolved = realpathSync(linkedBao);
+    assert.notEqual(linkedBao, resolved);
+    const viaLink = await fakeHelperApp(path.join(root, "via-link"), `printf '%s\n' '${JSON.stringify({ ok: true, accessibility: true, exe, responsibleExe: linkedBao })}'`);
     const linkedHit = await new MacOsHelper(viaLink).exec(["permissions-ax"]);
     assert.equal(linkedHit.accessibility, true);
-    assert.equal(linkedHit.parentExe, resolved);
+    assert.equal(linkedHit.responsibleExe, linkedBao);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a nested helper is started with no caller-chosen path", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-helper-spawn-"));
+  try {
+    const record = path.join(root, "argv");
+    const bao = path.join(root, "Bao.app/Contents/MacOS/bao");
+    await mkdir(path.dirname(bao), { recursive: true });
+    await writeFile(bao, `#!/bin/sh\nprintf '%s\\n' "$@" > ${JSON.stringify(record)}\nprintf '%s\\n' '{"ok":true}'\n`);
+    await chmod(bao, 0o755);
+    const helper = path.join(root, "Bao.app/Contents/Resources/OtherHelper.app");
+    await mkdir(helper, { recursive: true });
+    const hit = await new MacOsHelper(helper).exec(["nodes", "--bundle", "com.google.Chrome"]);
+    assert.equal(hit.ok, true);
+    assert.equal(await readFile(record, "utf8"), "--run-helper\n--\nnodes\n--bundle\ncom.google.Chrome\n");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

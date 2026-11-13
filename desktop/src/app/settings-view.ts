@@ -1,4 +1,3 @@
-import { FILES_AND_FOLDERS_PANE } from "../chrome-switch";
 import type { Settings } from "../v1/store";
 import { controlKey } from "../v1/visible-copy";
 import type { SavedSite } from "./logins-view";
@@ -56,7 +55,7 @@ export function settingsIndex(view: SettingsView): string {
   const mac = view.helper?.platform === "darwin";
   const summaries = [
     "Heal policy, waits",
-    !mac ? "Mac only" : chromeDenied(view) ? "Chrome's folder not allowed" : view.helper?.accessibility ? "Accessibility allowed" : "Optional for Running Chrome and native apps",
+    !mac ? "Mac only" : chromeDenied(view) ? "Chrome's folder not allowed" : view.helper?.accessibility ? "Device Control and Data Access allowed" : "Optional for Running Chrome and native apps",
     remoteLabel(view),
     `${view.sites.length} ${view.sites.length === 1 ? "site" : "sites"} from your Chrome`,
     sourceLabel(view),
@@ -81,7 +80,7 @@ function chromeFolderRow(view: SettingsView): string {
   const agents = access.certSigned ? "Agents that start Bao use this switch too." : app === "Bao" ? "Agents use their own app's switch, such as ChatGPT for Codex." : "";
   return row(
     `<b>Google Chrome's folder</b><p>Optional. Lets Bao import a site's sign-in from Chrome and use Running Chrome. macOS 27 and later ask first.${agents ? ` ${agents}` : ""}</p>${fix}`,
-    `<span class="settings-permission${allowed ? " allowed" : ""}">${allowed ? "✓ Allowed" : "Not allowed"}</span><a id="chrome-folder-settings" class="button" href="${FILES_AND_FOLDERS_PANE}">Open System Settings</a>`, "folder");
+    `<span class="settings-permission${allowed ? " allowed" : ""}">${allowed ? "✓ Allowed" : "Not allowed"}</span><button type="button" class="mac-permissions-setup">Set up</button>`, "folder");
 }
 
 function row(copy: string, control: string, glyph = ""): string {
@@ -109,8 +108,8 @@ export function settingsScreen(view: SettingsView, advanced: string): string {
       + row(`<label for="promote-after">Keep a heal after</label><p>Clean runs with the new target before Bao keeps it for good.</p>`, `<input id="promote-after" data-setting="promoteAfter" type="number" required min="1" max="20" value="${settings.promoteAfter ?? 3}" aria-describedby="keep-unit promote-after-error"><span id="keep-unit">runs</span><span id="promote-after-error" role="status" hidden></span>`)
       + row(`<label for="act-minutes">Wait for you up to</label><p>How long a run waits for a code, a login, or a button only you press.</p>`, `<select id="act-minutes" data-setting="actTimeoutMin">${waits.map((minutes) => `<option value="${minutes}"${minutes === wait ? " selected" : ""}>${minutes < 60 || minutes % 60 ? `${minutes} ${minutes === 1 ? "minute" : "minutes"}` : `${minutes / 60} ${minutes === 60 ? "hour" : "hours"}`}</option>`).join("")}<option value="custom">Other…</option></select><input id="act-custom" data-setting="actTimeoutMin" type="number" required min="1" max="1440" value="${wait}" aria-label="Wait in minutes" aria-describedby="act-custom-error" hidden><span id="act-custom-error" role="status" hidden></span>`))}
     ${group("perm", "Mac permissions", chromeFolderRow(view) + row(
-      `<b>Accessibility</b><p>${mac ? "Running Chrome uses Bao's helper and its Accessibility permission to turn on Chrome's remote debugging and press Chrome's Allow prompt. Bao profiles and Chrome copies do not need it. No Chrome option needs Automation or Screen Recording." : "Native Mac app control uses this permission on macOS. It does not apply on Linux."}</p>`,
-      `<span class="settings-permission${view.helper?.accessibility && mac ? " allowed" : ""}">${view.helper?.accessibility && mac ? "✓ " : ""}${accessibility}</span>`, "hand")
+      `<b>Device Control and Data Access</b><p>${mac ? "Ticks Chrome's remote-debugging box and presses Chrome's Allow, so agents can use the Chrome you're signed in to. Bao profiles and Chrome copies do not need it." : "Native Mac app control uses this permission on macOS. It does not apply on Linux."}</p>`,
+      `<span class="settings-permission${view.helper?.accessibility && mac ? " allowed" : ""}">${view.helper?.accessibility && mac ? "✓ " : ""}${accessibility}</span>${mac ? '<button type="button" class="mac-permissions-setup">Set up</button>' : ''}`, "hand")
       + row(`<b>Screen Recording</b><p>${mac ? "Lets Bao's helper capture app windows for pictures and native-app control. Chrome screenshots do not need it." : "Mac window capture uses this permission on macOS. It does not apply on Linux."}</p>`,
         `<span class="settings-permission">${mac ? "Not checked" : "Mac only"}</span>${mac ? '<a id="screen-recording-settings" class="button" href="x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture">Open System Settings</a>' : ""}`, "eye"))}
     ${group("remote", "Remote access", row(
