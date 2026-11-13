@@ -4,6 +4,7 @@
 import { importErrorView } from "./import-error";
 import type { inspectRunView } from "../mcp/run-view";
 import type { BrowserPick, RunRoute } from "../engines/browser-pick";
+import type { FileTransfer } from "../engines/agent-browser-files";
 import { ROUTE_LABELS } from "../engines/route-labels";
 import { shellPlaces, shellScreen, shellScreens, type Screen } from "./shell-navigation";
 import type { ImportLoginError } from "../v1/import-login-error";
@@ -2195,6 +2196,23 @@ interface InspectorStep {
   shotNote?: string;
   caption?: { text?: string };
   native?: StepView["native"];
+  transfer?: FileTransfer;
+}
+
+/** The files an upload or download moved, each with its full path, size, and SHA-256, and how Bao moved them. */
+function receiptFiles(transfer: FileTransfer | undefined): string {
+  if (!transfer) return "";
+  const how = transfer.source === "download" ? `Chrome downloaded it${transfer.url ? ` from ${transfer.url}` : ""}.`
+    : transfer.source === "pdf-viewer" ? `Chrome showed it as a PDF instead of downloading it, so Bao fetched it from ${transfer.url} with the page's sign-in.`
+      : transfer.source === "file-input" ? "Bao set it on the page's file input."
+        : "Bao clicked the target, caught the file chooser it opened, and set it there. No file panel opened.";
+  const count = transfer.files.length;
+  const verb = transfer.command === "download" ? "Saved" : "Attached";
+  // Rows are divs: the step list styles every nested li and every direct div of a step.
+  const rows = transfer.files.map((file) => `<div class="receipt-file"><span class="receipt-file-path">${esc(file.path)}</span><span class="receipt-file-facts">${"sha256" in file
+    ? `${esc(file.bytes.toLocaleString("en-US"))} bytes · SHA-256 <code>${esc(file.sha256)}</code>`
+    : `Bao could not read it after the step: ${esc(file.unread)}`}</span></div>`).join("");
+  return `<section class="receipt-files" aria-label="Files"><p>${verb} ${count === 1 ? "1 file" : `${count} files`}. ${esc(how)}</p>${rows}</section>`;
 }
 
 type ReceiptWorkflowStep = { id?: string; action?: string; caption?: { text?: string; citation?: { text?: string } } };
@@ -2239,7 +2257,7 @@ function receiptInspector(view: ReturnType<typeof inspectRunView>, run: RunSumma
     const evidence = command || shot || stderr
       ? `<details><summary>Evidence</summary>${evidenceLine ? `<p class="receipt-command">${esc(evidenceLine)}</p>` : ""}${stderr ? `<p>${esc(stderr)}</p>` : ""}${shotHtml}</details>`
       : "";
-    return `<li id="receipt-step-${index + 1}" value="${index + 1}" data-step="${index + 1}" data-search="${esc(search)}"${status === "failed" ? " class=\"failed\"" : ""}><div><strong>${esc(label)}</strong>${receiptStatusHtml(status)}</div>${reason ? `<p>${esc(ownerStopText(reason))}</p>` : ""}${command ? `<p class="receipt-command">${esc(command)}</p>` : ""}${evidence}</li>`;
+    return `<li id="receipt-step-${index + 1}" value="${index + 1}" data-step="${index + 1}" data-search="${esc(search)}"${status === "failed" ? " class=\"failed\"" : ""}><div><strong>${esc(label)}</strong>${receiptStatusHtml(status)}</div>${reason ? `<p>${esc(ownerStopText(reason))}</p>` : ""}${command ? `<p class="receipt-command">${esc(command)}</p>` : ""}${receiptFiles(step.transfer)}${evidence}</li>`;
   }).join("");
   return `<h3 id="receipt-step-heading" tabindex="-1">Command inspector</h3><input id="receipt-search" type="search" aria-label="Search commands" placeholder="Search commands, targets, and values"><ol class="receipt-steps" start="1">${rows}</ol>`;
 }

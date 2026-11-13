@@ -1,14 +1,38 @@
 // File paths for agent-browser upload and download. Bao picks where a download lands.
 
-import { existsSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { createReadStream, existsSync } from "node:fs";
+import { mkdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
-import { GLOBAL_BOOL_FLAGS, GLOBAL_VALUE_FLAGS } from "../v1/tab-command";
+import { operandIndexes } from "../v1/file-operands";
 
 export type FileCommand = "upload" | "download";
 
 export const isFileCommand = (command: unknown): command is FileCommand => command === "upload" || command === "download";
+
+/** A file a step saved or attached: its path, and its size and SHA-256 when Bao could read it after the step. */
+export type FileFact = { path: string } & ({ bytes: number; sha256: string } | { unread: string });
+
+/** How an upload or download moved its files, kept on the run's step as evidence. */
+export type FileTransfer =
+  | { command: "download"; source: "download"; url?: string; files: FileFact[] }
+  | { command: "download"; source: "pdf-viewer"; url: string; files: FileFact[] }
+  | { command: "upload"; source: "file-input" | "file-chooser"; files: FileFact[] };
+
+/** Size and SHA-256 of each file. A file Bao cannot read is kept with the reason. */
+export async function fileFacts(files: readonly string[]): Promise<FileFact[]> {
+  return Promise.all(files.map(async (file): Promise<FileFact> => {
+    try {
+      const { size } = await stat(file);
+      const hash = createHash("sha256");
+      for await (const chunk of createReadStream(file)) hash.update(chunk as Buffer);
+      return { path: file, bytes: size, sha256: hash.digest("hex") };
+    } catch (error) {
+      return { path: file, unread: error instanceof Error ? error.message : String(error) };
+    }
+  }));
+}
 
 /** A file command's argv for the native CLI and the run, with each file as an absolute path. */
 export interface FileArgs {
@@ -19,29 +43,6 @@ export interface FileArgs {
   files: string[];
   /** Where a download writes its file. */
   saved?: string;
-}
-
-/** Indexes of the words that are not global flags or their values, as pinned agent-browser 0.41.0 reads them. */
-function operandIndexes(args: readonly string[]): number[] {
-  const at: number[] = [];
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i]!;
-    if (arg.startsWith("--restore=") || arg === "--restore") continue;
-    if (GLOBAL_VALUE_FLAGS.has(arg)) { i += 1; continue; }
-    if (GLOBAL_BOOL_FLAGS.has(arg)) {
-      const next = args[i + 1];
-      if (next === "true" || next === "false") i += 1;
-      continue;
-    }
-    at.push(i);
-  }
-  return at;
-}
-
-/** The selector and the file words of an upload or download. */
-export function fileOperands(args: readonly string[]): { selector?: string; files: string[] } {
-  const [selector, ...files] = operandIndexes(args).map((i) => args[i]!);
-  return { ...(selector !== undefined ? { selector } : {}), files };
 }
 
 /** `name.pdf`, then `name (2).pdf`, `name (3).pdf`, and so on, until one is free in `dir`. */

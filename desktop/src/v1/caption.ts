@@ -1,8 +1,7 @@
 // Sentences and citations captured with a step. The citation is the element's own string.
 
-import path from "node:path";
 import type { AnchorLocator, CitationSource, Identity, StepCaption, TargetBox } from "./schema";
-import { fileOperands } from "../engines/agent-browser-files";
+import { fileName, fileOperands } from "./file-operands";
 import { tabCommandAction, type TabCommandAction } from "./tab-command";
 
 type LocatorRelation = AnchorLocator["relation"];
@@ -176,7 +175,7 @@ export function commandSentence(command: string, arg: string | readonly string[]
   if (command === "screenshot") return { text: "Capture the page" };
   if (command === "tab") return { text: tabSentence(arg) };
   if (command === "upload" || command === "download") {
-    const files = fileOperands(typeof arg === "string" ? [arg] : arg ?? []).files.map((file) => path.basename(file)).join(", ");
+    const files = fileOperands(typeof arg === "string" ? [arg] : arg ?? []).files.map(fileName).join(", ");
     const verb = command === "upload" ? "Upload" : "Download";
     return { text: files ? `${verb} ${files}` : `${verb} a file` };
   }

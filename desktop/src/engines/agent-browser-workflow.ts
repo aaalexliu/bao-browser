@@ -6,6 +6,7 @@ import { leafTexts, smallestChange } from "../v1/recorder";
 import type { Identity, StepLocator } from "../v1/schema";
 import { Library } from "../v1/store";
 import type { AgentBrowserCommandResult } from "./agent-browser-proxy";
+import { fileOperands } from "../v1/file-operands";
 
 interface BrowserPage {
   port: number;
@@ -73,6 +74,16 @@ function effectState(observation: Observation): string {
 
 const PAGE_FUNCTIONS = `const dumpPage = ${dumpPage.toString()}; const leafTexts = ${leafTexts.toString()};`;
 
+/**
+ * The saved step for an upload or download: a note that names each file with its full path. Replay runs a note as nothing, so a
+ * replay of this workflow does not move the file.
+ */
+function fileNote(command: "upload" | "download", args: readonly string[]): string {
+  const { selector, files } = fileOperands(args);
+  const through = selector && !/^@?e\d+$/.test(selector.trim()) ? ` through ${selector}` : "";
+  return command === "download" ? `Downloaded ${files[0] ?? "a file"}${through}` : `Uploaded ${files.join(", ")}${through}`;
+}
+
 function durableTarget(node: DomDump, page: PageDump): AgentBrowserReplayTarget | undefined {
   const { handle: _handle, bbox: _bbox, value: _value, checked: _checked, enabled: _enabled, hidden: _hidden, overlay: _overlay, inDialog: _dialog, ...identity } = node;
   if (identity.cssPath?.includes(":nth-of-type(")) delete identity.cssPath;
@@ -125,7 +136,6 @@ export class AgentBrowserWorkflow {
       return result;
     }
     if (command === "scroll") block("it scrolled the page, which Bao cannot replay yet");
-    if (command === "upload" || command === "download") block("it moved a file, which Bao cannot replay yet");
     if (command === "tab" && ["new", "close"].includes(args[0] ?? "")) block("it used a second tab");
     const action = ["open", "click", "fill", "press"].includes(command);
     const expectedArgs = command === "fill" ? 2 : 1;
@@ -225,6 +235,10 @@ export class AgentBrowserWorkflow {
             this.pending = { event, before: before.before };
             if (after) this.updatePending(after);
           }
+        } else if (command === "upload" || command === "download") {
+          if (after) this.updatePending(after);
+          this.pending = undefined;
+          this.events.push({ id, toolCallId: id, ts: Date.now(), kind: "act", op: "note", afterText: fileNote(command, args), afterUrl: after?.page.url });
         } else if (after) this.updatePending(after);
         this.persist(named);
       } catch (error) {

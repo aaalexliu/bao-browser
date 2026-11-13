@@ -114,6 +114,32 @@ test("ended agent sessions show their reason and stay out of Needs you", () => {
   assert.doesNotMatch(receipt, /session_closed|Needs you|Bao stopped/);
 });
 
+test("a receipt shows each file a download saved or an upload attached, with its full path, size, SHA-256, and how Bao moved it", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-files-receipt-"));
+  try {
+    const library = new Library(root);
+    const statement = "/Users/alex/Library/Application Support/bao/downloads/run-files/october.pdf";
+    const sha = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08";
+    const steps = [
+      { id: "command-1", status: "passed", label: "Download october.pdf", caption: { text: "Download october.pdf" }, startedAt: 1, endedAt: 2,
+        native: { command: "download", args: ["@e5", statement], results: [], isError: false, screenshots: [] },
+        transfer: { command: "download", source: "pdf-viewer", url: "https://robinhood.example/statements/2026-10.pdf", files: [{ path: statement, bytes: 48213, sha256: sha }] } },
+      { id: "command-2", status: "passed", label: "Upload october.pdf, w2.pdf", caption: { text: "Upload october.pdf, w2.pdf" }, startedAt: 3, endedAt: 4,
+        native: { command: "upload", args: ["@e7", statement, "/Users/alex/Documents/w2.pdf"], results: [], isError: false, screenshots: [] },
+        transfer: { command: "upload", source: "file-chooser", files: [{ path: statement, bytes: 48213, sha256: sha }, { path: "/Users/alex/Documents/w2.pdf", unread: "EPERM: operation not permitted" }] } },
+    ];
+    library.saveRun({ id: "run-files", workflowId: "agent-browser", kind: "capture", pageEngine: "agent-browser", status: "passed", at: 1, heals: [], steps } as never);
+    const html = runReceipt(inspectRunView(library, { run_id: "run-files" }), "Statements", library.readRun("run-files") as unknown as RunSummary);
+    const download = html.match(/id="receipt-step-1"[\s\S]*?<\/section>/)?.[0] ?? "";
+    assert.match(download, /Saved 1 file\. Chrome showed it as a PDF instead of downloading it, so Bao fetched it from https:\/\/robinhood\.example\/statements\/2026-10\.pdf with the page&#39;s sign-in\./);
+    assert.ok(download.includes(`<span class="receipt-file-path">${statement}</span>`));
+    assert.ok(download.includes(`48,213 bytes · SHA-256 <code>${sha}</code>`));
+    const upload = html.match(/id="receipt-step-2"[\s\S]*?<\/section>/)?.[0] ?? "";
+    assert.match(upload, /Attached 2 files\. Bao clicked the target, caught the file chooser it opened, and set it there\. No file panel opened\./);
+    assert.match(upload, /Bao could not read it after the step: EPERM: operation not permitted/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test("an ended agent session receipt names its steps in words and marks the cut-off and unreached ones", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-agent-receipt-"));
   try {

@@ -474,7 +474,7 @@ test("finished native captures explain why unsupported actions cannot become wor
   } finally { await f.close(); }
 });
 
-test("on a copy the agent downloads a file or a PDF Chrome shows, and uploads it through the page's upload button", { skip: !binary, timeout: scaledMs(120_000) }, async () => {
+test("on a copy the agent downloads a file or a PDF Chrome shows, uploads it through the upload button, and the run and saved workflow name each file", { skip: !binary, timeout: scaledMs(120_000) }, async () => {
   const f = await fixture();
   try {
     await passed(f, "open", [`${f.url}files`]);
@@ -500,11 +500,28 @@ test("on a copy the agent downloads a file or a PDF Chrome shows, and uploads it
     assert.match(await passed(f, "download", ["#same", "viewed.pdf"]), /in this tab, which still shows it/);
     assert.equal(await readFile(path.join(folder, "viewed.pdf"), "utf8"), VIEWED);
 
-    assert.match(await passed(f, "close"), /Not saved as a workflow: command-2 \(download\): it moved a file, which Bao cannot replay yet\./);
-    const capture = f.library.listRuns()[0]!;
+    const closing = await passed(f, "close");
+    const workflowId = /Saved workflow: .+ \((wf-[^;]+);/.exec(closing)?.[1];
+    assert.ok(workflowId, closing);
+    const notes = f.library.read(workflowId).steps.map((step) => step.caption.text);
+    assert.deepEqual(notes, [`Downloaded ${saved} through #dl`, `Uploaded ${saved}`, `Downloaded ${path.join(folder, "october.pdf")} through #newtab`,
+      `Downloaded ${path.join(folder, "viewed.pdf")} through #same`], "the saved workflow names each file with its full path");
+
+    const capture = f.library.listRuns().find((run) => run.workflowId === "agent-browser")!;
     const steps = capture.steps as RecordedAgentBrowserCommand[];
-    assert.deepEqual(steps.find((step) => step.native.command === "download")!.native.args, ["#dl", saved], "the run keeps the real argv, full path included");
+    const files = steps.filter((step) => step.transfer).map((step) => step.transfer!);
+    const sha = (text: string) => createHash("sha256").update(text).digest("hex");
+    assert.deepEqual(files, [
+      { command: "download", source: "download", url: `${f.url}statement.pdf`, files: [{ path: saved, bytes: STATEMENT.length, sha256: sha(STATEMENT) }] },
+      { command: "upload", source: "file-chooser", files: [{ path: saved, bytes: STATEMENT.length, sha256: sha(STATEMENT) }] },
+      { command: "download", source: "pdf-viewer", url: `${f.url}view.pdf`, files: [{ path: path.join(folder, "october.pdf"), bytes: VIEWED.length, sha256: sha(VIEWED) }] },
+      { command: "download", source: "pdf-viewer", url: `${f.url}view.pdf`, files: [{ path: path.join(folder, "viewed.pdf"), bytes: VIEWED.length, sha256: sha(VIEWED) }] },
+    ], "each file step keeps its full path, size, SHA-256, and how Bao moved it");
+    const download = steps.find((step) => step.native.command === "download")!;
+    assert.deepEqual(download.native.args, ["#dl", saved], "the run keeps the real argv, full path included");
+    assert.ok(download.beforeShot && download.afterShot, "a download keeps a picture before and after, like a click");
     assert.equal(steps.find((step) => step.native.command === "upload")!.caption.text, "Upload statement.pdf");
+    assert.equal(await readFile(saved, "utf8"), STATEMENT, "the file stays where Bao saved it");
   } finally { await f.close(); }
 });
 

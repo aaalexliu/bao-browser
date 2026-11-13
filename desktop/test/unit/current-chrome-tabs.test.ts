@@ -4,6 +4,7 @@
 // chrome://, chrome-extension://, and devtools://, and without --pin-tab it can make a new target current on its own.
 
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import childProcess from "node:child_process";
 import { EventEmitter } from "node:events";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -395,6 +396,9 @@ test("a download on the owner's Chrome points Chrome's downloads at the run only
   const file = path.join(f.home, "downloads", f.proxy.activeRunId!, "statement.pdf");
   assert.equal(saved!.stdout, `\u2713 Download saved to ${file}\n`);
   assert.equal(await readFile(file, "utf8"), "statement");
+  const recorded = (new Library(f.home).readRun(f.proxy.activeRunId!).steps as unknown as RecordedAgentBrowserCommand[]).at(-1)!;
+  assert.deepEqual(recorded.transfer, { command: "download", source: "download", url: "https://example.com/statement.pdf",
+    files: [{ path: file, bytes: 9, sha256: createHash("sha256").update("statement").digest("hex") }] });
   assert.deepEqual(behavior(), ["allowAndName", "default"], "Bao's own connection gives Chrome its download settings back after the click");
   assert.deepEqual(f.daemon.commands.filter(item => item.command === "click").map(item => item.args), [["@e2"]], "the native CLI only clicks");
   assert.equal(f.listeners.length, listening, "the download leaves no listener on the owner's connection");

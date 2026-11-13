@@ -3,7 +3,8 @@ import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { fileArgs, fileOperands } from "../../src/engines/agent-browser-files";
+import { fileArgs } from "../../src/engines/agent-browser-files";
+import { fileOperands } from "../../src/v1/file-operands";
 
 async function scratch() {
   const root = await mkdtemp(path.join(tmpdir(), "bao-files-"));

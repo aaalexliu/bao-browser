@@ -1,9 +1,8 @@
 // One plain sentence per pass-through step, quoting the element's own text from the latest snapshot.
 
-import path from "node:path";
 import { ownerAsk, ownerSite, ownerTask, type OwnerAsk, type OwnerPage } from "../cdp-live/owner-wait";
 import type { AgentBrowserCommandResult } from "./agent-browser-proxy";
-import { fileOperands } from "./agent-browser-files";
+import { fileName, fileOperands } from "../v1/file-operands";
 
 /** A sentence piece. `cite` is text copied from the page; `value` is text the agent supplied. */
 export type SummaryPart = string | { cite: string } | { value: string };
@@ -229,7 +228,7 @@ function moved(facts: StepFacts): string {
 /** The file names an upload or download names, joined for a sentence. */
 function fileNames(command: string, args: readonly string[]): string | undefined {
   if (command !== "upload" && command !== "download") return undefined;
-  return fileOperands(args).files.map((file) => path.basename(file)).join(", ") || undefined;
+  return fileOperands(args).files.map(fileName).join(", ") || undefined;
 }
 
 /** Describe a finished pass-through step. Facts come from native output and Chrome's own page metadata. */

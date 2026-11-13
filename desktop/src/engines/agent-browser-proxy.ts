@@ -29,7 +29,8 @@ import { diffView, findView, snapshotView } from "./snapshot-view";
 import { AGENT_DISCONNECTED, AGENT_IDLE_REASON, NEWER_TASK_REASON } from "../v1/stop-copy";
 import { openBackgroundCdp, type BackgroundCdp } from "./background-cdp";
 import { activeNativeTab, parseNativeTabs, type NativeTab } from "./agent-browser-tabs";
-import { fileArgs, isFileCommand, type FileArgs, type FileCommand } from "./agent-browser-files";
+import { fileOperands } from "../v1/file-operands";
+import { fileArgs, fileFacts, isFileCommand, type FileArgs, type FileCommand, type FileTransfer } from "./agent-browser-files";
 import { downloadByClick, NOT_FILE_INPUT, uploadThroughChooser } from "./agent-browser-transfer";
 
 export const AGENT_BROWSER_COMMANDS = ["open", "snapshot", "click", "fill", "press", "scroll", "tab", "screenshot", "upload", "download", "wait_for_owner", "close"] as const;
@@ -909,8 +910,9 @@ export class AgentBrowserProxy {
           }
         } else if (continuing && site && "importLogin" in session.chrome) this.imported(session, await session.chrome.importLogin(site));
       }
-      if ((command === "click" || command === "fill") && args[0]) {
-        await this.captureTarget(session, step, args[0]);
+      const target = command === "click" || command === "fill" ? args[0] : files ? fileOperands(args).selector : undefined;
+      if (target) {
+        await this.captureTarget(session, step, target);
         if (this.waitOf(session) !== "off") {
           const opened = await this.settleWall(session, { retry: true });
           if (opened && this.moved?.site) {
@@ -927,7 +929,7 @@ export class AgentBrowserProxy {
       await session.workflow.record(command as string, nativeArgs, step.id, async () => {
         const result = command === "close" && (session.kind === "current" || session.chrome.isClosed())
           ? { stdout: session.kind === "current" ? "Disconnected from the owner's own Chrome. Only Bao's task tabs close; the owner's tabs and windows stay open." : "", stderr: "", exitCode: 0 }
-          : files ? await this.transfer(session, command as FileCommand, files)
+          : files ? await this.transfer(session, command as FileCommand, files).then((done) => { context.transfer = done.transfer; return done.result; })
             : await this.runNative(session, command as string, nativeArgs);
         results.push(result);
         if (files?.saved && result.exitCode === 0) this.saved = files.saved;
@@ -1492,18 +1494,23 @@ export class AgentBrowserProxy {
    * connection to the agent's tab: Running Chrome's shared connection, or a direct one to a Bao profile or copy. The native CLI
    * only clicks there, because its own download waits 30 s on a PDF that Chrome shows instead of downloading, and holds the daemon.
    */
-  private async transfer(session: Session, command: FileCommand, files: FileArgs): Promise<AgentBrowserCommandResult> {
+  private async transfer(session: Session, command: FileCommand, files: FileArgs): Promise<{ result: AgentBrowserCommandResult; transfer?: FileTransfer }> {
     if (command === "upload") {
       const native = await this.runNative(session, "upload", files.forwarded);
-      if (native.exitCode === 0 || !NOT_FILE_INPUT.test(native.stderr)) return native;
+      if (native.exitCode === 0) return { result: native, transfer: { command, source: "file-input", files: await fileFacts(files.files) } };
+      if (!NOT_FILE_INPUT.test(native.stderr)) return { result: native };
     }
     const active = await this.activePage(session);
     if (!active) throw new Error("no active Bao page metadata");
     const cdp = await this.connectSession(session, { timeoutMs: 5000, signal: session.abort.signal });
     const click = () => this.runNative(session, "click", files.click);
     try {
-      return command === "upload" ? await uploadThroughChooser(cdp, active.targetId, files.files, click)
-        : await downloadByClick(cdp, active.targetId, files.saved!, click);
+      if (command === "upload") {
+        const result = await uploadThroughChooser(cdp, active.targetId, files.files, click);
+        return { result, ...result.exitCode === 0 ? { transfer: { command, source: "file-chooser" as const, files: await fileFacts(files.files) } } : {} };
+      }
+      const { result, from } = await downloadByClick(cdp, active.targetId, files.saved!, click);
+      return { result, ...from ? { transfer: { command, ...from, files: await fileFacts([files.saved!]) } } : {} };
     } finally {
       if (session.kind === "copy") cdp.close();
     }

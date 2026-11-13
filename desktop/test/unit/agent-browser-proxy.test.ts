@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -828,6 +829,11 @@ test("an upload to a file input runs natively with absolute paths, and the run k
       ["Upload w2.pdf", 'Could not upload "w2.pdf".', ["#f", path.join(f.root, "gone", "w2.pdf")]],
     ]);
     assert.equal(steps.at(-1)!.summary?.error, `\u2717 File not found: ${path.join(f.root, "gone", "w2.pdf")}`, "the run keeps the real path the native error names");
+    const sha = createHash("sha256").update("%PDF").digest("hex");
+    assert.deepEqual(steps[1]!.transfer, { command: "upload", source: "file-input", files: [
+      { path: path.join(downloads, "statement.pdf"), bytes: 4, sha256: sha }, { path: w2, bytes: 4, sha256: sha },
+    ] });
+    assert.equal(steps[2]!.transfer, undefined, "a failed upload records no file facts");
   } finally { await f.close(); }
 });
 

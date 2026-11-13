@@ -10,6 +10,7 @@ import { Library, type StoredRun } from "../v1/store";
 import { shotFile, shotFormat, type ShotBox } from "../v1/shots";
 import { describeStep, landmarkKeys, ownerReply, TASK_TAB_CLOSED, type OwnerWaitPage, type StepSummary } from "./agent-browser-describe";
 import type { AgentBrowserCommandResult } from "./agent-browser-proxy";
+import type { FileTransfer } from "./agent-browser-files";
 import type { BrowserPick } from "./browser-pick";
 import type { SignInImport } from "./bao-profile";
 import { startCdpVideo, type CdpVideo } from "./cdp-video";
@@ -34,6 +35,8 @@ export interface StepContext {
   mark?: ShotBox;
   /** The line that says Bao moved the session to the owner's running Chrome during this step. */
   moved?: string;
+  /** The files an upload or download moved, and how. */
+  transfer?: FileTransfer;
 }
 
 export interface RecordedAgentBrowserCommand {
@@ -56,6 +59,8 @@ export interface RecordedAgentBrowserCommand {
   failedToStart?: true;
   /** The plain sentence for this step, with the element's own text cited. */
   summary?: StepSummary;
+  /** The files an upload or download moved: full paths, sizes, SHA-256, and how Bao moved them. */
+  transfer?: FileTransfer;
   native: {
     command: string;
     args: string[];
@@ -150,6 +155,7 @@ export class AgentBrowserRun {
     context: StepContext = {}): Promise<void> {
     step.endedAt = Date.now();
     step.native.results = results;
+    if (context.transfer) step.transfer = context.transfer;
     const snap = step.native.command === "snapshot"
       ? results.find((result) => result.stdout.includes("[ref="))?.stdout || results.find((result) => result.stderr.includes("[ref="))?.stderr
       : undefined;

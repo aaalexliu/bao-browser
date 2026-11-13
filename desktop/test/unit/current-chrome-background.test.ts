@@ -10,6 +10,7 @@ import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { shareConnection } from "../../src/cdp-live/shared-connection";
 import { connectCdp, type CdpSocket } from "../../src/cdp-live/socket";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
+import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
 import * as profileCopy from "../../src/engines/chrome-profile-copy";
 import { startApp } from "../../src/app/server";
 import { runWorkflow } from "../../src/mcp/catalog";
@@ -238,6 +239,15 @@ test("on the owner's Chrome the agent uploads through an upload button and downl
     assert.match(await run("download", ["#same", "viewed.pdf"]), /in this tab, which still shows it/);
     assert.equal(await readFile(path.join(downloads, "viewed.pdf"), "utf8"), STATEMENT_PDF);
     assert.equal((await ownerState()).visibility, "visible");
+    const stored = new Library(home).listRuns()[0]!;
+    const moved = (stored.steps as RecordedAgentBrowserCommand[]).flatMap((step) => step.transfer ? [step.transfer] : []);
+    assert.deepEqual(moved.map((item) => [item.command, item.source, "url" in item ? item.url : undefined, item.files.map((file) => file.path)]), [
+      ["download", "download", `${base}/attachment`, [path.join(downloads, "export.csv")]],
+      ["upload", "file-chooser", undefined, [path.join(downloads, "export.csv")]],
+      ["upload", "file-chooser", undefined, [w2]],
+      ["download", "pdf-viewer", `${base}/statement.pdf`, [path.join(downloads, "october.pdf")]],
+      ["download", "pdf-viewer", `${base}/statement.pdf`, [path.join(downloads, "viewed.pdf")]],
+    ], "the run says how each file moved");
   } finally {
     await proxy.end();
     probe.close();

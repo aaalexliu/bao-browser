@@ -6,6 +6,9 @@ import { setTimeout as delay } from "node:timers/promises";
 import type { CdpSocket } from "../cdp-live/socket";
 import type { AgentBrowserCommandResult } from "./agent-browser-proxy";
 
+/** A download's result, and where its file came from when it saved one. */
+export type DownloadOutcome = { result: AgentBrowserCommandResult; from?: { source: "download"; url?: string } | { source: "pdf-viewer"; url: string } };
+
 type Click = () => Promise<AgentBrowserCommandResult>;
 
 /** agent-browser 0.41.0's upload error for a selector that is not an `<input type=file>`. */
@@ -104,14 +107,19 @@ async function savePdf(cdp: CdpSocket, targetId: string, file: string): Promise<
  * a tab the click opened. Bao points Chrome's downloads at `saved`'s folder only for this command and gives Chrome back its own
  * download settings after, so the owner's later downloads go where Chrome puts them. A tab the click opened for a PDF closes.
  */
-export async function downloadByClick(cdp: CdpSocket, agentTab: string, saved: string, click: Click): Promise<AgentBrowserCommandResult> {
+export async function downloadByClick(cdp: CdpSocket, agentTab: string, saved: string, click: Click): Promise<DownloadOutcome> {
   const folder = path.dirname(saved);
   const all = await pages(cdp);
   const before = { url: all.find((info) => info.targetId === agentTab)?.url ?? "", targets: new Set(all.map((info) => info.targetId)) };
   let started: string | undefined;
+  let url: string | undefined;
   const states = new Map<string, string>();
   const stops = [
-    cdp.on("Browser.downloadWillBegin", undefined, (params) => { started ??= String(params.guid); }),
+    cdp.on("Browser.downloadWillBegin", undefined, (params) => {
+      if (started) return;
+      started = String(params.guid);
+      if (typeof params.url === "string") url = params.url;
+    }),
     cdp.on("Browser.downloadProgress", undefined, (params) => {
       if (params.state === "completed" || params.state === "canceled") states.set(String(params.guid), String(params.state));
     }),
@@ -119,7 +127,7 @@ export async function downloadByClick(cdp: CdpSocket, agentTab: string, saved: s
   try {
     await cdp.send("Browser.setDownloadBehavior", { behavior: "allowAndName", downloadPath: folder, eventsEnabled: true }, undefined, 5000);
     const clicked = await click();
-    if (clicked.exitCode !== 0) return clicked;
+    if (clicked.exitCode !== 0) return { result: clicked };
     const startBy = Date.now() + START_MS;
     while (!started && Date.now() < startBy) {
       const pdf = await pdfPage(cdp, agentTab, before);
@@ -128,17 +136,18 @@ export async function downloadByClick(cdp: CdpSocket, agentTab: string, saved: s
         const opened = pdf.targetId !== agentTab;
         if (opened) await cdp.send("Target.closeTarget", { targetId: pdf.targetId }, undefined, 5000).catch(() => undefined);
         const where = opened ? "a new tab, which Bao closed" : "this tab, which still shows it";
-        return { stdout: `\u2713 Download saved to ${saved}\n  Chrome showed the PDF in ${where}, so Bao saved it from that page.\n`, stderr: "", exitCode: 0 };
+        return { result: { stdout: `\u2713 Download saved to ${saved}\n  Chrome showed the PDF in ${where}, so Bao saved it from that page (${pdf.url}).\n`, stderr: "", exitCode: 0 },
+          from: { source: "pdf-viewer", url: pdf.url } };
       }
       await delay(250);
     }
-    if (!started) return failed(`The click started no download and showed no PDF within ${START_MS / 1000} s.`);
+    if (!started) return { result: failed(`The click started no download and showed no PDF within ${START_MS / 1000} s.`) };
     const finishBy = Date.now() + FINISH_MS;
     while (!states.has(started) && Date.now() < finishBy) await delay(100);
     const state = states.get(started);
-    if (state !== "completed") return failed(state === "canceled" ? "Chrome canceled the download." : `The download did not finish within ${FINISH_MS / 60_000} minutes.`);
+    if (state !== "completed") return { result: failed(state === "canceled" ? "Chrome canceled the download." : `The download did not finish within ${FINISH_MS / 60_000} minutes.`) };
     await rename(path.join(folder, started), saved);
-    return { stdout: `\u2713 Download saved to ${saved}\n`, stderr: "", exitCode: 0 };
+    return { result: { stdout: `\u2713 Download saved to ${saved}\n`, stderr: "", exitCode: 0 }, from: { source: "download", ...url ? { url } : {} } };
   } finally {
     for (const stop of stops) stop();
     await cdp.send("Browser.setDownloadBehavior", { behavior: "default" }, undefined, 5000)
