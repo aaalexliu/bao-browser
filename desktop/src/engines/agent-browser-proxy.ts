@@ -1091,7 +1091,7 @@ export class AgentBrowserProxy {
 
   /**
    * Tabs for the profile question. A failed read still asks. It does not open a browser or turn debugging on.
-   * Session files name every profile. The listener, if one is already up, only fills titles. Its socket is closed before this returns.
+   * Live tabs are listed only when debugging is already on. The socket is closed before this returns.
    */
   private async withOpenTabs(error: ChromeProfileQuestion): Promise<ChromeProfileQuestion> {
     try {

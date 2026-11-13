@@ -1,8 +1,7 @@
-import { realpathSync } from "node:fs";
 import path from "node:path";
 import { connectCdp, type CdpSocket } from "../cdp-live/socket";
 import { readDevToolsActivePort, type DevToolsEndpoint } from "../cdp-live/endpoint";
-import { readSavedProfileTabs, type SavedTab } from "./snss-tabs";
+import { readSavedProfileTabs, type ProfileSessions, type SessionFailure } from "./snss-tabs";
 
 /**
  * Ten tabs is enough to spot the site the task needs, such as robinhood.com.
@@ -11,9 +10,6 @@ import { readSavedProfileTabs, type SavedTab } from "./snss-tabs";
 export const PROFILE_TAB_CAP = 10;
 export const PROFILE_TAB_TITLE_MAX = 80;
 export const PROFILE_TAB_HOST_MAX = 80;
-const READ_BUDGET_MS = 8_000;
-const CONTEXT_MS = 2_500;
-const PROFILE_DIRECTORY = /^(?:Default|Profile \d+)$/;
 
 /** A tab the model may see. Host only: a full URL can carry an OAuth code or a mail id in its query. */
 export interface ProfileTab {
@@ -28,18 +24,19 @@ export interface ProfileTabGroup {
 
 export interface ProfileTabListing {
   byDirectory: Record<string, ProfileTabGroup>;
-  /** Set when Bao did not read tabs. A fixed phrase, never an error that might contain a URL. */
+  /** Set when the live tab list was not read. A fixed phrase, never an error that might contain a URL. */
   unread?: string;
-  /** Page targets whose profile folder could not be read. Their URLs are not included. */
+  /** Live page targets whose profile folder could not be matched. Their URLs are not included. */
   unmatched?: number;
-  /** Extra sentence. Does not hide tabs the listing already has. */
-  note?: string;
+  /** A profile whose session file could not be used to match live tabs. A fixed phrase, never a URL. */
+  unavailable?: Record<string, string>;
 }
 
-const SAVED_NOTE = {
-  denied: "Chrome's folder is not readable, so tabs were not read from disk.",
-  unreadable: "A session file could not be read, so tabs were not read from disk.",
-} as const;
+const UNAVAILABLE_TEXT: Record<SessionFailure, string> = {
+  denied: "Chrome's folder is not readable",
+  unreadable: "the session file could not be read",
+  absent: "no session file",
+};
 
 interface TargetInfo {
   targetId?: string;
@@ -52,6 +49,22 @@ interface TargetInfo {
 /** The socket methods this read uses. A test can pass a fake. */
 export interface TabSocket {
   send<T>(method: string, params?: Record<string, unknown>, sessionId?: string, timeoutMs?: number): Promise<T>;
+}
+
+/** One live page, still carrying its URL so a context can be matched. The URL is not a model-facing field. */
+export interface LivePage {
+  targetId: string;
+  url: string;
+  title: string;
+}
+
+export interface LiveContext {
+  tabs: LivePage[];
+}
+
+export interface LivePages {
+  contexts: LiveContext[];
+  unread?: string;
 }
 
 export function trimField(value: string, max: number): string {
@@ -75,17 +88,6 @@ export function capTabs(tabs: ProfileTab[]): ProfileTabGroup {
   return { tabs: tabs.slice(0, PROFILE_TAB_CAP), omitted: Math.max(0, tabs.length - PROFILE_TAB_CAP) };
 }
 
-function directoryOf(reported: string | undefined, root: string, directories: readonly string[]): string | undefined {
-  if (!reported || !path.isAbsolute(reported)) return undefined;
-  const directory = path.basename(reported);
-  if (!PROFILE_DIRECTORY.test(directory) || !directories.includes(directory)) return undefined;
-  const parent = path.dirname(reported);
-  if (path.resolve(parent) === path.resolve(root)) return directory;
-  try { if (realpathSync(parent) === realpathSync(root)) return directory; }
-  catch { return undefined; }
-  return undefined;
-}
-
 /** A title that is itself a URL, or that carries a query, must not reach the model. A question mark in ordinary words stays. */
 function safeTitle(title: string): string {
   const flat = title.replace(/\s+/g, " ").trim();
@@ -99,144 +101,117 @@ function safeTitle(title: string): string {
   return trimField(cut, PROFILE_TAB_TITLE_MAX);
 }
 
-function keptTab(target: TargetInfo): ProfileTab | undefined {
-  if (target.type !== "page" || !target.url) return undefined;
-  const host = tabHost(target.url);
-  if (!host) return undefined;
-  return { title: safeTitle(target.title ?? ""), host };
-}
-
-interface ContextFolder {
-  directory?: string;
-  /** The context the version tab landed in. Chrome's default id cannot be passed back to createTarget. */
-  contextId?: string;
+/** Page identity for matching a live context to a session file. Not shown to the model. */
+function urlKey(url: string): string | undefined {
+  let parsed: URL;
+  try { parsed = new URL(url); }
+  catch { return undefined; }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return undefined;
+  const pathName = parsed.pathname.replace(/\/$/, "") || "/";
+  const port = parsed.port ? `:${parsed.port}` : "";
+  return `${parsed.protocol}//${parsed.hostname}${port}${pathName}${parsed.search}`;
 }
 
 /**
- * Groups page targets by profile folder. The focused profile is the one a hidden chrome://version tab
- * lands in when no context is named. Chrome rejects createTarget for another profile's context, and the
- * only other way to learn that folder is to open a window. This does not open one. Those tabs are counted,
- * and their addresses are not returned. Closes each version tab it opens. Does not close the caller's socket.
+ * Live page targets grouped by browser context. Does not open a tab and does not assign a profile folder.
+ * Does not close the caller's socket.
  */
-export async function readProfileTabs(cdp: TabSocket, root: string, directories: readonly string[]): Promise<ProfileTabListing> {
+export async function readLivePages(cdp: TabSocket): Promise<LiveContext[]> {
   const { targetInfos } = await cdp.send<{ targetInfos: TargetInfo[] }>("Target.getTargets", {}, undefined, 2000);
-  const byContext = new Map<string, ProfileTab[]>();
+  const byContext = new Map<string, LivePage[]>();
   for (const target of targetInfos) {
-    const tab = keptTab(target);
-    if (!tab) continue;
+    if (target.type !== "page" || !target.url || !tabHost(target.url)) continue;
     const key = target.browserContextId ?? "";
     const list = byContext.get(key) ?? [];
-    list.push(tab);
+    list.push({ targetId: target.targetId ?? `${key}:${list.length}`, url: target.url, title: target.title ?? "" });
     byContext.set(key, list);
   }
-  const folderOf = new Map<string, string>();
-  const deadline = Date.now() + READ_BUDGET_MS;
-  const focused = await contextDirectory(cdp, undefined, root, directories).catch(() => undefined);
-  if (focused?.directory) {
-    folderOf.set(focused.contextId ?? "", focused.directory);
-    folderOf.set("", focused.directory);
-  }
-  for (const contextId of byContext.keys()) {
-    if (!contextId || folderOf.has(contextId) || Date.now() >= deadline) continue;
-    const found = await contextDirectory(cdp, contextId, root, directories).catch(() => undefined);
-    if (found?.directory) folderOf.set(contextId, found.directory);
-  }
-  const byDirectory: Record<string, ProfileTabGroup> = {};
-  let unmatched = 0;
-  for (const [contextId, tabs] of byContext) {
-    const directory = folderOf.get(contextId);
-    if (!directory) {
-      unmatched += tabs.length;
-      continue;
-    }
-    const prior = byDirectory[directory]?.tabs ?? [];
-    byDirectory[directory] = capTabs([...prior, ...tabs]);
-  }
-  return { byDirectory, ...(unmatched ? { unmatched } : {}) };
-}
-
-async function contextDirectory(cdp: TabSocket, contextId: string | undefined, root: string, directories: readonly string[]): Promise<ContextFolder | undefined> {
-  const params: Record<string, unknown> = { url: "chrome://version", background: true, hidden: true };
-  if (contextId) params.browserContextId = contextId;
-  const { targetId } = await cdp.send<{ targetId: string }>("Target.createTarget", params, undefined, CONTEXT_MS);
-  try {
-    const info = await cdp.send<{ targetInfo?: { browserContextId?: string } }>("Target.getTargetInfo", { targetId }, undefined, CONTEXT_MS).catch(() => undefined);
-    const landed = contextId ?? info?.targetInfo?.browserContextId;
-    const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true }, undefined, CONTEXT_MS);
-    const deadline = Date.now() + CONTEXT_MS;
-    while (Date.now() < deadline) {
-      const { result } = await cdp.send<{ result: { value?: unknown } }>("Runtime.evaluate",
-        { expression: "document.getElementById('profile_path')?.textContent || ''", returnByValue: true }, sessionId, 1000);
-      if (typeof result.value === "string" && result.value.trim()) {
-        return { directory: directoryOf(result.value.trim(), root, directories), contextId: landed };
-      }
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-    return { contextId: landed };
-  } finally {
-    await cdp.send("Target.closeTarget", { targetId }, undefined, 1000).catch(() => undefined);
-  }
+  return [...byContext.values()].map((tabs) => ({ tabs }));
 }
 
 /**
- * Open tabs for the profile question. Reads each profile's session files, so an unfocused profile is named without opening a window.
- * A failed disk read keeps the listener counts, when Chrome is already listening, and says why the files were not used.
+ * Open tabs for the profile question. Session URLs only name which profile a live context belongs to.
+ * The listed tabs are that context's live tabs. A saved tab with no live match is not listed.
+ * When the live list is unavailable, no saved tab is shown as open.
  */
 export async function listProfileTabs(root: string, directories: readonly string[]): Promise<ProfileTabListing> {
-  let saved;
-  try {
-    saved = await readSavedProfileTabs(root, directories);
-  } catch {
-    saved = { ok: false as const, reason: "unreadable" as const };
-  }
-  const live = await readListeningProfileTabs(root, directories);
-  if (!saved.ok) return { ...live, note: SAVED_NOTE[saved.reason] };
-  return withLiveTitles(savedListing(saved.byDirectory), live);
-}
-
-function savedListing(byDirectory: Record<string, SavedTab[]>): ProfileTabListing {
-  const listed: Record<string, ProfileTabGroup> = {};
-  for (const [directory, tabs] of Object.entries(byDirectory)) listed[directory] = capTabs(tabs.flatMap(savedTab));
-  return { byDirectory: listed };
-}
-
-function savedTab(tab: SavedTab): ProfileTab[] {
-  const host = tabHost(tab.url);
-  return host ? [{ title: safeTitle(tab.title), host }] : [];
-}
-
-/** Live titles replace saved ones for the same host. A live tab the session file has not flushed yet is added to that profile. */
-function withLiveTitles(saved: ProfileTabListing, live: ProfileTabListing): ProfileTabListing {
-  if (live.unread) return saved;
-  const byDirectory = { ...saved.byDirectory };
-  for (const [directory, liveGroup] of Object.entries(live.byDirectory)) {
-    const group = byDirectory[directory] ?? { tabs: [], omitted: 0 };
-    const hosts = new Set(group.tabs.map((tab) => tab.host));
-    const titled = group.tabs.map((tab) => {
-      const liveTab = liveGroup.tabs.find((item) => item.host === tab.host && item.title);
-      return liveTab ? { ...tab, title: liveTab.title } : tab;
-    });
-    byDirectory[directory] = capTabs([...titled, ...liveGroup.tabs.filter((tab) => !hosts.has(tab.host))]);
-  }
-  return { byDirectory };
+  const sessions = await readSavedProfileTabs(root, directories).catch(() => ({
+    urls: {},
+    failed: Object.fromEntries(directories.filter((directory) => /^(?:Default|Profile \d+)$/.test(directory)).map((directory) => [directory, "unreadable" as const])),
+  }));
+  return confirmOpenTabs(sessions, await readListeningProfileTabs(root));
 }
 
 /**
- * Tabs from a debugger that is already listening on this Chrome folder.
+ * Match each live context to the profile whose session URLs overlap it most, then list that context's live tabs.
+ * A tie matches no profile. URLs are stripped here, at the output boundary.
+ */
+export function confirmOpenTabs(sessions: ProfileSessions, live: LivePages): ProfileTabListing {
+  const unavailable: Record<string, string> = {};
+  for (const [directory, reason] of Object.entries(sessions.failed)) unavailable[directory] = UNAVAILABLE_TEXT[reason];
+  const failed = Object.keys(unavailable).length ? { unavailable } : {};
+  if (live.unread) return { byDirectory: {}, unread: live.unread, ...failed };
+  const assigned = new Map<string, LivePage[]>();
+  let unmatched = 0;
+  for (const context of live.contexts) {
+    const directory = bestProfile(context, sessions.urls);
+    if (!directory) {
+      unmatched += context.tabs.length;
+      continue;
+    }
+    assigned.set(directory, [...(assigned.get(directory) ?? []), ...context.tabs]);
+  }
+  const byDirectory: Record<string, ProfileTabGroup> = {};
+  for (const [directory, pages] of assigned) byDirectory[directory] = capTabs(pagesToTabs(pages));
+  return { byDirectory, ...(unmatched ? { unmatched } : {}), ...failed };
+}
+
+function bestProfile(context: LiveContext, urls: Record<string, string[]>): string | undefined {
+  const liveKeys = context.tabs.map((tab) => urlKey(tab.url)).filter((key): key is string => !!key);
+  let best: { directory: string; count: number } | undefined;
+  let tie = false;
+  for (const [directory, saved] of Object.entries(urls)) {
+    const keys = new Set(saved.map(urlKey).filter((key): key is string => !!key));
+    let count = 0;
+    for (const key of liveKeys) if (keys.has(key)) count++;
+    if (!count) continue;
+    if (!best || count > best.count) {
+      best = { directory, count };
+      tie = false;
+    } else if (count === best.count) tie = true;
+  }
+  return best && !tie ? best.directory : undefined;
+}
+
+function pagesToTabs(pages: LivePage[]): ProfileTab[] {
+  const seen = new Set<string>();
+  const tabs: ProfileTab[] = [];
+  for (const page of pages) {
+    if (seen.has(page.targetId)) continue;
+    seen.add(page.targetId);
+    const host = tabHost(page.url);
+    if (!host) continue;
+    tabs.push({ title: safeTitle(page.title), host });
+  }
+  return tabs;
+}
+
+/**
+ * Live pages from a debugger that is already listening on this Chrome folder.
  * A hermetic run does not scan or connect: a test that did would raise the owner's Allow sheet.
  * This connects its own socket and closes it before returning. It does not turn debugging on,
  * and it does not join the Chrome hold, so nothing is left on for a later session to end.
  */
-export async function readListeningProfileTabs(root: string, directories: readonly string[]): Promise<ProfileTabListing> {
-  if (process.env.BAO_LANE === "hermetic") return { byDirectory: {}, unread: "remote debugging is off" };
+export async function readListeningProfileTabs(root: string): Promise<LivePages> {
+  if (process.env.BAO_LANE === "hermetic") return { contexts: [], unread: "remote debugging is off" };
   const endpoint = await listeningEndpoint(root);
-  if (!endpoint) return { byDirectory: {}, unread: "remote debugging is off" };
+  if (!endpoint) return { contexts: [], unread: "remote debugging is off" };
   let cdp: CdpSocket | undefined;
   try {
     cdp = await connectCdp(endpoint.port, endpoint.browserPath, { timeoutMs: 2000 });
-    return await readProfileTabs(cdp, root, directories);
+    return { contexts: await readLivePages(cdp) };
   } catch {
-    return { byDirectory: {}, unread: "remote debugging is off" };
+    return { contexts: [], unread: "remote debugging is off" };
   } finally {
     cdp?.close();
   }
@@ -262,6 +237,8 @@ export function agentProfileText(root: string, profiles: { directory: string; na
   const lines = profiles.map((profile) => {
     const mark = profile.directory === settings ? "; picked in Bao Settings" : "";
     const name = profileLabel(profile);
+    const failed = read.unavailable?.[profile.directory];
+    if (failed) return `${name}: open tabs were not read (${failed})${mark}`;
     if (read.unread) return `${name}: open tabs were not read (${read.unread})${mark}`;
     const group = read.byDirectory[profile.directory];
     const tabs = group?.tabs ?? [];
@@ -270,8 +247,7 @@ export function agentProfileText(root: string, profiles: { directory: string; na
     return `${name}: ${body}${more}${mark}`;
   });
   const unmatched = read.unmatched ? [`${read.unmatched} open tabs could not be matched to a profile.`] : [];
-  const note = read.note ? [read.note] : [];
-  return [head, ...lines, ...unmatched, ...note].join("\n");
+  return [head, ...lines, ...unmatched].join("\n");
 }
 
 /** The example folder is a call shape, not the profile the model should pick. */

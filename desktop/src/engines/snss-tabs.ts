@@ -1,8 +1,8 @@
 /**
- * Chrome writes each profile's open tabs under Sessions/. Session_* is a command log with close commands.
- * Tabs_* is a snapshot with titles. One file is not enough: the newest snapshot can omit an open tab or keep a closed one.
+ * The newest Sessions/Session_* file maps a profile folder to the URLs Chrome last wrote for it.
+ * Those URLs are not the open tabs. Tabs_ and Current Session are not read.
  */
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
 export interface SavedTab {
@@ -10,73 +10,51 @@ export interface SavedTab {
   title: string;
 }
 
-export type SavedRead =
-  | { ok: true; byDirectory: Record<string, SavedTab[]> }
-  | { ok: false; reason: "denied" | "unreadable" };
+export type SessionFailure = "denied" | "unreadable" | "absent";
+
+export interface ProfileSessions {
+  urls: Record<string, string[]>;
+  failed: Record<string, SessionFailure>;
+}
 
 const PROFILE_DIRECTORY = /^(?:Default|Profile \d+)$/;
 
-export async function readSavedProfileTabs(root: string, directories: readonly string[]): Promise<SavedRead> {
-  const byDirectory: Record<string, SavedTab[]> = {};
+export async function readSavedProfileTabs(root: string, directories: readonly string[]): Promise<ProfileSessions> {
+  const urls: Record<string, string[]> = {};
+  const failed: Record<string, SessionFailure> = {};
   for (const directory of directories) {
     if (!PROFILE_DIRECTORY.test(directory)) continue;
     try {
-      byDirectory[directory] = await readProfileSession(path.join(root, directory));
+      const tabs = await readProfileSession(path.join(root, directory));
+      if (!tabs) failed[directory] = "absent";
+      else urls[directory] = tabs.map((tab) => tab.url);
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
-      return { ok: false, reason: code === "EPERM" || code === "EACCES" ? "denied" : "unreadable" };
+      failed[directory] = code === "EPERM" || code === "EACCES" ? "denied" : "unreadable";
     }
   }
-  return { ok: true, byDirectory };
+  return { urls, failed };
 }
 
-async function readProfileSession(profileDir: string): Promise<SavedTab[]> {
-  const files = await newestSessionFiles(profileDir);
-  if (!files) return [];
-  const session = files.session ? openTabsFromSnss(await readFile(files.session)) : undefined;
-  if (files.session && !session) throw new Error("session file could not be read");
-  const snapshot = files.tabs ? openTabsFromSnss(await readFile(files.tabs)) : undefined;
-  if (!session && files.tabs && !snapshot) throw new Error("session file could not be read");
-  const titles = new Map((snapshot ?? []).map((tab) => [tab.url, tab.title]));
-  return (session ?? snapshot ?? []).map((tab) => ({ url: tab.url, title: titles.get(tab.url) || tab.title }));
+async function readProfileSession(profileDir: string): Promise<SavedTab[] | undefined> {
+  const file = await newestSessionFile(profileDir);
+  if (!file) return undefined;
+  const session = openTabsFromSnss(await readFile(file));
+  if (!session) throw new Error("session file could not be read");
+  return session;
 }
 
-async function newestSessionFiles(profileDir: string): Promise<{ session?: string; tabs?: string } | undefined> {
+async function newestSessionFile(profileDir: string): Promise<string | undefined> {
   const dir = path.join(profileDir, "Sessions");
   let names: string[];
   try {
     names = await readdir(dir);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return legacyFiles(profileDir);
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     throw error;
   }
   const session = newest(names, "Session_");
-  const tabs = newest(names, "Tabs_");
-  if (!session && !tabs) return legacyFiles(profileDir);
-  return {
-    ...(session ? { session: path.join(dir, session) } : {}),
-    ...(tabs ? { tabs: path.join(dir, tabs) } : {}),
-  };
-}
-
-async function legacyFiles(profileDir: string): Promise<{ session?: string; tabs?: string } | undefined> {
-  const session = path.join(profileDir, "Current Session");
-  const tabs = path.join(profileDir, "Current Tabs");
-  const found = {
-    ...(await exists(session) ? { session } : {}),
-    ...(await exists(tabs) ? { tabs } : {}),
-  };
-  return found.session || found.tabs ? found : undefined;
-}
-
-async function exists(file: string): Promise<boolean> {
-  try {
-    await stat(file);
-    return true;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
-    throw error;
-  }
+  return session ? path.join(dir, session) : undefined;
 }
 
 function newest(names: string[], prefix: string): string | undefined {
@@ -92,13 +70,12 @@ function newest(names: string[], prefix: string): string | undefined {
 }
 
 /**
- * Open tabs in one SNSS file. Undefined means the file is not a session file or a command is cut off.
- * Command 6 is a session navigation. Command 1 is the same pickle in a Tabs_ snapshot.
+ * Selected http(s) entries in one Session_* file. Undefined means the file is not a current session file or a command is cut off.
+ * Command 6 is a session navigation. Command 24 deletes navigation entries and shifts the indexes that follow.
  */
 export function openTabsFromSnss(buf: Buffer): SavedTab[] | undefined {
   if (buf.length < 8 || buf.subarray(0, 4).toString("latin1") !== "SNSS") return undefined;
-  const version = buf.readUInt32LE(4);
-  if (version !== 1 && version !== 3) return undefined;
+  if (buf.readUInt32LE(4) !== 3) return undefined;
   const tabs = new Map<number, TabState>();
   const closedWindows = new Set<number>();
   let offset = 8;
@@ -108,12 +85,15 @@ export function openTabsFromSnss(buf: Buffer): SavedTab[] | undefined {
     const id = buf[offset + 2];
     const payload = buf.subarray(offset + 3, offset + 2 + size);
     offset += 2 + size;
-    if ((id === 6 || id === 1) && payload.length >= 16) {
+    if (id === 6 && payload.length >= 16) {
       const nav = readNavigation(payload);
       if (!nav) continue;
       const tab = state(tabs, nav.tab);
       tab.closed = false;
       tab.history.set(nav.index, { url: nav.url, title: nav.title });
+    } else if (id === 24 && payload.length >= 12) {
+      const count = payload.readInt32LE(8);
+      if (count > 0) pruneHistory(state(tabs, payload.readUInt32LE(0)), payload.readInt32LE(4), count);
     } else if (id === 16 && payload.length >= 4) {
       state(tabs, payload.readUInt32LE(0)).closed = true;
     } else if (id === 17 && payload.length >= 4) {
@@ -127,8 +107,7 @@ export function openTabsFromSnss(buf: Buffer): SavedTab[] | undefined {
   const open: SavedTab[] = [];
   for (const tab of tabs.values()) {
     if (tab.closed || (tab.window !== undefined && closedWindows.has(tab.window)) || !tab.history.size) continue;
-    const index = tab.current ?? Math.max(...tab.history.keys());
-    const entry = tab.history.get(index);
+    const entry = selectedEntry(tab);
     if (entry) open.push(entry);
   }
   return open;
@@ -148,6 +127,28 @@ function state(tabs: Map<number, TabState>, id: number): TabState {
     tabs.set(id, tab);
   }
   return tab;
+}
+
+function pruneHistory(tab: TabState, index: number, count: number): void {
+  if (index < 0) return;
+  if (tab.current !== undefined) {
+    if (tab.current >= index && tab.current < index + count) tab.current = index - 1;
+    else if (tab.current >= index + count) tab.current -= count;
+  }
+  const next = new Map<number, SavedTab>();
+  for (const [key, entry] of tab.history) {
+    if (key >= index && key < index + count) continue;
+    next.set(key >= index ? key - count : key, entry);
+  }
+  tab.history = next;
+}
+
+function selectedEntry(tab: TabState): SavedTab | undefined {
+  const keys = [...tab.history.keys()].sort((a, b) => a - b);
+  if (!keys.length) return undefined;
+  const wanted = tab.current ?? keys[keys.length - 1]!;
+  const found = keys.find((key) => key >= wanted) ?? keys[keys.length - 1]!;
+  return tab.history.get(found);
 }
 
 function readNavigation(payload: Buffer): { tab: number; index: number; url: string; title: string } | undefined {

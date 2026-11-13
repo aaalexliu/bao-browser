@@ -11,10 +11,10 @@ import { connectCdp } from "../../src/cdp-live/socket";
 import { AgentBrowserRun } from "../../src/engines/agent-browser-record";
 import { ChromeProfileQuestion } from "../../src/engines/browser-pick";
 import {
-  agentProfileText, capTabs, listProfileTabs, readListeningProfileTabs, readProfileTabs, tabHost, trimField,
-  type ProfileTab, type TabSocket,
+  agentProfileText, capTabs, confirmOpenTabs, listProfileTabs, readListeningProfileTabs, readLivePages, tabHost, trimField,
+  type LivePage, type ProfileTab, type TabSocket,
 } from "../../src/engines/profile-tabs";
-import { openTabsFromSnss } from "../../src/engines/snss-tabs";
+import { openTabsFromSnss, readSavedProfileTabs } from "../../src/engines/snss-tabs";
 import { profileQuestionResult } from "../../src/mcp/tool-card";
 import { getRun } from "../../src/mcp/catalog";
 import { testChromium } from "../../src/test-browser.js";
@@ -32,64 +32,130 @@ test("a tab host drops the path, userinfo, and query", () => {
   assert.equal(capTabs(Array.from({ length: 12 }, (_, i) => ({ title: String(i), host: "example.test" }))).omitted, 2);
 });
 
-test("open tabs are grouped by profile, capped, and never include a query", async () => {
+function page(targetId: string, url: string, title: string, browserContextId: string) {
+  return { type: "page", targetId, url, title, browserContextId };
+}
+
+test("live tabs are listed under the profile whose session URLs overlap, and a query is not", async () => {
   const root = "/Chrome";
-  const targets = [
-    { type: "page", url: `https://robinhood.com/stocks?code=${secret}`, title: "Robinhood", browserContextId: "work" },
-    { type: "page", url: "https://complysci.com/home", title: "ComplySci", browserContextId: "work" },
-    { type: "page", url: "chrome://newtab", title: "New Tab", browserContextId: "work" },
-    { type: "page", url: `https://mail.example.test/inbox?id=${secret}`, title: `https://mail.example.test/inbox?id=${secret}`, browserContextId: "home" },
-    { type: "page", url: `https://other.example.test/secret?code=${secret}`, title: "Other", browserContextId: "other" },
-    ...Array.from({ length: 11 }, (_, i) => ({ type: "page", url: `https://extra.example.test/${i}`, title: `Extra ${i}`, browserContextId: "work" })),
+  const work = [
+    page("rh", `https://robinhood.com/stocks?code=${secret}`, "Robinhood", "work"),
+    page("cs", "https://complysci.com/home", "ComplySci", "work"),
+    page("budget", "https://docs.google.com/document/budget", "Personal budget", "work"),
+    page("compliance", "https://docs.google.com/document/compliance", "Work compliance", "work"),
+    ...Array.from({ length: 8 }, (_, i) => page(`extra-${i}`, `https://extra.example.test/${i}`, `Extra ${i}`, "work")),
   ];
-  const closed: string[] = [];
-  let opened = "";
+  const more = [
+    page("more-a", "https://more.example.test/a", "More A", "work-b"),
+    page("more-b", "https://more.example.test/b", "More B", "work-b"),
+  ];
+  const home = page("mail", `https://mail.example.test/inbox?id=${secret}`, `https://mail.example.test/inbox?id=${secret}`, "home");
+  const other = page("other", `https://other.example.test/secret?code=${secret}`, "Other", "other");
+  let created = false;
   const cdp: TabSocket = {
-    async send<T>(method: string, params?: Record<string, unknown>): Promise<T> {
-      if (method === "Target.getTargets") return { targetInfos: targets } as T;
+    async send<T>(method: string): Promise<T> {
       if (method === "Target.createTarget") {
-        opened = String(params?.browserContextId ?? "focused");
-        if (opened === "other") throw new Error("Failed to find browser context for id other");
-        return { targetId: `version-${opened}` } as T;
+        created = true;
+        return { targetId: "version" } as T;
       }
-      if (method === "Target.getTargetInfo") return { targetInfo: { browserContextId: "work" } } as T;
-      if (method === "Target.attachToTarget") return { sessionId: "session" } as T;
-      if (method === "Runtime.evaluate") {
-        const folder = opened === "home" ? "Default" : "Profile 2";
-        return { result: { value: path.join(root, folder) } } as T;
-      }
-      if (method === "Target.closeTarget") {
-        closed.push(String(params?.targetId));
-        return {} as T;
-      }
+      if (method === "Target.getTargets") return { targetInfos: [...work, ...more, home, other, page("ntp", "chrome://newtab", "New Tab", "work")] } as T;
       return {} as T;
     },
   };
-  const listing = await readProfileTabs(cdp, root, ["Default", "Profile 2"]);
-  assert.deepEqual(closed.sort(), ["version-focused", "version-home"]);
+  const contexts = await readLivePages(cdp);
+  assert.equal(created, false);
+  const listing = confirmOpenTabs({
+    urls: {
+      "Profile 2": [...work, ...more].map((tab) => tab.url).concat("https://closed.example/history"),
+      Default: [home.url, "https://old.example/closed-tab"],
+    },
+    failed: {},
+  }, { contexts });
   assert.equal(listing.unmatched, 1);
+  assert.equal(listing.byDirectory["Profile 2"]?.tabs.length, 10);
+  assert.equal(listing.byDirectory["Profile 2"]?.omitted, 4);
   assert.equal(listing.byDirectory["Profile 2"]?.tabs[0]?.host, "robinhood.com");
   assert.equal(listing.byDirectory["Profile 2"]?.tabs[1]?.host, "complysci.com");
-  assert.equal(listing.byDirectory["Profile 2"]?.tabs.length, 10);
-  assert.equal(listing.byDirectory["Profile 2"]?.omitted, 3);
+  assert.deepEqual(
+    listing.byDirectory["Profile 2"]?.tabs.filter((tab) => tab.host === "docs.google.com").map((tab) => tab.title),
+    ["Personal budget", "Work compliance"],
+  );
   assert.equal(listing.byDirectory.Default?.tabs[0]?.title, "");
   assert.equal(listing.byDirectory.Default?.tabs[0]?.host, "mail.example.test");
+  const packed = JSON.stringify(listing);
+  assert.equal(packed.includes(secret), false);
+  assert.equal(packed.includes("?"), false);
+  assert.equal(packed.includes("closed.example"), false);
+  assert.equal(packed.includes("old.example"), false);
+  assert.equal(packed.includes("Closed history"), false);
   const text = agentProfileText(root, [
     { directory: "Default", name: "Alex", email: "alex@example.test" },
     { directory: "Profile 2", name: "Work", email: "" },
   ], "Profile 2", listing);
-  const packed = JSON.stringify({ text, listing });
-  assert.equal(packed.includes(secret), false);
-  assert.equal(packed.includes("?"), false);
+  assert.equal(JSON.stringify(text).includes(secret), false);
   assert.match(text, /"Robinhood" robinhood.com/);
+  assert.match(text, /"Personal budget" docs.google.com/);
+  assert.match(text, /"Work compliance" docs.google.com/);
+  assert.match(text, /and 4 more/);
   assert.match(text, /picked in Bao Settings/);
+  assert.match(text, /1 open tabs could not be matched/);
   const asked = profileQuestionResult(new ChromeProfileQuestion(root, [
     { directory: "Default", name: "Alex", email: "alex@example.test" },
     { directory: "Profile 2", name: "Work", email: "" },
   ], "Profile 2").withListing(listing), { command: "open" }, false);
-  const profiles = asked.structuredContent.profiles as { directory: string; tabs?: ProfileTab[] }[];
+  const profiles = asked.structuredContent.profiles as { directory: string; tabs?: ProfileTab[]; tabsOmitted?: number }[];
   assert.equal(JSON.stringify(asked).includes(secret), false);
   assert.equal(profiles.find((profile) => profile.directory === "Profile 2")?.tabs?.[0]?.host, "robinhood.com");
+  assert.equal(profiles.find((profile) => profile.directory === "Profile 2")?.tabsOmitted, 4);
+  assert.equal(asked.structuredContent.tabsUnmatched, 1);
+});
+
+test("a readable profile keeps its live tabs when another profile's session cannot be read", () => {
+  const live: LivePage = { targetId: "rh", url: "https://robinhood.com/stocks", title: "Robinhood" };
+  const savedOnly: LivePage = { targetId: "old", url: "https://closed.example/history", title: "Closed history" };
+  const listing = confirmOpenTabs({
+    urls: { Default: [live.url, savedOnly.url] },
+    failed: { "Profile 2": "unreadable" },
+  }, { contexts: [{ tabs: [live, savedOnly] }, { tabs: [{ targetId: "work", url: "https://complysci.com/home", title: "ComplySci" }] }] });
+  assert.deepEqual(listing.byDirectory.Default?.tabs, [
+    { title: "Robinhood", host: "robinhood.com" },
+    { title: "Closed history", host: "closed.example" },
+  ]);
+  assert.equal(listing.byDirectory["Profile 2"], undefined);
+  assert.equal(listing.unavailable?.["Profile 2"], "the session file could not be read");
+  assert.equal(listing.unmatched, 1);
+  const text = agentProfileText("/Chrome", [
+    { directory: "Default", name: "Alex", email: "" },
+    { directory: "Profile 2", name: "Work", email: "" },
+  ], undefined, listing);
+  assert.match(text, /"Robinhood" robinhood.com/);
+  assert.match(text, /"Profile 2".*open tabs were not read \(the session file could not be read\)/);
+  assert.doesNotMatch(text, /ComplySci/);
+  const unread = confirmOpenTabs({
+    urls: { Default: ["https://robinhood.com/stocks"] },
+    failed: { "Profile 2": "denied" },
+  }, { contexts: [], unread: "remote debugging is off" });
+  assert.deepEqual(unread.byDirectory, {});
+  assert.equal(JSON.stringify(unread).includes("robinhood.com"), false);
+  const quiet = agentProfileText("/Chrome", [
+    { directory: "Default", name: "Alex", email: "" },
+    { directory: "Profile 2", name: "Work", email: "" },
+  ], undefined, unread);
+  assert.match(quiet, /"Default".*open tabs were not read \(remote debugging is off\)/);
+  assert.match(quiet, /"Profile 2".*open tabs were not read \(Chrome's folder is not readable\)/);
+  assert.doesNotMatch(quiet, /robinhood/);
+});
+
+test("an equal overlap matches no profile", () => {
+  const listing = confirmOpenTabs({
+    urls: {
+      Default: ["https://docs.google.com/document/budget"],
+      "Profile 2": ["https://docs.google.com/document/budget"],
+    },
+    failed: {},
+  }, { contexts: [{ tabs: [{ targetId: "doc", url: "https://docs.google.com/document/budget", title: "Budget" }] }] });
+  assert.deepEqual(listing.byDirectory, {});
+  assert.equal(listing.unmatched, 1);
 });
 
 test("a hermetic run does not connect even when a port file names a listener", async () => {
@@ -99,7 +165,7 @@ test("a hermetic run does not connect even when a port file names a listener", a
   try {
     await writeFile(path.join(root, "DevToolsActivePort"), "9333\n/devtools/browser/fixture\n");
     const started = Date.now();
-    const listing = await readListeningProfileTabs(root, ["Default"]);
+    const listing = await readListeningProfileTabs(root);
     assert.equal(listing.unread, "remote debugging is off");
     assert.ok(Date.now() - started < 500, "a connect to the port file would take seconds");
   } finally {
@@ -132,14 +198,16 @@ test("a fixture browser is read and the socket is closed without leaving debuggi
     await waitForHost(opened, "127.0.0.1");
     opened.close();
     assert.equal(opened.isOpen, false);
+    await waitForSavedUrl(path.join(root, "Default", "Sessions"), `http://127.0.0.1:${pagePort}/stocks?code=${secret}`);
     delete process.env.BAO_LANE;
-    const listing = await readListeningProfileTabs(root, ["Default", "Profile 2"]);
+    const listing = await listProfileTabs(root, ["Default", "Profile 2"]);
     const packed = JSON.stringify(listing);
     assert.equal(listing.unread, undefined, packed);
     assert.equal(packed.includes(secret), false, packed);
     assert.equal(packed.includes("?"), false, packed);
-    const hosts = Object.values(listing.byDirectory).flatMap((group) => group.tabs.map((tab) => tab.host));
-    assert.ok(hosts.includes("127.0.0.1"), packed);
+    assert.deepEqual(listing.byDirectory.Default?.tabs.map((tab) => tab.host), ["127.0.0.1"]);
+    assert.equal(listing.unavailable?.["Profile 2"], "no session file");
+    assert.equal(listing.byDirectory["Profile 2"], undefined);
     const again = await connectCdp(endpoint.port, endpoint.browserPath, { timeoutMs: 5000 });
     const { targetInfos } = await again.send<{ targetInfos: { url?: string }[] }>("Target.getTargets", {}, undefined, 2000);
     assert.equal(targetInfos.some((target) => target.url?.startsWith("chrome://version")), false);
@@ -202,7 +270,15 @@ function snssCommand(id: number, payload: Buffer): Buffer {
   return frame;
 }
 
-function navigationCommand(tab: number, url: string, title: string, index = 0): Buffer {
+function pruneCommand(tab: number, index: number, count: number): Buffer {
+  const payload = Buffer.alloc(12);
+  payload.writeUInt32LE(tab, 0);
+  payload.writeInt32LE(index, 4);
+  payload.writeInt32LE(count, 8);
+  return snssCommand(24, payload);
+}
+
+function navigationCommand(tab: number, url: string, title: string, index = 0, id = 6): Buffer {
   const urlBytes = Buffer.from(url, "utf8");
   const titleUnits = Buffer.from(title, "utf16le");
   const urlPad = (4 - (urlBytes.length % 4)) % 4;
@@ -217,7 +293,7 @@ function navigationCommand(tab: number, url: string, title: string, index = 0): 
   const payload = Buffer.alloc(4 + body.length);
   payload.writeUInt32LE(body.length, 0);
   body.copy(payload, 4);
-  return snssCommand(6, payload);
+  return snssCommand(id, payload);
 }
 
 function snssFile(...commands: Buffer[]): Buffer {
@@ -242,16 +318,53 @@ test("a closed tab in a session file is not listed, and a query is not either", 
     snssCommand(7, current),
   ));
   assert.deepEqual(back, [{ url: "https://robinhood.com/stocks", title: "Robinhood" }]);
+  const header = Buffer.alloc(8);
+  header.write("SNSS", 0, "latin1");
+  header.writeUInt32LE(1, 4);
+  assert.equal(openTabsFromSnss(header), undefined);
+  assert.deepEqual(openTabsFromSnss(snssFile(navigationCommand(4, "https://tabs.example/closed", "Tabs archive", 0, 1))), []);
+  const pruned = Buffer.alloc(8);
+  pruned.writeUInt32LE(5, 0);
+  pruned.writeInt32LE(0, 4);
+  const afterPrune = openTabsFromSnss(snssFile(
+    navigationCommand(5, "https://a.example/old", "Old", 0),
+    navigationCommand(5, "https://b.example/now", "Now", 1),
+    navigationCommand(5, "https://c.example/later", "Later", 2),
+    pruneCommand(5, 0, 1),
+    snssCommand(7, pruned),
+  ));
+  assert.deepEqual(afterPrune, [{ url: "https://b.example/now", title: "Now" }]);
+  const stillOnNow = Buffer.alloc(8);
+  stillOnNow.writeUInt32LE(6, 0);
+  stillOnNow.writeInt32LE(1, 4);
+  assert.deepEqual(openTabsFromSnss(snssFile(
+    navigationCommand(6, "https://a.example/old", "Old", 0),
+    navigationCommand(6, "https://b.example/now", "Now", 1),
+    navigationCommand(6, "https://c.example/later", "Later", 2),
+    snssCommand(7, stillOnNow),
+    pruneCommand(6, 0, 1),
+  )), [{ url: "https://b.example/now", title: "Now" }]);
   const root = await mkdtemp(path.join(tmpdir(), "bao-snss-synthetic-"));
   try {
     const sessions = path.join(root, "Default", "Sessions");
     await mkdir(sessions, { recursive: true });
     await writeFile(path.join(sessions, "Session_1"), snssFile(gone, kept, snssCommand(16, closed)));
-    const listing = await listProfileTabs(root, ["Default"]);
+    await writeFile(path.join(sessions, "Tabs_9"), snssFile(navigationCommand(9, "https://tabs.example/closed", "Tabs archive")));
+    await writeFile(path.join(root, "Default", "Current Session"), snssFile(navigationCommand(8, "https://legacy.example/old", "Legacy")));
+    await mkdir(path.join(root, "Profile 2"), { recursive: true });
+    await writeFile(path.join(root, "Profile 2", "Current Tabs"), snssFile(navigationCommand(7, "https://legacy.example/tabs", "Legacy tabs")));
+    const saved = await readSavedProfileTabs(root, ["Default", "Profile 2"]);
+    assert.deepEqual(saved.urls.Default, [`https://complysci.com/home?id=${secret}`]);
+    assert.equal(saved.failed["Profile 2"], "absent");
+    assert.equal(JSON.stringify(saved).includes("tabs.example"), false);
+    assert.equal(JSON.stringify(saved).includes("legacy.example"), false);
+    const listing = await listProfileTabs(root, ["Default", "Profile 2"]);
     const packed = JSON.stringify(listing);
     assert.equal(packed.includes(secret), false, packed);
-    assert.equal(packed.includes("?"), false, packed);
-    assert.deepEqual(listing.byDirectory.Default?.tabs, [{ title: "ComplySci", host: "complysci.com" }]);
+    assert.equal(packed.includes("ComplySci"), false, packed);
+    assert.equal(packed.includes("tabs.example"), false, packed);
+    assert.equal(listing.unread, "remote debugging is off");
+    assert.deepEqual(listing.byDirectory, {});
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -271,14 +384,25 @@ test("a session file Chrome wrote names the profile, and the query stays out", {
   try {
     await writeProfileSession(root, "Default", children, `http://127.0.0.1:${pagePort}/stocks?code=${secret}`);
     await writeProfileSession(root, "Profile 2", children, `http://127.0.0.1:${pagePort}/work?id=${secret}`);
-    process.env.BAO_LANE = "hermetic";
-    const listing = await listProfileTabs(root, ["Default", "Profile 2"]);
+    const saved = await readSavedProfileTabs(root, ["Default", "Profile 2"]);
+    const url = saved.urls.Default?.find((item) => item.includes(`127.0.0.1:${pagePort}/`));
+    assert.equal(typeof url, "string");
+    const listing = confirmOpenTabs(saved, {
+      contexts: [{ tabs: [{ targetId: "live", url: url!, title: "Robinhood" }] }],
+    });
     const packed = JSON.stringify(listing);
     assert.equal(packed.includes(secret), false, packed);
     assert.equal(packed.includes("?"), false, packed);
-    assert.equal(listing.note, undefined, packed);
     assert.deepEqual(listing.byDirectory.Default?.tabs, [{ title: "Robinhood", host: "127.0.0.1" }]);
-    assert.deepEqual(listing.byDirectory["Profile 2"]?.tabs, [{ title: "ComplySci", host: "127.0.0.1" }]);
+    assert.equal(listing.byDirectory["Profile 2"], undefined);
+    process.env.BAO_LANE = "hermetic";
+    const closed = await listProfileTabs(root, ["Default", "Profile 2"]);
+    const closedPacked = JSON.stringify(closed);
+    assert.equal(closed.unread, "remote debugging is off");
+    assert.equal(closedPacked.includes(secret), false, closedPacked);
+    assert.equal(closedPacked.includes("Robinhood"), false, closedPacked);
+    assert.equal(closedPacked.includes("ComplySci"), false, closedPacked);
+    assert.deepEqual(closed.byDirectory, {});
   } finally {
     if (prior === undefined) delete process.env.BAO_LANE;
     else process.env.BAO_LANE = prior;
@@ -294,14 +418,31 @@ test("an unreadable Chrome folder keeps the listener counts and says so", async 
   try {
     await mkdir(path.join(root, "Default"));
     await chmod(path.join(root, "Default"), 0);
+    const sessions = path.join(root, "Profile 2", "Sessions");
+    await mkdir(sessions, { recursive: true });
+    await writeFile(path.join(sessions, "Session_1"), snssFile(navigationCommand(1, "https://robinhood.com/stocks", "Robinhood")));
+    const saved = await readSavedProfileTabs(root, ["Default", "Profile 2"]);
+    assert.equal(saved.failed.Default, "denied");
+    assert.deepEqual(saved.urls["Profile 2"], ["https://robinhood.com/stocks"]);
+    const matched = confirmOpenTabs(saved, {
+      contexts: [{ tabs: [{ targetId: "live", url: "https://robinhood.com/stocks", title: "Robinhood" }] }],
+    });
+    assert.deepEqual(matched.byDirectory["Profile 2"]?.tabs, [{ title: "Robinhood", host: "robinhood.com" }]);
+    assert.equal(matched.unavailable?.Default, "Chrome's folder is not readable");
     process.env.BAO_LANE = "hermetic";
-    const listing = await listProfileTabs(root, ["Default"]);
+    const listing = await listProfileTabs(root, ["Default", "Profile 2"]);
     assert.equal(listing.unread, "remote debugging is off");
-    assert.equal(listing.note, "Chrome's folder is not readable, so tabs were not read from disk.");
+    assert.equal(listing.unavailable?.Default, "Chrome's folder is not readable");
     assert.equal(listing.byDirectory.Default, undefined);
-    const text = agentProfileText(root, [{ directory: "Default", name: "Home", email: "" }], undefined, listing);
-    assert.match(text, /open tabs were not read \(remote debugging is off\)/);
-    assert.match(text, /Chrome's folder is not readable/);
+    assert.equal(listing.byDirectory["Profile 2"], undefined);
+    assert.equal(JSON.stringify(listing).includes("robinhood"), false);
+    const text = agentProfileText(root, [
+      { directory: "Default", name: "Home", email: "" },
+      { directory: "Profile 2", name: "Work", email: "" },
+    ], undefined, listing);
+    assert.match(text, /"Profile 2".*open tabs were not read \(remote debugging is off\)/);
+    assert.match(text, /"Default".*open tabs were not read \(Chrome's folder is not readable\)/);
+    assert.doesNotMatch(text, /robinhood/);
   } finally {
     if (prior === undefined) delete process.env.BAO_LANE;
     else process.env.BAO_LANE = prior;
