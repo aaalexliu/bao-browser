@@ -211,7 +211,7 @@ export async function setRemoteDebugging(on: boolean, deps: RemoteDebuggingDeps)
   const listening = async (): Promise<number | null> => {
     const endpoint = await readPort(deps.portFile).catch((error: unknown) => {
       const denied = chromeDenied(error, userDataDir);
-      if (denied) throw denied;
+      if (denied) throw denied.present();
       return null;
     });
     return endpoint && (await listener(endpoint.port)) === pid ? endpoint.port : null;

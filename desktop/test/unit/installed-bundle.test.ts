@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import test from "node:test";
-import { existsSync, mkdtempSync, mkdirSync, readdirSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { scaledMs } from "../runtime";
 const localRequire = createRequire(__filename);
-const { acceptHelper, parseCodesign, helperCertHash, PINNED_CERT_HASH } = localRequire(path.join(process.cwd(), "desktop/packaging/helper-identity.js")) as {
+const { acceptHelper, parseCodesign, helperCertHash, signingPlan, PINNED_CERT_HASH } = localRequire(path.join(process.cwd(), "desktop/packaging/helper-identity.js")) as {
   acceptHelper: (report: {
     exists: boolean;
     isBundle: boolean;
@@ -15,7 +15,8 @@ const { acceptHelper, parseCodesign, helperCertHash, PINNED_CERT_HASH } = localR
     identifier: string;
     authorities: string[];
     designated: string;
-  }, identity: string, certHash: string) => { ok: boolean; reason: string };
+  }, identity: string, certHash: string, teamId?: string) => { ok: boolean; reason: string };
+  signingPlan: (subject: string, issuer: string, teamId: string) => { ok: boolean; pinHash: boolean; teamId: string; reason: string };
   parseCodesign: (verifyText: string, requirementText: string) => {
     identifier: string;
     authorities: string[];
@@ -80,6 +81,36 @@ test("an ad-hoc build accepts only an ad-hoc dev.bao.oshelper helper", () => {
   assert.match(acceptHelper(adhoc, identity, pinnedHash).reason, /ad-hoc/);
 });
 
+const TEAM = "ABCDE12345";
+const appleRequirement = `designated => identifier "dev.bao.oshelper" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = ${TEAM}`;
+
+test("a Developer ID helper is accepted by team id, not by the leaf SHA-1", () => {
+  const verify = "Identifier=dev.bao.oshelper\nAuthority=Developer ID Application: Example (ABCDE12345)\n";
+  const report = fromCodesign(verify, `${appleRequirement}\n`);
+  const named = "Developer ID Application: Example (ABCDE12345)";
+  assert.equal(acceptHelper(report, named, pinnedHash, TEAM).ok, true, acceptHelper(report, named, pinnedHash, TEAM).reason);
+  assert.equal(acceptHelper(report, pinnedHash, pinnedHash, TEAM).ok, true);
+  const quoted = fromCodesign(verify, appleRequirement.replace(`= ${TEAM}`, `= "${TEAM}"`));
+  assert.equal(acceptHelper(quoted, named, pinnedHash, TEAM).ok, true);
+  assert.equal(acceptHelper(report, named, pinnedHash, "OTHERTEAM1").ok, false);
+  assert.match(acceptHelper(report, named, pinnedHash, "nope").reason, /10 letters or digits/);
+  const leaf = fromCodesign(verify, recordedRequirement);
+  assert.match(acceptHelper(leaf, named, pinnedHash, TEAM).reason, /Developer ID form/);
+  assert.equal(acceptHelper(report, named, pinnedHash).ok, false);
+  assert.match(acceptHelper(report, "-", pinnedHash, TEAM).reason, /not an ad-hoc build/);
+  assert.match(acceptHelper(report, "other name", pinnedHash, TEAM).reason, /not other name/);
+});
+
+test("a Developer ID certificate is not pinned to its leaf SHA-1", () => {
+  const subject = "CN=Developer ID Application: Example (ABCDE12345),OU=ABCDE12345,O=Example,C=US";
+  const issuer = "CN=Developer ID Certification Authority,OU=Apple Certification Authority,O=Apple Inc.,C=US";
+  assert.deepEqual(signingPlan(subject, issuer, TEAM), { ok: true, pinHash: false, teamId: TEAM, reason: "" });
+  assert.equal(signingPlan(subject, issuer, "").ok, false);
+  assert.match(signingPlan(subject, issuer, "OTHERTEAM1").reason, /does not match/);
+  assert.deepEqual(signingPlan("CN=bao dev signing", "CN=bao dev signing", ""), { ok: true, pinHash: true, teamId: "", reason: "" });
+  assert.match(signingPlan("CN=bao dev signing", "CN=bao dev signing", TEAM).reason, /not Developer ID/);
+});
+
 test("a hash signing selector still requires the pinned helper certificate", () => {
   const report = fromCodesign("Identifier=dev.bao.oshelper\nAuthority=bao dev signing\n", recordedRequirement);
   assert.equal(acceptHelper(report, pinnedHash.toUpperCase(), pinnedHash).ok, true);
@@ -87,6 +118,176 @@ test("a hash signing selector still requires the pinned helper certificate", () 
   assert.equal(acceptHelper({ ...report, designated: "" }, pinnedHash, pinnedHash).ok, false);
   assert.equal(acceptHelper({ ...report, adhoc: true }, pinnedHash, pinnedHash).ok, false);
   assert.equal(acceptHelper({ ...report, identifier: "other" }, pinnedHash, pinnedHash).ok, false);
+});
+
+function signingEnv(dir: string, extra: Record<string, string> = {}): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, ...extra, GITHUB_ENV: path.join(dir, "github-env"), RUNNER_TEMP: dir, PATH: extra.PATH || process.env.PATH || "" };
+  for (const key of ["BAO_SIGNING_P12", "BAO_SIGNING_P12_PASSWORD", "BAO_APPLE_TEAM_ID", "BAO_NOTARY_KEY_P8", "BAO_NOTARY_KEY_ID", "BAO_NOTARY_ISSUER_ID", "BAO_SIGN_IDENTITY"]) {
+    if (!(key in extra)) delete env[key];
+  }
+  return env;
+}
+
+test("Chromium's entitlements add library validation off, and bao's do not", {
+  skip: process.platform !== "darwin" ? "entitlement validation uses macOS plutil" : false,
+}, () => {
+  const parse = (name: string): unknown => {
+    const result = spawnSync("/usr/bin/plutil", ["-convert", "json", "-o", "-", `desktop/packaging/macos/${name}.plist`], { encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    return JSON.parse(result.stdout);
+  };
+  assert.deepEqual(parse("entitlements-jit"), {
+    "com.apple.security.cs.allow-jit": true,
+    "com.apple.security.cs.allow-unsigned-executable-memory": true,
+  });
+  assert.deepEqual(parse("entitlements-chromium"), {
+    "com.apple.security.cs.allow-jit": true,
+    "com.apple.security.cs.allow-unsigned-executable-memory": true,
+    "com.apple.security.cs.disable-library-validation": true,
+  });
+});
+
+test("inside-out signing covers native dependencies without signing the node_modules directory", {
+  skip: process.platform !== "darwin" ? "native dependency fixtures use macOS Mach-O binaries" : false,
+}, () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "bao-native-sign-"));
+  const modules = path.join(dir, "node_modules");
+  const bin = path.join(dir, "bin");
+  const log = path.join(dir, "codesign.jsonl");
+  const addon = path.join(modules, "classic-level", "prebuilds", "darwin-x64+arm64", "classic-level.node");
+  const dylib = path.join(modules, "@img", "sharp-libvips-darwin-arm64", "lib", "libvips-cpp.dylib");
+  try {
+    mkdirSync(bin);
+    for (const file of [addon, dylib]) {
+      mkdirSync(path.dirname(file), { recursive: true });
+      copyFileSync("/usr/bin/true", file);
+    }
+    writeFileSync(path.join(modules, "package.json"), "{}");
+    writeFileSync(path.join(bin, "codesign"), `#!${process.execPath}
+require("node:fs").appendFileSync(${JSON.stringify(log)}, JSON.stringify(process.argv.slice(2)) + "\\n");
+`);
+    chmodSync(path.join(bin, "codesign"), 0o755);
+    const result = spawnSync("bash", ["desktop/packaging/macos/sign-runtime.sh", "--inside-out", modules], {
+      encoding: "utf8",
+      env: signingEnv(dir, { PATH: `${bin}:${process.env.PATH}`, BAO_SIGN_IDENTITY: "test signing identity", BAO_APPLE_TEAM_ID: TEAM }),
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const calls = readFileSync(log, "utf8").trim().split("\n").map((line) => JSON.parse(line) as string[]);
+    assert.deepEqual(calls.map((args) => args.at(-1)).sort(), [addon, dylib].sort());
+    for (const args of calls) {
+      assert.deepEqual(args.slice(0, -1), ["--force", "--options", "runtime", "--sign", "test signing identity", "--timestamp"]);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Chromium signing is inside-out, uses runtime entitlements, and leaves the helper untouched", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "bao-chromium-sign-"));
+  const browser = path.join(dir, "Chromium.app");
+  const framework = path.join(browser, "Contents/Frameworks/Chromium Framework.framework");
+  const main = path.join(browser, "Contents/MacOS/Chromium");
+  const library = path.join(framework, "Versions/A/Chromium Framework");
+  const helper = path.join(browser, "Contents/Resources/BaoOSHelper.app/Contents/MacOS/BaoOSHelper");
+  const bin = path.join(dir, "bin");
+  const log = path.join(dir, "codesign.jsonl");
+  const entitlements = path.resolve("desktop/packaging/macos/entitlements-chromium.plist");
+  try {
+    mkdirSync(bin);
+    // A Mach-O 64-bit ARM executable header, recognized by file on macOS and Linux.
+    const header = Buffer.from("cffaedfe0c000001000000000200000000000000000000000000000000000000", "hex");
+    for (const file of [main, library, helper]) {
+      mkdirSync(path.dirname(file), { recursive: true });
+      writeFileSync(file, header);
+    }
+    writeFileSync(path.join(bin, "codesign"), `#!${process.execPath}
+require("node:fs").appendFileSync(${JSON.stringify(log)}, JSON.stringify(process.argv.slice(2)) + "\\n");
+`);
+    chmodSync(path.join(bin, "codesign"), 0o755);
+    const result = spawnSync("bash", ["desktop/packaging/macos/sign-runtime.sh", "--inside-out", "--entitlements", entitlements, browser], {
+      encoding: "utf8",
+      env: signingEnv(dir, { PATH: `${bin}:${process.env.PATH}`, BAO_SIGN_IDENTITY: "test signing identity", BAO_APPLE_TEAM_ID: TEAM }),
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const calls = readFileSync(log, "utf8").trim().split("\n").map((line) => JSON.parse(line) as string[]);
+    assert.deepEqual(calls, [library, main, framework, browser].map((target) => [
+      "--force", "--options", "runtime", "--sign", "test signing identity", "--timestamp", "--entitlements", entitlements, target,
+    ]));
+    assert.deepEqual(readFileSync(helper), header);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a release with no signing secret stays ad-hoc and does not pin a helper hash", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "bao-ci-sign-"));
+  try {
+    const run = spawnSync("bash", ["desktop/packaging/macos/ci-signing.sh", "import"], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: signingEnv(dir),
+    });
+    assert.equal(run.status, 0, run.stderr);
+    const written = readFileSync(path.join(dir, "github-env"), "utf8");
+    assert.match(written, /^BAO_SIGN_IDENTITY=-$/m);
+    assert.doesNotMatch(written, /BAO_HELPER_CERT_HASH|BAO_APPLE_TEAM_ID/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("notarize and staple run only when the notary secrets are set", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "bao-notarize-"));
+  const bin = path.join(dir, "bin");
+  const app = path.join(dir, "Bao.app");
+  const log = path.join(dir, "commands.jsonl");
+  mkdirSync(bin);
+  mkdirSync(app);
+  for (const command of ["ditto", "xcrun"]) {
+    writeFileSync(path.join(bin, command), `#!${process.execPath}
+const fs = require("node:fs");
+fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify([${JSON.stringify(command)}, ...process.argv.slice(2)]) + "\\n");
+`);
+    chmodSync(path.join(bin, command), 0o755);
+  }
+  const key = Buffer.from("not-a-real-key").toString("base64");
+  try {
+    const skipped = spawnSync("bash", ["desktop/packaging/macos/notarize-app.sh", app], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: signingEnv(dir, { PATH: `${bin}:${process.env.PATH}` }),
+    });
+    assert.equal(skipped.status, 0, skipped.stderr);
+    assert.match(skipped.stdout, /skipping notarization/);
+    assert.equal(existsSync(log), false);
+
+    const ran = spawnSync("bash", ["desktop/packaging/macos/notarize-app.sh", app], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: signingEnv(dir, {
+        PATH: `${bin}:${process.env.PATH}`,
+        TMPDIR: dir,
+        BAO_NOTARY_KEY_P8: key,
+        BAO_NOTARY_KEY_ID: "KEYID",
+        BAO_NOTARY_ISSUER_ID: "ISSUER",
+        BAO_APPLE_TEAM_ID: TEAM,
+        BAO_SIGN_IDENTITY: "D5F25A1C70D8842E87F88852772EE74E51F303AF",
+      }),
+    });
+    assert.equal(ran.status, 0, `${ran.stderr}\n${ran.stdout}`);
+    const calls = readFileSync(log, "utf8").trim().split("\n").map((line) => JSON.parse(line) as string[]);
+    const archive = calls[0]?.at(-1);
+    assert.ok(archive);
+    assert.equal(calls.length, 3);
+    const work = path.dirname(archive);
+    assert.deepEqual(calls, [
+      ["ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", app, path.join(work, "Bao-notarize.zip")],
+      ["xcrun", "notarytool", "submit", archive, "--wait", "--key", path.join(work, "AuthKey.p8"), "--key-id", "KEYID", "--issuer", "ISSUER"],
+      ["xcrun", "stapler", "staple", app],
+    ]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("a staged require fails when the module is found outside the copy", () => {

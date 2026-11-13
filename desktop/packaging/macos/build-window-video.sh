@@ -4,7 +4,6 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 OUT="$ROOT/desktop/packaging/macos/dist/BaoWindowVideo.app"
-IDENTITY="${BAO_SIGN_IDENTITY:-bao dev signing}"
 rm -rf "$OUT"
 mkdir -p "$OUT/Contents/MacOS"
 /usr/bin/clang -fobjc-arc -framework AppKit -framework CoreGraphics -framework ScreenCaptureKit -framework ImageIO -framework UniformTypeIdentifiers -O2 \
@@ -14,5 +13,5 @@ cp "$ROOT/desktop/packaging/macos/WindowVideo-Info.plist" "$OUT/Contents/Info.pl
 # Same bundle id as the helper. Screen Recording on this Mac is granted to
 # dev.bao.oshelper. A new bundle id preflights false, and this script does
 # not request access. The helper binary itself is not rebuilt.
-codesign --force --sign "$IDENTITY" --identifier dev.bao.oshelper "$OUT"
+bash "$ROOT/desktop/packaging/macos/sign-runtime.sh" --identifier dev.bao.oshelper "$OUT"
 echo "WROTE $OUT"

@@ -225,7 +225,7 @@ export async function chooseChromeProfile(root: string, named: { directory: stri
       throw new Error(`Bao could not read Chrome's profiles in ${root}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
     }
     const directory = fromListener ? await listeningProfileDirectory(root, axLog) : undefined;
-    if (!directory || (named && named.directory !== directory)) throw error;
+    if (!directory || (named && named.directory !== directory)) throw error.present();
     profiles = [{ directory, name: directory, email: "" }];
   }
   if (!profiles.length) throw new Error(`Chrome has no profile in ${root}.`);
