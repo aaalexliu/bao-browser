@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Socket } from "node:net";
@@ -8,6 +8,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import { ChromeProfileQuestion } from "../../src/engines/browser-pick";
 import * as currentChrome from "../../src/cdp-live/current-chrome";
+import * as runningChrome from "../../src/extension/running-chrome";
 import { chromeProfiles, fakeTaskTab } from "../support/chrome-profiles";
 import { trapPort } from "../support/trap-port";
 import * as profiles from "../../src/engines/chrome-profile-copy";
@@ -86,6 +87,8 @@ else if (args.includes('wait')) {
   }, 10);
 }
 else if (args.includes('fail') || args.includes('daemon-fail')) { process.stdout.write('native failure output\\n'); process.stderr.write('native error\\n'); process.exitCode = 1; }
+else if (command === 'download') { fs.writeFileSync(args.at(-1), '%PDF-1.4 fixture'); process.stdout.write('\u2713 Download saved to ' + fs.realpathSync(args.at(-1)) + '\\n'); }
+else if (command === 'upload' && !args.slice(args.indexOf('upload') + 2).every((file) => fs.existsSync(file))) { process.stderr.write('\u2717 File not found: ' + args.at(-1) + '\\n'); process.exitCode = 1; }
 else if (command === 'snapshot' && fs.existsSync(${JSON.stringify(path.join(root, "page.txt"))})) process.stdout.write(fs.readFileSync(${JSON.stringify(path.join(root, "page.txt"))}, 'utf8'));
 else if (command === 'tab' && args.includes('--json') && fs.existsSync(${JSON.stringify(path.join(root, "tab-result.json"))})) {
   const result = JSON.parse(fs.readFileSync(${JSON.stringify(path.join(root, "tab-result.json"))}, 'utf8'));
@@ -791,10 +794,79 @@ test("proxy rejects malformed commands and attempts to replace its fixed session
     await assert.rejects(f.proxy.execute("eval", ["1"]), /unknown/);
     await assert.rejects(f.proxy.execute("open", "http://127.0.0.1/"), /array of strings/);
     await assert.rejects(f.proxy.execute("open", [null], undefined, false, undefined, {}, f.proxy.activeRunId), /array of strings/);
-    for (const arg of ["--session=other", "--cdp", "--profile", "--headed=false", "--args", "--idle-timeout=10", "--all", "-p"]) {
+    for (const arg of ["--session=other", "--cdp", "--profile", "--headed=false", "--args", "--idle-timeout=10", "--all", "-p", "--download-path", "--download-path=/tmp"]) {
       await assert.rejects(f.proxy.execute("open", [arg], undefined, false, undefined, {}, f.proxy.activeRunId), /Bao fixes/);
     }
     await assert.rejects(readFile(path.join(f.root, "calls.jsonl")), /ENOENT/);
+  } finally { await f.close(); }
+});
+
+test("on a copy, a download lands in the run's downloads folder, an upload takes it by name, and the run keeps only file names", async (t) => {
+  const f = await fixture(t);
+  try {
+    await f.proxy.execute("open", ["http://127.0.0.1/"], "copy");
+    const runId = f.proxy.activeRunId!;
+    const downloads = path.join(f.root, "home", "downloads", runId);
+    const saved = path.join(downloads, "statement.pdf");
+    const [download] = await f.proxy.execute("download", ["@e5", "statement.pdf"], undefined, false, undefined, {}, runId);
+    assert.equal(download!.exitCode, 0, download!.stderr);
+    assert.match(download!.stdout, /Download saved to \/.*\/statement\.pdf\n$/, "the agent reads the native output with the full path");
+    assert.equal(f.proxy.savedFile, saved);
+    assert.equal(await readFile(saved, "utf8"), "%PDF-1.4 fixture");
+    assert.equal((await f.proxy.execute("download", ["@e5", "statement.pdf"], undefined, false, undefined, {}, runId))[0]!.exitCode, 0);
+    assert.equal(f.proxy.savedFile, path.join(downloads, "statement (2).pdf"), "a second download keeps the first file");
+    const [upload] = await f.proxy.execute("upload", ["input[type=file]", "statement.pdf"], undefined, false, undefined, {}, runId);
+    assert.equal(upload!.exitCode, 0, upload!.stderr);
+    assert.equal(f.proxy.savedFile, undefined);
+    const [missing] = await f.proxy.execute("upload", ["#f", path.join(f.root, "gone", "w2.pdf")], undefined, false, undefined, {}, runId);
+    assert.equal(missing!.exitCode, 1);
+    assert.ok(missing!.stderr.includes(path.join(f.root, "gone", "w2.pdf")), "the agent reads the native error with its own path");
+    await assert.rejects(f.proxy.execute("upload", ["#f", "never.pdf"], undefined, false, undefined, {}, runId), /downloaded no file named never\.pdf/);
+    await assert.rejects(f.proxy.execute("download", ["@e5", "../statement.pdf"], undefined, false, undefined, {}, runId), /plain file name/);
+
+    const calls = (await f.calls()).map((call) => call.args.slice(call.args.indexOf("--idle-timeout") + 2));
+    assert.deepEqual(calls.filter((args) => args[0] === "download" || args[0] === "upload"), [
+      ["download", "@e5", saved], ["download", "@e5", path.join(downloads, "statement (2).pdf")],
+      ["upload", "input[type=file]", saved], ["upload", "#f", path.join(f.root, "gone", "w2.pdf")],
+    ]);
+    const stored = await readFile(path.join(f.root, "home", "runs", `${runId}.json`), "utf8");
+    for (const folder of [downloads, await realpath(downloads), path.join(f.root, "gone")]) assert.ok(!stored.includes(folder), `the run file does not name ${folder}`);
+    const steps = new Library(path.join(f.root, "home")).readRun(runId).steps as unknown as RecordedAgentBrowserCommand[];
+    assert.deepEqual(steps.slice(1).map((step) => [step.caption.text, step.summary?.text, step.native.args]), [
+      ["Download statement.pdf", 'Downloaded "statement.pdf".', ["@e5", "statement.pdf"]],
+      ["Download statement (2).pdf", 'Downloaded "statement (2).pdf".', ["@e5", "statement (2).pdf"]],
+      ["Upload statement.pdf", 'Uploaded "statement.pdf".', ["input[type=file]", "statement.pdf"]],
+      ["Upload w2.pdf", 'Could not upload "w2.pdf".', ["#f", "w2.pdf"]],
+    ]);
+    assert.equal(steps.at(-1)!.summary?.error, "\u2717 File not found: w2.pdf");
+  } finally { await f.close(); }
+});
+
+test("upload and download through the Bao extension are refused before anything runs", async (t) => {
+  const f = await fixture(t);
+  try {
+    const relay = {
+      get isOpen() { return true; }, disconnected: new Promise<void>(() => {}), close() {},
+      async send(method: string) {
+        if (method === "Target.createTarget") return { targetId: "task" };
+        if (method === "Target.getTargetInfo") return { targetInfo: { url: "http://127.0.0.1/", title: "Fixture" } };
+        if (method === "Target.attachToTarget") return { sessionId: "task" };
+        return { data: png.toString("base64") };
+      },
+      sendUntilProgress(this: { send: (method: string) => Promise<unknown> }, method: string) { return this.send(method); },
+    } as unknown as sockets.CdpSocket;
+    t.mock.method(runningChrome, "openRunningChrome", async () => ({ endpoint: { port: await trapPort(), browserPath: "/devtools/browser/relay" }, cdp: relay,
+      closed: relay.disconnected, isClosed: () => false, detach: () => undefined }));
+    const proxy = new AgentBrowserProxy({ home: path.join(f.root, "relay-home"), sourceRoot: f.sourceRoot, executable: path.join(f.root, "native"), extensionRoute: () => true });
+    try {
+      assert.equal((await proxy.execute("open", ["http://127.0.0.1/"], "current"))[0]!.exitCode, 0);
+      const before = (await f.calls()).length;
+      for (const [command, args] of [["download", ["@e5", "statement.pdf"]], ["upload", ["#f", "/tmp/w2.pdf"]]] as const) {
+        await assert.rejects(proxy.execute(command, [...args], undefined, false, undefined, {}, proxy.activeRunId), /not the Bao extension/);
+      }
+      assert.equal((await f.calls()).length, before, "nothing reached the native CLI");
+      assert.deepEqual((new Library(path.join(f.root, "relay-home")).listRuns()[0]!.steps as unknown as RecordedAgentBrowserCommand[]).map((step) => step.native.command), ["open"]);
+    } finally { await proxy.end(); }
   } finally { await f.close(); }
 });
 

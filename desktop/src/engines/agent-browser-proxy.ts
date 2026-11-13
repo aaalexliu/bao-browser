@@ -29,8 +29,9 @@ import { diffView, findView, snapshotView } from "./snapshot-view";
 import { AGENT_DISCONNECTED, AGENT_IDLE_REASON, NEWER_TASK_REASON } from "../v1/stop-copy";
 import { openBackgroundCdp, type BackgroundCdp } from "./background-cdp";
 import { activeNativeTab, parseNativeTabs, type NativeTab } from "./agent-browser-tabs";
+import { fileArgs, isFileCommand, type FileArgs } from "./agent-browser-files";
 
-export const AGENT_BROWSER_COMMANDS = ["open", "snapshot", "click", "fill", "press", "scroll", "tab", "screenshot", "wait_for_owner", "close"] as const;
+export const AGENT_BROWSER_COMMANDS = ["open", "snapshot", "click", "fill", "press", "scroll", "tab", "screenshot", "upload", "download", "wait_for_owner", "close"] as const;
 export type AgentBrowserCommand = typeof AGENT_BROWSER_COMMANDS[number];
 export interface AgentBrowserCommandResult { stdout: string; stderr: string; exitCode: number }
 
@@ -38,7 +39,7 @@ const SESSION_IDLE_MS = 10 * 60 * 1000;
 
 const FIXED_OPTIONS = new Set([
   "--session", "--namespace", "--profile", "--executable-path", "--headed", "--cdp", "--auto-connect",
-  "--provider", "-p", "--engine", "--config", "--args", "--idle-timeout", "--all", "--pin-tab", "--no-pin-tab",
+  "--provider", "-p", "--engine", "--config", "--args", "--idle-timeout", "--all", "--pin-tab", "--no-pin-tab", "--download-path",
 ]);
 
 /** One MCP process serves every chat, so a call that acts on a session names the run it belongs to. */
@@ -55,7 +56,7 @@ export function validateAgentBrowserCommand(command: unknown, args: unknown): as
     throw new Error("agent-browser args must be an array of strings");
   }
   if (args.some((arg) => FIXED_OPTIONS.has(arg.split("=", 1)[0]!))) {
-    throw new Error("Bao fixes the agent-browser session, browser, headed mode, profile, and lifetime");
+    throw new Error("Bao fixes the agent-browser session, browser, headed mode, profile, lifetime, and download folder");
   }
 }
 
@@ -214,8 +215,8 @@ function parseTabArgs(args: readonly string[]): ParsedTab {
 
 const opensTab = (command: string, args: readonly string[]) => (command === "tab" && parseTabArgs(args).action === "new") || (command === "click" && args.includes("--new-tab"));
 
-/** A command that can open a tab while the native daemon is running it: open, click, press, tab new, or click --new-tab. */
-const canOpenTab = (command: string, args: readonly string[]) => command === "open" || command === "click" || command === "press" || (command === "tab" && parseTabArgs(args).action === "new");
+/** A command that can open a tab while the native daemon is running it: open, click, press, download, tab new, or click --new-tab. */
+const canOpenTab = (command: string, args: readonly string[]) => command === "open" || command === "click" || command === "press" || command === "download" || (command === "tab" && parseTabArgs(args).action === "new");
 
 type TabRef = { kind: "id"; id: number } | { kind: "label"; name: string } | { kind: "target"; id: string } | { kind: "invalid"; message: string };
 
@@ -444,6 +445,9 @@ export class AgentBrowserProxy {
   private workflowOutcome: string | undefined;
 
   get lastWorkflowOutcome(): string | undefined { return this.workflowOutcome; }
+  /** Where the latest command's download landed. */
+  get savedFile(): string | undefined { return this.saved; }
+  private saved: string | undefined;
   get lastCommand(): typeof this.latest { return this.latest; }
   get activeRunId(): string | undefined { return this.session?.recording.id; }
   /** The open session drives the owner's own running Chrome. */
@@ -653,6 +657,7 @@ export class AgentBrowserProxy {
     this.latest = undefined;
     this.shown = undefined;
     this.notOpened = undefined;
+    this.saved = undefined;
     this.imports = [];
     this.moved = undefined as Moved | undefined;
     this.workflowOutcome = undefined;
@@ -746,6 +751,15 @@ export class AgentBrowserProxy {
       if (command === "close") await this.remove(session);
       return this.ownerResult("closed", session);
     }
+    let files: FileArgs | undefined;
+    if (isFileCommand(command) && this.session) {
+      if (this.session.kind === "current" && this.session.relay) {
+        throw new Error("upload and download need Running Chrome over remote debugging, the Bao profile, or a copy, not the Bao extension.");
+      }
+      files = await fileArgs(command, args, this.session.recording.downloadsDir);
+    }
+    const shownArgs = files?.recorded ?? args;
+    const nativeArgs = files?.forwarded ?? args;
     const continuing = !!this.session;
     // The route and profile are settled before any run record, so a question about the profile opens and records nothing.
     const plan = continuing ? undefined : await this.plan(browser as AgentBrowser | undefined, named, webSite(args[0]));
@@ -882,7 +896,7 @@ export class AgentBrowserProxy {
           return results;
         }
       }
-      step ??= recording.begin(command as string, args);
+      step ??= recording.begin(command as string, shownArgs);
       this.latest = { runId: recording.id, step, steps: recording.steps };
       if (command === "open") {
         const site = webSite(args[0]);
@@ -910,11 +924,12 @@ export class AgentBrowserProxy {
         }
       }
       let inPage = false;
-      await session.workflow.record(command as string, args, step.id, async () => {
+      await session.workflow.record(command as string, shownArgs, step.id, async () => {
         const result = command === "close" && (session.kind === "current" || session.chrome.isClosed())
           ? { stdout: session.kind === "current" ? "Disconnected from the owner's own Chrome. Only Bao's task tabs close; the owner's tabs and windows stay open." : "", stderr: "", exitCode: 0 }
-          : await this.runNative(session, command as string, args);
+          : await this.runFiles(session, command as string, nativeArgs);
         results.push(result);
+        if (files?.saved && result.exitCode === 0) this.saved = files.saved;
         if (command !== "close" && result.exitCode === 0) await this.noteWall(session, command === "open" ? webSite(args[0]) : undefined);
         return result;
       }, () => this.waitOf(session) !== "off");
@@ -953,7 +968,7 @@ export class AgentBrowserProxy {
       if (error instanceof TaskTabClosed) {
         const agentClosedTab = command === "tab" && parseTabArgs(args).action === "close" && results.some((result) => result.exitCode === 0);
         results.splice(0, results.length, ...await this.endTaskTab(session));
-        step ??= recording.begin(command as string, args);
+        step ??= recording.begin(command as string, shownArgs);
         this.latest = { runId: recording.id, step, steps: recording.steps };
         if (!agentClosedTab) failure = new Error("Bao's task tab was closed");
         return results;
@@ -967,7 +982,7 @@ export class AgentBrowserProxy {
           try {
             await session.recording.complete(step, results, session.stateDir, () => this.screenshot(session, step!.native.command, visual), failure,
               this.waitOf(session) !== "off" || command === "wait_for_owner", { ...context, page: session.page, owner: this.ownerPage, current: session.kind === "current",
-                ...this.moved?.pick ? { moved: this.moved.line } : {} });
+                ...this.moved?.pick ? { moved: this.moved.line } : {}, ...files ? { hide: files.hide } : {} });
           } catch (completeError) {
             // A hung command already failed with AbortError. The completion
             // screenshot throws page closed after disconnect and must not replace it.
@@ -1469,6 +1484,20 @@ export class AgentBrowserProxy {
       await this.focusTab(session, info.targetId, ceiling);
     }
     return tab.active ? tabs : this.nativeTabs(session, ceiling);
+  }
+
+  /**
+   * agent-browser points Chrome's downloads at its own folder for a download and leaves them there. On the owner's Chrome that would
+   * send his own later downloads into Bao's folder, so Bao hands download settings back to Chrome after each download.
+   */
+  private async runFiles(session: Session, command: string, args: string[]): Promise<AgentBrowserCommandResult> {
+    if (command !== "download" || session.kind !== "current" || session.relay) return this.runNative(session, command, args);
+    try {
+      return await this.runNative(session, command, args);
+    } finally {
+      await session.chrome.cdp.send("Browser.setDownloadBehavior", { behavior: "default" }, undefined, 5000)
+        .catch((error: unknown) => process.stderr.write(`Bao could not return Chrome's download settings to Chrome: ${error instanceof Error ? error.message : String(error)}\n`));
+    }
   }
 
   /** Runs the agent's command. On the owner's Chrome, a new tab is the agent's only when it is in the return list and not the entry list. */

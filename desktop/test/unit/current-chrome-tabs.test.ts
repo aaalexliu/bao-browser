@@ -72,6 +72,8 @@ async function fixture(t: TestContext) {
     windowCheck: undefined as ((targetId: string) => void) | undefined,
     /** Runs as a command's reply is sent, after that list was built and before the next command. */
     after: undefined as ((command: string, args: string[]) => void) | undefined,
+    /** Exit code of the next command that has no tab-specific reply. */
+    exit: 0,
     /** Targets Chrome lists that this daemon has not numbered yet. */
     untracked: new Set<string>() };
   // agent-browser's should_track_target lists page and webview targets, and skips chrome://, chrome-extension://, and devtools://.
@@ -182,9 +184,11 @@ async function fixture(t: TestContext) {
       daemon.active = "opened";
       reply("✓ New tab\n");
     } else {
-      if (command === "click") daemon.clicked?.();
+      if (command === "click" || command === "download") daemon.clicked?.();
       if (command === "press") daemon.pressed?.();
-      reply(`✓ Done on ${daemon.active}\n`);
+      const code = daemon.exit;
+      daemon.exit = 0;
+      reply(`✓ Done on ${daemon.active}\n`, code);
     }
     return new EventEmitter();
   });
@@ -363,6 +367,23 @@ test("a popup the agent follows from its task tab is a Bao task tab, and finish_
     "following a popup does not ask Chrome to raise it");
   assert.ok(await f.proxy.finishTask({ outcome: "passed", reason: "fixture" }, f.proxy.activeRunId));
   assert.deepEqual([...f.closed].sort(), ["popup", "popup2", "task"], "Bao closes the followed popups and the task tab, not the owner's tabs");
+});
+
+test("a download on the owner's Chrome gives Chrome back its own download settings, also when it fails, and follows a popup it opens", async (t) => {
+  const f = await fixture(t);
+  await f.proxy.execute("open", [MAPS], "current");
+  const resets = () => f.sent.filter(call => call.method === "Browser.setDownloadBehavior").map(call => call.params);
+  f.daemon.clicked = () => f.targets.push({ targetId: "popup", type: "page", url: "https://example.com/statement", title: "Statement", openerId: "task", inWindow: true });
+  assert.equal((await f.proxy.execute("download", ["@e2", "statement.pdf"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.exitCode, 0);
+  assert.deepEqual(resets(), [{ behavior: "default" }], "Bao's own connection resets Chrome's downloads after the download");
+  await f.proxy.execute("snapshot", ["-i"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  assert.equal(f.daemon.commands.at(-1)!.on, "popup", "the agent follows the tab its download opened");
+  f.daemon.clicked = undefined;
+  f.daemon.exit = 1;
+  assert.equal((await f.proxy.execute("download", ["@e3", "other.pdf"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.exitCode, 1);
+  assert.deepEqual(resets(), [{ behavior: "default" }, { behavior: "default" }], "a failed download resets too");
+  assert.equal((await f.proxy.execute("click", ["@e4"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.exitCode, 0);
+  assert.equal(resets().length, 2, "a click is not a download");
 });
 
 test("a sign-in popup opened while moving to Running Chrome is followed, and finish closes it", async (t) => {

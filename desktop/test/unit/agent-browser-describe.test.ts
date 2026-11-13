@@ -143,6 +143,16 @@ test("each command gets a plain sentence, and failures keep the native error", (
     "Could not read the page.");
 });
 
+test("an upload or download names its files, skips global flags, and a failure keeps the native error", () => {
+  const text = (command: string, args: string[]) => describeStep({ command, args, results: ok("✓ Done\n"), page }).text;
+  assert.equal(text("download", ["@e5", "statement.pdf"]), 'Downloaded "statement.pdf".');
+  assert.equal(text("upload", ["--json", "input[type=file]", "w2.pdf", "1099.pdf"]), 'Uploaded "w2.pdf, 1099.pdf".');
+  const failed = describeStep({ command: "upload", args: ["@e2", "statement.pdf"], results: [{ stdout: "", stderr: "✗ CDP error (DOM.setFileInputFiles): Node is not a file input element\n", exitCode: 1 }], page });
+  assert.equal(failed.text, 'Could not upload "statement.pdf".');
+  assert.equal(failed.error, "✗ CDP error (DOM.setFileInputFiles): Node is not a file input element");
+  assert.equal(describeStep({ command: "download", args: ["@e5"], results: [], error: "download takes a selector and one file name" }).text, "Could not download.");
+});
+
 test("owner waits name the site and page, and the return names where Bao is now", () => {
   const owner = { url: "https://www.amazon.com/ap/signin?openid=1", title: "Amazon Sign-In" };
   const waiting = describeStep({ command: "wait_for_owner", args: ["60000"], results: reply("waiting"), owner });

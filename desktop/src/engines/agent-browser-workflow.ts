@@ -125,6 +125,7 @@ export class AgentBrowserWorkflow {
       return result;
     }
     if (command === "scroll") block("it scrolled the page, which Bao cannot replay yet");
+    if (command === "upload" || command === "download") block("it moved a file, which Bao cannot replay yet");
     if (command === "tab" && ["new", "close"].includes(args[0] ?? "")) block("it used a second tab");
     const action = ["open", "click", "fill", "press"].includes(command);
     const expectedArgs = command === "fill" ? 2 : 1;

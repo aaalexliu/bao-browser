@@ -20,6 +20,7 @@ import { replayRefusal, CDP_LIVE_SERVER_REFUSAL } from "../../src/cdp-live/launc
 import { scaledMs } from "../runtime";
 
 const binary = process.env.AGENT_BROWSER_PROXY_BINARY;
+const STATEMENT = "%PDF-1.4 synthetic statement";
 interface Result { content: { type: string; text?: string }[]; isError: boolean; structuredContent?: { command: string; run_id: string; step_id: string } }
 const text = (result: Result) => result.content.map((item) => item.text || "").join("\n");
 
@@ -29,6 +30,7 @@ async function fixture(ui = false) {
   const source = path.join(root, "source");
   await syntheticChromeProfile(source, { name: "Synthetic groceries" });
   const actions: { target: string; name: string }[] = [];
+  const uploads: { name: string; body: string }[] = [];
   let reordered = false;
   let missing = false;
   let ownerReady = false;
@@ -48,6 +50,23 @@ async function fixture(ui = false) {
         : '<div onclick="document.querySelector(\'#selected\').textContent=\'Selected A\'">Store A</div><div id="store-b" onclick="document.querySelector(\'#selected\').textContent=\'Selected B\'">Store B</div>';
       const container = url.searchParams.has("testid") ? 'data-testid="stores"' : 'role="dialog" aria-label="Choose a store"';
       res.end(`<!doctype html><title>Stores</title><div ${container}>${content}</div><p id="selected">No store selected</p>`);
+      return;
+    }
+    if (url.pathname === "/statement.pdf") {
+      res.writeHead(200, { "content-type": "application/pdf", "content-disposition": "attachment; filename=server-name.pdf" });
+      res.end(STATEMENT);
+      return;
+    }
+    if (url.pathname === "/uploaded") {
+      let body = "";
+      req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
+      req.on("end", () => { uploads.push({ name: url.searchParams.get("name")!, body }); res.end("ok"); });
+      return;
+    }
+    if (url.pathname === "/files") {
+      res.end(`<!doctype html><title>Statements</title><a id="dl" href="/statement.pdf" download>Get statement</a>
+        <button onclick="document.querySelector('#hidden').click()">Upload Statement</button>
+        <input id="hidden" type="file" accept="application/pdf" style="display:none" onchange="const f=this.files[0];f.text().then(t=>fetch('/uploaded?name='+encodeURIComponent(f.name),{method:'POST',body:t}))">`);
       return;
     }
     if (url.pathname === "/owner-ready") { res.end(JSON.stringify(ownerReady)); return; }
@@ -87,7 +106,7 @@ async function fixture(ui = false) {
   };
   await driver.initialize(ui ? { capabilities: { extensions: { [UI_EXTENSION]: { mimeTypes: [VIEWER_MIME] } } } } : {});
   return {
-    root, home, url, actions, call, request, library: new Library(home),
+    root, home, url, actions, uploads, call, request, library: new Library(home),
     reorder() { reordered = true; },
     removeChosen() { missing = true; },
     resumeOwner(ready = true) { ownerReady = ready; },
@@ -450,6 +469,35 @@ test("finished native captures explain why unsupported actions cannot become wor
     assert.match(await passed(f, "close"), /Not saved as a workflow:/);
     assert.equal(f.library.list().workflows.length, 0);
     assert.equal(f.library.listRuns().find((run) => !seen.has(run.id))!.status, "failed");
+  } finally { await f.close(); }
+});
+
+test("the native CLI downloads a file into the run's folder and uploads it by name to a hidden file input", { skip: !binary, timeout: scaledMs(90_000) }, async () => {
+  const f = await fixture();
+  try {
+    await passed(f, "open", [`${f.url}files`]);
+    const downloaded = await passed(f, "download", ["#dl", "statement.pdf"]);
+    const saved = /Bao saved the file at (.+)\.$/m.exec(downloaded)?.[1];
+    assert.ok(saved, downloaded);
+    assert.equal(path.dirname(path.dirname(saved)), path.join(f.home, "downloads"));
+    assert.equal(path.basename(saved), "statement.pdf", "the agent's name wins over the server's");
+    assert.match(downloaded, /Download saved to .+statement\.pdf/);
+    assert.equal(await readFile(saved, "utf8"), STATEMENT);
+
+    const [ref] = snapshotRefs(await passed(f, "snapshot", ["-i"]), /button "Upload Statement"/);
+    assert.ok(ref, "the snapshot lists the upload button but not its hidden input");
+    const button = await f.call("upload", [`@${ref}`, "statement.pdf"]);
+    assert.equal(button.isError, true, "a button ref is not a file input");
+    assert.match(text(button), /Node is not a file input element/);
+    await passed(f, "upload", ["input[type=file]", "statement.pdf"]);
+    const until = Date.now() + scaledMs(5000);
+    while (!f.uploads.length && Date.now() < until) await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.deepEqual(f.uploads, [{ name: "statement.pdf", body: STATEMENT }], "the page read the downloaded bytes from its hidden input");
+
+    assert.match(await passed(f, "close"), /Not saved as a workflow: command-2 \(download\): it moved a file, which Bao cannot replay yet\./);
+    const capture = f.library.listRuns()[0]!;
+    const stored = await readFile(path.join(f.home, "runs", `${capture.id}.json`), "utf8");
+    assert.ok(!stored.includes(path.dirname(saved)), "the run keeps file names only");
   } finally { await f.close(); }
 });
 
