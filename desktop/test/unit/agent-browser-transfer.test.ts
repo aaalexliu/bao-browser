@@ -1,0 +1,222 @@
+import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import test from "node:test";
+import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
+import { connectCdp, type CdpSocket } from "../../src/cdp-live/socket";
+import { downloadByClick } from "../../src/engines/agent-browser-transfer";
+import { launchOwnedChromeEndpoint, pinTestBrowser } from "../../src/launch";
+import { scaledMs } from "../runtime";
+
+pinTestBrowser();
+
+const JANUARY = "JANUARY-PDF\n";
+const OCTOBER = "OCTOBER-PDF\n";
+
+async function listen(server: Server): Promise<string> {
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+}
+
+async function evaluate<T>(cdp: CdpSocket, targetId: string, expression: string): Promise<T> {
+  const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true });
+  try {
+    const { result, exceptionDetails } = await cdp.send<{ result: { value: T }; exceptionDetails?: { text?: string } }>(
+      "Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true }, sessionId);
+    if (exceptionDetails) throw new Error(exceptionDetails.text ?? "page script failed");
+    return result.value;
+  } finally {
+    await cdp.send("Target.detachFromTarget", { sessionId }).catch(() => undefined);
+  }
+}
+
+function fakeCdp(handlers: {
+  onEvaluate: (expression: string) => unknown;
+  onCreate?: (params: Record<string, unknown>) => unknown;
+  targetInfo?: (targetId: string) => { browserContextId?: string };
+}) {
+  const calls: { method: string; params: Record<string, unknown> }[] = [];
+  const cdp = {
+    on: () => () => undefined,
+    async send(method: string, params: Record<string, unknown> = {}) {
+      calls.push({ method, params });
+      if (method === "Target.getTargets") return { targetInfos: [{ targetId: "tab", type: "page", url: "http://work.example/files" }] };
+      if (method === "Target.attachToTarget") return { sessionId: "page" };
+      if (method === "Target.getTargetInfo") return { targetInfo: { targetId: params.targetId, type: "page", url: "about:blank", ...handlers.targetInfo?.(String(params.targetId)) } };
+      if (method === "Target.getBrowserContexts") return { browserContextIds: ["work"], defaultBrowserContextId: "personal" };
+      if (method === "Runtime.evaluate") return handlers.onEvaluate(String(params.expression ?? ""));
+      if (method === "Target.createTarget") return handlers.onCreate?.(params) ?? { targetId: "stray" };
+      return {};
+    },
+  } as unknown as CdpSocket;
+  return { cdp, calls };
+}
+
+test("a cross-origin download does not navigate when the tab's browser context is missing", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-transfer-refuse-"));
+  const { cdp, calls } = fakeCdp({
+    onEvaluate: (expression) => {
+      if (expression.includes("await fetch")) return { exceptionDetails: { text: "Failed to fetch" } };
+      if (expression.includes("return {")) return { result: { value: { href: "http://files.example/statement.pdf", opened: "" } } };
+      return { result: { value: undefined } };
+    },
+    targetInfo: () => ({}),
+  });
+  try {
+    const outcome = await downloadByClick(cdp, "tab", path.join(root, "statement.pdf"), async () => ({ stdout: "", stderr: "", exitCode: 0 }));
+    assert.equal(outcome.result.exitCode, 1);
+    assert.match(outcome.result.stderr, /this tab's Chrome profile/);
+    assert.equal(calls.some((call) => call.method === "Target.createTarget" || call.method === "Page.navigate"), false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a cross-origin download does not navigate when the new tab is in another browser context", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-transfer-mismatch-"));
+  const { cdp, calls } = fakeCdp({
+    onEvaluate: (expression) => {
+      if (expression.includes("await fetch")) return { exceptionDetails: { text: "Failed to fetch" } };
+      if (expression.includes("return {")) return { result: { value: { href: "http://files.example/statement.pdf", opened: "" } } };
+      return { result: { value: undefined } };
+    },
+    targetInfo: (targetId) => targetId === "tab" ? { browserContextId: "work" } : { browserContextId: "personal" },
+  });
+  try {
+    const outcome = await downloadByClick(cdp, "tab", path.join(root, "statement.pdf"), async () => ({ stdout: "", stderr: "", exitCode: 0 }));
+    assert.equal(outcome.result.exitCode, 1);
+    assert.match(outcome.result.stderr, /this tab's Chrome profile/);
+    assert.deepEqual(calls.filter((call) => call.method === "Target.createTarget").map((call) => call.params.url), ["about:blank"]);
+    assert.equal(calls.some((call) => call.method === "Page.navigate"), false);
+    assert.equal(calls.some((call) => call.method === "Target.closeTarget" && call.params.targetId === "stray"), true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a download saves the handler's file, captures window.open, and falls back in that tab's browser context", { timeout: scaledMs(90_000) }, async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-transfer-click-"));
+  const page = `<!doctype html><title>Statements</title>
+<a id=plain href=/october.pdf>October</a>
+<a id=month href=/january.pdf>Month</a>
+<a id=popup href=/gate target=_blank>Popup</a>
+<a id=cross target=_blank>Cross</a>
+<script>
+month.addEventListener("click", () => { month.href = "/october.pdf"; });
+popup.addEventListener("click", (event) => { event.preventDefault(); window.open("/october.pdf"); });
+</script>`;
+  const site = createServer((request, response) => {
+    if (request.url === "/october.pdf") { response.setHeader("content-type", "application/pdf"); response.end(OCTOBER); return; }
+    if (request.url === "/january.pdf") { response.setHeader("content-type", "application/pdf"); response.end(JANUARY); return; }
+    if (request.url === "/gate") { response.setHeader("content-type", "text/html"); response.end("<!doctype html><title>Gate</title>"); return; }
+    response.setHeader("content-type", "text/html");
+    response.end(request.url === "/files" ? page : "<!doctype html><title>Owner</title>");
+  });
+  const cross = createServer((request, response) => {
+    if (request.url === "/statement.pdf") {
+      response.setHeader("content-type", "application/pdf");
+      response.end(`who=${request.headers.cookie ?? ""}`);
+      return;
+    }
+    response.writeHead(404);
+    response.end();
+  });
+  const base = await listen(site);
+  const crossBase = await listen(cross);
+  const chrome = await launchOwnedChromeEndpoint({ userDataDir: path.join(root, "chrome"), headless: true, args: ["--no-startup-window"] });
+  const endpoint = await readDevToolsActivePort(chrome.portFile);
+  const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
+  const born: Promise<string | undefined>[] = [];
+  const stopBorn = cdp.on("Target.targetCreated", undefined, (params) => {
+    const info = params.targetInfo as { targetId?: string; type?: string } | undefined;
+    if (!info?.targetId || info.type !== "page") return;
+    born.push(cdp.send<{ targetInfo?: { browserContextId?: string } }>("Target.getTargetInfo", { targetId: info.targetId })
+      .then((seen) => seen.targetInfo?.browserContextId).catch(() => undefined));
+  });
+  try {
+    await cdp.send("Target.setDiscoverTargets", { discover: true });
+    const { targetId: owner } = await cdp.send<{ targetId: string }>("Target.createTarget", { url: `${base}/owner` });
+    while (await evaluate(cdp, owner, "document.readyState") !== "complete") await new Promise((resolve) => setTimeout(resolve, 20));
+    await evaluate(cdp, owner, `window.ownerEvents = [];
+      document.addEventListener("visibilitychange", () => ownerEvents.push(document.visibilityState));
+      addEventListener("blur", () => ownerEvents.push("blur"));`);
+    const ownerState = () => evaluate<{ visibility: string; events: string[] }>(cdp, owner, "({ visibility: document.visibilityState, events: window.ownerEvents })");
+    assert.equal((await ownerState()).visibility, "visible");
+
+    const { browserContextId: work } = await cdp.send<{ browserContextId: string }>("Target.createBrowserContext");
+    const { targetId: workTab } = await cdp.send<{ targetId: string }>("Target.createTarget", { url: `${base}/files`, background: true, browserContextId: work });
+    const { targetId: personalTab } = await cdp.send<{ targetId: string }>("Target.createTarget", { url: `${base}/files`, background: true });
+    const workContext = (await cdp.send<{ targetInfo: { browserContextId?: string } }>("Target.getTargetInfo", { targetId: workTab })).targetInfo.browserContextId;
+    const personalContext = (await cdp.send<{ targetInfo: { browserContextId?: string } }>("Target.getTargetInfo", { targetId: personalTab })).targetInfo.browserContextId;
+    assert.equal(workContext, work);
+    assert.ok(personalContext && personalContext !== work, "the default context is a different browser context");
+    for (const tab of [workTab, personalTab]) {
+      while (await evaluate(cdp, tab, "document.readyState") !== "complete") await new Promise((resolve) => setTimeout(resolve, 20));
+      await evaluate(cdp, tab, `document.querySelector("#cross").href = ${JSON.stringify(`${crossBase}/statement.pdf`)}`);
+    }
+    const setCookie = async (targetId: string, value: string) => {
+      const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true });
+      try {
+        await cdp.send("Network.setCookie", { name: "who", value, url: `${crossBase}/`, path: "/" }, sessionId);
+      } finally {
+        await cdp.send("Target.detachFromTarget", { sessionId }).catch(() => undefined);
+      }
+    };
+    await setCookie(workTab, "work");
+    await setCookie(personalTab, "personal");
+
+    const click = (targetId: string, selector: string) => async () => {
+      await evaluate(cdp, targetId, `document.querySelector(${JSON.stringify(selector)}).click()`);
+      return { stdout: "", stderr: "", exitCode: 0 };
+    };
+    const save = async (targetId: string, selector: string, name: string) => {
+      const before = born.length;
+      await evaluate(cdp, targetId, "window.__nativeOpen = window.open");
+      const outcome = await downloadByClick(cdp, targetId, path.join(root, name), click(targetId, selector));
+      assert.equal(outcome.result.exitCode, 0, outcome.result.stderr);
+      assert.equal(await evaluate(cdp, targetId, "window.open === window.__nativeOpen"), true, "the page's window.open is restored");
+      const contexts = (await Promise.all(born.slice(before))).filter((id): id is string => typeof id === "string");
+      return { text: await readFile(path.join(root, name), "utf8"), outcome, contexts };
+    };
+
+    const plain = await save(workTab, "#plain", "plain.pdf");
+    assert.equal(plain.text, OCTOBER);
+    assert.match(plain.outcome.result.stdout, /did not open a tab/);
+    assert.deepEqual(plain.contexts, [], "a plain link download opens no tab");
+
+    const month = await save(workTab, "#month", "month.pdf");
+    assert.equal(month.text, OCTOBER);
+    assert.notEqual(month.text, JANUARY);
+    assert.equal(month.outcome.from && "url" in month.outcome.from ? month.outcome.from.url : "", `${base}/october.pdf`);
+    assert.deepEqual(month.contexts, [], "a handler that picks another month opens no tab");
+
+    const popup = await save(workTab, "#popup", "popup.pdf");
+    assert.equal(popup.text, OCTOBER);
+    assert.doesNotMatch(popup.text, /Gate/);
+    assert.equal(popup.outcome.from && "url" in popup.outcome.from ? popup.outcome.from.url : "", `${base}/october.pdf`);
+    assert.deepEqual(popup.contexts, [], "a handler that calls window.open opens no tab");
+    assert.equal(await evaluate(cdp, workTab, "location.pathname"), "/files", "the handler popup does not navigate the agent's tab");
+
+    const workFile = await save(workTab, "#cross", "work.pdf");
+    assert.match(workFile.outcome.result.stdout, /background tab/);
+    assert.match(workFile.text, /who=work/);
+    assert.doesNotMatch(workFile.text, /personal/);
+    assert.deepEqual([...new Set(workFile.contexts)], [work], "the fallback tab stays in the agent tab's browser context");
+
+    const personalFile = await save(personalTab, "#cross", "personal.pdf");
+    assert.match(personalFile.text, /who=personal/);
+    assert.doesNotMatch(personalFile.text, /who=work/);
+    assert.deepEqual([...new Set(personalFile.contexts)], [personalContext], "a default-context fallback does not use the other context");
+    assert.deepEqual(await ownerState(), { visibility: "visible", events: [] }, "none of these downloads switch the owner's tab");
+  } finally {
+    stopBorn();
+    cdp.close();
+    await chrome.close();
+    site.close();
+    cross.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});

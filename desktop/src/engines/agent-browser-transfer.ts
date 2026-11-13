@@ -132,45 +132,117 @@ async function savePdf(cdp: CdpSocket, targetId: string, file: string): Promise<
 }
 
 /**
- * Cancels the default action of a click on an http(s) link and records its URL. Chrome activates a tab that this click would
- * open, and answering Page.bringToFront does not stop that. The listener is removed by `TAKE_LINK`.
+ * For this click only: page handlers run first. A bubble listener then cancels an http(s) link the handler left in place.
+ * `window.open` is recorded and not called, so a handler popup does not open a tab. `TAKE_CLICK` restores both.
  */
-const ARM_LINK = `(() => {
-  const handle = (event) => {
-    const node = event.target instanceof Element ? event.target : null;
-    const link = node && node.closest("a[href]");
+const ARM_CLICK = `(() => {
+  window.__baoPriorOpen = window.open;
+  window.open = function(url) {
+    let resolved;
+    try { resolved = new URL(String(url == null ? "" : url), location.href); } catch { resolved = undefined; }
+    if (resolved && (resolved.protocol === "http:" || resolved.protocol === "https:")) window.__baoOpened = resolved.href;
+    return null;
+  };
+  const finish = (event) => {
+    if (event.defaultPrevented) return;
+    const path = typeof event.composedPath === "function" ? event.composedPath() : [];
+    let link = null;
+    for (const node of path) {
+      if (node instanceof Element && node.matches("a[href]")) { link = node; break; }
+    }
+    if (!link) {
+      const node = event.target instanceof Element ? event.target : event.target instanceof Node ? event.target.parentElement : null;
+      link = node && node.closest ? node.closest("a[href]") : null;
+    }
     if (!link) return;
     let url;
     try { url = new URL(link.href, location.href); } catch { return; }
     if (url.protocol !== "http:" && url.protocol !== "https:") return;
     event.preventDefault();
-    event.stopImmediatePropagation();
     window.__baoDownloadHref = url.href;
   };
-  window.__baoDownloadClick = handle;
-  document.addEventListener("click", handle, true);
+  const onSubmit = (event) => {
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement)) return;
+    const submitter = event.submitter;
+    const target = (submitter && submitter.getAttribute("formtarget")) || form.getAttribute("target") || "";
+    if (target !== "_blank") return;
+    event.preventDefault();
+    const method = ((submitter && submitter.getAttribute("formmethod")) || form.getAttribute("method") || "get").toLowerCase();
+    if (method === "post") return;
+    try {
+      const action = new URL((submitter && submitter.getAttribute("formaction")) || form.action, location.href);
+      if (action.protocol === "http:" || action.protocol === "https:") window.__baoDownloadHref = action.href;
+    } catch { return; }
+  };
+  window.__baoDownloadClick = finish;
+  window.__baoDownloadSubmit = onSubmit;
+  window.addEventListener("click", finish, false);
+  window.addEventListener("submit", onSubmit, false);
 })()`;
 
-const TAKE_LINK = `(() => {
-  const handle = window.__baoDownloadClick;
-  if (typeof handle === "function") document.removeEventListener("click", handle, true);
+const TAKE_CLICK = `(() => {
+  const click = window.__baoDownloadClick;
+  const submit = window.__baoDownloadSubmit;
+  if (typeof click === "function") window.removeEventListener("click", click, false);
+  if (typeof submit === "function") window.removeEventListener("submit", submit, false);
+  if (typeof window.__baoPriorOpen === "function") window.open = window.__baoPriorOpen;
   const href = typeof window.__baoDownloadHref === "string" ? window.__baoDownloadHref : "";
+  const opened = typeof window.__baoOpened === "string" ? window.__baoOpened : "";
   delete window.__baoDownloadHref;
+  delete window.__baoOpened;
   delete window.__baoDownloadClick;
-  return href;
+  delete window.__baoDownloadSubmit;
+  delete window.__baoPriorOpen;
+  return { href: href, opened: opened };
 })()`;
+
+function capturedUrl(value: unknown): string {
+  if (!value || typeof value !== "object") return "";
+  const record = value as { href?: unknown; opened?: unknown };
+  const opened = typeof record.opened === "string" ? record.opened : "";
+  const href = typeof record.href === "string" ? record.href : "";
+  return opened || href;
+}
 
 async function closeOpened(cdp: CdpSocket, agentTab: string, before: { targets: ReadonlySet<string> }): Promise<void> {
   const opened = (await pages(cdp)).filter((info) => !before.targets.has(info.targetId) && info.openerId === agentTab);
   for (const info of opened) await cdp.send("Target.closeTarget", { targetId: info.targetId }, undefined, 5000).catch(() => undefined);
 }
 
-/** Opens `url` without selecting it. A page fetch cannot read a cross-origin file; Chrome's own navigation can. */
-async function openBackground(cdp: CdpSocket, url: string): Promise<string | undefined> {
+async function contextOf(cdp: CdpSocket, targetId: string): Promise<string | undefined> {
+  const { targetInfo } = await cdp.send<{ targetInfo?: { browserContextId?: string } }>("Target.getTargetInfo", { targetId }, undefined, 5000);
+  const id = targetInfo?.browserContextId;
+  return typeof id === "string" && id ? id : undefined;
+}
+
+/** Opens `url` in `browserContextId` only after that context is confirmed. A blank tab is not a navigation. */
+async function openBackground(cdp: CdpSocket, url: string, browserContextId: string): Promise<string | undefined> {
+  let targetId: string;
   try {
-    const created = await cdp.send<{ targetId: string }>("Target.createTarget", { url, background: true }, undefined, 5000);
-    return created.targetId;
+    targetId = (await cdp.send<{ targetId: string }>("Target.createTarget", { url: "about:blank", background: true, browserContextId }, undefined, 5000)).targetId;
   } catch {
+    return undefined;
+  }
+  const close = () => cdp.send("Target.closeTarget", { targetId }, undefined, 5000).catch(() => undefined);
+  try {
+    if (await contextOf(cdp, targetId) !== browserContextId) {
+      await close();
+      return undefined;
+    }
+    const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true }, undefined, 5000);
+    try {
+      const navigated = await cdp.send<{ errorText?: string }>("Page.navigate", { url }, sessionId, 10_000);
+      if (navigated.errorText) {
+        await close();
+        return undefined;
+      }
+    } finally {
+      await cdp.send("Target.detachFromTarget", { sessionId }, undefined, 5000).catch(() => undefined);
+    }
+    return targetId;
+  } catch {
+    await close();
     return undefined;
   }
 }
@@ -207,11 +279,12 @@ const linkSaved = (saved: string, url: string): DownloadOutcome => ({ result: { 
   from: { source: "link", url } });
 
 /**
- * Clicks an element and saves what it gives. A click on an http(s) link does not navigate: Bao fetches that URL in the page with the
- * page's cookies, so no tab opens and the owner's tab stays where it was. A page or an error status is not the file, so Bao clicks
- * again and a click handler that builds the real file still runs. A link the page cannot fetch, such as a cross-origin file, opens in
- * a background tab that Bao closes. Any other element is clicked, and Bao saves a download Chrome starts or a PDF Chrome shows. Bao points Chrome's downloads at `saved`'s folder only for this command and gives Chrome back its own download settings
- * after, so the owner's later downloads go where Chrome puts them.
+ * Clicks an element and saves what it gives. Page handlers run on that click. Bao then fetches the http(s) URL they left, or the
+ * URL they passed to `window.open`, in the page with the page's cookies, so no tab opens and the owner's tab stays where it was.
+ * A link the page cannot fetch opens in a background tab in that tab's own browser context, which Bao closes. If that context
+ * cannot be confirmed, Bao does not open the tab. Any other element is clicked with the same guard, and Bao saves a download
+ * Chrome starts or a PDF Chrome shows. Bao points Chrome's downloads at `saved`'s folder only for this command and gives Chrome
+ * back its own download settings after, so the owner's later downloads go where Chrome puts them.
  */
 export async function downloadByClick(cdp: CdpSocket, agentTab: string, saved: string, click: Click): Promise<DownloadOutcome> {
   const folder = path.dirname(saved);
@@ -230,32 +303,51 @@ export async function downloadByClick(cdp: CdpSocket, agentTab: string, saved: s
       if (params.state === "completed" || params.state === "canceled") states.set(String(params.guid), String(params.state));
     }),
   ];
+  let behaviorContext: string | undefined;
+  const behavior = (mode: "allowAndName" | "default") => {
+    const params: { behavior: string; downloadPath?: string; eventsEnabled?: boolean; browserContextId?: string } = { behavior: mode };
+    if (mode === "allowAndName") {
+      params.downloadPath = folder;
+      params.eventsEnabled = true;
+    }
+    if (behaviorContext) params.browserContextId = behaviorContext;
+    return params;
+  };
   try {
-    await cdp.send("Browser.setDownloadBehavior", { behavior: "allowAndName", downloadPath: folder, eventsEnabled: true }, undefined, 5000);
-    await inPage(cdp, agentTab, ARM_LINK).catch(() => undefined);
+    const contextId = await contextOf(cdp, agentTab).catch(() => undefined);
+    if (contextId) {
+      const listed = await cdp.send<{ browserContextIds?: string[] }>("Target.getBrowserContexts", {}, undefined, 5000).catch(() => undefined);
+      if (listed?.browserContextIds?.includes(contextId)) behaviorContext = contextId;
+    }
+    await cdp.send("Browser.setDownloadBehavior", behavior("allowAndName"), undefined, 5000);
+    try {
+      await inPage(cdp, agentTab, ARM_CLICK);
+    } catch {
+      return { result: failed("Bao could not keep this download from opening a tab.") };
+    }
     let clicked: AgentBrowserCommandResult;
     let href = "";
     try {
       clicked = await click();
     } finally {
-      href = await inPage<string>(cdp, agentTab, TAKE_LINK).catch(() => "");
+      href = capturedUrl(await inPage(cdp, agentTab, TAKE_CLICK).catch(() => undefined));
     }
     if (clicked.exitCode !== 0) return { result: clicked };
-    if (href) {
-      let clickAgain = false;
+    if (href && !started) {
       try {
         const kind = await fetchLink(cdp, agentTab, saved, href);
         if (kind === "file") {
           await closeOpened(cdp, agentTab, before);
           return linkSaved(saved, href);
         }
-        clickAgain = true;
+        if (!started) return { result: failed(`The link returned a page, not a file (${href}).`) };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        if (/HTTP \d+/.test(message)) clickAgain = true;
-        else {
-          const background = await openBackground(cdp, href);
-          if (!background) return { result: failed(`Bao could not fetch the link (${href}).`) };
+        if (!started && /HTTP \d+/.test(message)) return { result: failed(`Bao could not fetch the link (${href}).`) };
+        if (!started && !contextId) return { result: failed(`Bao could not open the link in this tab's Chrome profile (${href}).`) };
+        if (!started && contextId) {
+          const background = await openBackground(cdp, href, contextId);
+          if (!background) return { result: failed(`Bao could not open the link in this tab's Chrome profile (${href}).`) };
           try {
             const outcome = await saveBackground(cdp, background, saved, href, () => ({ guid: started, url }), states);
             if (outcome) return outcome;
@@ -264,10 +356,6 @@ export async function downloadByClick(cdp: CdpSocket, agentTab: string, saved: s
             await cdp.send("Target.closeTarget", { targetId: background }, undefined, 5000).catch(() => undefined);
           }
         }
-      }
-      if (clickAgain) {
-        const again = await click();
-        if (again.exitCode !== 0) return { result: again };
       }
     }
     const startBy = Date.now() + START_MS;
@@ -292,7 +380,7 @@ export async function downloadByClick(cdp: CdpSocket, agentTab: string, saved: s
     return { result: { stdout: `\u2713 Download saved to ${saved}\n`, stderr: "", exitCode: 0 }, from: { source: "download", ...url ? { url } : {} } };
   } finally {
     for (const stop of stops) stop();
-    await cdp.send("Browser.setDownloadBehavior", { behavior: "default" }, undefined, 5000)
+    await cdp.send("Browser.setDownloadBehavior", behavior("default"), undefined, 5000)
       .catch((error: unknown) => process.stderr.write(`Bao could not return Chrome's download settings to Chrome: ${error instanceof Error ? error.message : String(error)}\n`));
   }
 }
