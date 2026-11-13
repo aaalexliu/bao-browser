@@ -50,7 +50,7 @@ Without a signing secret, the release build signs every part ad-hoc (`BAO_SIGN_I
 
 - `npx` and `curl` downloads carry no quarantine mark, so Gatekeeper does not stop an ad-hoc app. A copy downloaded in a browser needs System Settings → Privacy & Security → Open Anyway.
 - macOS keys an ad-hoc Bao grant to one build, so Device Control and Data Access does not survive an update. The same holds for Bao's Files & Folders > Google Chrome switch, so an ad-hoc build leaves agents with their own app's switch; a certificate build makes `bao-mcp` answer as Bao ([Files & Folders](permissions.md#files--folders--google-chrome)). Reading the source for a copied profile needs the [Chrome-folder grant](permissions.md#files--folders--google-chrome), not Accessibility. Running Chrome, the default, uses Bao's Device Control and Data Access grant.
-- The app still runs `BaoOSHelper permissions-ax` for the Settings label. That reads Accessibility without a prompt.
+- The app still runs `BaoOSHelper permissions-ax` for the Settings label. That reads Device Control and Data Access without a prompt.
 
 To sign with one project certificate, add two repository secrets: `BAO_SIGNING_P12`, a base64 `.p12` of the certificate and key, and `BAO_SIGNING_P12_PASSWORD`. `desktop/packaging/macos/ci-signing.sh` imports it into a temporary keychain and sets `BAO_SIGN_IDENTITY` to its SHA-1. A self-signed certificate like `bao dev signing` also sets `BAO_HELPER_CERT_HASH` to that SHA-1. Every update signed by it keeps Bao's Device Control and Data Access grant. Gatekeeper treats it like an ad-hoc signature.
 

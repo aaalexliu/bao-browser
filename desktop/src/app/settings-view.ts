@@ -55,7 +55,7 @@ export function settingsIndex(view: SettingsView): string {
   const mac = view.helper?.platform === "darwin";
   const summaries = [
     "Heal policy, waits",
-    !mac ? "Mac only" : chromeDenied(view) ? "Chrome's folder not allowed" : view.helper?.accessibility ? "Accessibility allowed" : "Optional for Running Chrome and native apps",
+    !mac ? "Mac only" : chromeDenied(view) ? "Chrome's folder not allowed" : view.helper?.accessibility ? "Device Control and Data Access allowed" : "Optional for Running Chrome and native apps",
     remoteLabel(view),
     `${view.sites.length} ${view.sites.length === 1 ? "site" : "sites"} from your Chrome`,
     sourceLabel(view),

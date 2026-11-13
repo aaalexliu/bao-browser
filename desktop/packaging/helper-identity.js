@@ -166,7 +166,7 @@ function main() {
     process.stderr.write(`package-app.sh: ${verdict.reason}\n`);
     process.exit(1);
   }
-  if (identity === ADHOC) process.stderr.write("package-app.sh: ad-hoc build. macOS will not keep the helper's Accessibility grant across updates.\n");
+  if (identity === ADHOC) process.stderr.write("package-app.sh: ad-hoc build. macOS will not keep Bao's Device Control and Data Access grant across updates.\n");
 }
 
 if (require.main === module) main();

@@ -1,5 +1,5 @@
 // The owner's running Chrome over remote debugging. BaoOSHelper turns on Chrome's remote-debugging setting and presses
-// Chrome's Allow prompt with its Accessibility access. Chrome asks for every new connection, so one long-lived Bao process
+// Chrome's Allow prompt with Bao's Device Control and Data Access grant. Chrome asks for every new connection, so one long-lived Bao process
 // holds one connection per user-data-dir and every session joins it. Bao's task tab opens in a window of the Chrome profile
 // the call chose.
 

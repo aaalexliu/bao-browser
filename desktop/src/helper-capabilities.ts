@@ -21,7 +21,7 @@ export const CAPABILITIES: readonly Capability[] = [
   {
     id: "mcp-ax",
     ready: "MCP driver ready",
-    blocked: "optional native-app MCP driver needs Accessibility and Screen Recording (not needed for Chrome)",
+    blocked: "optional native-app MCP driver needs Device Control and Data Access and Screen Recording (not needed for Chrome)",
     grants: ["accessibility", "screen-recording"],
     optional: true,
   },

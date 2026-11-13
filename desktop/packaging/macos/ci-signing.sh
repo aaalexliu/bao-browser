@@ -14,7 +14,7 @@ KEYCHAIN="${RUNNER_TEMP:?}/bao-signing.keychain-db"
 case "${1:?usage: ci-signing.sh import|delete}" in
   import)
     if [[ -z "${BAO_SIGNING_P12:-}" ]]; then
-      echo "No BAO_SIGNING_P12 secret: signing ad-hoc. The helper's Accessibility grant will not survive updates."
+      echo "No BAO_SIGNING_P12 secret: signing ad-hoc. Bao's Device Control and Data Access grant will not survive updates."
       echo "BAO_SIGN_IDENTITY=-" >> "$GITHUB_ENV"
       exit 0
     fi

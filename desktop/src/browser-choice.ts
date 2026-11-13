@@ -13,7 +13,7 @@ export const BROWSER_OPTIONS = {
   },
   current: {
     label: "Running Chrome",
-    description: "The default. Uses your own Google Chrome over remote debugging, with the sign-ins you already have, in a new task tab in a window of the Chrome profile named by profile, or of the only one. If Chrome is not open, Bao starts it, unless macOS cannot start apps; then restart the Mac. Needs Bao's helper and its Accessibility permission, not Automation or Screen Recording: the helper turns on Chrome's remote-debugging setting and presses Chrome's Allow prompt. Bao closes only its own task tabs and leaves Chrome open. If Bao cannot use your Chrome, for example without that Accessibility permission or with the screen locked, an open that named no browser runs in Bao's own profile, imports no new sign-ins, and says why, unless macOS cannot start apps; then restart the Mac.",
+    description: "The default. Uses your own Google Chrome over remote debugging, with the sign-ins you already have, in a new task tab in a window of the Chrome profile named by profile, or of the only one. If Chrome is not open, Bao starts it, unless macOS cannot start apps; then restart the Mac. Needs Bao's Device Control and Data Access grant, not Automation or Screen Recording: the helper turns on Chrome's remote-debugging setting and presses Chrome's Allow prompt. Bao closes only its own task tabs and leaves Chrome open. If Bao cannot use your Chrome, for example without that grant or with the screen locked, an open that named no browser runs in Bao's own profile, imports no new sign-ins, and says why, unless macOS cannot start apps; then restart the Mac.",
   },
 } as const satisfies Record<BrowserChoice, { label: string; description: string }>;
 
@@ -28,7 +28,7 @@ export const APP_BROWSER_OPTIONS = {
   },
   current: {
     label: BROWSER_OPTIONS.current.label,
-    description: "Uses your own Google Chrome over remote debugging, with the sign-ins you already have, in a new tab in a window of the Chrome profile picked in Settings, or of the only one. If Chrome is not open, Bao starts it, unless macOS cannot start apps; then restart the Mac. Needs Bao's helper and its Accessibility permission, not Automation or Screen Recording. The run's tab closes when the run ends unless Keep window open is on; Bao leaves Chrome open.",
+    description: "Uses your own Google Chrome over remote debugging, with the sign-ins you already have, in a new tab in a window of the Chrome profile picked in Settings, or of the only one. If Chrome is not open, Bao starts it, unless macOS cannot start apps; then restart the Mac. Needs Bao's Device Control and Data Access grant, not Automation or Screen Recording. The run's tab closes when the run ends unless Keep window open is on; Bao leaves Chrome open.",
   },
 } as const;
 
