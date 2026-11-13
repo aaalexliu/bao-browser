@@ -29,8 +29,11 @@ import { diffView, findView, snapshotView } from "./snapshot-view";
 import { AGENT_DISCONNECTED, AGENT_IDLE_REASON, NEWER_TASK_REASON } from "../v1/stop-copy";
 import { openBackgroundCdp, type BackgroundCdp } from "./background-cdp";
 import { activeNativeTab, parseNativeTabs, type NativeTab } from "./agent-browser-tabs";
+import { fileOperands } from "../v1/file-operands";
+import { fileArgs, fileFacts, isFileCommand, type FileArgs, type FileCommand, type FileTransfer } from "./agent-browser-files";
+import { downloadByClick, NOT_FILE_INPUT, uploadThroughChooser } from "./agent-browser-transfer";
 
-export const AGENT_BROWSER_COMMANDS = ["open", "snapshot", "click", "fill", "press", "scroll", "tab", "screenshot", "wait_for_owner", "close"] as const;
+export const AGENT_BROWSER_COMMANDS = ["open", "snapshot", "click", "fill", "press", "scroll", "tab", "screenshot", "upload", "download", "wait_for_owner", "close"] as const;
 export type AgentBrowserCommand = typeof AGENT_BROWSER_COMMANDS[number];
 export interface AgentBrowserCommandResult { stdout: string; stderr: string; exitCode: number }
 
@@ -38,7 +41,7 @@ const SESSION_IDLE_MS = 10 * 60 * 1000;
 
 const FIXED_OPTIONS = new Set([
   "--session", "--namespace", "--profile", "--executable-path", "--headed", "--cdp", "--auto-connect",
-  "--provider", "-p", "--engine", "--config", "--args", "--idle-timeout", "--all", "--pin-tab", "--no-pin-tab",
+  "--provider", "-p", "--engine", "--config", "--args", "--idle-timeout", "--all", "--pin-tab", "--no-pin-tab", "--download-path",
 ]);
 
 /** One MCP process serves every chat, so a call that acts on a session names the run it belongs to. */
@@ -55,7 +58,7 @@ export function validateAgentBrowserCommand(command: unknown, args: unknown): as
     throw new Error("agent-browser args must be an array of strings");
   }
   if (args.some((arg) => FIXED_OPTIONS.has(arg.split("=", 1)[0]!))) {
-    throw new Error("Bao fixes the agent-browser session, browser, headed mode, profile, and lifetime");
+    throw new Error("Bao fixes the agent-browser session, browser, headed mode, profile, lifetime, and download folder");
   }
 }
 
@@ -444,6 +447,9 @@ export class AgentBrowserProxy {
   private workflowOutcome: string | undefined;
 
   get lastWorkflowOutcome(): string | undefined { return this.workflowOutcome; }
+  /** Where the latest command's download landed. */
+  get savedFile(): string | undefined { return this.saved; }
+  private saved: string | undefined;
   get lastCommand(): typeof this.latest { return this.latest; }
   get activeRunId(): string | undefined { return this.session?.recording.id; }
   /** The open session drives the owner's own running Chrome. */
@@ -653,6 +659,7 @@ export class AgentBrowserProxy {
     this.latest = undefined;
     this.shown = undefined;
     this.notOpened = undefined;
+    this.saved = undefined;
     this.imports = [];
     this.moved = undefined as Moved | undefined;
     this.workflowOutcome = undefined;
@@ -746,6 +753,14 @@ export class AgentBrowserProxy {
       if (command === "close") await this.remove(session);
       return this.ownerResult("closed", session);
     }
+    let files: FileArgs | undefined;
+    if (isFileCommand(command) && this.session) {
+      if (this.session.kind === "current" && this.session.relay) {
+        throw new Error("upload and download need Running Chrome over remote debugging, the Bao profile, or a copy, not the Bao extension.");
+      }
+      files = await fileArgs(command, args, this.session.recording.downloadsDir);
+    }
+    const nativeArgs = files?.forwarded ?? args;
     const continuing = !!this.session;
     // The route and profile are settled before any run record, so a question about the profile opens and records nothing.
     const plan = continuing ? undefined : await this.plan(browser as AgentBrowser | undefined, named, webSite(args[0]));
@@ -882,7 +897,7 @@ export class AgentBrowserProxy {
           return results;
         }
       }
-      step ??= recording.begin(command as string, args);
+      step ??= recording.begin(command as string, nativeArgs);
       this.latest = { runId: recording.id, step, steps: recording.steps };
       if (command === "open") {
         const site = webSite(args[0]);
@@ -895,8 +910,9 @@ export class AgentBrowserProxy {
           }
         } else if (continuing && site && "importLogin" in session.chrome) this.imported(session, await session.chrome.importLogin(site));
       }
-      if ((command === "click" || command === "fill") && args[0]) {
-        await this.captureTarget(session, step, args[0]);
+      const target = command === "click" || command === "fill" ? args[0] : files ? fileOperands(args).selector : undefined;
+      if (target) {
+        await this.captureTarget(session, step, target);
         if (this.waitOf(session) !== "off") {
           const opened = await this.settleWall(session, { retry: true });
           if (opened && this.moved?.site) {
@@ -910,11 +926,13 @@ export class AgentBrowserProxy {
         }
       }
       let inPage = false;
-      await session.workflow.record(command as string, args, step.id, async () => {
+      await session.workflow.record(command as string, nativeArgs, step.id, async () => {
         const result = command === "close" && (session.kind === "current" || session.chrome.isClosed())
           ? { stdout: session.kind === "current" ? "Disconnected from the owner's own Chrome. Only Bao's task tabs close; the owner's tabs and windows stay open." : "", stderr: "", exitCode: 0 }
-          : await this.runNative(session, command as string, args);
+          : files ? await this.transfer(session, command as FileCommand, files).then((done) => { context.transfer = done.transfer; return done.result; })
+            : await this.runNative(session, command as string, nativeArgs);
         results.push(result);
+        if (files?.saved && result.exitCode === 0) this.saved = files.saved;
         if (command !== "close" && result.exitCode === 0) await this.noteWall(session, command === "open" ? webSite(args[0]) : undefined);
         return result;
       }, () => this.waitOf(session) !== "off");
@@ -953,7 +971,7 @@ export class AgentBrowserProxy {
       if (error instanceof TaskTabClosed) {
         const agentClosedTab = command === "tab" && parseTabArgs(args).action === "close" && results.some((result) => result.exitCode === 0);
         results.splice(0, results.length, ...await this.endTaskTab(session));
-        step ??= recording.begin(command as string, args);
+        step ??= recording.begin(command as string, nativeArgs);
         this.latest = { runId: recording.id, step, steps: recording.steps };
         if (!agentClosedTab) failure = new Error("Bao's task tab was closed");
         return results;
@@ -1469,6 +1487,33 @@ export class AgentBrowserProxy {
       await this.focusTab(session, info.targetId, ceiling);
     }
     return tab.active ? tabs : this.nativeTabs(session, ceiling);
+  }
+
+  /**
+   * An upload to a file input runs natively. An upload through any other element, and every download, runs on Bao's own
+   * connection to the agent's tab: Running Chrome's shared connection, or a direct one to a Bao profile or copy. The native CLI
+   * only clicks there, because its own download waits 30 s on a PDF that Chrome shows instead of downloading, and holds the daemon.
+   */
+  private async transfer(session: Session, command: FileCommand, files: FileArgs): Promise<{ result: AgentBrowserCommandResult; transfer?: FileTransfer }> {
+    if (command === "upload") {
+      const native = await this.runNative(session, "upload", files.forwarded);
+      if (native.exitCode === 0) return { result: native, transfer: { command, source: "file-input", files: await fileFacts(files.files) } };
+      if (!NOT_FILE_INPUT.test(native.stderr)) return { result: native };
+    }
+    const active = await this.activePage(session);
+    if (!active) throw new Error("no active Bao page metadata");
+    const cdp = await this.connectSession(session, { timeoutMs: 5000, signal: session.abort.signal });
+    const click = () => this.runNative(session, "click", files.click);
+    try {
+      if (command === "upload") {
+        const result = await uploadThroughChooser(cdp, active.targetId, files.files, click);
+        return { result, ...result.exitCode === 0 ? { transfer: { command, source: "file-chooser" as const, files: await fileFacts(files.files) } } : {} };
+      }
+      const { result, from } = await downloadByClick(cdp, active.targetId, files.saved!, click);
+      return { result, ...from ? { transfer: { command, ...from, files: await fileFacts([files.saved!]) } } : {} };
+    } finally {
+      if (session.kind === "copy") cdp.close();
+    }
   }
 
   /** Runs the agent's command. On the owner's Chrome, a new tab is the agent's only when it is in the return list and not the entry list. */

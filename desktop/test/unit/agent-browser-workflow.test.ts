@@ -20,6 +20,8 @@ import { replayRefusal, CDP_LIVE_SERVER_REFUSAL } from "../../src/cdp-live/launc
 import { scaledMs } from "../runtime";
 
 const binary = process.env.AGENT_BROWSER_PROXY_BINARY;
+const STATEMENT = "%PDF-1.4 synthetic statement";
+const VIEWED = "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Kids[]/Count 0>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n";
 interface Result { content: { type: string; text?: string }[]; isError: boolean; structuredContent?: { command: string; run_id: string; step_id: string } }
 const text = (result: Result) => result.content.map((item) => item.text || "").join("\n");
 
@@ -29,6 +31,7 @@ async function fixture(ui = false) {
   const source = path.join(root, "source");
   await syntheticChromeProfile(source, { name: "Synthetic groceries" });
   const actions: { target: string; name: string }[] = [];
+  const uploads: { name: string; body: string }[] = [];
   let reordered = false;
   let missing = false;
   let ownerReady = false;
@@ -48,6 +51,24 @@ async function fixture(ui = false) {
         : '<div onclick="document.querySelector(\'#selected\').textContent=\'Selected A\'">Store A</div><div id="store-b" onclick="document.querySelector(\'#selected\').textContent=\'Selected B\'">Store B</div>';
       const container = url.searchParams.has("testid") ? 'data-testid="stores"' : 'role="dialog" aria-label="Choose a store"';
       res.end(`<!doctype html><title>Stores</title><div ${container}>${content}</div><p id="selected">No store selected</p>`);
+      return;
+    }
+    if (url.pathname === "/statement.pdf" || url.pathname === "/view.pdf") {
+      res.writeHead(200, { "content-type": "application/pdf", ...url.pathname === "/statement.pdf" ? { "content-disposition": "attachment; filename=server-name.pdf" } : {} });
+      res.end(url.pathname === "/view.pdf" ? VIEWED : STATEMENT);
+      return;
+    }
+    if (url.pathname === "/uploaded") {
+      let body = "";
+      req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
+      req.on("end", () => { uploads.push({ name: url.searchParams.get("name")!, body }); res.end("ok"); });
+      return;
+    }
+    if (url.pathname === "/files") {
+      res.end(`<!doctype html><title>Statements</title><a id="dl" href="/statement.pdf" download>Get statement</a>
+        <a id="newtab" href="/view.pdf" target="_blank">October statement</a> <a id="same" href="/view.pdf">View statement</a>
+        <button onclick="document.querySelector('#hidden').click()">Upload Statement</button>
+        <input id="hidden" type="file" accept="application/pdf" style="display:none" onchange="const f=this.files[0];f.text().then(t=>fetch('/uploaded?name='+encodeURIComponent(f.name),{method:'POST',body:t}))">`);
       return;
     }
     if (url.pathname === "/owner-ready") { res.end(JSON.stringify(ownerReady)); return; }
@@ -87,7 +108,7 @@ async function fixture(ui = false) {
   };
   await driver.initialize(ui ? { capabilities: { extensions: { [UI_EXTENSION]: { mimeTypes: [VIEWER_MIME] } } } } : {});
   return {
-    root, home, url, actions, call, request, library: new Library(home),
+    root, home, url, actions, uploads, call, request, library: new Library(home),
     reorder() { reordered = true; },
     removeChosen() { missing = true; },
     resumeOwner(ready = true) { ownerReady = ready; },
@@ -450,6 +471,57 @@ test("finished native captures explain why unsupported actions cannot become wor
     assert.match(await passed(f, "close"), /Not saved as a workflow:/);
     assert.equal(f.library.list().workflows.length, 0);
     assert.equal(f.library.listRuns().find((run) => !seen.has(run.id))!.status, "failed");
+  } finally { await f.close(); }
+});
+
+test("on a copy the agent downloads a file or a PDF Chrome shows, uploads it through the upload button, and the run and saved workflow name each file", { skip: !binary, timeout: scaledMs(120_000) }, async () => {
+  const f = await fixture();
+  try {
+    await passed(f, "open", [`${f.url}files`]);
+    const downloaded = await passed(f, "download", ["#dl", "statement.pdf"]);
+    const saved = /Bao saved the file at (.+)\.$/m.exec(downloaded)?.[1];
+    assert.ok(saved, downloaded);
+    assert.equal(path.dirname(path.dirname(saved)), path.join(f.home, "downloads"));
+    assert.equal(path.basename(saved), "statement.pdf", "the agent's name wins over the server's");
+    assert.match(downloaded, /Download saved to .+statement\.pdf/);
+    assert.equal(await readFile(saved, "utf8"), STATEMENT);
+
+    const [ref] = snapshotRefs(await passed(f, "snapshot", ["-i"]), /button "Upload Statement"/);
+    assert.ok(ref, "the snapshot lists the upload button but not its hidden input");
+    assert.match(await passed(f, "upload", [`@${ref}`, "statement.pdf"]), /file chooser the click opened/);
+    const until = Date.now() + scaledMs(5000);
+    while (!f.uploads.length && Date.now() < until) await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.deepEqual(f.uploads, [{ name: "statement.pdf", body: STATEMENT }], "the page read the downloaded bytes from the input behind its button");
+
+    const folder = path.dirname(saved);
+    assert.match(await passed(f, "download", ["#newtab", "october.pdf"]), /in a new tab, which Bao closed/);
+    assert.equal(await readFile(path.join(folder, "october.pdf"), "utf8"), VIEWED);
+    assert.match(await passed(f, "snapshot", ["-i"]), /Upload Statement/, "the agent is back on its page after Bao closed the viewer tab");
+    assert.match(await passed(f, "download", ["#same", "viewed.pdf"]), /in this tab, which still shows it/);
+    assert.equal(await readFile(path.join(folder, "viewed.pdf"), "utf8"), VIEWED);
+
+    const closing = await passed(f, "close");
+    const workflowId = /Saved workflow: .+ \((wf-[^;]+);/.exec(closing)?.[1];
+    assert.ok(workflowId, closing);
+    const notes = f.library.read(workflowId).steps.map((step) => step.caption.text);
+    assert.deepEqual(notes, [`Downloaded ${saved} through #dl`, `Uploaded ${saved}`, `Downloaded ${path.join(folder, "october.pdf")} through #newtab`,
+      `Downloaded ${path.join(folder, "viewed.pdf")} through #same`], "the saved workflow names each file with its full path");
+
+    const capture = f.library.listRuns().find((run) => run.workflowId === "agent-browser")!;
+    const steps = capture.steps as RecordedAgentBrowserCommand[];
+    const files = steps.filter((step) => step.transfer).map((step) => step.transfer!);
+    const sha = (text: string) => createHash("sha256").update(text).digest("hex");
+    assert.deepEqual(files, [
+      { command: "download", source: "download", url: `${f.url}statement.pdf`, files: [{ path: saved, bytes: STATEMENT.length, sha256: sha(STATEMENT) }] },
+      { command: "upload", source: "file-chooser", files: [{ path: saved, bytes: STATEMENT.length, sha256: sha(STATEMENT) }] },
+      { command: "download", source: "pdf-viewer", url: `${f.url}view.pdf`, files: [{ path: path.join(folder, "october.pdf"), bytes: VIEWED.length, sha256: sha(VIEWED) }] },
+      { command: "download", source: "pdf-viewer", url: `${f.url}view.pdf`, files: [{ path: path.join(folder, "viewed.pdf"), bytes: VIEWED.length, sha256: sha(VIEWED) }] },
+    ], "each file step keeps its full path, size, SHA-256, and how Bao moved it");
+    const download = steps.find((step) => step.native.command === "download")!;
+    assert.deepEqual(download.native.args, ["#dl", saved], "the run keeps the real argv, full path included");
+    assert.ok(download.beforeShot && download.afterShot, "a download keeps a picture before and after, like a click");
+    assert.equal(steps.find((step) => step.native.command === "upload")!.caption.text, "Upload statement.pdf");
+    assert.equal(await readFile(saved, "utf8"), STATEMENT, "the file stays where Bao saved it");
   } finally { await f.close(); }
 });
 

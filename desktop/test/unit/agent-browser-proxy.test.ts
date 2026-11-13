@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -8,6 +9,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import { ChromeProfileQuestion } from "../../src/engines/browser-pick";
 import * as currentChrome from "../../src/cdp-live/current-chrome";
+import * as runningChrome from "../../src/extension/running-chrome";
 import { chromeProfiles, fakeTaskTab } from "../support/chrome-profiles";
 import { trapPort } from "../support/trap-port";
 import * as profiles from "../../src/engines/chrome-profile-copy";
@@ -86,6 +88,7 @@ else if (args.includes('wait')) {
   }, 10);
 }
 else if (args.includes('fail') || args.includes('daemon-fail')) { process.stdout.write('native failure output\\n'); process.stderr.write('native error\\n'); process.exitCode = 1; }
+else if (command === 'upload' && !args.slice(args.indexOf('upload') + 2).every((file) => fs.existsSync(file))) { process.stderr.write('\u2717 File not found: ' + args.at(-1) + '\\n'); process.exitCode = 1; }
 else if (command === 'snapshot' && fs.existsSync(${JSON.stringify(path.join(root, "page.txt"))})) process.stdout.write(fs.readFileSync(${JSON.stringify(path.join(root, "page.txt"))}, 'utf8'));
 else if (command === 'tab' && args.includes('--json') && fs.existsSync(${JSON.stringify(path.join(root, "tab-result.json"))})) {
   const result = JSON.parse(fs.readFileSync(${JSON.stringify(path.join(root, "tab-result.json"))}, 'utf8'));
@@ -791,10 +794,74 @@ test("proxy rejects malformed commands and attempts to replace its fixed session
     await assert.rejects(f.proxy.execute("eval", ["1"]), /unknown/);
     await assert.rejects(f.proxy.execute("open", "http://127.0.0.1/"), /array of strings/);
     await assert.rejects(f.proxy.execute("open", [null], undefined, false, undefined, {}, f.proxy.activeRunId), /array of strings/);
-    for (const arg of ["--session=other", "--cdp", "--profile", "--headed=false", "--args", "--idle-timeout=10", "--all", "-p"]) {
+    for (const arg of ["--session=other", "--cdp", "--profile", "--headed=false", "--args", "--idle-timeout=10", "--all", "-p", "--download-path", "--download-path=/tmp"]) {
       await assert.rejects(f.proxy.execute("open", [arg], undefined, false, undefined, {}, f.proxy.activeRunId), /Bao fixes/);
     }
     await assert.rejects(readFile(path.join(f.root, "calls.jsonl")), /ENOENT/);
+  } finally { await f.close(); }
+});
+
+test("an upload to a file input runs natively with absolute paths, and the run keeps that argv with file names in its captions", async (t) => {
+  const f = await fixture(t);
+  try {
+    await f.proxy.execute("open", ["http://127.0.0.1/"], "copy");
+    const runId = f.proxy.activeRunId!;
+    const downloads = path.join(f.root, "home", "downloads", runId);
+    await mkdir(downloads, { recursive: true });
+    await writeFile(path.join(downloads, "statement.pdf"), "%PDF");
+    const w2 = path.join(f.root, "w2.pdf");
+    await writeFile(w2, "%PDF");
+    const [upload] = await f.proxy.execute("upload", ["input[type=file]", "statement.pdf", w2], undefined, false, undefined, {}, runId);
+    assert.equal(upload!.exitCode, 0, upload!.stderr);
+    assert.equal(f.proxy.savedFile, undefined);
+    const [missing] = await f.proxy.execute("upload", ["#f", path.join(f.root, "gone", "w2.pdf")], undefined, false, undefined, {}, runId);
+    assert.equal(missing!.exitCode, 1);
+    await assert.rejects(f.proxy.execute("upload", ["#f", "never.pdf"], undefined, false, undefined, {}, runId), /downloaded no file named never\.pdf/);
+    await assert.rejects(f.proxy.execute("download", ["@e5", "../statement.pdf"], undefined, false, undefined, {}, runId), /plain file name/);
+
+    const calls = (await f.calls()).map((call) => call.args.slice(call.args.indexOf("--idle-timeout") + 2));
+    assert.deepEqual(calls.filter((args) => args[0] === "upload"), [
+      ["upload", "input[type=file]", path.join(downloads, "statement.pdf"), w2], ["upload", "#f", path.join(f.root, "gone", "w2.pdf")],
+    ]);
+    const steps = new Library(path.join(f.root, "home")).readRun(runId).steps as unknown as RecordedAgentBrowserCommand[];
+    assert.deepEqual(steps.slice(1).map((step) => [step.caption.text, step.summary?.text, step.native.args]), [
+      ["Upload statement.pdf, w2.pdf", 'Uploaded "statement.pdf, w2.pdf".', ["input[type=file]", path.join(downloads, "statement.pdf"), w2]],
+      ["Upload w2.pdf", 'Could not upload "w2.pdf".', ["#f", path.join(f.root, "gone", "w2.pdf")]],
+    ]);
+    assert.equal(steps.at(-1)!.summary?.error, `\u2717 File not found: ${path.join(f.root, "gone", "w2.pdf")}`, "the run keeps the real path the native error names");
+    const sha = createHash("sha256").update("%PDF").digest("hex");
+    assert.deepEqual(steps[1]!.transfer, { command: "upload", source: "file-input", files: [
+      { path: path.join(downloads, "statement.pdf"), bytes: 4, sha256: sha }, { path: w2, bytes: 4, sha256: sha },
+    ] });
+    assert.equal(steps[2]!.transfer, undefined, "a failed upload records no file facts");
+  } finally { await f.close(); }
+});
+
+test("upload and download through the Bao extension are refused before anything runs", async (t) => {
+  const f = await fixture(t);
+  try {
+    const relay = {
+      get isOpen() { return true; }, disconnected: new Promise<void>(() => {}), close() {},
+      async send(method: string) {
+        if (method === "Target.createTarget") return { targetId: "task" };
+        if (method === "Target.getTargetInfo") return { targetInfo: { url: "http://127.0.0.1/", title: "Fixture" } };
+        if (method === "Target.attachToTarget") return { sessionId: "task" };
+        return { data: png.toString("base64") };
+      },
+      sendUntilProgress(this: { send: (method: string) => Promise<unknown> }, method: string) { return this.send(method); },
+    } as unknown as sockets.CdpSocket;
+    t.mock.method(runningChrome, "openRunningChrome", async () => ({ endpoint: { port: await trapPort(), browserPath: "/devtools/browser/relay" }, cdp: relay,
+      closed: relay.disconnected, isClosed: () => false, detach: () => undefined }));
+    const proxy = new AgentBrowserProxy({ home: path.join(f.root, "relay-home"), sourceRoot: f.sourceRoot, executable: path.join(f.root, "native"), extensionRoute: () => true });
+    try {
+      assert.equal((await proxy.execute("open", ["http://127.0.0.1/"], "current"))[0]!.exitCode, 0);
+      const before = (await f.calls()).length;
+      for (const [command, args] of [["download", ["@e5", "statement.pdf"]], ["upload", ["#f", "/tmp/w2.pdf"]]] as const) {
+        await assert.rejects(proxy.execute(command, [...args], undefined, false, undefined, {}, proxy.activeRunId), /not the Bao extension/);
+      }
+      assert.equal((await f.calls()).length, before, "nothing reached the native CLI");
+      assert.deepEqual((new Library(path.join(f.root, "relay-home")).listRuns()[0]!.steps as unknown as RecordedAgentBrowserCommand[]).map((step) => step.native.command), ["open"]);
+    } finally { await proxy.end(); }
   } finally { await f.close(); }
 });
 

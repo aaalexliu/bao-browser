@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -10,6 +10,7 @@ import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { shareConnection } from "../../src/cdp-live/shared-connection";
 import { connectCdp, type CdpSocket } from "../../src/cdp-live/socket";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
+import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
 import * as profileCopy from "../../src/engines/chrome-profile-copy";
 import { startApp } from "../../src/app/server";
 import { runWorkflow } from "../../src/mcp/catalog";
@@ -18,6 +19,7 @@ import { launchOwnedChromeEndpoint, pinTestBrowser } from "../../src/launch";
 import type { WorkflowStep } from "../../src/v1/schema";
 import { targetFor, testWorkflow } from "../support/workflow";
 import { chromeProfiles } from "../support/chrome-profiles";
+import { snapshotRefs } from "../helpers/driver";
 import { scaledMs } from "../runtime";
 
 pinTestBrowser();
@@ -153,6 +155,99 @@ test("on the owner's Chrome the agent keeps its task tab when the owner opens a 
     assert.equal((await proxy.execute("click", ["#pop"], undefined, false, undefined, {}, proxy.activeRunId))[0]!.exitCode, 0);
     const [read] = await proxy.execute("snapshot", [], undefined, false, undefined, {}, proxy.activeRunId);
     assert.match(read!.stdout, /Popup page/, "the agent follows the tab its click opened");
+  } finally {
+    await proxy.end();
+    probe.close();
+    cdp.close();
+    await chrome.close();
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+const STATEMENT_PDF = "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Kids[]/Count 0>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n";
+const FILES = `<!doctype html><title>Statements</title>
+<button id=make onclick="const i=document.createElement('input');i.type='file';i.onchange=()=>i.files[0].text().then(t=>fetch('/uploaded?via=button&name='+i.files[0].name,{method:'POST',body:t}));i.click()">Upload Statement</button>
+<label id=lab>Attach W-2<input type=file style=display:none onchange="this.files[0].text().then(t=>fetch('/uploaded?via=label&name='+this.files[0].name,{method:'POST',body:t}))"></label>
+<a id=attach href=/attachment>Export CSV</a> <a id=newtab href=/statement.pdf target=_blank>October statement</a> <a id=same href=/statement.pdf>View statement</a>`;
+
+test("on the owner's Chrome the agent uploads through an upload button and downloads a file or a PDF Chrome shows, and his own downloads stay his", { skip: !binary, timeout: scaledMs(120_000) }, async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-current-files-"));
+  const uploads: string[] = [];
+  const server = createServer((request, response) => {
+    if (request.url === "/statement.pdf") { response.setHeader("content-type", "application/pdf"); response.end(STATEMENT_PDF); return; }
+    if (request.url === "/attachment") { response.setHeader("content-disposition", "attachment; filename=export.csv"); response.end("a,b\n1,2\n"); return; }
+    if (request.url?.startsWith("/uploaded")) {
+      let body = "";
+      request.on("data", (chunk: Buffer) => { body += chunk.toString(); });
+      request.on("end", () => { uploads.push(`${new URL(request.url!, "http://x").search} ${body}`); response.end("ok"); });
+      return;
+    }
+    response.setHeader("content-type", "text/html");
+    response.end(request.url === "/files" ? FILES : "<!doctype html><title>Owner</title><h1>Owner tab</h1>");
+  });
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  await chromeProfiles(path.join(root, "chrome"));
+  const chrome = await launchOwnedChromeEndpoint({ userDataDir: path.join(root, "chrome"), headless: true, args: ["--no-startup-window"] });
+  const endpoint = await readDevToolsActivePort(chrome.portFile);
+  const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
+  const probe = await connectCdp(endpoint.port, endpoint.browserPath);
+  t.mock.method(profileCopy, "chromeProfilesRoot", () => root);
+  t.mock.method(currentChrome, "openCurrentChrome", async () => {
+    const shared = await shareConnection(cdp);
+    return { pid: 7, executable: pinTestBrowser(), root: path.join(root, "chrome"), endpoint: shared.endpoint, cdp, closed: cdp.disconnected,
+      isClosed: () => !cdp.isOpen, detach: () => { shared.close(); cdp.close(); } };
+  });
+  const home = path.join(root, "home");
+  const proxy = new AgentBrowserProxy({ home, sourceRoot: path.join(root, "chrome"), executable: binary });
+  const w2 = path.join(root, "w2.pdf");
+  await writeFile(w2, "W-2 bytes");
+  const run = async (command: string, args: string[]) => {
+    const [result] = await proxy.execute(command, args, undefined, false, undefined, {}, proxy.activeRunId);
+    assert.equal(result!.exitCode, 0, `${command} ${args.join(" ")}: ${result!.stderr}`);
+    return result!.stdout;
+  };
+  try {
+    const { owner, ownerState } = await openOwnerTab(probe, `${base}/owner`);
+    assert.equal((await proxy.execute("open", [`${base}/files`], "current"))[0]!.exitCode, 0);
+    const downloads = path.join(home, "downloads", proxy.activeRunId!);
+
+    assert.match(await run("download", ["#attach", "export.csv"]), /Download saved to .+export\.csv/);
+    assert.equal(await readFile(path.join(downloads, "export.csv"), "utf8"), "a,b\n1,2\n");
+
+    const [button] = snapshotRefs(await run("snapshot", ["-i"]), /button "Upload Statement"/);
+    assert.ok(button);
+    assert.match(await run("upload", [`@${button}`, "export.csv"]), /file chooser the click opened/);
+    await run("upload", ["#lab", w2]);
+    const until = Date.now() + scaledMs(5000);
+    while (uploads.length < 2 && Date.now() < until) await new Promise(resolve => setTimeout(resolve, 50));
+    assert.deepEqual(uploads.sort(), ["?via=button&name=export.csv a,b\n1,2\n", "?via=label&name=w2.pdf W-2 bytes"], "the page read both files, and no file panel opened");
+
+    assert.deepEqual(await ownerState(), { visibility: "visible", events: [] }, "a download and both uploads leave the owner's tab in front");
+    // A target=_blank click opens its tab in front, as any popup does. The owner's tab comes back when Bao closes the viewer tab.
+    assert.match(await run("download", ["#newtab", "october.pdf"]), /in a new tab, which Bao closed/);
+    assert.equal(await readFile(path.join(downloads, "october.pdf"), "utf8"), STATEMENT_PDF);
+    const statementTabs = async () => (await probe.send<{ targetInfos: { type: string; url: string }[] }>("Target.getTargets")).targetInfos
+      .filter(target => target.type === "page" && target.url.endsWith("/statement.pdf")).length;
+    assert.equal(await statementTabs(), 0, "the viewer tab the click opened is closed");
+
+    await evaluate(probe, owner, `(() => { const a = document.createElement('a'); a.href = '/attachment'; document.body.append(a); a.click(); })()`);
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    assert.deepEqual((await readdir(downloads)).sort(), ["export.csv", "october.pdf"], "the owner's own download did not land in Bao's folder");
+
+    assert.match(await run("download", ["#same", "viewed.pdf"]), /in this tab, which still shows it/);
+    assert.equal(await readFile(path.join(downloads, "viewed.pdf"), "utf8"), STATEMENT_PDF);
+    assert.equal((await ownerState()).visibility, "visible");
+    const stored = new Library(home).listRuns()[0]!;
+    const moved = (stored.steps as RecordedAgentBrowserCommand[]).flatMap((step) => step.transfer ? [step.transfer] : []);
+    assert.deepEqual(moved.map((item) => [item.command, item.source, "url" in item ? item.url : undefined, item.files.map((file) => file.path)]), [
+      ["download", "download", `${base}/attachment`, [path.join(downloads, "export.csv")]],
+      ["upload", "file-chooser", undefined, [path.join(downloads, "export.csv")]],
+      ["upload", "file-chooser", undefined, [w2]],
+      ["download", "pdf-viewer", `${base}/statement.pdf`, [path.join(downloads, "october.pdf")]],
+      ["download", "pdf-viewer", `${base}/statement.pdf`, [path.join(downloads, "viewed.pdf")]],
+    ], "the run says how each file moved");
   } finally {
     await proxy.end();
     probe.close();

@@ -277,8 +277,14 @@ export class CdpSocket {
     });
   }
 
-  on(method: string, sessionId: string | undefined, handler: Handler): void {
-    this.listeners.push({ method, sessionId, handler });
+  /** Returns the call that removes this listener. */
+  on(method: string, sessionId: string | undefined, handler: Handler): () => void {
+    const listener = { method, sessionId, handler };
+    this.listeners.push(listener);
+    return () => {
+      const at = this.listeners.indexOf(listener);
+      if (at >= 0) this.listeners.splice(at, 1);
+    };
   }
 
   /** Sends the messages of `sessionId` to `route` instead of Bao. No route gives them back to Bao. */

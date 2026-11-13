@@ -2,6 +2,7 @@
 
 import { ownerAsk, ownerSite, ownerTask, type OwnerAsk, type OwnerPage } from "../cdp-live/owner-wait";
 import type { AgentBrowserCommandResult } from "./agent-browser-proxy";
+import { fileName, fileOperands } from "../v1/file-operands";
 
 /** A sentence piece. `cite` is text copied from the page; `value` is text the agent supplied. */
 export type SummaryPart = string | { cite: string } | { value: string };
@@ -224,6 +225,12 @@ function moved(facts: StepFacts): string {
   return page.title ? `. Now on "${page.title}" (${page.url}).` : `. Now on ${page.url}.`;
 }
 
+/** The file names an upload or download names, joined for a sentence. */
+function fileNames(command: string, args: readonly string[]): string | undefined {
+  if (command !== "upload" && command !== "download") return undefined;
+  return fileOperands(args).files.map(fileName).join(", ") || undefined;
+}
+
 /** Describe a finished pass-through step. Facts come from native output and Chrome's own page metadata. */
 export function describeStep(facts: StepFacts): StepSummary {
   const { command, args, results } = facts;
@@ -260,10 +267,12 @@ export function describeStep(facts: StepFacts): StepSummary {
   const error = failed ? failureText(results, facts.error) : undefined;
   const element = command === "click" || command === "fill" ? elementFor(args[0], facts.snapshot) : undefined;
   if (failed) {
-    const verb: Record<string, string> = { open: "open", snapshot: "read the page", click: "click", fill: "type into", press: "press", scroll: "scroll", tab: "change tabs", screenshot: "take a screenshot", close: facts.current ? "close Bao's task tab" : "close the window", wait_for_owner: "wait for you" };
+    const verb: Record<string, string> = { open: "open", snapshot: "read the page", click: "click", fill: "type into", press: "press", scroll: "scroll", tab: "change tabs", screenshot: "take a screenshot", upload: "upload", download: "download", close: facts.current ? "close Bao's task tab" : "close the window", wait_for_owner: "wait for you" };
+    const files = fileNames(command, args);
     const target: SummaryPart[] = command === "open" && args[0] ? [" ", { value: args[0] }]
       : command === "click" || command === "fill" ? [" ", ...elementParts(element, args[0])]
-        : command === "press" && args[0] ? [` ${args[0]}`] : [];
+        : command === "press" && args[0] ? [` ${args[0]}`]
+          : files ? [" ", { value: files }] : [];
     const parts: SummaryPart[] = [`Could not ${verb[command] ?? command}`, ...target];
     // The native error follows in its own block, so the sentence does not repeat it.
     return { parts: cardParts(parts), text: `${summaryText(parts)}.`, error, ...(page ? { page } : {}) };
@@ -301,6 +310,8 @@ export function describeStep(facts: StepFacts): StepSummary {
       return done(page?.title ? ["Switched to the tab ", { cite: page.title }] : ["Switched tabs"]);
     }
     case "screenshot": return done(page?.title ? ["Took a screenshot of ", { cite: page.title }] : ["Took a screenshot of the page"]);
+    case "upload": return done(["Uploaded ", { value: fileNames(command, args) ?? "a file" }], moved(facts));
+    case "download": return done(["Downloaded ", { value: fileNames(command, args) ?? "a file" }], moved(facts));
     case "close": {
       const leftOpen = facts.results.some((result) => result.exitCode === 0 && result.stdout.trim() === CURRENT_CHROME_LEFT_OPEN);
       if (leftOpen) return { parts: [CURRENT_CHROME_LEFT_OPEN.replace(/\.$/, "")], text: CURRENT_CHROME_LEFT_OPEN };
