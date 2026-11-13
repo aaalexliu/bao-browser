@@ -606,11 +606,13 @@ test("the Chrome profile question is a sentence and the exact retry call, with a
   const question = new ChromeProfileQuestion("/Chrome", [{ directory: "Default", name: "Alex", email: "alex@example.test" }, { directory: "Profile 2", name: "Work", email: "" }], "Profile 2");
   const result = profileQuestionResult(question, { command: "open", args: ["https://example.test/"], browser: "bao" }, true);
   assert.deepEqual(result.content.map((block) => block.text), [
-    'Chrome has 2 profiles in /Chrome, so Bao opened nothing. Choose one: "Default" (Alex, alex@example.test); "Profile 2" (Work), picked in Bao Settings.',
-    'To continue, call agent_browser again with the folder of the profile you choose: {"command":"open","args":["https://example.test/"],"browser":"bao","profile":"Profile 2"}',
+    'Chrome has 2 profiles in /Chrome, so Bao opened nothing. Pick one yourself from this list. Ask the person only if no profile fits the task.\n'
+      + '"Default" (Alex, alex@example.test): open tabs were not read (remote debugging is off)\n'
+      + '"Profile 2" (Work): open tabs were not read (remote debugging is off); picked in Bao Settings',
+    'Pick the folder yourself. Ask the person only if no profile fits the task. The example folder is a call shape, not the answer. Then call agent_browser again with that folder and a short profile_reason: {"command":"open","args":["https://example.test/"],"browser":"bao","profile":"Profile 2","profile_reason":"why this profile"}',
   ]);
   assert.deepEqual(result.structuredContent, { command: "open", status: "needs_profile", run_id: null, step_id: null,
-    summary: result.content[0]!.text, retry: result.content[1]!.text,
+    summary: result.content[0]!.text, retry: result.content[1]!.text, tabsUnread: "remote debugging is off",
     profiles: [{ directory: "Default", name: "Alex", email: "alex@example.test" }, { directory: "Profile 2", name: "Work", email: "", pickedInSettings: true }] });
   assert.deepEqual([result.isError, result._meta?.baoToolCard.style, result._meta?.baoToolCard.caption], [false, "text", result.content[0]!.text]);
   assert.equal("_meta" in profileQuestionResult(question, { command: "open" }, false), false);
