@@ -14,6 +14,8 @@ import type { BrowserPick } from "./browser-pick";
 import type { SignInImport } from "./bao-profile";
 import { startCdpVideo, type CdpVideo } from "./cdp-video";
 import { HOST_STOP_VIDEO_UNAVAILABLE } from "./video-handoff";
+import { CdpNetworkCapture, filePaths, type DevtoolsHarEntry } from "../proxy/cdp-network";
+import { STEP_RECORD_SCHEMA, StepRecordStore, type StepRecord, type StepWait } from "./step-record";
 
 const hostStopRuns = new Set<AgentBrowserRun>();
 
@@ -34,6 +36,8 @@ export interface StepContext {
   mark?: ShotBox;
   /** The line that says Bao moved the session to the owner's running Chrome during this step. */
   moved?: string;
+  /** What this step waited for, when the command itself is not the label. */
+  waitFor?: string;
 }
 
 export interface RecordedAgentBrowserCommand {
@@ -49,6 +53,8 @@ export interface RecordedAgentBrowserCommand {
   afterShot?: string;
   /** A box on the after picture, such as the heading a read found new. */
   afterTarget?: { rect: ShotBox; viewport: Viewport };
+  /** The agent's short reason for this step, when it sent one. */
+  why?: string;
   afterShotError?: string;
   /** Why the kept picture is not of the active tab, when Bao fell back to its task tab. */
   shotNote?: string;
@@ -94,10 +100,61 @@ export class AgentBrowserRun {
   } | undefined;
   private encoding: { capture: CdpVideo; startedAt: number } | undefined;
   private videoAbandoned = false;
+  private why: string | undefined;
+  private network: CdpNetworkCapture | undefined;
+  private readonly kept: DevtoolsHarEntry[] = [];
+  private readonly records: StepRecordStore;
+  private readonly sealed = new Set<string>();
+  private rewriting = new Map<string, Promise<void>>();
+  private readonly lateTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(private readonly home: string) {
     this.shots = path.join(home, "shots", "runs", this.run.id);
+    this.records = new StepRecordStore(home, this.run.id);
     this.persist();
+  }
+
+  setWhy(why: string | undefined): void {
+    this.why = why;
+  }
+
+  /** Starts CDP Network capture. `closeSocket` is false when the socket is the session's shared connection. */
+  async attachNetwork(cdp: CdpSocket, closeSocket: boolean): Promise<void> {
+    await this.stopNetwork();
+    const capture = new CdpNetworkCapture(cdp, closeSocket, (bytes) => this.records.putBody(bytes));
+    capture.onLate((stepId) => this.scheduleRewrite(stepId));
+    await capture.start();
+    const pending = this.run.steps.find((step) => step.status === "pending");
+    if (pending) {
+      capture.setStep(pending.id);
+      capture.noteFiles(filePaths(pending.native.args));
+    }
+    this.network = capture;
+  }
+
+  async ownTarget(targetId: string): Promise<void> {
+    await this.network?.own(targetId);
+  }
+
+  private stepEntries(stepId: string): DevtoolsHarEntry[] {
+    return [...this.kept.filter((entry) => entry._stepId === stepId), ...(this.network?.entries(stepId) ?? [])];
+  }
+
+  private allEntries(): DevtoolsHarEntry[] {
+    return [...this.kept, ...(this.network?.allEntries() ?? [])];
+  }
+
+  async stopNetwork(): Promise<void> {
+    const capture = this.network;
+    this.network = undefined;
+    if (!capture) return;
+    try {
+      await capture.stop();
+      this.kept.push(...capture.allEntries());
+      await this.records.writeHar(this.kept);
+    } catch {
+      this.warn("network record");
+    }
   }
 
   get id(): string { return this.run.id; }
@@ -136,8 +193,11 @@ export class AgentBrowserRun {
       label: stepTitle({ caption }),
       caption,
       status: "pending", startedAt: Date.now(), native: { command, args: [...args], results: [], isError: false, screenshots: [] },
+      ...(this.why ? { why: this.why } : {}),
     };
     this.run.steps.push(step);
+    this.network?.setStep(step.id);
+    this.network?.noteFiles(filePaths(args));
     this.persist();
     return step;
   }
@@ -180,7 +240,10 @@ export class AgentBrowserRun {
     }
     this.persist();
     // The session already ended. A picture error would sit next to the closed result and hide the cause.
-    if (ownerReply(results)?.instruction === TASK_TAB_CLOSED) return;
+    if (ownerReply(results)?.instruction === TASK_TAB_CLOSED) {
+      await this.seal(step, context);
+      return;
+    }
     if (step.native.command === "screenshot") {
       for (const result of results.filter((item) => item.exitCode === 0)) {
         const original = screenshotPath(result.stdout);
@@ -195,6 +258,7 @@ export class AgentBrowserRun {
     if (privatePage) {
       step.afterShotError = "Owner input is private; no page screenshot or snapshot was taken.";
       this.persist();
+      await this.seal(step, context);
       return;
     }
     try {
@@ -214,6 +278,43 @@ export class AgentBrowserRun {
       if (step.native.command !== "close") this.warn("page screenshot");
     }
     this.persist();
+    await this.seal(step, context);
+  }
+
+  private async seal(step: RecordedAgentBrowserCommand, context: StepContext): Promise<void> {
+    if (this.sealed.has(step.id)) return;
+    this.sealed.add(step.id);
+    const started = Date.now();
+    try {
+      if (this.network) await this.network.take(step.id);
+      const flushMs = Date.now() - started;
+      const entries = this.stepEntries(step.id);
+      await this.records.writeStep(stepRecord(step, context, entries, flushMs));
+      await this.records.writeHar(this.allEntries());
+    } catch {
+      this.sealed.delete(step.id);
+      this.warn("step record");
+    }
+  }
+
+  private scheduleRewrite(stepId: string): void {
+    const existing = this.lateTimers.get(stepId);
+    if (existing) clearTimeout(existing);
+    this.lateTimers.set(stepId, setTimeout(() => {
+      this.lateTimers.delete(stepId);
+      void this.rewrite(stepId);
+    }, 50));
+  }
+
+  private async rewrite(stepId: string): Promise<void> {
+    if (!this.sealed.has(stepId) || !this.network) return;
+    const pending = this.rewriting.get(stepId) ?? Promise.resolve();
+    const next = pending.then(async () => {
+      await this.records.updateEntries(stepId, this.stepEntries(stepId));
+      await this.records.writeHar(this.allEntries());
+    }).catch(() => this.warn("step record"));
+    this.rewriting.set(stepId, next);
+    await next;
   }
 
   /** Records this route beside any earlier one, with the step it started at. `browser` stays the latest. */
@@ -420,6 +521,39 @@ function pageShotError(error: unknown): string {
   const detail = (error instanceof Error ? error.message : String(error)).replace(/\s+/g, " ").trim();
   if (!detail) return "Page screenshot unavailable.";
   return `Page screenshot unavailable: ${detail.endsWith(".") ? detail : `${detail}.`}`;
+}
+
+function stepRecord(step: RecordedAgentBrowserCommand, context: StepContext, entries: DevtoolsHarEntry[], flushMs: number): StepRecord {
+  const endedAt = step.endedAt ?? Date.now();
+  const waits: StepWait[] = [{ for: waitLabel(step, context), ms: Math.max(0, endedAt - step.startedAt) }];
+  if (flushMs >= 20) waits.push({ for: "network responses", ms: flushMs });
+  const error = stepError(step);
+  return {
+    schema: STEP_RECORD_SCHEMA,
+    id: step.id,
+    command: step.native.command,
+    args: step.native.args,
+    ...(step.why ? { why: step.why } : {}),
+    status: step.status,
+    ...(error ? { error } : {}),
+    startedAt: step.startedAt,
+    endedAt,
+    waits,
+    network: { entries },
+  };
+}
+
+function waitLabel(step: RecordedAgentBrowserCommand, context: StepContext): string {
+  const error = stepError(step);
+  if (error && /timed out|timeout/i.test(error)) return "timeout";
+  if (step.native.command === "wait_for_owner" && context.waitFor) return context.waitFor;
+  return step.native.command;
+}
+
+function stepError(step: RecordedAgentBrowserCommand): string | undefined {
+  if (step.status !== "failed") return undefined;
+  const result = step.native.results.find((item) => item.exitCode !== 0);
+  return step.native.error || result?.stderr.trim() || result?.stdout.trim() || step.reason || "command failed";
 }
 
 function pageKey(url: string): string {

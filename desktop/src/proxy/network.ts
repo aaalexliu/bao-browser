@@ -1,5 +1,6 @@
-// Capture-time HAR. Each entry records the audit event that was open when the
-// request started. Replay does not send these again.
+// Capture-time HAR for the Playwright spike. agent_browser records through
+// cdp-network.ts instead. Each entry records the audit event that was open when
+// the request started. Replay does not send these again.
 
 import type { BrowserContext, Request, Response } from "playwright";
 

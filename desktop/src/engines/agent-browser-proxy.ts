@@ -10,6 +10,7 @@ import { isChromeTab, type ChromeTarget } from "../cdp-live/chrome-tabs";
 import { openRunningChrome, type RunningChrome } from "../extension/running-chrome";
 import { resolveNormalChrome } from "../launch";
 import { AgentBrowserRun, type AgentBrowserTaskOutcome, type RecordedAgentBrowserCommand, type StepContext } from "./agent-browser-record";
+import { stepWhy } from "./step-record";
 import { CURRENT_CHROME_ENDED, CURRENT_CHROME_LEFT_OPEN, newInRead, ownerReply, RUN_ENDED, TASK_TAB_CLOSED, type OwnerWaitPage } from "./agent-browser-describe";
 import { BROWSER_PICTURE_BYTES, type ShotBox } from "../v1/shots";
 import { agentBrowserExecutable } from "./agent-browser";
@@ -647,7 +648,7 @@ export class AgentBrowserProxy {
    * with the same args; the run still records the full native output.
    */
   async execute(command: unknown, args: unknown = [], browser?: unknown, visual = false, profile?: unknown,
-    snapshot: { find?: unknown; diff?: unknown } = {}, runId?: unknown): Promise<AgentBrowserCommandResult[]> {
+    snapshot: { find?: unknown; diff?: unknown } = {}, runId?: unknown, why?: unknown): Promise<AgentBrowserCommandResult[]> {
     this.endedLine = undefined;
     this.refusal = undefined;
     this.latest = undefined;
@@ -666,6 +667,7 @@ export class AgentBrowserProxy {
     const foreign = openRun !== undefined && claimed !== openRun;
     if (foreign) this.refusal = claimed === undefined ? {} : { runId: claimed };
     validateAgentBrowserCommand(command, args);
+    const reason = stepWhy(why);
     const view = snapshotView(command, snapshot.find, snapshot.diff);
     if (browser !== undefined && (command !== "open" || !AGENT_BROWSERS.includes(browser as AgentBrowser))) {
       throw new Error("browser is only accepted on open and must be copy, bao, or current");
@@ -750,6 +752,7 @@ export class AgentBrowserProxy {
     // The route and profile are settled before any run record, so a question about the profile opens and records nothing.
     const plan = continuing ? undefined : await this.plan(browser as AgentBrowser | undefined, named, webSite(args[0]));
     const recording = this.session?.recording ?? new AgentBrowserRun(this.options.home);
+    recording.setWhy(reason);
     let step = continuing ? undefined : recording.begin(command as string, args);
     if (step) this.latest = { runId: recording.id, step, steps: recording.steps };
     if (!this.session) {
@@ -802,6 +805,7 @@ export class AgentBrowserProxy {
       }
       context.previousPage = session.page;
       if (command === "wait_for_owner") {
+        context.waitFor = this.wallWords(session);
         const timeout = ownerWaitTimeout(args[0] === undefined ? undefined : Number(args[0]));
         const deadline = Date.now() + timeout;
         const wall = this.wallOf(session);
@@ -1171,6 +1175,7 @@ export class AgentBrowserProxy {
         }, abort.signal),
       };
       if (session.kind === "current" && !session.relay) await recording.recordTab(session.chrome.cdp, session.targetId);
+      await this.armNetwork(session);
       settle(session);
       return session;
     } catch (error) {
@@ -1332,6 +1337,7 @@ export class AgentBrowserProxy {
     try {
       wired = await this.wire(next);
       moving = { ...session, ...next, ...wired };
+      await this.armNetwork(moving);
       opened = await this.runNative(moving, "open", [site]);
       if (opened.exitCode !== 0) throw new Error(`the open in Bao's task tab failed: ${opened.stderr || opened.stdout || `exit ${opened.exitCode}`}`);
     } catch (error) {
@@ -1360,6 +1366,33 @@ export class AgentBrowserProxy {
     }
     await this.noteWall(session);
     return opened;
+  }
+
+  /** Records Network.* on the tabs this session owns. A failure warns and leaves command forwarding running. */
+  private async armNetwork(session: Session): Promise<void> {
+    let opened: CdpSocket | undefined;
+    try {
+      if (session.kind === "current") await session.recording.attachNetwork(session.chrome.cdp, false);
+      else {
+        const endpoint = await readDevToolsActivePort(session.chrome.target.portFile);
+        opened = await connectCdp(endpoint.port, endpoint.browserPath, { timeoutMs: 5000, signal: session.abort.signal });
+        await session.recording.attachNetwork(opened, true);
+        opened = undefined;
+      }
+      const ids = session.kind === "current"
+        ? session.relay ? [session.targetId] : [...session.taskTabs]
+        : session.targetId ? [session.targetId] : [];
+      for (const id of ids) await session.recording.ownTarget(id);
+    } catch (error) {
+      opened?.close();
+      process.stderr.write(`Bao network record unavailable: ${error instanceof Error ? error.message : String(error)}. Command forwarding continues.\n`);
+    }
+  }
+
+  private noteTarget(session: Session, targetId: string): void {
+    void session.recording.ownTarget(targetId).catch((error: unknown) => {
+      process.stderr.write(`Bao network record unavailable: ${error instanceof Error ? error.message : String(error)}. Command forwarding continues.\n`);
+    });
   }
 
   private async connectSession(session: Session, options: { timeoutMs: number; signal?: AbortSignal }): Promise<CdpSocket> {
@@ -1455,7 +1488,10 @@ export class AgentBrowserProxy {
     }
     const tab = listed(want);
     if (!tab?.tabId) return tabs;
-    for (const info of adopt) session.taskTabs.add(info.targetId);
+    for (const info of adopt) {
+      session.taskTabs.add(info.targetId);
+      this.noteTarget(session, info.targetId);
+    }
     if (!tab.active) {
       const back = await this.run(session, "tab", [tab.tabId], undefined, ceiling);
       if (back.exitCode !== 0) {
@@ -1546,6 +1582,7 @@ export class AgentBrowserProxy {
     }
     if (parsed.action === "switch" && named?.targetId) {
       session.targetId = named.targetId;
+      this.noteTarget(session, named.targetId);
       return result;
     }
     if (parsed.action !== "list") return result;
@@ -2022,6 +2059,7 @@ export class AgentBrowserProxy {
         if (!targetId) throw new Error("Native task tab has no target id");
         session.taskTabs.add(targetId);
         session.targetId = targetId;
+        this.noteTarget(session, targetId);
         await this.focusTab(session, targetId, bound ?? session.abort.signal);
       } catch (error) {
         process.stderr.write(`Bao task tab tracking unavailable: ${error instanceof Error ? error.message : String(error)}\n`);
@@ -2175,6 +2213,7 @@ export class AgentBrowserProxy {
     await this.disarmReloadBanner();
     session.abort.abort();
     await session.commandDone;
+    await session.recording.stopNetwork();
     await session.recording.endVideoCapture();
     session.recording.finish(session.outcome);
     if (this.waitOf(session) !== "off") session.workflow.unavailable("the owner wait did not finish");
