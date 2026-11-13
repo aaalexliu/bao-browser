@@ -208,9 +208,9 @@ const linkSaved = (saved: string, url: string): DownloadOutcome => ({ result: { 
 
 /**
  * Clicks an element and saves what it gives. A click on an http(s) link does not navigate: Bao fetches that URL in the page with the
- * page's cookies, so no tab opens and the owner's tab stays where it was. A link the page cannot fetch, such as a cross-origin file,
- * opens in a background tab that Bao closes. Any other element is clicked, and Bao saves a download Chrome starts or a PDF Chrome
- * shows. Bao points Chrome's downloads at `saved`'s folder only for this command and gives Chrome back its own download settings
+ * page's cookies, so no tab opens and the owner's tab stays where it was. A page or an error status is not the file, so Bao clicks
+ * again and a click handler that builds the real file still runs. A link the page cannot fetch, such as a cross-origin file, opens in
+ * a background tab that Bao closes. Any other element is clicked, and Bao saves a download Chrome starts or a PDF Chrome shows. Bao points Chrome's downloads at `saved`'s folder only for this command and gives Chrome back its own download settings
  * after, so the owner's later downloads go where Chrome puts them.
  */
 export async function downloadByClick(cdp: CdpSocket, agentTab: string, saved: string, click: Click): Promise<DownloadOutcome> {
@@ -242,24 +242,32 @@ export async function downloadByClick(cdp: CdpSocket, agentTab: string, saved: s
     }
     if (clicked.exitCode !== 0) return { result: clicked };
     if (href) {
+      let clickAgain = false;
       try {
         const kind = await fetchLink(cdp, agentTab, saved, href);
         if (kind === "file") {
           await closeOpened(cdp, agentTab, before);
           return linkSaved(saved, href);
         }
+        clickAgain = true;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        if (/HTTP \d+/.test(message)) return { result: failed(message) };
+        if (/HTTP \d+/.test(message)) clickAgain = true;
+        else {
+          const background = await openBackground(cdp, href);
+          if (!background) return { result: failed(`Bao could not fetch the link (${href}).`) };
+          try {
+            const outcome = await saveBackground(cdp, background, saved, href, () => ({ guid: started, url }), states);
+            if (outcome) return outcome;
+            return { result: failed(`The link started no download and showed no PDF within ${START_MS / 1000} s (${href}).`) };
+          } finally {
+            await cdp.send("Target.closeTarget", { targetId: background }, undefined, 5000).catch(() => undefined);
+          }
+        }
       }
-      const background = await openBackground(cdp, href);
-      if (!background) return { result: failed(`Bao could not fetch the link (${href}).`) };
-      try {
-        const outcome = await saveBackground(cdp, background, saved, href, () => ({ guid: started, url }), states);
-        if (outcome) return outcome;
-        return { result: failed(`The link started no download and showed no PDF within ${START_MS / 1000} s (${href}).`) };
-      } finally {
-        await cdp.send("Target.closeTarget", { targetId: background }, undefined, 5000).catch(() => undefined);
+      if (clickAgain) {
+        const again = await click();
+        if (again.exitCode !== 0) return { result: again };
       }
     }
     const startBy = Date.now() + START_MS;

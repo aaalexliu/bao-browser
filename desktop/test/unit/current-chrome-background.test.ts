@@ -177,6 +177,7 @@ test("on the owner's Chrome the agent uploads through an upload button and downl
   const server = createServer((request, response) => {
     if (request.url === "/statement.pdf") { response.setHeader("content-type", "application/pdf"); response.end(STATEMENT_PDF); return; }
     if (request.url === "/attachment") { response.setHeader("content-disposition", "attachment; filename=export.csv"); response.end("a,b\n1,2\n"); return; }
+    if (request.url === "/missing") { response.writeHead(404); response.end("missing"); return; }
     if (request.url?.startsWith("/uploaded")) {
       let body = "";
       request.on("data", (chunk: Buffer) => { body += chunk.toString(); });
@@ -251,6 +252,21 @@ test("on the owner's Chrome the agent uploads through an upload button and downl
     assert.match(await run("download", ["#cross", "cross.pdf"]), /background tab/);
     assert.equal(await readFile(path.join(downloads, "cross.pdf"), "utf8"), STATEMENT_PDF);
     assert.deepEqual(await ownerState(), { visibility: "visible", events: [] }, "a cross-origin link opens in a background tab and does not switch the owner's tab");
+    await evaluate(probe, stayed.targetId, `(() => {
+      for (const [id, href] of [["signed", "/gate"], ["denied", "/missing"]]) {
+        const a = document.createElement("a");
+        a.id = id; a.href = href; a.textContent = id;
+        a.addEventListener("click", (event) => { event.preventDefault(); location.href = "/attachment"; });
+        document.body.append(a);
+      }
+    })()`);
+    for (const [selector, name] of [["#signed", "signed.csv"], ["#denied", "denied.csv"]] as const) {
+      const saved = await run("download", [selector, name]);
+      assert.match(saved, /Download saved/);
+      assert.doesNotMatch(saved, /did not open a tab/);
+      assert.equal(await readFile(path.join(downloads, name), "utf8"), "a,b\n1,2\n");
+    }
+    assert.deepEqual(await ownerState(), { visibility: "visible", events: [] }, "a click handler that builds the real file still downloads, and the owner's tab stays visible");
     const stored = new Library(home).listRuns()[0]!;
     const moved = (stored.steps as RecordedAgentBrowserCommand[]).flatMap((step) => step.transfer ? [step.transfer] : []);
     assert.deepEqual(moved.map((item) => [item.command, item.source, "url" in item ? item.url : undefined, item.files.map((file) => file.path)]), [
@@ -260,6 +276,8 @@ test("on the owner's Chrome the agent uploads through an upload button and downl
       ["download", "link", `${base}/statement.pdf`, [path.join(downloads, "october.pdf")]],
       ["download", "link", `${base}/statement.pdf`, [path.join(downloads, "viewed.pdf")]],
       ["download", "pdf-viewer", `${cross}/statement.pdf`, [path.join(downloads, "cross.pdf")]],
+      ["download", "download", `${base}/attachment`, [path.join(downloads, "signed.csv")]],
+      ["download", "download", `${base}/attachment`, [path.join(downloads, "denied.csv")]],
     ], "the run says how each file moved");
   } finally {
     await proxy.end();
