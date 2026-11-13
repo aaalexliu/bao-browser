@@ -935,7 +935,7 @@ export async function startApp(opts: {
         const fromEnv = /^(.*\.app)\/Contents\/MacOS\/bao$/.exec(process.env.BAO_RESPONSIBLE_EXE || "")?.[1];
         const running = fromEnv || appBundleOf(__filename);
         if (!running) return json(res, { error: "Run bao setup on this Mac." }, 409);
-        const opened = openPermissionWindow(running);
+        const opened = await openPermissionWindow(running);
         return json(res, opened.opened ? { opened: true } : { opened: false, line: opened.line });
       }
       if (req.method === "GET" && url.pathname === "/api/chrome-profiles") {

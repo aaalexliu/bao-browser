@@ -5,6 +5,7 @@ import path from "node:path";
 import { PassThrough } from "node:stream";
 import test, { type TestContext } from "node:test";
 import { doctorChecks, signer } from "../../src/app/doctor";
+import { openPermissionWindow } from "../../src/app/mac-permissions";
 import { applyTarget, chosenByFlags, detectOthers, detectTargets, parseSetup, pickInTerminal, setupMain, type Probe, type SetupIo, type Target } from "../../src/app/setup";
 
 interface Lab {
@@ -262,4 +263,47 @@ test("doctor names a missing Device Control and Data Access grant instead of ok 
   mkdirSync(installed);
   const found = (await doctorChecks(app, probe)).find((row) => row.name === "chrome");
   assert.deepEqual(found, { level: "ok", name: "chrome", detail: installed });
+});
+
+test("a headless permission process returns the line it prints", async (t) => {
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), "bao-perm-headless-")));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const app = path.join(root, "Bao.app");
+  const bao = path.join(app, "Contents/MacOS/bao");
+  mkdirSync(path.dirname(bao), { recursive: true });
+  writeFileSync(bao, "#!/bin/sh\nprintf '%s\\n' 'headless-marker-no-window'\n");
+  chmodSync(bao, 0o755);
+  assert.deepEqual(await openPermissionWindow(app), { opened: false, line: "headless-marker-no-window" });
+});
+
+test("a permission process that cannot start does not report the window as open", async (t) => {
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), "bao-perm-spawn-")));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const app = path.join(root, "Bao.app");
+  const bao = path.join(app, "Contents/MacOS/bao");
+  mkdirSync(path.dirname(bao), { recursive: true });
+  writeFileSync(bao, "not executable\n");
+  chmodSync(bao, 0o644);
+  const result = await openPermissionWindow(app);
+  assert.equal(result.opened, false);
+  assert.notEqual(result.line, "");
+});
+
+test("an open permission window returns while that process is still running", async (t) => {
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), "bao-perm-open-")));
+  const pidFile = path.join(root, "pid");
+  t.after(() => {
+    const pid = Number(readFileSync(pidFile, "utf8"));
+    if (pid) { try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ } }
+    rmSync(root, { recursive: true, force: true });
+  });
+  const app = path.join(root, "Bao.app");
+  const bao = path.join(app, "Contents/MacOS/bao");
+  mkdirSync(path.dirname(bao), { recursive: true });
+  writeFileSync(bao, `#!/bin/sh\necho $$ > ${JSON.stringify(pidFile)}\nsleep 30\n`);
+  chmodSync(bao, 0o755);
+  const started = Date.now();
+  assert.deepEqual(await openPermissionWindow(app), { opened: true, line: "" });
+  assert.ok(Date.now() - started < 5_000);
+  assert.equal(Number(readFileSync(pidFile, "utf8")) > 0, true);
 });

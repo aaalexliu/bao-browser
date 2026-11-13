@@ -90,26 +90,6 @@ static NSRect settingsFrame(void) {
   return found;
 }
 
-static NSImage *genericAppIcon(void) {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-  return [NSWorkspace.sharedWorkspace iconForFileType:@"app"];
-#pragma clang diagnostic pop
-}
-
-/* The app the user drags, then /Applications/Bao.app. Nil when both are the
- * generic app icon, which is what Bao.app returns today: it has no icns. */
-static NSImage *customBaoIcon(NSString *dragPath) {
-  NSData *generic = genericAppIcon().TIFFRepresentation;
-  NSArray *paths = @[dragPath ?: @"", @"/Applications/Bao.app"];
-  for (NSString *path in paths) {
-    if (path.length == 0 || ![[NSFileManager defaultManager] fileExistsAtPath:path]) continue;
-    NSImage *icon = [NSWorkspace.sharedWorkspace iconForFile:path];
-    if (icon && ![icon.TIFFRepresentation isEqualToData:generic]) return icon;
-  }
-  return nil;
-}
-
 static void drawBaoMark(NSRect rect, NSColor *ink) {
   NSBezierPath *path = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(rect, 1, 1) xRadius:10 yRadius:10];
   [[NSColor colorWithCalibratedWhite:1 alpha:1] setFill];
@@ -124,15 +104,6 @@ static void drawBaoMark(NSRect rect, NSColor *ink) {
   NSString *mark = @"Bao";
   NSSize size = [mark sizeWithAttributes:attrs];
   [mark drawAtPoint:NSMakePoint(NSMidX(rect) - size.width / 2, NSMidY(rect) - size.height / 2) withAttributes:attrs];
-}
-
-static void drawBaoIcon(NSRect rect, NSString *dragPath) {
-  NSImage *icon = customBaoIcon(dragPath);
-  if (icon) {
-    [icon drawInRect:NSInsetRect(rect, 2, 2)];
-    return;
-  }
-  drawBaoMark(rect, [NSColor colorWithCalibratedWhite:0.12 alpha:1]);
 }
 
 @interface BaoDragTile : NSView <NSDraggingSource>
@@ -155,13 +126,10 @@ static void drawBaoIcon(NSRect rect, NSString *dragPath) {
   NSURL *url = [NSURL fileURLWithPath:self.appPath];
   NSDraggingItem *item = [[NSDraggingItem alloc] initWithPasteboardWriter:url];
   item.draggingFrame = self.bounds;
-  NSImage *icon = customBaoIcon(self.appPath);
-  if (!icon) {
-    icon = [[NSImage alloc] initWithSize:self.bounds.size];
-    [icon lockFocus];
-    drawBaoMark(NSMakeRect(0, 0, self.bounds.size.width, self.bounds.size.height), [NSColor colorWithCalibratedWhite:0.12 alpha:1]);
-    [icon unlockFocus];
-  }
+  NSImage *icon = [[NSImage alloc] initWithSize:self.bounds.size];
+  [icon lockFocus];
+  drawBaoMark(NSMakeRect(0, 0, self.bounds.size.width, self.bounds.size.height), [NSColor colorWithCalibratedWhite:0.12 alpha:1]);
+  [icon unlockFocus];
   item.imageComponentsProvider = ^NSArray<NSDraggingImageComponent *> *{
     NSDraggingImageComponent *component = [NSDraggingImageComponent draggingImageComponentWithKey:NSDraggingImageComponentIconKey];
     component.contents = icon;
@@ -171,13 +139,12 @@ static void drawBaoIcon(NSRect rect, NSString *dragPath) {
   [self beginDraggingSessionWithItems:@[item] event:event source:self];
 }
 - (void)drawRect:(NSRect)dirty {
-  drawBaoIcon(self.bounds, self.appPath);
+  drawBaoMark(self.bounds, [NSColor colorWithCalibratedWhite:0.12 alpha:1]);
 }
 @end
 
 @interface BaoGuideView : NSView
 @property(copy) NSString *line;
-@property(copy) NSString *iconPath;
 @property BOOL showTile;
 @end
 
@@ -203,7 +170,7 @@ static void drawBaoIcon(NSRect rect, NSString *dragPath) {
   };
   CGFloat textX = 16;
   if (self.showTile) {
-    drawBaoIcon(NSMakeRect(16, 14, 48, 48), self.iconPath);
+    drawBaoMark(NSMakeRect(16, 14, 48, 48), [NSColor colorWithCalibratedWhite:0.12 alpha:1]);
     textX = 76;
   }
   NSRect textRect = NSMakeRect(textX + 22, 16, NSWidth(self.bounds) - textX - 38, 44);
@@ -362,7 +329,6 @@ static void drawBaoIcon(NSRect rect, NSString *dragPath) {
   }
   BaoGuideView *view = (BaoGuideView *)self.guide.contentView;
   view.line = self.dock == 2 ? kFilesLine : kDragLine;
-  view.iconPath = self.appPath;
   view.showTile = self.dock == 1;
   for (NSView *child in view.subviews.copy) [child removeFromSuperview];
   if (view.showTile) {

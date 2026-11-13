@@ -16,7 +16,7 @@ When a read is refused, Bao says `macOS blocked <app> from reading Chrome's data
 
 The step is optional. Settings → Mac permissions shows whether Bao can read the folder and has **Set up**, which opens Bao's permission window. `bao setup` ends in that window. With no screen, it prints a line and exits 0. `bao doctor` reports a missing grant by name and opens the same window.
 
-Once Files & Folders > Bao > Google Chrome is on, another program running as you may still reach Chrome's folder through Bao. `bao --run-node` runs only Bao's own `src/app/cli.js` and clears `NODE_OPTIONS` and `NODE_PATH`. The hardened runtime blocks library injection into Bao. Environment variables that name other programs, and the way Bao finds Node through `$HOME` and `$SHELL`, can still run that program's code as Bao.
+Once Files & Folders > Bao > Google Chrome is on, another program running as you may still reach Chrome's folder through Bao. `bao --run-node` runs only Bao's own `src/app/cli.js` and clears `NODE_OPTIONS` and `NODE_PATH`. `bao --run-helper` starts only this bundle's BaoOSHelper.app and takes no caller-chosen path. The hardened runtime blocks library injection into Bao. Environment variables that name other programs, and the way Bao finds Node through `$HOME` and `$SHELL`, can still run that program's code as Bao.
 
 ## The Chrome remote-debugging toggle
 
@@ -78,3 +78,7 @@ When sync pulls a newer workflow or resolves a conflict, `retainLocalDefaults` p
 ## What each one costs in speed
 
 Copied-profile Chrome agents do not wait for Mac privacy grants or the daily-Chrome debugging switch. Running Chrome, and a Bao-profile session's move to the owner's running Chrome at a sign-in or check, check Bao's Device Control and Data Access grant without prompting, then let BaoOSHelper handle the debugging switch and Chrome's Allow sheet. The separate remote-debugging CLI returns at once if the checkbox already matches. Changing it needs a helper accessibility walk. An extension host grant is a separate prompt with a wait of up to 90 seconds; it is not part of the pass-through.
+
+## Known gaps
+
+An old, unrebuilt BaoOSHelper still acts under its own BaoOSHelper grant; only permission reports refuse it.

@@ -48,20 +48,21 @@ test("app status and UI never ask for retired Chrome helper permissions", { time
         assert.doesNotMatch(await page.locator("#rail").innerText(), /needs permission|AX press|live Chrome|Accessibility|Automation|Screen Recording/);
         await page.locator('#rail [data-place="settings"]').click();
         const mac = page.locator("#set-perm + .settings-group");
-        assert.match(await mac.innerText(), /Accessibility/);
+        assert.match(await mac.innerText(), /Device Control and Data Access/);
         assert.match(await mac.innerText(), /Screen Recording/);
         assert.doesNotMatch(await mac.innerText(), /bao mcp-ax|bao remote-debugging|click and type in Chrome/);
         if (process.platform === "darwin") {
-          assert.match(await mac.innerText(), /Running Chrome.*Accessibility/);
+          assert.match(await mac.innerText(), /Ticks Chrome's remote-debugging box/);
           assert.match(await mac.innerText(), /Bao profiles and Chrome copies do not need it/);
           assert.match(await mac.innerText(), /Chrome screenshots do not need it/);
           assert.match(await mac.innerText(), /Not checked/);
           assert.equal(await mac.locator('a[href^="x-apple.systempreferences:"]').count(), 1);
+          assert.equal(await mac.locator("button.mac-permissions-setup").count(), 1);
+          assert.equal(await mac.locator("button.mac-permissions-setup").innerText(), "Set up");
         } else {
           assert.match(await mac.innerText(), /does not apply on Linux/);
-          assert.equal(await mac.locator("a").count(), 0);
+          assert.equal(await mac.locator("a, button").count(), 0);
         }
-        assert.equal(await mac.locator("button").count(), 0);
         assert.equal(await page.locator("#automation-ask, #perm-dot, #onboarding").count(), 0);
       }
     }

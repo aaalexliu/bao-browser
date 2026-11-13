@@ -210,6 +210,7 @@ test("native and JS socket paths match, bind and clean with deep TMPDIR", { skip
 #include "bao-main.c"
 #undef main
 int bao_window_run(const char *url, int pid) { (void)url; (void)pid; return 1; }
+int bao_permissions_show(const void *opts) { (void)opts; return 1; }
 int main(int argc, char **argv) {
   if (argc != 3) return 1;
   char sock[104];

@@ -136,13 +136,14 @@ function killGroup(child: ChildProcess): void {
 }
 
 /** Starts the helper under bao --run-helper when this app has that launcher, so macOS asks
- * about Bao. A checkout with no Bao.app binary starts the helper executable itself. The process
+ * about Bao. That launcher resolves this bundle's BaoOSHelper.app and takes no path.
+ * A checkout with no Bao.app binary starts the helper executable itself. The process
  * leads its own group, and a timeout kills that group, so no helper outlives the call. */
 function run(bin: string, args: string[], timeoutMs = bin.endsWith(".app") ? 45_000 : 20_000): Promise<AxHit> {
   const exe = helperExecutable(bin);
   const bao = bin.endsWith(".app") ? baoBeside(bin) : undefined;
   const command = bao ?? exe;
-  const commandArgs = bao ? ["--run-helper", bin, "--", ...args] : args;
+  const commandArgs = bao ? ["--run-helper", "--", ...args] : args;
   return new Promise((resolve, reject) => {
     let settled = false;
     const settle = (finish: () => void) => {

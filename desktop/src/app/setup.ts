@@ -53,7 +53,7 @@ export interface Probe {
   /** Opens a System Settings pane. */
   openUrl?: (url: string) => void;
   /** Opens Bao's permission window. Tests pass this so setup does not spawn a window. */
-  openPermissions?: (app: string) => { opened: boolean; line: string };
+  openPermissions?: (app: string) => { opened: boolean; line: string } | Promise<{ opened: boolean; line: string }>;
   /** The two Mac grants, when a test already knows them. */
   macGrants?: () => { accessibility: boolean; chromeFolder: "allowed" | "denied" | "missing" } | undefined;
 }
@@ -328,9 +328,9 @@ export function pickInTerminal(targets: readonly Target[], launcher: string, io:
   });
 }
 
-function permissionWindowStep(app: string, io: SetupIo, probe: Probe): void {
+async function permissionWindowStep(app: string, io: SetupIo, probe: Probe): Promise<void> {
   const open = probe.openPermissions ?? ((target: string) => openPermissionWindow(target));
-  const result = open(app);
+  const result = await open(app);
   if (result.line) io.out(`${result.line}\n`);
 }
 
@@ -438,7 +438,7 @@ export async function setupMain(argv: readonly string[], io: SetupIo = defaultIo
   if (chosen === undefined) {
     if (!io.stdin.isTTY || !io.stdout.isTTY) {
       io.out(`No terminal to ask in, so Bao changed no agent config. Run one of these:\n${targets.filter((target) => !target.blocked).map((target) => `  ${bao} setup --agents ${target.id}`).join("\n")}\n`);
-      permissionWindowStep(options.app, io, probe);
+      await permissionWindowStep(options.app, io, probe);
       return 0;
     }
     chosen = await pickInTerminal(targets, launcher, io);
@@ -448,7 +448,7 @@ export async function setupMain(argv: readonly string[], io: SetupIo = defaultIo
   }
   if (!chosen || chosen.length === 0) {
     io.out(`No app was changed. Run \`${bao} setup\` any time to add Bao to an agent.\n`);
-    permissionWindowStep(options.app, io, probe);
+    await permissionWindowStep(options.app, io, probe);
     return 0;
   }
   let failed = 0;
@@ -465,7 +465,7 @@ export async function setupMain(argv: readonly string[], io: SetupIo = defaultIo
     io.out(`\nBao is ready in ${ready.map((target) => target.label).join("; ")}.\n`);
     io.out(`Next: ${[...new Set(ready.map((target) => RESTART[target.id]))].join(", ")}. Then ask: "Use Bao to open example.com and tell me the page title."\n`);
   }
-  permissionWindowStep(options.app, io, probe);
+  await permissionWindowStep(options.app, io, probe);
   return failed ? 1 : 0;
 }
 

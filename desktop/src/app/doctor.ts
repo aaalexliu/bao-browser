@@ -113,17 +113,17 @@ export async function doctorChecks(app: string, probe: Probe): Promise<Check[]> 
   }
   const grants = probe.macGrants ? probe.macGrants() : readMacGrants(app, probe.env);
   let openedWindow = false;
-  const openWindow = () => {
+  const openWindow = async (): Promise<void> => {
     if (openedWindow) return;
     openedWindow = true;
-    (probe.openPermissions ?? openPermissionWindow)(app);
+    await (probe.openPermissions ?? openPermissionWindow)(app);
   };
   if (!grants) {
     checks.push({ level: "warn", name: "accessibility", detail: helperMissing
       ? `${ACCESSIBILITY_GRANT} was not checked. Bao's helper is not installed, so Running Chrome cannot press Chrome's Allow.`
       : `${ACCESSIBILITY_GRANT} was not checked from this process. On this Mac, run bao doctor.` });
   } else if (!grants.accessibility) {
-    const opened = (probe.openPermissions ?? openPermissionWindow)(app);
+    const opened = await (probe.openPermissions ?? openPermissionWindow)(app);
     openedWindow = true;
     checks.push({ level: "warn", name: "accessibility", detail: opened.opened
       ? `${ACCESSIBILITY_GRANT} is not on for Bao. Opened the permission window.`
@@ -142,7 +142,7 @@ export async function doctorChecks(app: string, probe: Probe): Promise<Check[]> 
     if (access.state === "allowed") checks.push({ level: "ok", name: "chrome folder", detail: `${askedApp(probe.env) ?? "this process"} can read ${access.root}.${note ? ` ${note}` : ""}` });
     else if (access.state !== "missing") {
       checks.push({ level: "warn", name: "chrome folder", detail: `${access.message}${note ? ` ${note}` : ""}` });
-      openWindow();
+      await openWindow();
     }
   }
   const bao = baoCommand(probe, app);

@@ -285,7 +285,7 @@ export async function connectOwnedChrome(options: {
     if (!endpoint) endpoint = await endpointFromListener();
     if (!endpoint && folderDenied) throw folderDenied.present();
     const blocked = remoteDebuggingBlock(await deps.helper.permissions(false));
-    if (blocked && blocked.startsWith("Device Control")) throw new Error(accessibilityMissing(presentMissingMacPermission()));
+    if (blocked && blocked.startsWith("Device Control")) throw new Error(accessibilityMissing(await presentMissingMacPermission()));
     if (blocked) throw new Error(blocked);
     if (await deps.helper.screenLocked()) throw new Error("The screen is locked. Unlock it, then try again.");
     if (!endpoint) {

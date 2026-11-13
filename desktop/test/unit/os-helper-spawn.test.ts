@@ -105,6 +105,24 @@ test("a permissions report is trusted only when macOS is asking about Bao", asyn
   }
 });
 
+test("a nested helper is started with no caller-chosen path", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-helper-spawn-"));
+  try {
+    const record = path.join(root, "argv");
+    const bao = path.join(root, "Bao.app/Contents/MacOS/bao");
+    await mkdir(path.dirname(bao), { recursive: true });
+    await writeFile(bao, `#!/bin/sh\nprintf '%s\\n' "$@" > ${JSON.stringify(record)}\nprintf '%s\\n' '{"ok":true}'\n`);
+    await chmod(bao, 0o755);
+    const helper = path.join(root, "Bao.app/Contents/Resources/OtherHelper.app");
+    await mkdir(helper, { recursive: true });
+    const hit = await new MacOsHelper(helper).exec(["nodes", "--bundle", "com.google.Chrome"]);
+    assert.equal(hit.ok, true);
+    assert.equal(await readFile(record, "utf8"), "--run-helper\n--\nnodes\n--bundle\ncom.google.Chrome\n");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("a helper that cannot start fails at once instead of waiting out the timeout", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-helper-spawn-"));
   try {

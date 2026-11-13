@@ -95,8 +95,8 @@ export interface RemoteDebuggingResult {
 
 export const SCREEN_LOCKED = "The screen is locked. Unlock it, then try again.";
 export const CHROME_NOT_OPEN = "Chrome is not open. Open Google Chrome, then try again";
-export const AUTOMATION_DENIED = "BaoOSHelper is not allowed to control Google Chrome. Turn it on in System Settings > Privacy & Security > Automation > BaoOSHelper > Google Chrome, then try again.";
-export const AUTOMATION_PROMPT = "A macOS prompt is on screen. Allow BaoOSHelper to control Google Chrome.";
+export const AUTOMATION_DENIED = "Bao is not allowed to control Google Chrome. Turn it on in System Settings > Privacy & Security > Automation > Bao > Google Chrome, then try again.";
+export const AUTOMATION_PROMPT = "A macOS prompt is on screen. Allow Bao to control Google Chrome.";
 export const ACCESSIBILITY_MISSING = "Device Control and Data Access is not on for Bao. On this Mac, run bao setup.";
 
 /** Null when the checkbox value does not say on or off. An empty value is not off. */

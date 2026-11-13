@@ -272,7 +272,7 @@ async function remoteDebugging(args: string[]): Promise<unknown> {
   const block = remoteDebuggingBlock(await helper.permissions(false));
   if (block) {
     const { presentMissingMacPermission } = await import("../app/mac-permissions");
-    if (block.startsWith("Device Control")) presentMissingMacPermission();
+    if (block.startsWith("Device Control")) await presentMissingMacPermission();
     throw new Error(explainRemoteDebuggingError(new Error(block)).message);
   }
   const agent = "bao-remote-debugging";

@@ -75,6 +75,8 @@ static int spawn_and_wait(const char *path, char *const argv[], int disclaim) {
   return 1;
 }
 
+static int resources_of(const char *self, char *out, size_t n);
+
 static int app_executable(const char *app, char *out, size_t n) {
   const char *base = strrchr(app, '/');
   base = base ? base + 1 : app;
@@ -87,32 +89,38 @@ static int app_executable(const char *app, char *out, size_t n) {
   return wrote < 0 || (size_t)wrote >= n ? -1 : 0;
 }
 
+static int bundled_helper_exe(const char *self, char *out, size_t n) {
+  char resources[4096];
+  char app[4096];
+  if (resources_of(self, resources, sizeof resources) != 0) return -1;
+  if (snprintf(app, sizeof app, "%s/BaoOSHelper.app", resources) >= (int)sizeof app) return -1;
+  return app_executable(app, out, n);
+}
+
 int bao_run_helper(const char *self, int argc, char *argv[]) {
   int i = 2;
   int owned = i < argc && strcmp(argv[i], "--owned") == 0;
   if (owned) i++;
-  if (i >= argc) {
-    fprintf(stderr, "usage: bao --run-helper [--owned] Helper.app -- [args]\n");
+  if (i < argc && strcmp(argv[i], "--") != 0) {
+    fprintf(stderr, "bao: --run-helper starts only Bao's own BaoOSHelper.app\n");
     return 2;
   }
-  const char *app = argv[i++];
   if (i < argc && strcmp(argv[i], "--") == 0) i++;
+  char exe[4096];
+  if (bundled_helper_exe(self, exe, sizeof exe) != 0 || access(exe, X_OK) != 0) {
+    fprintf(stderr, "helper executable missing\n");
+    return 1;
+  }
   if (!owned) {
     char *args[64];
     int n = 0;
     args[n++] = (char *)self;
     args[n++] = "--run-helper";
     args[n++] = "--owned";
-    args[n++] = (char *)app;
     args[n++] = "--";
     for (; i < argc && n < 63; i++) args[n++] = argv[i];
     args[n] = NULL;
     return spawn_and_wait(self, args, 1);
-  }
-  char exe[4096];
-  if (app_executable(app, exe, sizeof exe) != 0 || access(exe, X_OK) != 0) {
-    fprintf(stderr, "helper executable missing\n");
-    return 1;
   }
   setenv("BAO_HELPER_INHERIT", "1", 1);
   char *args[64];
