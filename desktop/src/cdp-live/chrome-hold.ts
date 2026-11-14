@@ -403,9 +403,9 @@ async function connectFixture(root: string, fixture: HoldFixture): Promise<Curre
 }
 
 /** The throwaway listener a test named. Absent in a normal session, so that session cannot skip the Allow sheet. */
-export function holdFixtureEndpoint(): { port: number; browserPath: string; chromePid: number } | undefined {
+export function holdFixtureEndpoint(): { port: number; browserPath: string; chromePid: number; executable: string } | undefined {
   const fixture = readFixture();
-  return fixture ? { port: fixture.port, browserPath: fixture.browserPath, chromePid: fixture.chromePid } : undefined;
+  return fixture ? { port: fixture.port, browserPath: fixture.browserPath, chromePid: fixture.chromePid, executable: fixture.executable } : undefined;
 }
 
 /** Joins the connection a hold already published. Does not start a hold. Undefined when none is published. */
@@ -426,6 +426,25 @@ function readFixture(): HoldFixture | undefined {
     throw new Error("BAO_CHROME_HOLD_FIXTURE is not a throwaway Chrome endpoint");
   }
   return fixture;
+}
+
+/** Publishes an already attached socket as the shared connection, and keeps it until Chrome closes. Does not start Chrome or turn debugging on. */
+export async function retainHold(chrome: CurrentChrome): Promise<void> {
+  const serving = serveHold(chrome);
+  const root = chromeDataPath(chrome.root);
+  const file = path.join(holdDir(root), "hold.json");
+  const deadline = Date.now() + 2_000;
+  while (Date.now() < deadline) {
+    const record = await readJson<HoldRecord>(file);
+    if (isRecord(record, root) && record.holderPid === process.pid && record.port === chrome.endpoint.port) {
+      void serving.catch(() => undefined);
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  chrome.detach();
+  await serving.catch(() => undefined);
+  throw new Error("Bao could not publish its Chrome connection");
 }
 
 /** Owns the Chrome socket until that socket closes, and publishes the endpoint sessions join. */
