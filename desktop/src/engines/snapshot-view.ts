@@ -1,5 +1,7 @@
 // What a snapshot result shows the agent: the nodes a find matches, or what changed since the last snapshot. A plain snapshot stays the full native tree.
 
+import { OWNER_IN_CONTROL } from "../../../shared/takeover-overlay";
+
 export interface SnapshotFind { text?: string; role?: string }
 export type SnapshotView = { kind: "find"; find: SnapshotFind } | { kind: "diff" };
 
@@ -124,4 +126,10 @@ export function diffView(before: string | undefined, after: string): string {
   const headerBudget = header.length + 1;
   if (view.length - after.length <= headerBudget || after.length <= headerBudget && changedLines <= 2) return view;
   return `The changed lines are longer than the full snapshot, so this is the full snapshot.\n${after}`;
+}
+
+export function ownerSnapshot(native: string, view: SnapshotView | undefined, before: string | undefined, held: boolean): string {
+  const body = view?.kind === "find" ? findView(native, view.find) : view?.kind === "diff" ? diffView(before, native) : native;
+  if (!held) return body;
+  return `${body.endsWith("\n") ? body : `${body}\n`}${OWNER_IN_CONTROL}\n`;
 }

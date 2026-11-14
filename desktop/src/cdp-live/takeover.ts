@@ -20,6 +20,7 @@ export interface TakeoverOptions {
   onOpen?: () => void;
   onHandoff?: (startedAt: number, endedAt: number) => void;
   onAskDone?: () => void;
+  endAsk?: boolean;
   onHeld?: (held: boolean) => void;
   onConfirm?: (open: boolean) => void;
 }
@@ -55,7 +56,7 @@ export class Takeover {
   private disposed = false;
   private polling = false;
   private calling = true;
-  private askDone = false;
+  private owned?: number;
   private disconnected = false;
   private confirmOpen = false;
   private confirmWait?: () => void;
@@ -95,11 +96,9 @@ export class Takeover {
     return this.disconnected;
   }
 
-  /** The sign-in pill's Done. Reading it clears the flag so the next wait does not see a stale click. */
-  releasedAsk(): boolean {
-    const released = this.askDone;
-    this.askDone = false;
-    return released;
+  async noteOwned(count: number): Promise<void> {
+    this.owned = count;
+    await this.refreshLastTab();
   }
 
   /** Opens its own socket on a Bao profile or copy. Callers do not share this connection. */
@@ -190,7 +189,6 @@ export class Takeover {
   }
 
   async showAsk(text: string): Promise<void> {
-    this.askDone = false;
     this.control = stepControl(this.control.phase === "agent" ? this.control : controlState(), { type: "ask", ask: text, at: Date.now() });
     await this.push();
   }
@@ -313,8 +311,8 @@ export class Takeover {
       const at = Date.now();
       this.control = stepControl(this.control, { type: "take", at });
       this.control = stepControl(this.control, { type: "own" });
-      await this.push();
       this.noteHeld(before);
+      await this.paint();
       return;
     }
     if (event.type === "done") {
@@ -323,16 +321,20 @@ export class Takeover {
       const reason = this.control.reason;
       const startedAt = this.control.startedAt;
       const at = Date.now();
-      this.control = stepControl(this.control, { type: "done", at });
-      if (reason === "ask") {
-        this.askDone = true;
+      if (reason === "ask" && this.options.endAsk) {
         this.options.onAskDone?.();
-      } else if (startedAt) this.options.onHandoff?.(startedAt, at);
+        await this.finish("finished");
+        await this.dispose();
+        return;
+      }
+      this.control = stepControl(this.control, { type: "done", at });
+      if (reason === "ask") this.options.onAskDone?.();
+      else if (startedAt) this.options.onHandoff?.(startedAt, at);
       this.activity = "Working…";
       this.control = stepControl(this.control, { type: "resume" });
-      await this.push();
       this.handback?.("done");
       this.noteHeld(before);
+      await this.paint();
       return;
     }
     if (event.type === "disconnect") {
@@ -349,6 +351,14 @@ export class Takeover {
   private async push(): Promise<void> {
     this.view = overlayView(this.control, this.activity, this.lastTab);
     await this.call("apply", this.view);
+  }
+
+  private async paint(): Promise<void> {
+    try {
+      await this.push();
+    } catch {
+      await this.rebind().catch(() => undefined);
+    }
   }
 
   private async attachTarget(targetId?: string): Promise<void> {
@@ -378,18 +388,22 @@ export class Takeover {
     if (!cdp) return undefined;
     const { targetInfos } = await cdp.send<{ targetInfos: { targetId: string; type: string }[] }>("Target.getTargets");
     const pages = targetInfos.filter((target) => target.type === "page");
-    this.lastTab = pages.length <= 1;
+    if (this.owned === undefined) this.lastTab = pages.length <= 1;
     return pages[0]?.targetId;
   }
 
   private async refreshLastTab(): Promise<void> {
-    if (!this.cdp) return;
-    const { targetInfos } = await this.cdp.send<{ targetInfos: { type: string }[] }>("Target.getTargets");
-    const count = targetInfos.filter((target) => target.type === "page").length;
-    const last = count <= 1;
+    const last = this.owned !== undefined ? this.owned <= 1 : await this.browserLastTab();
+    if (last === undefined) return;
     if (last === this.lastTab) return;
     this.lastTab = last;
     if (this.control.phase === "agent" || this.control.phase === "owner") await this.push().catch(() => undefined);
+  }
+
+  private async browserLastTab(): Promise<boolean | undefined> {
+    if (!this.cdp) return undefined;
+    const { targetInfos } = await this.cdp.send<{ targetInfos: { type: string }[] }>("Target.getTargets");
+    return targetInfos.filter((target) => target.type === "page").length <= 1;
   }
 
   private async install(): Promise<void> {

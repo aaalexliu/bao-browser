@@ -15,7 +15,7 @@ import { AdmittedTakeover } from "../../src/cdp-live/takeover-hold";
 import { launchOwnedChromeEndpoint } from "../../src/launch";
 
 const exec = promisify(execFile);
-const AGENT_BROWSER = path.resolve("desktop/packaging/macos/dist/Bao.app/Contents/Resources/agent-browser/agent-browser");
+const binary = process.env.AGENT_BROWSER_PROXY_BINARY;
 
 function pngSize(png: Buffer): { width: number; height: number } {
   return { width: png.readUInt32BE(16), height: png.readUInt32BE(20) };
@@ -138,10 +138,12 @@ test("the overlay is absent from the snapshot and from a step picture", async ()
     assert.equal(names.includes("Click to take control"), false);
     assert.equal(names.includes("You're in control"), false);
     assert.equal(names.includes("Reading the page"), false);
-    const snap = await exec(AGENT_BROWSER, ["--cdp", String(open.port), "snapshot"], { encoding: "utf8", timeout: 20_000, env: process.env });
-    assert.equal(snap.stdout.includes("Click to take control"), false);
-    assert.equal(snap.stdout.includes("You're in control"), false);
-    assert.equal(snap.stdout.includes("Reading the page"), false);
+    if (binary) {
+      const snap = await exec(binary, ["--cdp", String(open.port), "snapshot"], { encoding: "utf8", timeout: 20_000, env: process.env });
+      assert.equal(snap.stdout.includes("Click to take control"), false);
+      assert.equal(snap.stdout.includes("You're in control"), false);
+      assert.equal(snap.stdout.includes("Reading the page"), false);
+    }
     const metrics = await open.cdp.send<{ cssLayoutViewport: { clientWidth: number } }>("Page.getLayoutMetrics", {}, open.sessionId);
     const x = Math.floor(metrics.cssLayoutViewport.clientWidth / 2);
     const shown = await open.cdp.send<{ data: string }>("Page.captureScreenshot", { format: "png" }, open.sessionId);

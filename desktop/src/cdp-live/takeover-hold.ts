@@ -35,6 +35,7 @@ interface HoldRequest {
   id: number;
   op: string;
   targetId?: string;
+  count?: number;
   text?: string;
   x?: number;
   y?: number;
@@ -148,7 +149,12 @@ class HoldOverlay {
   private async run(request: HoldRequest): Promise<Partial<HoldReply>> {
     const takeover = this.takeover;
     if (request.op === "attach") {
+      if (typeof request.count === "number") await takeover.noteOwned(request.count);
       await takeover.attachShared(this.cdp, request.targetId);
+      return {};
+    }
+    if (request.op === "owned") {
+      await takeover.noteOwned(request.count ?? 1);
       return {};
     }
     if (request.op === "follow") {
@@ -231,7 +237,6 @@ export class AdmittedTakeover {
   private stopped = false;
   private confirmFlag = false;
   private confirmWait?: () => void;
-  private askDone = false;
   private waitingFlag = false;
   private hiddenShots = 0;
   private disposed = false;
@@ -263,18 +268,16 @@ export class AdmittedTakeover {
     return this.confirmFlag;
   }
 
-  releasedAsk(): boolean {
-    const released = this.askDone;
-    this.askDone = false;
-    return released;
-  }
-
   async syncHeld(): Promise<void> {
     this.apply(await this.call("state"));
   }
 
-  async attach(targetId?: string): Promise<void> {
-    this.apply(await this.call("attach", { targetId }));
+  async attach(targetId?: string, owned?: number): Promise<void> {
+    this.apply(await this.call("attach", { targetId, count: owned }));
+  }
+
+  async noteOwned(count: number): Promise<void> {
+    this.apply(await this.call("owned", { count }));
   }
 
   async follow(targetId: string | undefined): Promise<void> {
@@ -420,10 +423,8 @@ export class AdmittedTakeover {
   private onEvent(event: HoldEvent): void {
     if (event.event === "handoff") this.options.onHandoff?.(event.startedAt, event.endedAt);
     else if (event.event === "open") this.options.onOpen?.();
-    else if (event.event === "askDone") {
-      this.askDone = true;
-      this.options.onAskDone?.();
-    } else if (event.event === "held") {
+    else if (event.event === "askDone") this.options.onAskDone?.();
+    else if (event.event === "held") {
       this.heldFlag = event.held;
       this.heldAt = event.heldSince;
       this.options.onHeld?.(event.held);

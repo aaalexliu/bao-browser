@@ -30,9 +30,9 @@ import { BROWSER_CHOICES, DEFAULT_BROWSER } from "../browser-choice";
 import { commandSentence, targetBox } from "../v1/caption";
 import { HELD_SKIP, Takeover } from "../cdp-live/takeover";
 import { AdmittedTakeover } from "../cdp-live/takeover-hold";
-import { askLine, handedBack, HANDED_BACK, holdCommand, isActing, OWNER_IN_CONTROL, staleHold } from "../../../shared/takeover-overlay";
+import { askLine, handedBack, HANDED_BACK, holdCommand, isActing, staleHold } from "../../../shared/takeover-overlay";
 import { GLOBAL_BOOL_FLAGS, GLOBAL_VALUE_FLAGS, stripGlobalFlags, tabCommandAction } from "../v1/tab-command";
-import { diffView, findView, snapshotView } from "./snapshot-view";
+import { ownerSnapshot, snapshotView } from "./snapshot-view";
 import { AGENT_DISCONNECTED, AGENT_IDLE_REASON, NEWER_TASK_REASON } from "../v1/stop-copy";
 import { openBackgroundCdp, type BackgroundCdp } from "./background-cdp";
 import { activeNativeTab, parseNativeTabs, type NativeTab } from "./agent-browser-tabs";
@@ -845,6 +845,7 @@ export class AgentBrowserProxy {
       if (this.overlayOn(session)) {
         const tab = session.kind === "current" ? (session.agentTarget ?? session.targetId) : session.agentTarget;
         await this.takeover?.follow(tab).catch(() => undefined);
+        await this.syncOwned(session);
       }
       if (this.takeover && "syncHeld" in this.takeover) await this.takeover.syncHeld();
       await this.takeover?.waitConfirm(session.abort.signal);
@@ -1034,7 +1035,8 @@ export class AgentBrowserProxy {
         const key = args.join("\0");
         const before = session.snapshots.get(key);
         session.snapshots.set(key, native);
-        if (view) return [{ ...results[0], stdout: view.kind === "find" ? findView(native, view.find) : diffView(before, native) }];
+        const held = this.takeover?.held === true;
+        if (view || held) return [{ ...results[0], stdout: ownerSnapshot(native, view, before, held) }];
       }
       if (command === "open" && results[0]!.exitCode === 0) {
         // A copy or Bao profile keeps the native list, including restored tabs. Running Chrome keeps only Bao's task tabs.
@@ -1621,10 +1623,12 @@ export class AgentBrowserProxy {
     const tab = listed(want);
     if (!tab?.tabId) return tabs;
     for (const info of adopt) session.taskTabs.add(info.targetId);
+    await this.syncOwned(session);
     if (!tab.active) {
       const back = await this.run(session, "tab", [tab.tabId], undefined, ceiling);
       if (back.exitCode !== 0) {
         for (const info of adopt) session.taskTabs.delete(info.targetId);
+        await this.syncOwned(session);
         throw new Error(`Bao could not keep the agent in its tab ${tab.tabId}: ${back.stderr || back.stdout || `exit ${back.exitCode}`}`);
       }
     }
@@ -1648,11 +1652,31 @@ export class AgentBrowserProxy {
       if (native.exitCode === 0) return { result: native, transfer: { command, source: "file-input", files: await fileFacts(files.files) } };
       if (!NOT_FILE_INPUT.test(native.stderr)) return { result: native };
     }
-    const skipped = await this.holdMutation(session, "click", files.click);
-    if (skipped) return { result: skipped };
+    const body = () => this.transferBody(session, command, files);
+    if (!this.overlayOn(session) || !this.takeover) {
+      const plain = await body();
+      if (plain === HELD_SKIP) return { result: this.handbackLine() };
+      return plain;
+    }
+    const skip = () => staleHold(this.takenDuringCommand, this.takeover?.held === true, command, files.click) !== "run";
+    for (;;) {
+      const blocked = await this.holdMutation(session, command, files.click);
+      if (blocked) return { result: blocked };
+      const ran = await this.takeover.bracket(body, session.abort.signal, skip);
+      if (ran !== HELD_SKIP) return ran;
+    }
+  }
+
+  private async transferBody(session: Session, command: FileCommand, files: FileArgs): Promise<{ result: AgentBrowserCommandResult; transfer?: FileTransfer } | typeof HELD_SKIP> {
+    const taken = () => this.overlayOn(session) && staleHold(this.takenDuringCommand, this.takeover?.held === true, command, files.click) !== "run";
+    if (taken()) return HELD_SKIP;
     const active = await this.activePage(session);
     if (!active) throw new Error("no active Bao page metadata");
     const cdp = await this.connectSession(session, { timeoutMs: 5000, signal: session.abort.signal });
+    if (taken()) {
+      if (session.kind === "copy") cdp.close();
+      return HELD_SKIP;
+    }
     const click = () => this.runNative(session, "click", files.click);
     this.passing = true;
     try {
@@ -1744,6 +1768,7 @@ export class AgentBrowserProxy {
       session.taskTabs.delete(named.targetId);
       session.justClosed = named.targetId;
       if (session.targetId === named.targetId) session.targetId = [...session.taskTabs].at(-1) ?? "";
+      await this.syncOwned(session);
     }
     if (parsed.action === "switch" && named?.targetId) {
       session.targetId = named.targetId;
@@ -2245,7 +2270,6 @@ export class AgentBrowserProxy {
 
   private async run(session: Session, command: string, args: string[], readTimeoutMs?: number, bound?: AbortSignal): Promise<AgentBrowserCommandResult> {
     const skip = () => staleHold(this.takenDuringCommand, this.takeover?.held === true, command, args) !== "run";
-    if (this.passing && skip()) return this.handbackLine();
     if (!this.passing && this.overlayOn(session) && this.takeover) {
       if ("syncHeld" in this.takeover) await this.takeover.syncHeld().catch(() => undefined);
       if (this.takeover.held) this.takenDuringCommand = true;
@@ -2295,13 +2319,11 @@ export class AgentBrowserProxy {
         if (!targetId) throw new Error("Native task tab has no target id");
         session.taskTabs.add(targetId);
         session.targetId = targetId;
+        await this.syncOwned(session);
         await this.focusTab(session, targetId, bound ?? session.abort.signal);
       } catch (error) {
         process.stderr.write(`Bao task tab tracking unavailable: ${error instanceof Error ? error.message : String(error)}\n`);
       }
-    }
-    if (command === "snapshot" && this.takeover?.held && result.exitCode === 0) {
-      result.stdout += (result.stdout.endsWith("\n") ? "" : "\n") + OWNER_IN_CONTROL + "\n";
     }
     return result;
   }
@@ -2517,6 +2539,11 @@ export class AgentBrowserProxy {
     return session.kind === "current" && !session.relay;
   }
 
+  private async syncOwned(session: Session): Promise<void> {
+    if (session.kind !== "current" || session.relay) return;
+    await this.takeover?.noteOwned(Math.max(1, session.taskTabs.size)).catch(() => undefined);
+  }
+
   private completeAsk(session: Session): void {
     if (this.session !== session) return;
     this.askReleased = true;
@@ -2596,11 +2623,11 @@ export class AgentBrowserProxy {
       },
     };
     try {
-      if (admitted) {
+      if (admitted && session.kind === "current" && !session.relay) {
         const remote = new AdmittedTakeover(admitted, options);
         takeover = remote;
         this.takeover = remote;
-        await remote.attach(session.agentTarget ?? session.targetId);
+        await remote.attach(session.agentTarget ?? session.targetId, Math.max(1, session.taskTabs.size));
       } else if (session.kind === "copy") {
         const local = new Takeover(options);
         takeover = local;

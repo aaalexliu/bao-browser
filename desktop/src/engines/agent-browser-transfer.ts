@@ -134,7 +134,7 @@ async function savePdf(cdp: CdpSocket, targetId: string, file: string): Promise<
 
 /**
  * For this click only: page handlers run first. A bubble listener then cancels an http(s) link the handler left in place.
- * `window.open` is recorded and not called, so a handler popup does not open a tab. `TAKE_CLICK` restores both.
+ * `window.open` is recorded and not called, so a handler popup does not open a tab. `RESTORE_CLICK` puts both back.
  */
 const ARM_CLICK = `(() => {
   const policies = ["no-referrer", "no-referrer-when-downgrade", "origin", "origin-when-cross-origin", "same-origin", "strict-origin", "strict-origin-when-cross-origin", "unsafe-url"];
@@ -207,16 +207,20 @@ const ARM_CLICK = `(() => {
   window.addEventListener("submit", onSubmit, false);
 })()`;
 
-const TAKE_CLICK = `(() => {
+const READ_CLICK = `(() => {
+  const href = typeof window.__baoDownloadHref === "string" ? window.__baoDownloadHref : "";
+  const opened = typeof window.__baoOpened === "string" ? window.__baoOpened : "";
+  const download = window.__baoDownloadNamed === true;
+  const policy = opened ? window.__baoOpenPolicy : window.__baoHrefPolicy;
+  return { href: href, opened: opened, download: download, policy: typeof policy === "string" ? policy : "" };
+})()`;
+
+const RESTORE_CLICK = `(() => {
   const click = window.__baoDownloadClick;
   const submit = window.__baoDownloadSubmit;
   if (typeof click === "function") window.removeEventListener("click", click, false);
   if (typeof submit === "function") window.removeEventListener("submit", submit, false);
   if (typeof window.__baoPriorOpen === "function") window.open = window.__baoPriorOpen;
-  const href = typeof window.__baoDownloadHref === "string" ? window.__baoDownloadHref : "";
-  const opened = typeof window.__baoOpened === "string" ? window.__baoOpened : "";
-  const download = window.__baoDownloadNamed === true;
-  const policy = opened ? window.__baoOpenPolicy : window.__baoHrefPolicy;
   delete window.__baoDownloadHref;
   delete window.__baoOpened;
   delete window.__baoDownloadNamed;
@@ -225,7 +229,6 @@ const TAKE_CLICK = `(() => {
   delete window.__baoPriorOpen;
   delete window.__baoOpenPolicy;
   delete window.__baoHrefPolicy;
-  return { href: href, opened: opened, download: download, policy: typeof policy === "string" ? policy : "" };
 })()`;
 
 function capturedClick(value: unknown): { url: string; download: boolean; policy: string } {
@@ -373,9 +376,15 @@ export async function downloadByClick(cdp: CdpSocket, agentTab: string, saved: s
     } catch {
       return { result: failed("Bao could not keep this download from opening a tab.") };
     }
-    const clicked = await click();
+    let clicked: AgentBrowserCommandResult;
+    let captured = { url: "", download: false, policy: "strict-origin-when-cross-origin" };
+    try {
+      clicked = await click();
+      if (clicked.exitCode === 0 && !handedBack(clicked)) captured = capturedClick(await inPage(cdp, agentTab, READ_CLICK).catch(() => undefined));
+    } finally {
+      await inPage(cdp, agentTab, RESTORE_CLICK).catch(() => undefined);
+    }
     if (clicked.exitCode !== 0 || handedBack(clicked)) return { result: clicked };
-    const captured = capturedClick(await inPage(cdp, agentTab, TAKE_CLICK).catch(() => undefined));
     const href = captured.url;
     const named = captured.download;
     const policy = captured.policy;
