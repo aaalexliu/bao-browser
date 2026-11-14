@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { CdpSocket } from "../../src/cdp-live/socket";
 import { Takeover } from "../../src/cdp-live/takeover";
+import type { Identity } from "../../src/v1/schema";
+import { replay, type Driver } from "../../src/v1/replay";
+import { targetFor, testWorkflow } from "../support/workflow";
 
 interface OverlayView { phase?: string; activity?: string; lastTab?: boolean }
 
@@ -86,17 +89,122 @@ test("a heartbeat does not count the owner's other pages, and more than one owne
   await takeover.dispose();
 });
 
-test("Done on an ask whose replay already returned ends the overlay without resuming", async () => {
+test("a live owner-press handoff returns to working and continues", async () => {
   const fake = overlayFake();
+  const save = { surface: "dom", role: "button", name: "Save", path: [] } as Identity;
+  let handedBack = false;
   let asked = false;
-  const takeover = new Takeover({ heartbeatMs: 0, finishHoldMs: 0, endAsk: true, onAskDone: () => { asked = true; } });
-  await takeover.attachShared(fake.cdp, "page-0");
-  await takeover.showAsk("Sign in, then click Done");
+  let clicks = 0;
+  let overlay: Takeover | undefined;
+  const driver: Driver = {
+    tree: async () => {
+      if (asked && !handedBack) {
+        fake.emit({ type: "done" });
+        const start = Date.now();
+        while (!handedBack && Date.now() - start < 1000) await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      return { nodes: [save], texts: [], values: [] };
+    },
+    snapshot: async () => ({}),
+    click: async () => { clicks += 1; },
+    fill: async () => {},
+    key: async () => {},
+    upload: async () => {},
+    drop: async () => {},
+    digits: async () => {},
+    check: async () => {},
+    notify: async () => {},
+    sleep: async () => {},
+    showAsk: async () => {
+      asked = true;
+      overlay = new Takeover({ heartbeatMs: 0, finishHoldMs: 0, onAskDone: () => { handedBack = true; } });
+      await overlay.attachShared(fake.cdp, "page-0");
+      await overlay.showAsk("Confirm, then click Done");
+    },
+    ownerContinued: () => handedBack,
+    askUnwatched: () => overlay?.noteAskReturned(),
+  };
+  const doc = testWorkflow({
+    steps: [
+      {
+        id: "press",
+        index: 0,
+        timeoutMs: 2000,
+        caption: { text: "you press Save" },
+        action: "handoff",
+        reason: "owner-press",
+        target: targetFor(save),
+        check: { kind: "text", match: "Applied", timeoutMs: 2000 },
+      },
+      {
+        id: "save",
+        index: 1,
+        timeoutMs: 0,
+        caption: { text: "Click Save" },
+        action: "click",
+        heal: "never",
+        target: targetFor(save),
+        check: { kind: "element", locators: targetFor(save).locators, timeoutMs: 0 },
+      },
+    ],
+  });
+  const result = await replay(doc, {}, driver, { settings: { heal: "never" } });
+  const askAt = fake.views.findIndex((view) => view.phase === "control");
+  const after = fake.views.slice(askAt + 1);
+  assert.equal(result.status, "passed");
+  assert.equal(clicks, 1);
+  assert.equal(handedBack, true);
+  assert.equal(after.some((view) => view.phase === "working" && view.activity === "Working…"), true);
+  assert.equal(after.some((view) => view.phase === "finished" || view.phase === "releasing" || view.activity === "Resuming…"), false);
+  assert.equal(fake.calls.includes("dispose"), false);
+  await overlay?.dispose();
+});
+
+test("Done after an owner-press replay has returned ends the overlay without resuming", async () => {
+  const fake = overlayFake();
+  let handedBack = false;
+  let overlay: Takeover | undefined;
+  const driver: Driver = {
+    tree: async () => ({ nodes: [], texts: [], values: [] }),
+    snapshot: async () => ({}),
+    click: async () => {},
+    fill: async () => {},
+    key: async () => {},
+    upload: async () => {},
+    drop: async () => {},
+    digits: async () => {},
+    check: async () => {},
+    notify: async () => {},
+    showAsk: async () => {
+      overlay = new Takeover({ heartbeatMs: 0, finishHoldMs: 0, onAskDone: () => { handedBack = true; } });
+      await overlay.attachShared(fake.cdp, "page-0");
+      await overlay.showAsk("Confirm, then click Done");
+    },
+    ownerContinued: () => handedBack,
+    askUnwatched: () => overlay?.noteAskReturned(),
+  };
+  const save = { surface: "dom", role: "button", name: "Save", path: [] } as Identity;
+  const doc = testWorkflow({
+    steps: [{
+      id: "press",
+      index: 0,
+      timeoutMs: 0,
+      caption: { text: "you press Save" },
+      action: "handoff",
+      reason: "owner-press",
+      target: targetFor(save),
+      check: { kind: "text", match: "Applied", timeoutMs: 0 },
+    }],
+  });
+  const result = await replay(doc, {}, driver, { settings: { heal: "never" } });
+  assert.equal(result.status, "paused");
+  assert.equal(handedBack, false);
+  assert.equal(fake.calls.includes("dispose"), false);
   fake.emit({ type: "done" });
   await new Promise((resolve) => setTimeout(resolve, 30));
   const askAt = fake.views.findIndex((view) => view.phase === "control");
   const after = fake.views.slice(askAt + 1);
-  assert.equal(asked, true);
+  assert.equal(handedBack, true);
   assert.equal(after.some((view) => view.phase === "releasing" || view.activity === "Resuming…" || view.phase === "working"), false);
   assert.equal(after.some((view) => view.phase === "finished"), true);
   assert.equal(fake.calls.includes("dispose"), true);

@@ -106,6 +106,8 @@ export interface Driver {
   shouldStop?(): boolean;
   loginContinued?(): boolean;
   ownerContinued?(): boolean;
+  /** The ask overlay outlived this replay. Done ends it instead of resuming. */
+  askUnwatched?(): void;
   /** Page PNG or JPEG of the target. Unit-test drivers omit this. */
   shot?(target?: ShotTarget): Promise<Buffer | undefined>;
   /** Full viewport. Unit-test drivers omit this. */
@@ -1236,6 +1238,7 @@ async function runHandoff(
   if (gate.humanReady || gate.yieldHuman) {
     if (!gate.humanReady) await showOwnerAsk(driver, step, ask);
     beginHandoff(driver, gate, step.id);
+    driver.askUnwatched?.();
     return { ok: false, paused: "confirm", repairs: [], ask };
   }
   beginHandoff(driver, gate, step.id);
@@ -1243,6 +1246,7 @@ async function runHandoff(
   await showOwnerAsk(driver, step, ask);
   if (!real || step.timeoutMs === 0) {
     if (await ownerDone(step, args, driver)) return finishHandoff(driver, gate, step.id);
+    driver.askUnwatched?.();
     return { ok: false, paused: "confirm", repairs: [], ask };
   }
   const ok = await waitForOwner(step, args, driver, gate);
@@ -1302,6 +1306,7 @@ async function runLogin(
       await driver.showLoginWait?.(stepTitle(step) || "Sign in on the site window");
     }
     beginHandoff(driver, gate, step.id);
+    driver.askUnwatched?.();
     return { ok: false, paused: "signin", repairs: [], ask };
   }
   const filled = await settleLogin(workflow, step, args, driver, gate, human);

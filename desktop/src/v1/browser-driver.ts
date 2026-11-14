@@ -599,6 +599,10 @@ export class BrowserDriver implements Driver {
     return this.handedBack || (this.prompts?.ownerContinued?.() ?? false);
   }
 
+  askUnwatched(): void {
+    this.overlay?.noteAskReturned();
+  }
+
   pauseCapture(): void {
     this.prompts?.pauseCapture?.();
   }
@@ -620,7 +624,7 @@ export class BrowserDriver implements Driver {
   private async showControl(text: string): Promise<void> {
     await this.clearStrip();
     const client = await this.page.context().newCDPSession(this.page);
-    const overlay = new Takeover({ endAsk: true, onAskDone: () => { this.handedBack = true; } });
+    const overlay = new Takeover({ onAskDone: () => { this.handedBack = true; } });
     try {
       await overlay.attachPage(playwrightSend(client));
       await overlay.showAsk(text);

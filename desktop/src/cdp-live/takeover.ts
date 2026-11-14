@@ -20,7 +20,6 @@ export interface TakeoverOptions {
   onOpen?: () => void;
   onHandoff?: (startedAt: number, endedAt: number) => void;
   onAskDone?: () => void;
-  endAsk?: boolean;
   onHeld?: (held: boolean) => void;
   onConfirm?: (open: boolean) => void;
 }
@@ -56,6 +55,7 @@ export class Takeover {
   private disposed = false;
   private polling = false;
   private calling = true;
+  private askReturned = false;
   private owned?: number;
   private disconnected = false;
   private confirmOpen = false;
@@ -94,6 +94,10 @@ export class Takeover {
 
   get stoppedByOwner(): boolean {
     return this.disconnected;
+  }
+
+  noteAskReturned(): void {
+    this.askReturned = true;
   }
 
   async noteOwned(count: number): Promise<void> {
@@ -244,9 +248,6 @@ export class Takeover {
     this.disposed = true;
     this.calling = false;
     if (this.heart) clearInterval(this.heart);
-    for (const stop of this.unlisten) stop();
-    this.unlisten = [];
-    await this.call("dispose").catch(() => undefined);
     await this.detachPage().catch(() => undefined);
     if (this.ownedSocket) this.cdp?.close();
     this.cdp = undefined;
@@ -321,7 +322,7 @@ export class Takeover {
       const reason = this.control.reason;
       const startedAt = this.control.startedAt;
       const at = Date.now();
-      if (reason === "ask" && this.options.endAsk) {
+      if (reason === "ask" && this.askReturned) {
         this.options.onAskDone?.();
         await this.finish("finished");
         await this.dispose();
@@ -453,6 +454,9 @@ export class Takeover {
   }
 
   private async detachPage(): Promise<void> {
+    await this.call("dispose").catch(() => undefined);
+    for (const stop of this.unlisten) stop();
+    this.unlisten = [];
     const sessionId = this.page.sessionId;
     const identifier = this.page.identifier;
     if (identifier) await this.send("Page.removeScriptToEvaluateOnNewDocument", { identifier }, sessionId).catch(() => undefined);
