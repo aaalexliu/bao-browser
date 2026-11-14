@@ -80,7 +80,7 @@ if (command === 'network' && args.includes('start') && fs.existsSync(${JSON.stri
     item(['console'], { messages: [{ args: [], text: 'read ' + step, type: 'log' }] }),
     item(['console', '--clear'], { cleared: true }),
     item(['errors'], { errors: [{ column: 1, line: 1, text: 'Error: boom ' + step, url: null }] }),
-    item(['errors', '--clear'], { cleared: true }),
+    item(['errors', '--clear'], { cleared: true }), // { cleared: true } is agent-browser 0.41.2's shape; pinned 0.41.0 ignores --clear and returns the errors again, so each step's errors are cumulative until the pin moves to 0.41.2.
   ]));
 } else if (command === 'close') {
   fs.writeFileSync(dead, '');
