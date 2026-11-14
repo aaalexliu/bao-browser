@@ -89,14 +89,14 @@ async function writeStash(cdp: CdpSocket, targetId: string, file: string, key: s
 }
 
 /** Fetches `url` in the page with the page's cookies. An HTML page is not the file unless it is an attachment or the link asked to download it. */
-async function fetchLink(cdp: CdpSocket, targetId: string, file: string, url: string, download: boolean): Promise<"file" | "page"> {
+async function fetchLink(cdp: CdpSocket, targetId: string, file: string, url: string, download: boolean): Promise<{ kind: "file" } | { kind: "page" | "http"; url: string }> {
   const key = `__bao_file_${Date.now()}`;
-  const fetched = await inPage<{ kind: "file"; total: number } | { kind: "page" }>(cdp, targetId, `(async () => {
+  const fetched = await inPage<{ kind: "file"; total: number } | { kind: "page" | "http"; url: string }>(cdp, targetId, `(async () => {
     const response = await fetch(${JSON.stringify(url)}, { credentials: "include" });
-    if (!response.ok) throw new Error("the file fetch returned HTTP " + response.status);
+    if (!response.ok) return { kind: "http", url: response.url };
     const type = (response.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
     const disposition = (response.headers.get("content-disposition") || "").toLowerCase();
-    if (!${download ? "true" : "false"} && type === "text/html" && !disposition.includes("attachment")) return { kind: "page" };
+    if (!${download ? "true" : "false"} && type === "text/html" && !disposition.includes("attachment")) return { kind: "page", url: response.url };
     const blob = await response.blob();
     const data = await new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -107,9 +107,9 @@ async function fetchLink(cdp: CdpSocket, targetId: string, file: string, url: st
     window[${JSON.stringify(key)}] = String(data).slice(String(data).indexOf(",") + 1);
     return { kind: "file", total: window[${JSON.stringify(key)}].length };
   })()`, 60_000);
-  if (fetched.kind === "page") return "page";
+  if (fetched.kind !== "file") return fetched;
   await writeStash(cdp, targetId, file, key, fetched.total);
-  return "file";
+  return { kind: "file" };
 }
 
 /** Fetches the PDF a tab shows with the page's own cookies and writes it to `file`. Bytes cross CDP as base64 in chunks. */
@@ -342,21 +342,21 @@ export async function downloadByClick(cdp: CdpSocket, agentTab: string, saved: s
     }
     if (clicked.exitCode !== 0) return { result: clicked };
     if (href && !started) {
-      let kind: "file" | "page" | undefined;
-      let http = false;
+      let fetched: { kind: "file" } | { kind: "page" | "http"; url: string } | undefined;
       try {
-        kind = await fetchLink(cdp, agentTab, saved, href, named);
-      } catch (error) {
-        http = /HTTP \d+/.test(error instanceof Error ? error.message : String(error));
+        fetched = await fetchLink(cdp, agentTab, saved, href, named);
+      } catch {
+        fetched = undefined;
       }
-      if (kind === "file") {
+      if (fetched?.kind === "file") {
         await closeOpened(cdp, agentTab, before);
         return linkSaved(saved, href);
       }
+      const settled = fetched?.url || href;
       let cross = false;
-      try { cross = new URL(href).origin !== new URL(before.url).origin; } catch { cross = false; }
-      if (!started && !cross && kind === "page") return { result: failed(`The link returned a page, not a file (${href}).`) };
-      if (!started && !cross && http) return { result: failed(`Bao could not fetch the link (${href}).`) };
+      try { cross = new URL(settled).origin !== new URL(before.url).origin; } catch { cross = false; }
+      if (!started && !cross && fetched?.kind === "page") return { result: failed(`The link returned a page, not a file (${href}).`) };
+      if (!started && !cross && fetched?.kind === "http") return { result: failed(`Bao could not fetch the link (${href}).`) };
       if (!started && !contextId) return { result: failed(`Bao could not open the link in this tab's Chrome profile (${href}).`) };
       if (!started && contextId) {
         const background = await openBackground(cdp, href, contextId);

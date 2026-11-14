@@ -131,6 +131,7 @@ test("a download saves the handler's file, captures window.open, and falls back 
 <a id=based href=/gate>Based</a>
 <a id=foreign download>Foreign</a>
 <a id=lax>Lax</a>
+<a id=hop href=/download>Hop</a>
 <a id=report href=/report.html download>Report</a>
 <a id=month href=/january.pdf>Month</a>
 <a id=popup href=/gate target=_blank>Popup</a>
@@ -154,7 +155,9 @@ popup.addEventListener("click", (event) => { event.preventDefault(); window.open
 based.addEventListener("click", (event) => { event.preventDefault(); window.open("statement.pdf"); });
 halt.addEventListener("submit", (event) => event.preventDefault());
 </script>`;
+  let laxStatement = "";
   const site = createServer((request, response) => {
+    if (request.url === "/download") { response.writeHead(302, { location: laxStatement }); response.end(); return; }
     if (request.url === "/october.pdf") { response.setHeader("content-type", "application/pdf"); response.end(OCTOBER); return; }
     if (request.url === "/january.pdf") { response.setHeader("content-type", "application/pdf"); response.end(JANUARY); return; }
     if (request.url === "/gate") { response.setHeader("content-type", "text/html"); response.end("<!doctype html><title>Gate</title>"); return; }
@@ -201,6 +204,11 @@ halt.addEventListener("submit", (event) => event.preventDefault());
       response.end(OCTOBER);
       return;
     }
+    const origin = request.headers.origin;
+    if (typeof origin === "string" && origin) {
+      response.setHeader("access-control-allow-origin", origin);
+      response.setHeader("access-control-allow-credentials", "true");
+    }
     response.writeHead(401, { "content-type": "text/html" });
     response.end("<!doctype html><title>Sign in</title>");
   });
@@ -208,6 +216,7 @@ halt.addEventListener("submit", (event) => event.preventDefault());
   const crossBase = await listen(cross);
   const laxListen = await listen(laxSite);
   const laxUrl = `http://localhost:${new URL(laxListen).port}/statement.pdf`;
+  laxStatement = laxUrl;
   const chrome = await launchOwnedChromeEndpoint({ userDataDir: path.join(root, "chrome"), headless: true, args: ["--no-startup-window"] });
   const endpoint = await readDevToolsActivePort(chrome.portFile);
   const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
@@ -353,6 +362,12 @@ halt.addEventListener("submit", (event) => event.preventDefault());
     assert.doesNotMatch(laxFile.text, /Sign in/);
     assert.match(laxFile.outcome.result.stdout, /background tab/);
     assert.deepEqual([...new Set(laxFile.contexts)], [work], "a Lax-cookie statement stays in the agent tab's browser context");
+
+    const hopped = await save(workTab, "#hop", "hop.pdf");
+    assert.equal(hopped.text, OCTOBER);
+    assert.doesNotMatch(hopped.text, /Sign in/);
+    assert.match(hopped.outcome.result.stdout, /background tab/);
+    assert.deepEqual([...new Set(hopped.contexts)], [work], "a redirected Lax-cookie statement stays in the agent tab's browser context");
     assert.deepEqual(await ownerState(), { visibility: "visible", events: [] }, "none of these downloads switch the owner's tab");
   } finally {
     stopBorn();
