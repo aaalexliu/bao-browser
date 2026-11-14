@@ -263,9 +263,21 @@ async function readStarting(dir: string): Promise<HoldStarting | undefined> {
   return starting;
 }
 
-async function readErr(dir: string): Promise<string | undefined> {
+function writeHoldErr(dir: string, message: string): void {
+  writePrivate(path.join(dir, "hold.err"), JSON.stringify({ holderPid: process.pid, message }));
+}
+
+function readErr(dir: string, holderPid: number | undefined): string | undefined {
+  if (holderPid === undefined) return undefined;
   const text = readPrivate(path.join(dir, "hold.err"))?.trim();
-  return text || undefined;
+  if (!text) return undefined;
+  try {
+    const parsed = JSON.parse(text) as { holderPid?: unknown; message?: unknown };
+    if (parsed.holderPid !== holderPid || typeof parsed.message !== "string" || !parsed.message.trim()) return undefined;
+    return parsed.message;
+  } catch {
+    return undefined;
+  }
 }
 
 function sleep(ms: number): Promise<void> {
@@ -426,9 +438,9 @@ async function waitForPublished(
 }
 
 /** The opener we are waiting on failed. A published hold is not that failure. */
-async function openerFailure(dir: string, root: string): Promise<string | undefined> {
-  if (await readLive(dir, root)) return undefined;
-  return readErr(dir);
+async function openerFailure(dir: string, root: string, holderPid: number | undefined): Promise<string | undefined> {
+  if (holderPid === undefined || await readLive(dir, root)) return undefined;
+  return readErr(dir, holderPid);
 }
 
 /** Joins the hold for this user-data-dir, starting it when Chrome has none. A second call does not open a second Chrome socket. */
@@ -468,7 +480,7 @@ export async function joinOrStartHold(options: HoldOptions): Promise<CurrentChro
             const published = await waitForPublished(dir, root, starting.holderPid, socket, options.signal, deadline);
             if (!published) {
               socket.destroy();
-              const failed = await openerFailure(dir, root);
+              const failed = await openerFailure(dir, root, starting.holderPid);
               if (failed) throw new Error(failed);
               await sleep(20);
               continue;
@@ -485,7 +497,7 @@ export async function joinOrStartHold(options: HoldOptions): Promise<CurrentChro
           }
         } catch (error) {
           if (options.signal?.aborted) throw error;
-          const failed = await openerFailure(dir, root);
+          const failed = await openerFailure(dir, root, starting.holderPid);
           if (failed) throw new Error(failed);
           lastError = error instanceof Error ? error : new Error(String(error));
           await sleep(20);
@@ -493,7 +505,7 @@ export async function joinOrStartHold(options: HoldOptions): Promise<CurrentChro
         }
       }
       if (boundTo) {
-        const failed = await openerFailure(dir, root);
+        const failed = await openerFailure(dir, root, boundTo);
         if (failed) throw new Error(failed);
         if (pidAlive(boundTo)) {
           await sleep(20);
@@ -509,7 +521,7 @@ export async function joinOrStartHold(options: HoldOptions): Promise<CurrentChro
   } finally {
     spawned?.initiator?.destroy();
   }
-  const err = await readErr(dir);
+  const err = readErr(dir, boundTo);
   throw new Error(err || lastError?.message || "Bao's Chrome connection closed before the session joined");
 }
 
@@ -801,7 +813,7 @@ export async function holdMain(
             }
             if (!stopping.signal.aborted) {
               const message = error instanceof Error ? error.message : String(error);
-              writePrivate(path.join(dir, "hold.err"), message);
+              writeHoldErr(dir, message);
               exitCode = 1;
             }
             await removeOwnStarting(dir);

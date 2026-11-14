@@ -256,7 +256,7 @@ async function versionEndpoint(t: TestContext, browserPath: string) {
         if (message.id === undefined) continue;
         socket.write(serverFrame(1, Buffer.from(JSON.stringify({
           id: message.id,
-          result: { protocolVersion: "1.3", product: "Chrome/test", revision: "0", userAgent: "test", jsVersion: "0" },
+          result: { protocolVersion: "1.3", product: "Chrome/test", revision: "0", userAgent: "test", jsVersion: "0", sessionId: "browser-session" },
         }))));
       }
     }
@@ -797,4 +797,48 @@ test("a listen-only profile read returns the opener error when the switch is off
   assert.ok(Date.now() - began < 5_000, "the profile read waited out the hold deadline");
   const pipe = child.stdio[3];
   if (pipe && typeof pipe !== "number") pipe.destroy();
+});
+
+test("a stale hold error from a dead holder does not cancel a fresh start", { timeout: scaledMs(20_000) }, async (t) => {
+  const browserPath = "/devtools/browser/stale-err";
+  const endpoint = await versionEndpoint(t, browserPath);
+  const scratch = await mkdtemp(path.join(tmpdir(), "bao-chrome-hold-stale-err-"));
+  const root = await realpath(scratch);
+  const dir = await privateHoldDir(root);
+  const dead = spawn("sleep", ["30"], { stdio: "ignore" });
+  if (!dead.pid) throw new Error("no dead holder pid");
+  const deadPid = dead.pid;
+  process.kill(deadPid, "SIGKILL");
+  const stale = JSON.stringify({ holderPid: deadPid, message: "stale opener" });
+  const previous = process.env.BAO_CHROME_HOLD_FIXTURE;
+  process.env.BAO_CHROME_HOLD_FIXTURE = JSON.stringify({
+    port: endpoint.port, browserPath, chromePid: process.pid, executable: "/bin/test-chrome",
+  });
+  t.after(() => {
+    if (previous === undefined) delete process.env.BAO_CHROME_HOLD_FIXTURE;
+    else process.env.BAO_CHROME_HOLD_FIXTURE = previous;
+  });
+  t.after(async () => {
+    try {
+      const record = JSON.parse(await readFile(path.join(dir, "hold.json"), "utf8")) as { holderPid?: number };
+      if (record.holderPid && pidAlive(record.holderPid)) process.kill(record.holderPid, "SIGKILL");
+    } catch {
+      /* the holder already exited */
+    }
+    await rm(dir, { recursive: true, force: true });
+    await rm(scratch, { recursive: true, force: true });
+  });
+  let stop = false;
+  const keepStale = setInterval(() => {
+    if (stop || existsSync(path.join(dir, "hold.json"))) return;
+    writeFile(path.join(dir, "hold.err"), stale).catch(() => undefined);
+  }, 5);
+  t.after(() => { stop = true; clearInterval(keepStale); });
+  await writeFile(path.join(dir, "hold.err"), stale);
+  const chrome = await joinOrStartHold({ root, axLog: path.join(scratch, "ax.jsonl") });
+  stop = true;
+  clearInterval(keepStale);
+  await chrome.cdp.send("Browser.getVersion", {}, undefined, 5_000);
+  assert.equal(endpoint.upgrades(), 1);
+  chrome.detach();
 });
