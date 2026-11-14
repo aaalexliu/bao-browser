@@ -11,7 +11,7 @@ export type DownloadOutcome = { result: AgentBrowserCommandResult; from?: { sour
 
 type Click = () => Promise<AgentBrowserCommandResult>;
 
-/** agent-browser 0.41.0's upload error for a selector that is not an `<input type=file>`. */
+/** agent-browser 0.41.2's upload error for a selector that is not an `<input type=file>`. */
 export const NOT_FILE_INPUT = /not a file input element/i;
 
 const CHOOSER_MS = 10_000;

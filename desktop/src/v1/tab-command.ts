@@ -1,4 +1,4 @@
-/** Global flags pinned agent-browser 0.41.0 strips before it reads a command. A tab reference hidden behind one of them is still that command. */
+/** Global flags pinned agent-browser 0.41.2 strips before it reads a command. A tab reference hidden behind one of them is still that command. */
 export const GLOBAL_BOOL_FLAGS = new Set([
   "--json", "--headed", "--webgpu", "--no-webmcp", "--debug", "--ignore-https-errors", "--allow-file-access", "--hide-scrollbars",
   "--auto-connect", "--pin-tab", "--no-pin-tab", "--no-ca-cert", "--use-system-ca", "--annotate", "--content-boundaries", "--confirm-interactive",
@@ -6,14 +6,14 @@ export const GLOBAL_BOOL_FLAGS = new Set([
 ]);
 export const GLOBAL_VALUE_FLAGS = new Set([
   "--session", "--restore-save", "--restore-check-url", "--restore-check-text", "--restore-check-fn", "--namespace", "--headers", "--executable-path",
-  "--cdp", "--extension", "--init-script", "--enable", "--profile", "--state", "--proxy", "--proxy-bypass", "--args", "--user-agent", "-p", "--provider",
+  "--cdp", "--cdp-headers", "--extension", "--init-script", "--enable", "--profile", "--state", "--proxy", "--proxy-bypass", "--args", "--user-agent", "-p", "--provider",
   "--device", "--session-name", "--color-scheme", "--download-path", "--max-output", "--allowed-domains", "--action-policy", "--confirm-actions", "--config",
   "--engine", "--input-mode", "--screenshot-dir", "--screenshot-quality", "--screenshot-format", "--idle-timeout", "--ca-cert", "--model",
 ]);
 
 export type TabCommandAction = "list" | "new" | "close" | "switch";
 
-/** The tab words left after pinned agent-browser 0.41.0 removes global flags, plus whether that command asked for JSON. */
+/** The tab words left after pinned agent-browser 0.41.2 removes global flags, plus whether that command asked for JSON. */
 export function stripGlobalFlags(args: readonly string[]): { args: string[]; json: boolean } {
   const cleaned: string[] = [];
   let json = false;

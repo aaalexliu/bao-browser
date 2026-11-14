@@ -15,7 +15,7 @@ const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
 const har = Buffer.from(JSON.stringify({
   log: {
     version: "1.2",
-    creator: { name: "agent-browser", version: "0.41.0" },
+    creator: { name: "agent-browser", version: "0.41.2" },
     entries: [{ startedDateTime: "2099-01-01T00:00:00.000Z", request: { method: "GET", url: "http://127.0.0.1/api/statement" }, response: { status: 200, content: { mimeType: "application/json", text: "{\"ok\":true}" } } }],
   },
 }));
