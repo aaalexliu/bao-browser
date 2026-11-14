@@ -937,7 +937,7 @@ export class AgentBrowserProxy {
           }
         } else if (continuing && site && "importLogin" in session.chrome) this.imported(session, await session.chrome.importLogin(site));
       }
-      const target = command === "click" || command === "fill" ? args[0] : files ? fileOperands(args).selector : undefined;
+      const target = command === "click" || command === "fill" || files ? fileOperands(args).selector : undefined;
       if (target) {
         await this.captureTarget(session, step, target);
         if (this.waitOf(session) !== "off") {

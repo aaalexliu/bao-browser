@@ -352,6 +352,60 @@ test("each step keeps the page before and after, one archive per page, and the e
   }
 });
 
+test("a flags-first click records the element, not the flag", async (t) => {
+  const f = await fixture(t);
+  try {
+    const home = path.join(f.root, "home");
+    await f.proxy.execute("open", ["http://127.0.0.1/"], "copy", false, undefined, {}, undefined, undefined, "Open.");
+    const runId = f.proxy.activeRunId!;
+    await f.proxy.execute("snapshot", ["-i"], undefined, false, undefined, {}, runId);
+    await f.proxy.execute("click", ["--json", "@e3"], undefined, false, undefined, {}, runId);
+    await f.proxy.execute("fill", ["--max-output", "9", "@e3", "quarterly"], undefined, false, undefined, {}, runId);
+    const click = await readStepRecord(home, runId, "command-3");
+    assert.deepEqual(click.target, { ref: "@e3", role: "button", name: "Upload statement", box: { x: 10, y: 20, width: 120, height: 30 } });
+    const fill = await readStepRecord(home, runId, "command-4");
+    assert.equal(fill.target?.ref, "@e3");
+    assert.equal(fill.target?.role, "button");
+    assert.equal(fill.target?.name, "Upload statement");
+    const boxes = (await f.calls()).filter((call) => commandOf(call.args) === "get" && call.args.includes("box"));
+    assert.deepEqual(boxes.map((call) => call.args[call.args.indexOf("box") + 1]), ["@e3", "@e3"]);
+  } finally {
+    await f.close();
+  }
+});
+
+test("each hash route keeps its own MHTML archive", async (t) => {
+  const f = await fixture(t);
+  try {
+    const home = path.join(f.root, "home");
+    f.page.url = "http://127.0.0.1/#/statements";
+    await f.proxy.execute("open", ["http://127.0.0.1/#/statements"], "copy", false, undefined, {}, undefined, undefined, "Open statements.");
+    const runId = f.proxy.activeRunId!;
+    const statements = await readStepRecord(home, runId, "command-1");
+    const statementsArchive = statements.page?.after && "mhtml" in statements.page.after ? statements.page.after.mhtml : undefined;
+    assert.equal(statementsArchive, "steps/command-1.after.mhtml.gz");
+    assert.equal(gunzipSync(await readFile(path.join(home, "runs", runId, statementsArchive!))).toString("utf8"), "MHTML http://127.0.0.1/#/statements");
+
+    f.page.url = "http://127.0.0.1/#/upload";
+    await f.proxy.execute("snapshot", [], undefined, false, undefined, {}, runId);
+    const upload = await readStepRecord(home, runId, "command-2");
+    const uploadArchive = upload.page?.before && "mhtml" in upload.page.before ? upload.page.before.mhtml : undefined;
+    assert.equal(uploadArchive, "steps/command-2.before.mhtml.gz", "a different fragment is a different page");
+    assert.equal(gunzipSync(await readFile(path.join(home, "runs", runId, uploadArchive!))).toString("utf8"), "MHTML http://127.0.0.1/#/upload");
+
+    await f.proxy.execute("snapshot", [], undefined, false, undefined, {}, runId);
+    const again = await readStepRecord(home, runId, "command-3");
+    assert.ok(again.page?.before && !("mhtml" in again.page.before), "the same URL, fragment included, is not archived again");
+
+    f.page.url = "http://127.0.0.1/";
+    await f.proxy.execute("snapshot", [], undefined, false, undefined, {}, runId);
+    const bare = await readStepRecord(home, runId, "command-4");
+    assert.equal(bare.page?.before && "mhtml" in bare.page.before ? bare.page.before.mhtml : undefined, "steps/command-4.before.mhtml.gz", "the URL without that fragment is a different page");
+  } finally {
+    await f.close();
+  }
+});
+
 test("a page read that fails is kept as an error and the command still runs", async (t) => {
   const f = await fixture(t);
   try {

@@ -109,7 +109,7 @@ export class AgentBrowserRun {
   private pages = new Map<string, { before?: PageStateEntry; after?: PageStateEntry }>();
   /** Role and name for the element a step named, read from the snapshot current when the step began. */
   private targets = new Map<string, Omit<StepTarget, "box">>();
-  /** Pages that already have an MHTML archive, keyed by URL without its fragment. */
+  /** Pages that already have an MHTML archive, keyed by the captured URL, fragment included. */
   private archived = new Set<string>();
   private pageLogs = new Map<string, StepPageLog>();
 
@@ -161,7 +161,7 @@ export class AgentBrowserRun {
       ...(storedWhy ? { why: storedWhy } : {}),
     };
     this.run.steps.push(step);
-    const ref = command === "click" || command === "fill" ? args[0] : command === "upload" || command === "download" ? fileOperands(args).selector : undefined;
+    const ref = command === "click" || command === "fill" || command === "upload" || command === "download" ? fileOperands(args).selector : undefined;
     if (ref) this.targets.set(step.id, { ref, ...refIdentity(ref, this.lastSnapshot || latestSnapshot(this.run.steps)) });
     this.persist();
     return step;
@@ -169,7 +169,7 @@ export class AgentBrowserRun {
 
   /** True when no earlier read of this page kept an MHTML archive. */
   needsArchive(url: string): boolean {
-    return !this.archived.has(pageKey(url));
+    return !this.archived.has(url);
   }
 
   /** Writes one page read beside the step record and rewrites that record to name it. A write failure is kept as the read's error. */
@@ -181,7 +181,7 @@ export class AgentBrowserRun {
       entry = { error: `page state write failed: ${errorText(error)}`, ms: capture.ms };
       this.warn("page state");
     }
-    if ("state" in capture && "mhtml" in entry && entry.mhtml) this.archived.add(pageKey(capture.state.url));
+    if ("state" in capture && "mhtml" in entry && entry.mhtml) this.archived.add(capture.state.url);
     this.pages.set(step.id, { ...this.pages.get(step.id), [phase]: entry });
     await this.saveStep(step);
   }
