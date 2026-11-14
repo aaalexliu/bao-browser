@@ -48,7 +48,7 @@ export interface StepPageLog {
   errors: unknown;
 }
 
-/** One native call at step end: read each buffer, then clear it so the next step reads only its own. */
+/** One native `batch --json`: `console`, `console --clear`, `errors`, `errors --clear`. The stored values are the two reads. Pinned 0.41.0 ignores `errors --clear`. */
 export const PAGE_LOG_BATCH = ["--json", "console", "console --clear", "errors", "errors --clear"];
 
 export function parsePageLog(stdout: string): StepPageLog {
