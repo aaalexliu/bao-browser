@@ -20,9 +20,10 @@ or `web/node_modules` is missing. That command installs both trees. Never
 reinstall dependencies that already exist. `npm ci --ignore-scripts` skips
 the web install.
 Use the Node version in `.nvmrc`. Run `.agents/verify` before review: it runs
-the required static gates and every group in `test/essential.json`, then checks
-the diff against `origin/main` for whitespace errors. It does not run the full
-suite. [Testing](docs/TESTING.md) describes safe browser and Library isolation.
+the same static gates as Guardrails' required `static` jobs (types, lint,
+architecture), then checks the diff against `origin/main` for whitespace
+errors. It takes about 30 seconds. The `test/essential.json` groups and the
+full suite run in CI. [Testing](docs/TESTING.md) describes safe browser and Library isolation.
 Use focused test files while working and the PR `full-suite` label for the
 full run.
 
