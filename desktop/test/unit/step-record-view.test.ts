@@ -190,10 +190,11 @@ test("the receipt shows why, a run.har download, and a step section only where a
   const html = runReceipt(view, "Statements", run, undefined, { index: await runRecordIndex(home, RUN), open: new Set(["command-2"]) });
   assert.match(html, new RegExp(`<a href="/api/runs/${RUN}/run.har" download="${RUN}.har">Download run.har</a>`));
   assert.match(html, /<strong>Why:<\/strong> Load the October statement\./);
+  assert.equal(html.match(/Not recorded: cookies, request initiators, redirect targets, and uploaded file paths and SHA-256 in the HAR; the accessibility tree before a step; a stable selector or frame for a step's target\./g)?.length, 1);
   assert.match(html, /<details class="receipt-record" data-record-step="command-1">/);
   assert.match(html, /<details class="receipt-record" data-record-step="command-2" open>/);
   assert.doesNotMatch(html, /data-record-step="command-3"/);
-  assert.doesNotMatch(runReceipt(view, "Statements", run), /run\.har|data-record-step/);
+  assert.doesNotMatch(runReceipt(view, "Statements", run), /run\.har|data-record-step|Not recorded/);
 });
 
 test("a step section lists real work first, files the rest behind counts, and links the raw files", async (t) => {
@@ -206,10 +207,7 @@ test("a step section lists real work first, files the rest behind counts, and li
   for (const name of ["network.har", "before.dom.json", "after.dom.json", "after.ax.json", "after.mhtml"]) {
     assert.match(html, new RegExp(`href="/api/runs/${RUN}/steps/command-2/${name.replace(".", "\\.")}" download=`));
   }
-  assert.doesNotMatch(html, /before\.ax\.json|before\.mhtml/);
-  assert.match(html, /No accessibility tree: Bao reads it after a step only\./);
-  assert.match(html, /Not recorded in agent-browser's HAR: cookies, request initiators, redirect targets, and the path and SHA-256 of uploaded files\./);
-  assert.match(html, /No stable selector or frame is recorded\./);
+  assert.doesNotMatch(html, /before\.ax\.json|before\.mhtml|Not recorded/);
   assert.match(html, /Waited 300 ms for click to finish\. Bao read the page in 4 ms before and 9 ms after, outside that wait\./);
   assert.match(html, /<summary>Links \(3\)<\/summary>/);
   assert.match(html, /password = Hidden/);

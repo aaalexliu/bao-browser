@@ -53,8 +53,7 @@ function networkHtml(runId: string, view: StepRecordView): string {
     ${collapsed("More requests that did real work", more)}
     ${collapsed("Static files", network.static.map(requestRow))}
     ${collapsed("Analytics", network.analytics.map(requestRow))}
-    ${network.total ? `<p class="record-links">${fileLink(runId, view.id, "network.har", "Download this step's HAR")}</p>
-    <p class="record-quiet">Not recorded in agent-browser's HAR: cookies, request initiators, redirect targets, and the path and SHA-256 of uploaded files.</p>` : ""}</section>`;
+    ${network.total ? `<p class="record-links">${fileLink(runId, view.id, "network.har", "Download this step's HAR")}</p>` : ""}</section>`;
 }
 
 function pageRow(runId: string, stepId: string, phase: Phase, facts: PageFacts): string {
@@ -66,17 +65,14 @@ function pageRow(runId: string, stepId: string, phase: Phase, facts: PageFacts):
     facts.axNodes === undefined ? "" : fileLink(runId, stepId, `${phase}.ax.json`, `Accessibility tree (${plural(facts.axNodes, "node")})`),
     facts.mhtml ? fileLink(runId, stepId, `${phase}.mhtml`, "MHTML archive") : "",
   ].filter(Boolean).join(" · ");
-  const notes = [
-    facts.axNodes === undefined ? "No accessibility tree: Bao reads it after a step only." : "",
-    facts.mhtmlError ? `The MHTML archive failed: ${facts.mhtmlError}` : "",
-  ].filter(Boolean).map((note) => `<span class="record-facts">${esc(note)}</span>`).join("");
+  const notes = facts.mhtmlError ? `<span class="record-facts">${esc(`The MHTML archive failed: ${facts.mhtmlError}`)}</span>` : "";
   return `<div class="record-row"><span class="record-key">${word}</span><span class="record-value">${esc(facts.title || "Untitled page")}<span class="record-facts">${esc(facts.url)}</span><span class="record-facts">${esc(where)}</span><span class="record-links">${links}</span>${notes}</span></div>`;
 }
 
 function pageHtml(runId: string, view: StepRecordView): string {
   const rows = (["before", "after"] as const).flatMap((phase) => view.pages[phase] ? [pageRow(runId, view.id, phase, view.pages[phase]!)] : []);
   const target = view.target
-    ? `<p>Acted on ${esc([view.target.ref, view.target.role, view.target.name ? `"${view.target.name}"` : ""].filter(Boolean).join(" "))}${view.target.box ? `, box ${esc(`${Math.round(view.target.box.x)}, ${Math.round(view.target.box.y)}, ${Math.round(view.target.box.width)} × ${Math.round(view.target.box.height)}`)}` : ""}. <span class="record-quiet">No stable selector or frame is recorded.</span></p>`
+    ? `<p>Acted on ${esc([view.target.ref, view.target.role, view.target.name ? `"${view.target.name}"` : ""].filter(Boolean).join(" "))}${view.target.box ? `, box ${esc(`${Math.round(view.target.box.x)}, ${Math.round(view.target.box.y)}, ${Math.round(view.target.box.width)} × ${Math.round(view.target.box.height)}`)}` : ""}.</p>`
     : "";
   return `<section class="record-part" aria-label="Page"><h4>Page</h4>${target}${rows.length ? `<div class="record-rows">${rows.join("")}</div>` : `<p>Bao did not read the page for this step.</p>`}</section>`;
 }

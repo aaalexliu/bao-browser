@@ -2213,9 +2213,15 @@ function byteSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+/** The run.har download, and one note on what the step records cannot hold, so no step repeats it. */
 function receiptHar(runId: string, record: ReceiptRecord | undefined): string {
-  if (record?.index.harBytes === undefined) return "";
-  return `<p class="receipt-har"><a href="/api/runs/${esc(encodeURIComponent(runId))}/run.har" download="${esc(runId)}.har">Download run.har</a> <span class="record-quiet">${esc(byteSize(record.index.harBytes))}. Every request of the run. To open it in Chrome, open DevTools, choose Network, and drop the file there.</span></p>`;
+  if (!record) return "";
+  const har = record.index.harBytes === undefined ? ""
+    : `<p><a href="/api/runs/${esc(encodeURIComponent(runId))}/run.har" download="${esc(runId)}.har">Download run.har</a> <span class="record-quiet">${esc(byteSize(record.index.harBytes))}. Every request of the run. To open it in Chrome, open DevTools, choose Network, and drop the file there.</span></p>`;
+  const limits = record.index.steps.length
+    ? `<p class="record-quiet">Not recorded: cookies, request initiators, redirect targets, and uploaded file paths and SHA-256 in the HAR; the accessibility tree before a step; a stable selector or frame for a step's target.</p>`
+    : "";
+  return har || limits ? `<div class="receipt-har">${har}${limits}</div>` : "";
 }
 
 function receiptStepRecord(stepId: string | undefined, record: ReceiptRecord | undefined): string {
