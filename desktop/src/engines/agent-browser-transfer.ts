@@ -136,11 +136,29 @@ async function savePdf(cdp: CdpSocket, targetId: string, file: string): Promise<
  * `window.open` is recorded and not called, so a handler popup does not open a tab. `TAKE_CLICK` restores both.
  */
 const ARM_CLICK = `(() => {
+  const policies = ["no-referrer", "no-referrer-when-downgrade", "origin", "origin-when-cross-origin", "same-origin", "strict-origin", "strict-origin-when-cross-origin", "unsafe-url"];
+  const known = (value) => {
+    const policy = String(value || "").trim().toLowerCase();
+    return policies.includes(policy) ? policy : "";
+  };
+  const pagePolicy = () => {
+    const meta = document.querySelector('meta[name="referrer" i]');
+    return known(meta && meta.getAttribute("content")) || "strict-origin-when-cross-origin";
+  };
+  const policyOf = (node) => {
+    const rel = String(node.getAttribute("rel") || "").toLowerCase().split(/\s+/);
+    if (rel.includes("noreferrer")) return "no-referrer";
+    return known(node.getAttribute("referrerpolicy")) || pagePolicy();
+  };
   window.__baoPriorOpen = window.open;
-  window.open = function(url) {
+  window.open = function(url, _name, features) {
     let resolved;
     try { resolved = new URL(String(url == null ? "" : url), document.baseURI); } catch { resolved = undefined; }
-    if (resolved && (resolved.protocol === "http:" || resolved.protocol === "https:")) window.__baoOpened = resolved.href;
+    if (resolved && (resolved.protocol === "http:" || resolved.protocol === "https:")) {
+      window.__baoOpened = resolved.href;
+      const asked = String(features || "").toLowerCase().split(/[\s,]+/).some((token) => token === "noreferrer" || token.startsWith("noreferrer="));
+      window.__baoOpenPolicy = asked ? "no-referrer" : pagePolicy();
+    }
     return null;
   };
   const finish = (event) => {
@@ -161,6 +179,7 @@ const ARM_CLICK = `(() => {
     event.preventDefault();
     window.__baoDownloadHref = url.href;
     window.__baoDownloadNamed = link.hasAttribute("download") && url.origin === location.origin;
+    window.__baoHrefPolicy = policyOf(link);
   };
   const onSubmit = (event) => {
     if (event.defaultPrevented) return;
@@ -175,7 +194,10 @@ const ARM_CLICK = `(() => {
     try {
       const action = new URL(submitter && submitter.hasAttribute("formaction") ? submitter.formAction : form.action);
       action.search = new URLSearchParams(submitter ? new FormData(form, submitter) : new FormData(form)).toString();
-      if (action.protocol === "http:" || action.protocol === "https:") window.__baoDownloadHref = action.href;
+      if (action.protocol === "http:" || action.protocol === "https:") {
+        window.__baoDownloadHref = action.href;
+        window.__baoHrefPolicy = policyOf(form);
+      }
     } catch { return; }
   };
   window.__baoDownloadClick = finish;
@@ -193,21 +215,25 @@ const TAKE_CLICK = `(() => {
   const href = typeof window.__baoDownloadHref === "string" ? window.__baoDownloadHref : "";
   const opened = typeof window.__baoOpened === "string" ? window.__baoOpened : "";
   const download = window.__baoDownloadNamed === true;
+  const policy = opened ? window.__baoOpenPolicy : window.__baoHrefPolicy;
   delete window.__baoDownloadHref;
   delete window.__baoOpened;
   delete window.__baoDownloadNamed;
   delete window.__baoDownloadClick;
   delete window.__baoDownloadSubmit;
   delete window.__baoPriorOpen;
-  return { href: href, opened: opened, download: download };
+  delete window.__baoOpenPolicy;
+  delete window.__baoHrefPolicy;
+  return { href: href, opened: opened, download: download, policy: typeof policy === "string" ? policy : "" };
 })()`;
 
-function capturedClick(value: unknown): { url: string; download: boolean } {
-  if (!value || typeof value !== "object") return { url: "", download: false };
-  const record = value as { href?: unknown; opened?: unknown; download?: unknown };
+function capturedClick(value: unknown): { url: string; download: boolean; policy: string } {
+  if (!value || typeof value !== "object") return { url: "", download: false, policy: "strict-origin-when-cross-origin" };
+  const record = value as { href?: unknown; opened?: unknown; download?: unknown; policy?: unknown };
   const opened = typeof record.opened === "string" ? record.opened : "";
   const href = typeof record.href === "string" ? record.href : "";
-  return { url: opened || href, download: !opened && record.download === true };
+  const policy = typeof record.policy === "string" && record.policy ? record.policy : "strict-origin-when-cross-origin";
+  return { url: opened || href, download: !opened && record.download === true, policy };
 }
 
 async function closeOpened(cdp: CdpSocket, agentTab: string, before: { targets: ReadonlySet<string> }): Promise<void> {
@@ -221,8 +247,19 @@ async function contextOf(cdp: CdpSocket, targetId: string): Promise<string | und
   return typeof id === "string" && id ? id : undefined;
 }
 
+const NAVIGATE_POLICY: Record<string, string> = {
+  "no-referrer": "noReferrer",
+  "no-referrer-when-downgrade": "noReferrerWhenDowngrade",
+  origin: "origin",
+  "origin-when-cross-origin": "originWhenCrossOrigin",
+  "same-origin": "sameOrigin",
+  "strict-origin": "strictOrigin",
+  "strict-origin-when-cross-origin": "strictOriginWhenCrossOrigin",
+  "unsafe-url": "unsafeUrl",
+};
+
 /** Opens `url` in `browserContextId` only after that context is confirmed. A blank tab is not a navigation. */
-async function openBackground(cdp: CdpSocket, url: string, browserContextId: string): Promise<string | undefined> {
+async function openBackground(cdp: CdpSocket, url: string, browserContextId: string, referrer: { url: string; policy: string }): Promise<string | undefined> {
   let targetId: string;
   try {
     targetId = (await cdp.send<{ targetId: string }>("Target.createTarget", { url: "about:blank", background: true, browserContextId }, undefined, 5000)).targetId;
@@ -237,7 +274,12 @@ async function openBackground(cdp: CdpSocket, url: string, browserContextId: str
     }
     const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true }, undefined, 5000);
     try {
-      const navigated = await cdp.send<{ errorText?: string; isDownload?: boolean }>("Page.navigate", { url }, sessionId, 10_000);
+      const none = referrer.policy === "no-referrer";
+      const navigated = await cdp.send<{ errorText?: string; isDownload?: boolean }>("Page.navigate", {
+        url,
+        referrer: none ? "" : referrer.url,
+        referrerPolicy: none ? "noReferrer" : NAVIGATE_POLICY[referrer.policy] ?? "strictOriginWhenCrossOrigin",
+      }, sessionId, 10_000);
       if (navigated.errorText && navigated.isDownload !== true) {
         await close();
         return undefined;
@@ -333,12 +375,14 @@ export async function downloadByClick(cdp: CdpSocket, agentTab: string, saved: s
     let clicked: AgentBrowserCommandResult;
     let href = "";
     let named = false;
+    let policy = "strict-origin-when-cross-origin";
     try {
       clicked = await click();
     } finally {
       const captured = capturedClick(await inPage(cdp, agentTab, TAKE_CLICK).catch(() => undefined));
       href = captured.url;
       named = captured.download;
+      policy = captured.policy;
     }
     if (clicked.exitCode !== 0) return { result: clicked };
     if (href && !started) {
@@ -359,7 +403,7 @@ export async function downloadByClick(cdp: CdpSocket, agentTab: string, saved: s
       if (!started && !cross && fetched?.kind === "http") return { result: failed(`Bao could not fetch the link (${href}).`) };
       if (!started && !contextId) return { result: failed(`Bao could not open the link in this tab's Chrome profile (${href}).`) };
       if (!started && contextId) {
-        const background = await openBackground(cdp, href, contextId);
+        const background = await openBackground(cdp, href, contextId, { url: before.url, policy });
         if (!background) return { result: failed(`Bao could not open the link in this tab's Chrome profile (${href}).`) };
         try {
           const outcome = await saveBackground(cdp, background, saved, href, () => ({ guid: started, url }), states);

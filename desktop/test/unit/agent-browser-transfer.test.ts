@@ -137,6 +137,7 @@ test("a download saves the handler's file, captures window.open, and falls back 
 <a id=popup href=/gate target=_blank>Popup</a>
 <a id=cross target=_blank>Cross</a>
 <a id=attach target=_blank>Attach</a>
+<a id=referer target=_blank>Referer</a>
 <form id=ask method=get target=_blank action="/statement?month=2026-01">
 <input name=month value=2026-10>
 <input name=skipped value=2026-01 disabled>
@@ -174,7 +175,19 @@ halt.addEventListener("submit", (event) => event.preventDefault());
     response.setHeader("content-type", "text/html");
     response.end(request.url === "/files" ? page : "<!doctype html><title>Owner</title>");
   });
+  let sourceOrigin = "";
   const cross = createServer((request, response) => {
+    if (request.url === "/need-referer.bin") {
+      const referer = typeof request.headers.referer === "string" ? request.headers.referer : "";
+      if (referer !== `${sourceOrigin}/`) {
+        response.writeHead(403, { "content-type": "text/plain" });
+        response.end("missing referer");
+        return;
+      }
+      response.writeHead(200, { "content-type": "application/octet-stream", "content-disposition": "attachment; filename=\"need-referer.bin\"" });
+      response.end(`referer=${referer}`);
+      return;
+    }
     if (request.url === "/statement.pdf") {
       response.setHeader("content-type", "application/pdf");
       response.end(`who=${request.headers.cookie ?? ""}`);
@@ -213,6 +226,7 @@ halt.addEventListener("submit", (event) => event.preventDefault());
     response.end("<!doctype html><title>Sign in</title>");
   });
   const base = await listen(site);
+  sourceOrigin = new URL(base).origin;
   const crossBase = await listen(cross);
   const laxListen = await listen(laxSite);
   const laxUrl = `http://localhost:${new URL(laxListen).port}/statement.pdf`;
@@ -248,6 +262,7 @@ halt.addEventListener("submit", (event) => event.preventDefault());
       while (await evaluate(cdp, tab, "document.readyState") !== "complete") await new Promise((resolve) => setTimeout(resolve, 20));
       await evaluate(cdp, tab, `document.querySelector("#cross").href = ${JSON.stringify(`${crossBase}/statement.pdf`)};
         document.querySelector("#attach").href = ${JSON.stringify(`${crossBase}/statement.bin`)};
+        document.querySelector("#referer").href = ${JSON.stringify(`${crossBase}/need-referer.bin`)};
         document.querySelector("#foreign").href = ${JSON.stringify(`${crossBase}/foreign.html`)};
         document.querySelector("#lax").href = ${JSON.stringify(laxUrl)};`);
     }
@@ -356,6 +371,11 @@ halt.addEventListener("submit", (event) => event.preventDefault());
     assert.doesNotMatch(attached.text, /personal/);
     assert.match(attached.outcome.result.stdout, /background tab/);
     assert.deepEqual([...new Set(attached.contexts)], [work], "an attachment download stays in the agent tab's browser context");
+
+    const referred = await save(workTab, "#referer", "referer.bin");
+    assert.equal(referred.text, `referer=${sourceOrigin}/`);
+    assert.match(referred.outcome.result.stdout, /background tab/);
+    assert.deepEqual([...new Set(referred.contexts)], [work], "a referrer-protected attachment stays in the agent tab's browser context");
 
     const laxFile = await save(workTab, "#lax", "lax.pdf");
     assert.equal(laxFile.text, OCTOBER);
