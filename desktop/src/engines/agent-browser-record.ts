@@ -15,6 +15,7 @@ import type { BrowserPick } from "./browser-pick";
 import type { SignInImport } from "./bao-profile";
 import { startCdpVideo, type CdpVideo } from "./cdp-video";
 import { HOST_STOP_VIDEO_UNAVAILABLE } from "./video-handoff";
+import { assignEntries, parseHar, stepWait, stepWhy, writeRunHar, writeStepRecord, type HarEntry, type HarLog, type StepNetworkRecord } from "./step-har";
 
 const hostStopRuns = new Set<AgentBrowserRun>();
 
@@ -61,6 +62,8 @@ export interface RecordedAgentBrowserCommand {
   summary?: StepSummary;
   /** The files an upload or download moved: full paths, sizes, SHA-256, and how Bao moved them. */
   transfer?: FileTransfer;
+  /** The agent's optional sentence on why this step, at most 500 characters. */
+  why?: string;
   native: {
     command: string;
     args: string[];
@@ -99,6 +102,8 @@ export class AgentBrowserRun {
   } | undefined;
   private encoding: { capture: CdpVideo; startedAt: number } | undefined;
   private videoAbandoned = false;
+  private harParts: { raw: Buffer; har: HarLog }[] = [];
+  private network = new Map<string, HarEntry[]>();
 
   constructor(private readonly home: string) {
     this.shots = path.join(home, "shots", "runs", this.run.id);
@@ -136,14 +141,16 @@ export class AgentBrowserRun {
     this.persist();
   }
 
-  begin(command: string, args: string[]): RecordedAgentBrowserCommand {
+  begin(command: string, args: string[], why?: unknown): RecordedAgentBrowserCommand {
     const spoken = commandSentence(command, args, this.lastSnapshot || latestSnapshot(this.run.steps));
     const caption: StepCaption = { text: spoken.text, ...(spoken.citation ? { citation: spoken.citation } : {}) };
+    const storedWhy = stepWhy(why);
     const step: RecordedAgentBrowserCommand = {
       id: `command-${this.run.steps.length + 1}`,
       label: stepTitle({ caption }),
       caption,
       status: "pending", startedAt: Date.now(), native: { command, args: [...args], results: [], isError: false, screenshots: [] },
+      ...(storedWhy ? { why: storedWhy } : {}),
     };
     this.run.steps.push(step);
     this.persist();
@@ -188,6 +195,7 @@ export class AgentBrowserRun {
       }
     }
     this.persist();
+    await this.saveStep(step);
     // The session already ended. A picture error would sit next to the closed result and hide the cause.
     if (ownerReply(results)?.instruction === TASK_TAB_CLOSED) return;
     if (step.native.command === "screenshot") {
@@ -427,9 +435,55 @@ export class AgentBrowserRun {
     catch { this.warn("run write"); }
   }
 
+  /** Reads one agent-browser HAR and assigns its entries onto the steps. One file is copied as bytes. A later file is concatenated. */
+  async adoptHar(file: string): Promise<void> {
+    try {
+      const raw = await readFile(file);
+      const log = parseHar(raw);
+      this.harParts.push({ raw, har: log });
+      this.network = assignEntries(this.harParts.flatMap((part) => part.har.log.entries), this.run.steps.map((step) => ({ id: step.id, startedAt: step.startedAt })));
+      await writeRunHar(this.home, this.id, this.harParts);
+      for (const step of this.run.steps) if (step.endedAt) await this.saveStep(step);
+    } catch {
+      this.warn("step record HAR");
+    }
+  }
+
+  private async saveStep(step: RecordedAgentBrowserCommand): Promise<void> {
+    try {
+      await writeStepRecord(this.home, this.id, stepNetworkRecord(step, this.network.get(step.id) ?? []));
+    } catch {
+      this.warn("step record");
+    }
+  }
+
   private warn(operation: string): void {
     process.stderr.write(`Bao recording unavailable: ${operation}. Command forwarding continues.\n`);
   }
+}
+
+function stepNetworkRecord(step: RecordedAgentBrowserCommand, entries: HarEntry[]): StepNetworkRecord {
+  const error = step.native.error ?? failedOutput(step);
+  return {
+    schema: "bao.step-record/v1",
+    id: step.id,
+    command: step.native.command,
+    args: step.native.args,
+    ...(step.why ? { why: step.why } : {}),
+    status: step.status,
+    ...(error ? { error } : {}),
+    startedAt: new Date(step.startedAt).toISOString(),
+    ...(step.endedAt ? { endedAt: new Date(step.endedAt).toISOString() } : {}),
+    waits: step.endedAt ? [stepWait(step.native.command, step.native.args, step.startedAt, step.endedAt)] : [],
+    network: { entries },
+  };
+}
+
+function failedOutput(step: RecordedAgentBrowserCommand): string | undefined {
+  if (step.status !== "failed") return undefined;
+  const result = step.native.results.find((item) => item.exitCode !== 0);
+  const text = (result?.stderr || result?.stdout || "").replace(/\s+/g, " ").trim();
+  return text || step.reason;
 }
 
 function pageShotError(error: unknown): string {

@@ -1,5 +1,7 @@
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { createSocketSession } from "../unix-socket";
 import path from "node:path";
 import { readDevToolsActivePort } from "../cdp-live/endpoint";
@@ -157,6 +159,8 @@ interface SessionData {
   /** The latest native snapshot output for each args list, the baseline of a snapshot diff. */
   snapshots: Map<string, string>;
   daemonStarted?: boolean;
+  /** stateDir whose daemon is recording HAR, or `failed:<stateDir>` after one failed start. */
+  harArmed?: string;
 }
 
 interface ParsedTab { action: "list" | "new" | "close" | "switch"; ref?: string; json: boolean; flags: string[]; forwarded: string[] }
@@ -654,7 +658,7 @@ export class AgentBrowserProxy {
    * with the same args; the run still records the full native output.
    */
   async execute(command: unknown, args: unknown = [], browser?: unknown, visual = false, profile?: unknown,
-    snapshot: { find?: unknown; diff?: unknown } = {}, runId?: unknown, profileReason?: unknown): Promise<AgentBrowserCommandResult[]> {
+    snapshot: { find?: unknown; diff?: unknown } = {}, runId?: unknown, profileReason?: unknown, why?: unknown): Promise<AgentBrowserCommandResult[]> {
     this.endedLine = undefined;
     this.refusal = undefined;
     this.latest = undefined;
@@ -771,7 +775,7 @@ export class AgentBrowserProxy {
     const plan = continuing ? undefined : await this.plan(browser as AgentBrowser | undefined, named, webSite(args[0]));
     const recording = this.session?.recording ?? new AgentBrowserRun(this.options.home);
     if (!continuing && named) recording.noteProfileChoice(named, statedReason);
-    let step = continuing ? undefined : recording.begin(command as string, args);
+    let step = continuing ? undefined : recording.begin(command as string, args, why);
     if (step) this.latest = { runId: recording.id, step, steps: recording.steps };
     if (!this.session) {
       try {
@@ -862,7 +866,7 @@ export class AgentBrowserProxy {
           }
           if (!active) {
             const discovered = session.abort.signal.aborted || absent ? this.ownerClosed(session) : await this.waitForOwner(session, deadline);
-            step = recording.begin(command as string, args);
+            step = recording.begin(command as string, args, why);
             this.latest = { runId: recording.id, step, steps: recording.steps };
             results.push(...discovered);
             if (ownerReply(results)?.instruction === TASK_TAB_CLOSED) failure = new Error("Bao's task tab was closed");
@@ -873,7 +877,7 @@ export class AgentBrowserProxy {
           session.ownerPage = active.page;
           const opened = await this.settleWall(session, { retry: true, what: this.wallWords(session), url: this.reopenOf(session) });
           const moved = this.moved?.site;
-          step = recording.begin(moved ? "open" : command as string, moved ? [moved] : args);
+          step = recording.begin(moved ? "open" : command as string, moved ? [moved] : args, moved ? undefined : why);
           this.latest = { runId: recording.id, step, steps: recording.steps };
           if (opened) {
             results.push(...this.waitOf(session) !== "off" ? this.ownerResult("halted", session) : [opened]);
@@ -883,7 +887,7 @@ export class AgentBrowserProxy {
           if (ownerReply(results)?.instruction === TASK_TAB_CLOSED) failure = new Error("Bao's task tab was closed");
           return results;
         }
-        step ??= recording.begin(command as string, args);
+        step ??= recording.begin(command as string, args, why);
         this.latest = { runId: recording.id, step, steps: recording.steps };
         results.push(...await this.waitForOwner(session, page ? Math.max(deadline, Date.now() + Math.min(timeout, 5000)) : deadline));
         if (ownerReply(results)?.instruction === TASK_TAB_CLOSED) failure = new Error("Bao's task tab was closed");
@@ -903,7 +907,7 @@ export class AgentBrowserProxy {
           return results;
         }
       }
-      step ??= recording.begin(command as string, nativeArgs);
+      step ??= recording.begin(command as string, nativeArgs, why);
       this.latest = { runId: recording.id, step, steps: recording.steps };
       if (command === "open") {
         const site = webSite(args[0]);
@@ -977,7 +981,7 @@ export class AgentBrowserProxy {
       if (error instanceof TaskTabClosed) {
         const agentClosedTab = command === "tab" && parseTabArgs(args).action === "close" && results.some((result) => result.exitCode === 0);
         results.splice(0, results.length, ...await this.endTaskTab(session));
-        step ??= recording.begin(command as string, nativeArgs);
+        step ??= recording.begin(command as string, nativeArgs, why);
         this.latest = { runId: recording.id, step, steps: recording.steps };
         if (!agentClosedTab) failure = new Error("Bao's task tab was closed");
         return results;
@@ -1372,6 +1376,8 @@ export class AgentBrowserProxy {
       opened = await this.runNative(moving, "open", [site]);
       if (opened.exitCode !== 0) throw new Error(`the open in Bao's task tab failed: ${opened.stderr || opened.stdout || `exit ${opened.exitCode}`}`);
     } catch (error) {
+      try { if (moving) await this.flushHar(moving); }
+      catch (flushError) { process.stderr.write(`Bao step record: network har stop failed: ${flushError instanceof Error ? flushError.message : String(flushError)}\n`); }
       try { if (wired) await this.stopDaemon(wired.stateDir); }
       finally {
         if (wired) await rm(wired.stateDir, { recursive: true, force: true });
@@ -1379,6 +1385,7 @@ export class AgentBrowserProxy {
       }
       return fail(error);
     }
+    await this.flushHar(session);
     const old = { chrome: session.chrome, background: session.background, stateDir: session.stateDir };
     const waiting = this.waitOf(session) !== "off";
     Object.assign(session, moving, { browser: openedChoice(next.pick), missed: undefined, page: undefined });
@@ -2067,28 +2074,18 @@ export class AgentBrowserProxy {
 
   private async run(session: Session, command: string, args: string[], readTimeoutMs?: number, bound?: AbortSignal): Promise<AgentBrowserCommandResult> {
     if (this.gone()) throw new Error(AGENT_DISCONNECTED);
+    if (command !== "network" || args[0] !== "har") await this.ensureHar(session);
     // The session's first call starts the native daemon, which takes seconds on a copy that restores many tabs. Only the session's end bounds it.
     if (!session.daemonStarted) {
       readTimeoutMs = undefined;
       bound = undefined;
     }
     session.daemonStarted = true;
-    const execute = (command: string, args: string[], timeoutMs?: number, ceiling?: AbortSignal) => new Promise<AgentBrowserCommandResult>((resolve, reject) => {
-      const childSignal = ceiling
-        ? AbortSignal.any([session.abort.signal, ceiling])
-        : timeoutMs === undefined ? session.abort.signal : AbortSignal.any([session.abort.signal, AbortSignal.timeout(timeoutMs)]);
-      execFile(session.executable, [...session.flags, command, ...args], {
-        cwd: session.stateDir, env: session.env, encoding: "utf8", maxBuffer: 16 * 1024 * 1024, signal: childSignal,
-      }, (error, stdout, stderr) => {
-        if (error && typeof error.code !== "number") { reject(error); return; }
-        resolve({ stdout, stderr, exitCode: typeof error?.code === "number" ? error.code : 0 });
-      });
-    });
-    const result = await execute(command, args, readTimeoutMs, bound);
+    const result = await this.execFile(session, command, args, readTimeoutMs, bound);
     if (session.kind === "current" && !session.relay && canOpenTab(command, args)) session.ended = await this.targetIds(session);
     if (session.kind === "current" && !session.relay && opensTab(command, args) && result.exitCode === 0) {
       try {
-        const tabs = await execute("tab", ["list", "--json"], 5000);
+        const tabs = await this.execFile(session, "tab", ["list", "--json"], 5000);
         if (tabs.exitCode !== 0) throw new Error(`Native task tab list failed: ${tabs.stderr || tabs.stdout}`);
         const targetId = activeNativeTab(parseNativeTabs(tabs.stdout))?.targetId;
         if (!targetId) throw new Error("Native task tab has no target id");
@@ -2100,6 +2097,56 @@ export class AgentBrowserProxy {
       }
     }
     return result;
+  }
+
+  /** Starts HAR on this daemon once. A failure is logged and not retried, and the agent's command still runs. */
+  private async ensureHar(session: Session): Promise<void> {
+    if (session.harArmed === session.stateDir || session.harArmed === `failed:${session.stateDir}`) return;
+    const starting = !session.daemonStarted;
+    try {
+      const started = await this.execFile(session, "network", ["har", "start", "--content", "text"], starting ? undefined : 15_000);
+      session.harArmed = started.exitCode === 0 ? session.stateDir : `failed:${session.stateDir}`;
+      if (started.exitCode === 0) session.daemonStarted = true;
+      else process.stderr.write(`Bao step record: network har start failed: ${started.stderr || started.stdout}\n`);
+    } catch (error) {
+      session.harArmed = `failed:${session.stateDir}`;
+      process.stderr.write(`Bao step record: network har start failed: ${error instanceof Error ? error.message : String(error)}\n`);
+    }
+  }
+
+  /** Stops HAR and copies the tool's file onto the run. Uses its own timeout so a session abort does not cancel the export. */
+  private async flushHar(session: Session): Promise<void> {
+    if (session.harArmed !== session.stateDir) return;
+    session.harArmed = undefined;
+    const dest = path.join(tmpdir(), `bao-har-${randomUUID()}.har`);
+    try {
+      const stopped = await this.execFile(session, "network", ["har", "stop", dest], 15_000, undefined, true);
+      if (stopped.exitCode !== 0) {
+        process.stderr.write(`Bao step record: network har stop failed: ${stopped.stderr || stopped.stdout}\n`);
+        return;
+      }
+      await session.recording.adoptHar(dest);
+    } catch (error) {
+      process.stderr.write(`Bao step record: network har stop failed: ${error instanceof Error ? error.message : String(error)}\n`);
+    } finally {
+      await rm(dest, { force: true }).catch(() => undefined);
+    }
+  }
+
+  private execFile(session: Session, command: string, args: string[], timeoutMs?: number, ceiling?: AbortSignal, detached = false): Promise<AgentBrowserCommandResult> {
+    const childSignal = detached
+      ? AbortSignal.timeout(timeoutMs ?? 15_000)
+      : ceiling
+        ? AbortSignal.any([session.abort.signal, ceiling])
+        : timeoutMs === undefined ? session.abort.signal : AbortSignal.any([session.abort.signal, AbortSignal.timeout(timeoutMs)]);
+    return new Promise((resolve, reject) => {
+      execFile(session.executable, [...session.flags, command, ...args], {
+        cwd: session.stateDir, env: session.env, encoding: "utf8", maxBuffer: 16 * 1024 * 1024, signal: childSignal,
+      }, (error, stdout, stderr) => {
+        if (error && typeof error.code !== "number") { reject(error); return; }
+        resolve({ stdout, stderr, exitCode: typeof error?.code === "number" ? error.code : 0 });
+      });
+    });
   }
 
   private waitEndedLine(session: Session, why: string): string {
@@ -2247,6 +2294,7 @@ export class AgentBrowserProxy {
     await this.disarmReloadBanner();
     session.abort.abort();
     await session.commandDone;
+    await this.flushHar(session);
     await session.recording.endVideoCapture();
     session.recording.finish(session.outcome);
     if (this.waitOf(session) !== "off") session.workflow.unavailable("the owner wait did not finish");

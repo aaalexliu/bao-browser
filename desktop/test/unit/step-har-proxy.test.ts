@@ -1,0 +1,126 @@
+import assert from "node:assert/strict";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { Socket } from "node:net";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import test, { type TestContext } from "node:test";
+import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
+import * as profiles from "../../src/engines/chrome-profile-copy";
+import * as sockets from "../../src/cdp-live/socket";
+import { readStepRecord, runHarPath } from "../../src/engines/step-har";
+
+const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aL1sAAAAASUVORK5CYII=", "base64");
+const har = Buffer.from(JSON.stringify({
+  log: {
+    version: "1.2",
+    creator: { name: "agent-browser", version: "0.41.0" },
+    entries: [{ startedDateTime: "2099-01-01T00:00:00.000Z", request: { method: "GET", url: "http://127.0.0.1/api/statement" }, response: { status: 200, content: { mimeType: "application/json", text: "{\"ok\":true}" } } }],
+  },
+}));
+
+function commandOf(args: string[]): string {
+  return args[args.indexOf("--idle-timeout") + 2] ?? "";
+}
+
+async function fixture(t: TestContext) {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-step-har-proxy-"));
+  const sourceRoot = path.join(root, "source");
+  await mkdir(path.join(sourceRoot, "Profile 2"), { recursive: true });
+  await writeFile(path.join(sourceRoot, "Local State"), JSON.stringify({ profile: { info_cache: { "Profile 2": { name: "Synthetic" } } } }));
+  await writeFile(path.join(sourceRoot, "Profile 2", "Preferences"), "{}");
+  await writeFile(path.join(root, "recorded.har"), har);
+  t.mock.method(profiles, "openCopiedChromeForProxy", async (options: Parameters<typeof profiles.openCopiedChromeForProxy>[0]) => {
+    const copy = await profiles.copyChromeProfile(options);
+    await writeFile(path.join(copy.userDataDir, "DevToolsActivePort"), "12345\n/devtools/browser/proxy-test\n");
+    let gone = false;
+    return {
+      target: { kind: "bao" as const, portFile: path.join(copy.userDataDir, "DevToolsActivePort") },
+      closed: new Promise<void>(() => undefined), bytes: copy.bytes, copyMs: copy.copyMs,
+      close: async () => { gone = true; await copy.close(); },
+      isClosed: () => gone, keepOpen: () => copy.keepOpen(),
+    };
+  });
+  t.mock.method(sockets, "connectCdp", async () => {
+    const cdp = new sockets.CdpSocket(new Socket());
+    t.mock.method(cdp, "send", async (method: string) => method === "Target.attachToTarget" ? { sessionId: "fixture" } : method === "Target.getTargetInfo"
+      ? { targetInfo: { url: "http://127.0.0.1/", title: "Fixture" } } : { data: png.toString("base64") });
+    t.mock.method(cdp, "sendUntilProgress", (method: string, params?: Record<string, unknown>, sessionId?: string) => cdp.send(method, params ?? {}, sessionId));
+    return cdp;
+  });
+  const executable = path.join(root, "native");
+  const log = path.join(root, "calls.jsonl");
+  await writeFile(executable, `#!${process.execPath}
+const fs = require('node:fs');
+const args = process.argv.slice(2);
+fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify({ args }) + '\\n');
+const command = args[args.indexOf('--idle-timeout') + 2];
+if (command === 'network' && args.includes('start') && fs.existsSync(${JSON.stringify(path.join(root, "har-start-fail"))})) {
+  process.stderr.write('har start failed\\n');
+  process.exitCode = 1;
+} else if (command === 'network' && args.includes('stop')) {
+  fs.writeFileSync(args[args.indexOf('stop') + 1], fs.readFileSync(${JSON.stringify(path.join(root, "recorded.har"))}));
+  process.stdout.write('har stopped\\n');
+} else if (args.includes('fail')) {
+  process.stderr.write('native error\\n');
+  process.exitCode = 1;
+} else if (command === 'tab' && args.includes('--json')) {
+  process.stdout.write(JSON.stringify({ data: { tabs: [{ active: true, targetId: 'ABC123' }] } }));
+} else process.stdout.write(command + ' unchanged\\n');
+`, { mode: 0o700 });
+  const proxy = new AgentBrowserProxy({ home: path.join(root, "home"), sourceRoot, executable });
+  return {
+    root, proxy,
+    calls: async () => (await readFile(log, "utf8")).trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as { args: string[] }),
+    async close() {
+      try { await proxy.close(); } catch { /* the test already closed it */ }
+      await rm(root, { recursive: true, force: true });
+    },
+  };
+}
+
+test("a session arms HAR before open and copies the tool file on close", async (t) => {
+  const f = await fixture(t);
+  try {
+    await f.proxy.execute("open", ["http://127.0.0.1/"], "copy", false, undefined, {}, undefined, undefined, "Open the statement page.");
+    const runId = f.proxy.activeRunId!;
+    await f.proxy.execute("click", ["@e1", "fail"], undefined, false, undefined, {}, runId);
+    await f.proxy.execute("close", [], undefined, false, undefined, {}, runId);
+    const calls = await f.calls();
+    const commands = calls.map((call) => commandOf(call.args));
+    assert.ok(commands.indexOf("network") < commands.indexOf("open"));
+    assert.ok(calls.some((call) => call.args.includes("har") && call.args.includes("start") && call.args.includes("--content") && call.args.includes("text")));
+    assert.equal(calls.filter((call) => call.args.includes("har") && call.args.includes("stop")).length, 1);
+    assert.deepEqual(await readFile(runHarPath(path.join(f.root, "home"), runId)), har);
+    const open = await readStepRecord(path.join(f.root, "home"), runId, "command-1");
+    assert.equal(open.why, "Open the statement page.");
+    assert.equal(open.command, "open");
+    assert.equal(open.waits[0]?.for, "open");
+    assert.equal(typeof open.waits[0]?.ms, "number");
+    const failed = await readStepRecord(path.join(f.root, "home"), runId, "command-2");
+    assert.equal(failed.status, "failed");
+    assert.equal(failed.error, "native error");
+    const closed = await readStepRecord(path.join(f.root, "home"), runId, "command-3");
+    assert.equal(closed.network.entries.length, 1);
+    assert.equal(open.network.entries.length, 0);
+    assert.equal(failed.network.entries.length, 0);
+  } finally {
+    await f.close();
+  }
+});
+
+test("a failed HAR start still records the step and does not fail the command", async (t) => {
+  const f = await fixture(t);
+  try {
+    await writeFile(path.join(f.root, "har-start-fail"), "");
+    const opened = await f.proxy.execute("open", ["http://127.0.0.1/"], "copy", false, undefined, {}, undefined, undefined, "Still open.");
+    assert.equal(opened[0]?.exitCode, 0);
+    const runId = f.proxy.activeRunId!;
+    await f.proxy.execute("close", [], undefined, false, undefined, {}, runId);
+    const saved = await readStepRecord(path.join(f.root, "home"), runId, "command-1");
+    assert.equal(saved.why, "Still open.");
+    assert.equal(saved.network.entries.length, 0);
+    await assert.rejects(readFile(runHarPath(path.join(f.root, "home"), runId)));
+  } finally {
+    await f.close();
+  }
+});
