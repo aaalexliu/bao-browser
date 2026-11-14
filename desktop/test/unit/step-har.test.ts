@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { assignEntries, mergeHar, parseHar, readStepRecord, runHarPath, stepWait, stepWhy, writeRunHar, writeStepRecord, type HarEntry, type StepNetworkRecord } from "../../src/engines/step-har";
+import { assignEntries, mergeHar, parseHar, readStepRecord, runHarPath, stepWait, stepWhy, writeRunHar, writeStepRecord, type HarEntry, type HarLog, type StepNetworkRecord } from "../../src/engines/step-har";
 
 test("why keeps one sentence and drops a blank", () => {
   assert.equal(stepWhy("  Open the statement.  "), "Open the statement.");
@@ -45,7 +45,7 @@ test("one HAR is copied as bytes and a second is concatenated", async () => {
     assert.deepEqual(await readFile(runHarPath(home, "run-1")), first);
     const second = parseHar(Buffer.from(JSON.stringify({ log: { version: "1.2", creator: { name: "agent-browser", version: "0.41.0" }, entries: [{ url: "b" }] } })));
     await writeRunHar(home, "run-1", [{ raw: first, har: parseHar(first) }, { raw: Buffer.from("{}"), har: second }]);
-    const merged = JSON.parse((await readFile(runHarPath(home, "run-1"))).toString("utf8"));
+    const merged = JSON.parse((await readFile(runHarPath(home, "run-1"))).toString("utf8")) as HarLog;
     assert.equal(merged.log.creator.name, "agent-browser");
     assert.deepEqual(merged.log.entries.map((entry: { url: string }) => entry.url), ["a", "b"]);
     assert.deepEqual(mergeHar([parseHar(first), second]).log.entries.map((entry) => entry.url), ["a", "b"]);
