@@ -842,3 +842,115 @@ test("a stale hold error from a dead holder does not cancel a fresh start", { ti
   assert.equal(endpoint.upgrades(), 1);
   chrome.detach();
 });
+
+async function olderHoldSetup(t: TestContext, press: string, record: boolean) {
+  const scratch = await mkdtemp(path.join(tmpdir(), "bao-chrome-hold-older-"));
+  const root = await realpath(await chromeProfiles(path.join(scratch, "chrome")));
+  const owned = await launchOwnedChromeEndpoint({ userDataDir: root, headless: true, args: ["--no-startup-window"] });
+  if (!owned.pid) throw new Error("the test Chrome has no pid");
+  const chromePid = owned.pid;
+  const endpoint = await readDevToolsActivePort(owned.portFile);
+  const keeper = await connectCdp(endpoint.port, endpoint.browserPath);
+  await keeper.send("Target.createTarget", { url: "about:blank", background: true });
+  let live = 0;
+  let mostLive = 0;
+  const sockets = new Set<Socket>();
+  const counter = createServer((client) => {
+    const upstream = createConnection({ host: "127.0.0.1", port: endpoint.port });
+    for (const socket of [client, upstream]) {
+      sockets.add(socket);
+      socket.on("error", () => socket.destroy()).once("close", () => { sockets.delete(socket); client.destroy(); upstream.destroy(); });
+    }
+    client.once("data", (head: Buffer) => {
+      if (/^GET \/devtools\/browser\S* HTTP/.test(head.toString("latin1"))) {
+        live++;
+        mostLive = Math.max(mostLive, live);
+        client.once("close", () => { live--; });
+      }
+      upstream.write(head);
+      client.pipe(upstream);
+      upstream.pipe(client);
+    });
+  });
+  await new Promise<void>((resolve) => counter.listen(0, "127.0.0.1", resolve));
+  const port = (counter.address() as AddressInfo).port;
+  const dir = await privateHoldDir(root);
+  const olderLog = path.join(scratch, "older-home", "audit", "current-chrome.jsonl");
+  const axLog = path.join(scratch, "new-home", "audit", "current-chrome.jsonl");
+  await mkdir(path.dirname(olderLog), { recursive: true });
+  await writeFile(olderLog, `${JSON.stringify({ what: "AXPress", role: "AXCheckBox", name: "Allow remote debugging for this browser instance", window: "Inspect with Chrome Developer Tools", at: press, via: "BaoOSHelper" })}\n`);
+  // A holder from before the owner lock: same command line, one Chrome connection of its own, a record with no session port.
+  const stubFile = path.join(scratch, "older-holder.js");
+  await writeFile(stubFile, `
+    const { connectCdp } = require(${JSON.stringify(path.resolve(__dirname, "../../src/cdp-live/socket.js"))});
+    connectCdp(${port}, ${JSON.stringify(endpoint.browserPath)}).then(async (cdp) => {
+      await cdp.send("Browser.getVersion");
+      process.once("SIGTERM", () => { cdp.close(); process.exit(0); });
+      process.stdout.write("held\\n");
+    });
+  `);
+  const older = spawn(process.execPath, [stubFile, "chrome-hold", "--root", root, "--ax-log", olderLog], { stdio: ["ignore", "pipe", "inherit"] });
+  if (!older.pid) throw new Error("the older holder did not start");
+  const olderPid = older.pid;
+  const exited = new Promise<void>((resolve) => older.once("exit", () => resolve()));
+  const olderExit = () => Promise.race([exited, new Promise((resolve) => setTimeout(resolve, scaledMs(3_000)))]);
+  await new Promise<void>((resolve) => older.stdout?.once("data", () => resolve()));
+  if (record) {
+    await writeFile(path.join(dir, "hold.json"), JSON.stringify({
+      root, chromePid, executable: "/bin/test-chrome", port, browserPath: endpoint.browserPath, holderPid: olderPid,
+    }));
+  }
+  const previous = process.env.BAO_CHROME_HOLD_FIXTURE;
+  process.env.BAO_CHROME_HOLD_FIXTURE = JSON.stringify({ port, browserPath: endpoint.browserPath, chromePid, executable: "/bin/test-chrome" });
+  t.after(async () => {
+    if (previous === undefined) delete process.env.BAO_CHROME_HOLD_FIXTURE;
+    else process.env.BAO_CHROME_HOLD_FIXTURE = previous;
+    if (pidAlive(olderPid)) older.kill("SIGKILL");
+    const left = await holderPid(root);
+    if (left && left !== olderPid && pidAlive(left)) process.kill(left, "SIGTERM");
+    counter.close();
+    for (const socket of sockets) socket.destroy();
+    keeper.close();
+    await owned.close();
+    await rm(dir, { recursive: true, force: true });
+    await rm(scratch, { recursive: true, force: true });
+  });
+  return { root, dir, axLog, olderLog, olderPid, olderExit, mostLive: () => mostLive };
+}
+
+async function holderAfterLastSession(root: string, chrome: CurrentChrome): Promise<{ holder: number; exited: boolean }> {
+  const holder = await holderPid(root);
+  if (!holder) throw new Error("the new hold did not publish");
+  chrome.detach();
+  const until = Date.now() + scaledMs(3_000);
+  while (pidAlive(holder) && Date.now() < until) await new Promise((resolve) => setTimeout(resolve, 50));
+  return { holder, exited: !pidAlive(holder) };
+}
+
+test("an older Bao's live hold is retired before the new hold connects, and the switch it turned on is turned off at the last session end", { timeout: scaledMs(60_000) }, async (t) => {
+  const older = await olderHoldSetup(t, new Date().toISOString(), true);
+  const chrome = await joinOrStartHold({ root: older.root, axLog: older.axLog });
+  await older.olderExit();
+  assert.equal(older.mostLive(), 1, "Chrome never had two Bao connections at once");
+  assert.equal(pidAlive(older.olderPid), false, "the older holder ended");
+  assert.notEqual(older.olderLog, older.axLog);
+  let sessionAudit = "";
+  try { sessionAudit = await readFile(older.axLog, "utf8"); } catch { sessionAudit = ""; }
+  assert.equal(sessionAudit.includes("AXCheckBox"), false, "the upgraded session's audit has no press");
+  assert.equal(claimOwned(older.dir), true, "a press since this Chrome started is Bao's switch");
+  await chrome.cdp.send("Browser.getVersion");
+  const { holder, exited } = await holderAfterLastSession(older.root, chrome);
+  assert.notEqual(holder, older.olderPid);
+  assert.equal(exited, true, "the last session ending took the turn-off path, which ends the hold");
+});
+
+test("an older Bao's hold whose record is already gone is retired, and a switch Bao did not turn on in this Chrome stays the owner's", { timeout: scaledMs(60_000) }, async (t) => {
+  const older = await olderHoldSetup(t, "2026-01-01T00:00:00.000Z", false);
+  const chrome = await joinOrStartHold({ root: older.root, axLog: older.axLog });
+  await older.olderExit();
+  assert.equal(older.mostLive(), 1);
+  assert.equal(pidAlive(older.olderPid), false);
+  assert.equal(claimOwned(older.dir), false);
+  const { exited } = await holderAfterLastSession(older.root, chrome);
+  assert.equal(exited, false, "the hold stays while Chrome runs when the switch is the owner's");
+});

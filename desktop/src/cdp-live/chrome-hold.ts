@@ -4,9 +4,10 @@
 // reclaim, and no client ever takes it. A session is a connection the holder has counted and confirmed on that
 // socket. The client uses the shared connection only after that confirmation. When Bao turned the switch on, the
 // last confirmed connection to close turns it off. When the owner had already turned it on, the hold stays while
-// Chrome runs. Chrome quitting does not delete a claim Bao still owns.
+// Chrome runs. Chrome quitting does not delete a claim Bao still owns. A holder from an older Bao takes no lock, so
+// the new owner ends it before connecting.
 
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { closeSync, constants, existsSync, fchmodSync, lstatSync, openSync, readFileSync, read as readFd, unlinkSync, writeSync } from "node:fs";
 import { chmod, mkdir, rm } from "node:fs/promises";
@@ -16,7 +17,8 @@ import { DatabaseSync } from "node:sqlite";
 import { appBundleOf } from "../app/bundle";
 import { chromeDataPath } from "../chrome-access";
 import type { CurrentChrome } from "./current-chrome";
-import { claimOwned, finishOwnedSwitch, testProcess, turnSwitchOff } from "./debug-switch";
+import { REMOTE_CHECKBOX } from "./consent";
+import { claimOwned, finishOwnedSwitch, testProcess, turnSwitchOff, writeClaim } from "./debug-switch";
 import { shareConnection } from "./shared-connection";
 import { connectCdp } from "./socket";
 
@@ -629,6 +631,75 @@ async function clearForeign(dir: string): Promise<void> {
   await rm(path.join(dir, "hold.err"), { force: true });
 }
 
+/**
+ * Holders from a Bao before the owner lock, for this root. Their command line has no flag a current holder passes.
+ * A current holder that lost the lock holds no Chrome connection, and the one that won it is this process.
+ * An unreadable process list finds none, so the hold still opens.
+ */
+async function olderHolders(root: string): Promise<{ pid: number; axLog: string }[]> {
+  const { processesNaming } = await import("../launch");
+  let rows: { pid: number; command: string }[];
+  try { rows = processesNaming("chrome-hold --root "); } catch { return []; }
+  return rows.flatMap((row) => {
+    const match = / chrome-hold --root (.+?) --ax-log /.exec(row.command);
+    if (!match || row.pid === process.pid) return [];
+    const axLog = row.command.slice(match.index + match[0].length);
+    if (/ --(?:initiator-fd|settle|listen-only)\b/.test(axLog)) return [];
+    try { return chromeDataPath(match[1]!) === root ? [{ pid: row.pid, axLog }] : []; }
+    catch { return []; }
+  });
+}
+
+function processStart(pid: number): number | undefined {
+  try {
+    const text = execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8", env: { ...process.env, LC_ALL: "C" } }).trim();
+    const at = Date.parse(text);
+    return Number.isFinite(at) ? at : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * An older Bao kept no claim. It logged a checkbox press only when it turned the switch on, so a press in that
+ * holder's own audit log after this Chrome started means Bao turned it on. No such press leaves the switch the owner's.
+ */
+async function olderBaoTurnedSwitchOn(root: string, axLogs: readonly string[]): Promise<boolean> {
+  const pid = readFixture()?.chromePid ?? await oneChromePid(root);
+  const started = pid ? processStart(pid) : undefined;
+  if (started === undefined) return false;
+  for (const axLog of axLogs) {
+    let pressed: number | undefined;
+    let log = "";
+    try { log = readFileSync(axLog, "utf8"); } catch { continue; }
+    for (const line of log.split("\n")) {
+      try {
+        const entry = JSON.parse(line) as { role?: unknown; name?: unknown; at?: unknown };
+        if (entry.role === "AXCheckBox" && entry.name === REMOTE_CHECKBOX && typeof entry.at === "string") pressed = Date.parse(entry.at);
+      } catch { /* not a log entry */ }
+    }
+    if (pressed !== undefined && pressed >= started) return true;
+  }
+  return false;
+}
+
+/** Ends every older holder before this one connects, so Chrome never has two Bao connections. */
+async function retireOlderHolders(dir: string, root: string): Promise<void> {
+  const older = await olderHolders(root);
+  if (!older.length) return;
+  const pids = older.map((holder) => holder.pid);
+  for (const signal of ["SIGTERM", "SIGKILL"] as const) {
+    for (const pid of pids) {
+      try { process.kill(pid, signal); } catch { /* already gone */ }
+    }
+    const deadline = Date.now() + 10_000;
+    while (pids.some(pidAlive) && Date.now() < deadline) await sleep(50);
+    if (!pids.some(pidAlive)) break;
+  }
+  if (pids.some(pidAlive)) throw new Error("An older Bao Chrome connection did not stop");
+  if (await olderBaoTurnedSwitchOn(root, older.map((holder) => holder.axLog))) writeClaim(dir, true);
+}
+
 async function removeOwnStarting(dir: string): Promise<void> {
   const starting = await readStarting(dir);
   if (!starting || starting.holderPid === process.pid) await rm(path.join(dir, "starting.json"), { force: true });
@@ -780,6 +851,11 @@ export async function holdMain(
   }
   let exitCode = 0;
   try {
+    try { await retireOlderHolders(dir, root); }
+    catch (error) {
+      writeHoldErr(dir, error instanceof Error ? error.message : String(error));
+      throw error;
+    }
     if (args.includes("--settle")) {
       await clearForeign(dir);
       markStopping(dir);
@@ -799,6 +875,10 @@ export async function holdMain(
         process.once("SIGINT", () => stopping.abort());
         const admitted = await waitForFirstSession(sessions, stopping.signal);
         if (!admitted) {
+          if (claimOwned(dir)) {
+            markStopping(dir, sessions.port);
+            await ownedOff(dir, root, axLog);
+          }
           await removeOwnStarting(dir);
         } else {
           let opening = true;
