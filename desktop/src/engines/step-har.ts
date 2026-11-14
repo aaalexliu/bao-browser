@@ -37,6 +37,24 @@ export interface StepNetworkRecord {
   endedAt?: string;
   waits: StepWait[];
   network: { entries: HarEntry[] };
+  /** agent-browser's `console` result at step end, as its `batch --json` returned it. */
+  console?: unknown;
+  /** agent-browser's `errors` result at step end, as its `batch --json` returned it. */
+  errors?: unknown;
+}
+
+export interface StepPageLog {
+  console: unknown;
+  errors: unknown;
+}
+
+/** One native call at step end: read each buffer, then clear it so the next step reads only its own. */
+export const PAGE_LOG_BATCH = ["--json", "console", "console --clear", "errors", "errors --clear"];
+
+export function parsePageLog(stdout: string): StepPageLog {
+  const results = JSON.parse(stdout) as unknown;
+  if (!Array.isArray(results) || results.length !== 4) throw new Error("batch did not return four results");
+  return { console: results[0], errors: results[2] };
 }
 
 export function stepWhy(value: unknown): string | undefined {

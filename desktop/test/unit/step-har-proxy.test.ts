@@ -73,6 +73,15 @@ if (command === 'network' && args.includes('start') && fs.existsSync(${JSON.stri
     fs.writeFileSync(args[args.indexOf('stop') + 1], fs.readFileSync(${JSON.stringify(path.join(root, "recorded.har"))}));
     process.stdout.write('har stopped\\n');
   }
+} else if (command === 'batch') {
+  const step = fs.readFileSync(${JSON.stringify(log)}, 'utf8').trim().split('\\n').length;
+  const item = (words, result) => ({ command: words, error: null, result, success: true });
+  process.stdout.write(JSON.stringify([
+    item(['console'], { messages: [{ args: [], text: 'read ' + step, type: 'log' }] }),
+    item(['console', '--clear'], { cleared: true }),
+    item(['errors'], { errors: [{ column: 1, line: 1, text: 'Error: boom ' + step, url: null }] }),
+    item(['errors', '--clear'], { cleared: true }),
+  ]));
 } else if (command === 'close') {
   fs.writeFileSync(dead, '');
   process.stdout.write('close unchanged\\n');
@@ -127,6 +136,37 @@ test("a session arms HAR before open and copies the tool file on close", async (
     assert.equal(closed.network.entries.length, 1);
     assert.equal(open.network.entries.length, 0);
     assert.equal(failed.network.entries.length, 0);
+  } finally {
+    await f.close();
+  }
+});
+
+test("each step keeps agent-browser's console and errors read at its end, and close and owner waits read none", async (t) => {
+  const f = await fixture(t);
+  try {
+    await f.proxy.execute("open", ["http://127.0.0.1/"], "copy", false, undefined, {}, undefined, undefined, "Open.");
+    const runId = f.proxy.activeRunId!;
+    const home = path.join(f.root, "home");
+    await f.proxy.execute("click", ["@e1", "fail"], undefined, false, undefined, {}, runId);
+    await f.proxy.execute("wait_for_owner", ["50"], undefined, false, undefined, {}, runId);
+    await f.proxy.execute("close", [], undefined, false, undefined, {}, runId);
+    const batches = (await f.calls()).filter((call) => commandOf(call.args) === "batch");
+    assert.equal(batches.length, 2);
+    for (const batch of batches) assert.deepEqual(batch.args.slice(batch.args.indexOf("batch")), ["batch", "--json", "console", "console --clear", "errors", "errors --clear"]);
+    const open = await readStepRecord(home, runId, "command-1");
+    const click = await readStepRecord(home, runId, "command-2");
+    const read = (record: { console?: unknown }) => record.console as { command: string[]; success: boolean; result: { messages: { text: string }[] } };
+    assert.deepEqual(read(open).command, ["console"]);
+    assert.equal(read(open).success, true);
+    assert.match(read(open).result.messages[0]!.text, /^read \d+$/);
+    assert.match(JSON.stringify(open.errors), /"command":\["errors"\].*"text":"Error: boom /);
+    assert.equal(click.status, "failed", "a failed click still keeps its read");
+    assert.notEqual(read(click).result.messages[0]!.text, read(open).result.messages[0]!.text, "each step stores its own read");
+    for (const id of ["command-3", "command-4"]) {
+      const saved = await readStepRecord(home, runId, id);
+      assert.equal(saved.console, undefined);
+      assert.equal(saved.errors, undefined);
+    }
   } finally {
     await f.close();
   }
