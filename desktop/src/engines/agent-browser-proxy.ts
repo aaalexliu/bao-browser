@@ -809,7 +809,7 @@ export class AgentBrowserProxy {
     let commandDone!: () => void;
     session.commandDone = new Promise<void>((resolve) => { commandDone = resolve; });
     // Read before the step starts, so the page read is not counted in the step's own wait.
-    const before = continuing && !ownerPrivate && command !== "wait_for_owner" ? await this.capturePage(session) : undefined;
+    const before = continuing && !ownerPrivate && command !== "wait_for_owner" ? await this.capturePage(session, "before") : undefined;
     if (continuing && !ownerPrivate) {
       step = recording.begin(command as string, args, why);
       this.latest = { runId: recording.id, step, steps: recording.steps };
@@ -1022,7 +1022,7 @@ export class AgentBrowserProxy {
             if (failure === undefined) throw completeError;
           }
           if (before) await session.recording.savePage(step, "before", before);
-          if (!privatePage && command !== "close") await session.recording.savePage(step, "after", await this.capturePage(session));
+          if (!privatePage && command !== "close") await session.recording.savePage(step, "after", await this.capturePage(session, "after"));
           if (command === "close") this.latest = { runId: recording.id, step, steps: recording.steps, lastPicture: recording.lastPicture };
         }
       } finally {
@@ -2077,7 +2077,7 @@ export class AgentBrowserProxy {
   }
 
   /** Reads the agent's tab on Bao's own CDP socket, the way a page picture does. A failure comes back as the capture's error. */
-  private async capturePage(session: Session): Promise<PageCapture> {
+  private async capturePage(session: Session, phase: "before" | "after"): Promise<PageCapture> {
     const started = Date.now();
     const deadline = started + PAGE_STATE_TIMEOUT_MS;
     const remaining = () => Math.max(1, deadline - Date.now());
@@ -2094,7 +2094,7 @@ export class AgentBrowserProxy {
       const { sessionId } = await socket.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true }, undefined, remaining());
       attached = sessionId;
       const read = await readPage(<T>(method: string, params?: Record<string, unknown>) => socket.send<T>(method, params ?? {}, sessionId, remaining()),
-        (url) => session.recording.needsArchive(url));
+        (url) => session.recording.needsArchive(url), phase === "after");
       return { ...read, ms: Date.now() - started };
     } catch (error) {
       return { error: errorText(error), ms: Date.now() - started };

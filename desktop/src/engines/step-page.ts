@@ -11,7 +11,8 @@ export const PAGE_STATE_SCHEMA = "bao.page-state/v1";
 /**
  * One page read from standard CDP calls, each result kept as Chrome returned it.
  * `dom` is DOMSnapshot.captureSnapshot with no computed styles; it covers shadow roots, iframes, input values and selected options.
- * `ax` is Accessibility.getFullAXTree for the main frame. `layout` is Page.getLayoutMetrics, which holds the viewport.
+ * `ax` is Accessibility.getFullAXTree for the main frame, read after a step only: on a large page it costs as much as the step.
+ * `layout` is Page.getLayoutMetrics, which holds the viewport.
  */
 export interface PageState {
   schema: typeof PAGE_STATE_SCHEMA;
@@ -21,7 +22,7 @@ export interface PageState {
   scroll: { x: number; y: number };
   layout: unknown;
   dom: unknown;
-  ax: unknown;
+  ax?: unknown;
 }
 
 export interface PageRead {
@@ -42,18 +43,18 @@ type CdpSend = <T>(method: string, params?: Record<string, unknown>) => Promise<
 const PAGE_FACTS = "({ url: location.href, title: document.title, x: scrollX, y: scrollY })";
 
 /** Reads the page, and an MHTML archive when `archive` says this URL has none yet. A failed archive keeps the page read. */
-export async function readPage(send: CdpSend, archive: (url: string) => boolean): Promise<PageRead> {
+export async function readPage(send: CdpSend, archive: (url: string) => boolean, withAx: boolean): Promise<PageRead> {
   const [facts, layout, dom, ax] = await Promise.all([
     send<{ result: { value?: { url: string; title: string; x: number; y: number } } }>("Runtime.evaluate", { expression: PAGE_FACTS, returnByValue: true }),
     send("Page.getLayoutMetrics"),
     send("DOMSnapshot.captureSnapshot", { computedStyles: [] }),
-    send("Accessibility.getFullAXTree"),
+    withAx ? send("Accessibility.getFullAXTree") : undefined,
   ]);
   const value = facts.result?.value;
   if (typeof value?.url !== "string") throw new Error("page URL unavailable");
   const state: PageState = {
     schema: PAGE_STATE_SCHEMA, capturedAt: new Date().toISOString(),
-    url: value.url, title: value.title, scroll: { x: value.x, y: value.y }, layout, dom, ax,
+    url: value.url, title: value.title, scroll: { x: value.x, y: value.y }, layout, dom, ...(withAx ? { ax } : {}),
   };
   let mhtml: { data: string } | { error: string } | undefined;
   if (archive(value.url)) {

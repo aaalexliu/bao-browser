@@ -323,7 +323,10 @@ test("each step keeps the page before and after, one archive per page, and the e
     assert.equal(gunzipSync(await readFile(path.join(home, "runs", runId, archive!))).toString("utf8"), "MHTML http://127.0.0.1/");
 
     const read = await readStepRecord(home, runId, "command-2");
-    assert.equal((await pageFile(home, runId, read.page?.before)).url, "http://127.0.0.1/");
+    const readBefore = await pageFile(home, runId, read.page?.before);
+    assert.equal(readBefore.url, "http://127.0.0.1/");
+    assert.equal(readBefore.ax, undefined, "the accessibility tree is read after a step only");
+    assert.deepEqual((readBefore.dom as { strings: string[] }).strings, ["http://127.0.0.1/", "quarterly"]);
     assert.equal((await pageFile(home, runId, read.page?.after)).url, "http://127.0.0.1/");
     assert.ok(read.page?.before && !("mhtml" in read.page.before), "a page already archived is not archived again");
     assert.equal(read.target, undefined);
