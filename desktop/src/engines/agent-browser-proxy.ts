@@ -12,6 +12,7 @@ import { isChromeTab, type ChromeTarget } from "../cdp-live/chrome-tabs";
 import { openRunningChrome, type RunningChrome } from "../extension/running-chrome";
 import { resolveNormalChrome } from "../launch";
 import { AgentBrowserRun, type AgentBrowserTaskOutcome, type RecordedAgentBrowserCommand, type StepContext } from "./agent-browser-record";
+import { PAGE_LOG_BATCH, parsePageLog } from "./step-har";
 import { CURRENT_CHROME_ENDED, CURRENT_CHROME_LEFT_OPEN, newInRead, ownerReply, RUN_ENDED, TASK_TAB_CLOSED, type OwnerWaitPage } from "./agent-browser-describe";
 import { BROWSER_PICTURE_BYTES, type ShotBox } from "../v1/shots";
 import { agentBrowserExecutable } from "./agent-browser";
@@ -998,6 +999,7 @@ export class AgentBrowserProxy {
     } finally {
       try {
         if (step && step.endedAt === undefined) {
+          if (results.length && command !== "close" && command !== "wait_for_owner" && this.waitOf(session) === "off") await this.readPageLog(session, step);
           try {
             await session.recording.complete(step, results, session.stateDir, () => this.screenshot(session, step!.native.command, visual), failure,
               this.waitOf(session) !== "off" || command === "wait_for_owner", { ...context, page: session.page, owner: this.ownerPage, current: session.kind === "current",
@@ -2145,6 +2147,18 @@ export class AgentBrowserProxy {
       process.stderr.write(`Bao step record: network har stop failed: ${error instanceof Error ? error.message : String(error)}\n`);
     } finally {
       await rm(dest, { force: true }).catch(() => undefined);
+    }
+  }
+
+  /** Reads agent-browser's console and errors for the step that just ran. A failure is logged and the step still records. */
+  private async readPageLog(session: Session, step: RecordedAgentBrowserCommand): Promise<void> {
+    if (!session.daemonStarted || session.abort.signal.aborted || this.gone()) return;
+    try {
+      const read = await this.execFile(session, "batch", PAGE_LOG_BATCH, 5000);
+      if (read.exitCode !== 0) throw new Error(read.stderr || read.stdout || `exit ${read.exitCode}`);
+      session.recording.notePageLog(step, parsePageLog(read.stdout));
+    } catch (error) {
+      process.stderr.write(`Bao step record: console and errors read failed: ${error instanceof Error ? error.message : String(error)}\n`);
     }
   }
 

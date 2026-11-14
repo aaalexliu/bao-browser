@@ -15,7 +15,7 @@ import type { BrowserPick } from "./browser-pick";
 import type { SignInImport } from "./bao-profile";
 import { startCdpVideo, type CdpVideo } from "./cdp-video";
 import { HOST_STOP_VIDEO_UNAVAILABLE } from "./video-handoff";
-import { assignEntries, parseHar, stepWait, stepWhy, writeRunHar, writeStepRecord, type HarEntry, type HarLog, type StepNetworkRecord } from "./step-har";
+import { assignEntries, parseHar, stepWait, stepWhy, writeRunHar, writeStepRecord, type HarEntry, type HarLog, type StepNetworkRecord, type StepPageLog } from "./step-har";
 
 const hostStopRuns = new Set<AgentBrowserRun>();
 
@@ -104,6 +104,7 @@ export class AgentBrowserRun {
   private videoAbandoned = false;
   private harParts: { raw: Buffer; har: HarLog }[] = [];
   private network = new Map<string, HarEntry[]>();
+  private pageLogs = new Map<string, StepPageLog>();
 
   constructor(private readonly home: string) {
     this.shots = path.join(home, "shots", "runs", this.run.id);
@@ -456,9 +457,14 @@ export class AgentBrowserRun {
     }
   }
 
+  /** Keeps agent-browser's console and errors read for this step. complete() writes them to the step file. */
+  notePageLog(step: RecordedAgentBrowserCommand, log: StepPageLog): void {
+    this.pageLogs.set(step.id, log);
+  }
+
   private async saveStep(step: RecordedAgentBrowserCommand): Promise<void> {
     try {
-      await writeStepRecord(this.home, this.id, stepNetworkRecord(step, this.network.get(step.id) ?? []));
+      await writeStepRecord(this.home, this.id, stepNetworkRecord(step, this.network.get(step.id) ?? [], this.pageLogs.get(step.id)));
     } catch {
       this.warn("step record");
     }
@@ -469,7 +475,7 @@ export class AgentBrowserRun {
   }
 }
 
-function stepNetworkRecord(step: RecordedAgentBrowserCommand, entries: HarEntry[]): StepNetworkRecord {
+function stepNetworkRecord(step: RecordedAgentBrowserCommand, entries: HarEntry[], log?: StepPageLog): StepNetworkRecord {
   const error = step.native.error ?? failedOutput(step);
   return {
     schema: "bao.step-record/v1",
@@ -483,6 +489,7 @@ function stepNetworkRecord(step: RecordedAgentBrowserCommand, entries: HarEntry[
     ...(step.endedAt ? { endedAt: new Date(step.endedAt).toISOString() } : {}),
     waits: step.endedAt ? [stepWait(step.native.command, step.startedAt, step.endedAt)] : [],
     network: { entries },
+    ...log,
   };
 }
 

@@ -57,7 +57,7 @@ The [`agent_browser` pass-through](agent-browser-engine.md#direct-mcp-commands) 
 
 ## What stays on this Mac
 
-Pass-through runs save raw command arguments, native stdout/stderr, readable page screenshots, a finished Running Chrome tab video, and agent-browser HAR text, including request and response text, in Bao's local Library. They do not redact credentials or other private page content. Do not use this route for data you do not want saved locally. Page screenshots and that video use CDP, not macOS Screen Recording. The app serves local run evidence on `127.0.0.1`, with caching off.
+Pass-through runs save raw command arguments, native stdout/stderr, readable page screenshots, a finished Running Chrome tab video, agent-browser HAR text, including request and response text, and the page's console messages and errors in Bao's local Library. They do not redact credentials or other private page content. Do not use this route for data you do not want saved locally. Page screenshots and that video use CDP, not macOS Screen Recording. The app serves local run evidence on `127.0.0.1`, with caching off.
 
 Historical live-driver session files, pictures, and video stay on disk. Retirement does not rewrite or upload them. Their old redaction rules do not apply to current pass-through records. A workflow file that is not [schema v4](workflow-schema.md) is not loaded. [Run evidence](agent-browser-engine.md#evidence) describes the current paths and failure behavior.
 
