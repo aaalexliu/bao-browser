@@ -3,7 +3,7 @@
 
 import { closeSync, constants, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeSync } from "node:fs";
 import path from "node:path";
-import { logAx, type ChromeAx } from "./ax";
+import { inspectTabCloseArgs, logAx, type ChromeAx } from "./ax";
 import { REMOTE_CHECKBOX } from "./consent";
 import { checkboxKnown } from "./remote-debugging";
 
@@ -101,7 +101,6 @@ function pidAlive(pid: number): boolean {
 async function closeInspect(helper: Pick<ChromeAx, "exec">, pid: number): Promise<void> {
   try {
     const tree = await helper.exec(["nodes", "--bundle", "com.google.Chrome", "--pid", String(pid)], 30_000);
-    const { inspectTabCloseArgs } = await import("./current-chrome");
     const args = inspectTabCloseArgs(tree.nodes || [], pid);
     if (args) await helper.exec(args, 15_000);
   } catch {

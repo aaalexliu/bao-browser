@@ -12,9 +12,8 @@ import { ChromeFolderDenied, assertChromeReadable, chromeDenied } from "../chrom
 import { chromeProfilesRoot } from "../engines/chrome-profile-copy";
 import { killCommandToken, LAUNCH_SERVICES_RESTART, launchServicesStalled, processesNaming } from "../launch";
 import * as chromeAx from "./ax";
-import { chromeHelper, CHROME_BUNDLE, helperBin, INSPECT_URL, logAx, type ChromeAx } from "./ax";
+import { chromeHelper, CHROME_BUNDLE, helperBin, inspectTabCloseArgs, INSPECT_URL, logAx, type ChromeAx } from "./ax";
 import { REMOTE_CHECKBOX } from "./consent";
-import type { AxNode } from "../proxy/os-macos";
 import { endpointOnPid, listenPid, listenPorts, probeDevToolsVersion, readDevToolsActivePort, type DevToolsEndpoint, type VersionProbe } from "./endpoint";
 import { checkboxKnown, CHROME_APP_EXE, dailyChromePids, pathKeys } from "./remote-debugging";
 import { claimForEnable, readClaim, writeClaim } from "./debug-switch";
@@ -93,29 +92,6 @@ async function withConsent<T>(helper: CurrentChromeDeps["helper"], pid: number, 
     }
     throw error;
   }
-}
-
-const INSPECT_TAB = "Inspect with Chrome Developer Tools";
-
-function labeled(node: AxNode): string {
-  return node.name || node.title || node.description || "";
-}
-
-function inspectTabs(nodes: AxNode[]): AxNode[] {
-  return nodes.filter((node) => node.role === "AXRadioButton" && node.subrole === "AXTabButton" && labeled(node).includes(INSPECT_TAB));
-}
-
-/** Press arguments for the only inspect tab. No press when another inspect tab is open, and never the window close button. */
-export function inspectTabCloseArgs(nodes: AxNode[], pid: number): string[] | undefined {
-  const tabs = inspectTabs(nodes);
-  if (tabs.length !== 1) return undefined;
-  const label = labeled(tabs[0]!);
-  const button = nodes.find((node) => node.role === "AXButton"
-    && [node.name, node.title, node.description].includes("Close")
-    && node.subrole !== "AXCloseButton"
-    && node.path.some((seg) => seg.role === "AXRadioButton" && seg.name === label));
-  if (!button?.path.length) return undefined;
-  return ["press", "--bundle", CHROME_BUNDLE, "--pid", String(pid), "--role", "AXButton", "--name", "Close", "--path", JSON.stringify(button.path)];
 }
 
 async function closeOpenedInspect(helper: CurrentChromeDeps["helper"], pid: number): Promise<void> {
