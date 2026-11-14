@@ -195,7 +195,7 @@ function pagesToTabs(pages: LivePage[]): ProfileTab[] {
 /**
  * Live pages from a debugger that is already listening on this Chrome folder.
  * A hermetic run does not scan or connect: a test that did would raise the owner's Allow sheet.
- * This attaches to that listener and closes the socket before returning. It does not turn debugging on.
+ * This joins the approved connection when one is already up. Otherwise it attaches and presses Allow. It does not start a hold, turn debugging on, open Inspect, or launch Chrome.
  */
 export async function readListeningProfileTabs(root: string): Promise<LivePages> {
   const contexts = await withListeningConnection(root, (cdp) => readLivePages(cdp));

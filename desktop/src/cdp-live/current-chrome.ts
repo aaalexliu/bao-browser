@@ -11,12 +11,13 @@ import path from "node:path";
 import { ChromeFolderDenied, assertChromeReadable, chromeDenied } from "../chrome-access";
 import { chromeProfilesRoot } from "../engines/chrome-profile-copy";
 import { killCommandToken, LAUNCH_SERVICES_RESTART, launchServicesStalled, processesNaming } from "../launch";
+import * as chromeAx from "./ax";
 import { chromeHelper, CHROME_BUNDLE, helperBin, INSPECT_URL, logAx, type ChromeAx } from "./ax";
 import { REMOTE_CHECKBOX } from "./consent";
 import type { AxNode } from "../proxy/os-macos";
 import { endpointOnPid, listenPid, listenPorts, probeDevToolsVersion, readDevToolsActivePort, type DevToolsEndpoint, type VersionProbe } from "./endpoint";
 import { CHROME_APP_EXE, dailyChromePids, pathKeys } from "./remote-debugging";
-import { holdFixtureEndpoint, joinOrStartHold } from "./chrome-hold";
+import { holdDir, holdFixtureEndpoint, joinLiveHold, joinOrStartHold } from "./chrome-hold";
 import { shareConnection } from "./shared-connection";
 import { connectCdp, type CdpSocket } from "./socket";
 import { accessibilityMissing, presentMissingMacPermission } from "../app/mac-permissions";
@@ -360,18 +361,31 @@ function profileDirectoryFromReported(reported: string | undefined, root: string
 }
 
 /**
- * Attaches to a debugging endpoint that is already listening, runs `read`, and closes that socket.
- * Does not turn debugging on, open Inspect, or launch Chrome. Undefined when nothing listens, the listener
- * is gone, or the read fails. A hermetic run uses only the throwaway listener a test named.
+ * Reads through the approved connection when one is already published, and otherwise attaches to an endpoint
+ * that is already listening while pressing Allow. Does not start a hold, turn debugging on, open Inspect, or
+ * launch Chrome. Undefined when nothing listens, the listener is gone, or the read fails. A hermetic run uses
+ * only the throwaway listener a test named.
  */
-export async function withListeningConnection<T>(root: string, read: (cdp: CdpSocket) => Promise<T>): Promise<T | undefined> {
+export async function withListeningConnection<T>(root: string, read: (cdp: CdpSocket) => Promise<T>, axLog?: string): Promise<T | undefined> {
   const fixture = holdFixtureEndpoint();
   if (!fixture && process.env.BAO_LANE === "hermetic") return undefined;
-  const endpoint = fixture ?? await dailyListener(root);
-  if (!endpoint) return undefined;
+  try {
+    const joined = await joinLiveHold(root);
+    if (joined) {
+      try { return await read(joined.cdp); }
+      finally { joined.detach(); }
+    }
+  } catch {
+    return undefined;
+  }
+  const listening = fixture
+    ? { endpoint: { port: fixture.port, browserPath: fixture.browserPath }, pid: fixture.chromePid }
+    : await dailyListener(root);
+  if (!listening) return undefined;
   let cdp: CdpSocket | undefined;
   try {
-    cdp = await connectCdp(endpoint.port, endpoint.browserPath, { timeoutMs: 2000 });
+    cdp = await withConsent(chromeAx.chromeHelper(), listening.pid, axLog ?? path.join(holdDir(root), "ax.jsonl"), (signal) =>
+      connectCdp(listening.endpoint.port, listening.endpoint.browserPath, { timeoutMs: 8_000, signal }));
     return await read(cdp);
   } catch {
     return undefined;
@@ -379,18 +393,20 @@ export async function withListeningConnection<T>(root: string, read: (cdp: CdpSo
 }
 
 /**
- * The profile the listening browser reports, found without DevToolsActivePort. The version page is read on an
- * already listening endpoint. Undefined when nothing listens, the listener is gone, the report fails, or it times out.
- * A hermetic run uses only the throwaway listener a test named.
+ * The profile the listening browser reports, found without DevToolsActivePort. The version page is read on the
+ * approved connection, or on an already listening endpoint after Allow. Undefined when nothing listens, the listener
+ * is gone, the report fails, or it times out. A hermetic run uses only the throwaway listener a test named.
  */
-export async function listeningProfileDirectory(root: string, _axLog?: string): Promise<string | undefined> {
-  return withListeningConnection(root, async (cdp) => profileDirectoryFromReported(await defaultContextProfile(cdp), root));
+export async function listeningProfileDirectory(root: string, axLog?: string): Promise<string | undefined> {
+  return withListeningConnection(root, async (cdp) => profileDirectoryFromReported(await defaultContextProfile(cdp), root), axLog);
 }
 
-async function dailyListener(root: string): Promise<DevToolsEndpoint | undefined> {
+async function dailyListener(root: string): Promise<{ endpoint: DevToolsEndpoint; pid: number } | undefined> {
   const pids = await dailyChromePids(root, chromeProfilesRoot());
   if (pids.length !== 1) return undefined;
-  return endpointOnPid(pids[0]!);
+  const endpoint = await endpointOnPid(pids[0]!);
+  if (!endpoint) return undefined;
+  return { endpoint, pid: pids[0]! };
 }
 
 /** True when both paths name one profile. A refused folder is compared as text, including macOS /tmp and /private/tmp. */

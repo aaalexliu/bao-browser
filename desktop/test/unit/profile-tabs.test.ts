@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
 import { chmod, mkdtemp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
-import type { AddressInfo } from "node:net";
+import { createServer as createNetServer, type AddressInfo, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import * as chromeAx from "../../src/cdp-live/ax";
+import { ServerFrameDecoder } from "../../src/cdp-live/socket";
 import { holdDir } from "../../src/cdp-live/chrome-hold";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { connectCdp } from "../../src/cdp-live/socket";
@@ -267,7 +269,8 @@ test("a hermetic run does not connect even when a port file names a listener", a
   }
 });
 
-test("a vanished listener is unread and does not start a debugging hold", async () => {
+test("a vanished listener is unread and does not start a debugging hold", async (t) => {
+  quietAllow(t);
   const root = await mkdtemp(path.join(tmpdir(), "bao-profile-tabs-gone-"));
   const prior = process.env.BAO_LANE;
   const previousFixture = process.env.BAO_CHROME_HOLD_FIXTURE;
@@ -296,7 +299,50 @@ test("a vanished listener is unread and does not start a debugging hold", async 
   }
 });
 
+test("an endpoint that demands Allow is read through that press and starts no hold", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-profile-tabs-allow-"));
+  const gate = await allowGate();
+  const presses: string[][] = [];
+  t.mock.method(chromeAx, "chromeHelper", () => ({
+    exec: async (args: string[]) => {
+      presses.push(args);
+      if (args[0] === "debug-allow" && args.includes("--press")) {
+        gate.release();
+        return { ok: true, found: true, pressed: true };
+      }
+      return { ok: true, found: false, pressed: false };
+    },
+  }) as unknown as ReturnType<typeof chromeAx.chromeHelper>);
+  const prior = process.env.BAO_LANE;
+  const previousFixture = process.env.BAO_CHROME_HOLD_FIXTURE;
+  const previousBrowser = process.env.BAO_TEST_BROWSER;
+  try {
+    delete process.env.BAO_LANE;
+    process.env.BAO_TEST_BROWSER = process.execPath;
+    process.env.BAO_CHROME_HOLD_FIXTURE = JSON.stringify({
+      port: gate.port, browserPath: gate.browserPath, chromePid: process.pid, executable: process.execPath,
+    });
+    const listing = await listProfileTabs(root, ["Default"]);
+    assert.equal(listing.unread, undefined);
+    assert.deepEqual(listing.unmatched?.tabs, [{ title: "Robinhood", host: "robinhood.com" }]);
+    assert.equal(presses.some((args) => args[0] === "debug-allow" && args.includes("--press") && args.includes(String(process.pid))), true);
+    await assert.rejects(readFile(path.join(holdDir(root), "hold.json"), "utf8"));
+    await assert.rejects(readFile(path.join(holdDir(root), "starting.json"), "utf8"));
+  } finally {
+    if (prior === undefined) delete process.env.BAO_LANE;
+    else process.env.BAO_LANE = prior;
+    if (previousFixture === undefined) delete process.env.BAO_CHROME_HOLD_FIXTURE;
+    else process.env.BAO_CHROME_HOLD_FIXTURE = previousFixture;
+    if (previousBrowser === undefined) delete process.env.BAO_TEST_BROWSER;
+    else process.env.BAO_TEST_BROWSER = previousBrowser;
+    await gate.close();
+    await rm(holdDir(root), { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("a fixture browser is read from the listener that is already up", { timeout: 60_000 }, async (t) => {
+  quietAllow(t);
   const root = await mkdtemp(path.join(tmpdir(), "bao-profile-tabs-chrome-"));
   await mkdir(path.join(root, "Profile 2"), { recursive: true });
   const exe = process.env.BAO_TEST_BROWSER || testChromium.executablePath();
@@ -354,11 +400,71 @@ test("a fixture browser is read from the listener that is already up", { timeout
     await chmod(path.join(root, "DevToolsActivePort"), 0o600).catch(() => undefined);
     await stopHold(holdDir(root));
     await rm(holdDir(root), { recursive: true, force: true });
+    const exited = new Promise((resolve) => {
+      if (child.exitCode !== null || child.signalCode !== null) resolve(undefined);
+      else child.once("exit", () => resolve(undefined));
+    });
     child.kill("SIGKILL");
+    await exited;
     page.close();
     await rm(root, { recursive: true, force: true });
   }
 });
+
+function quietAllow(t: { mock: { method: typeof test.mock.method } }): void {
+  t.mock.method(chromeAx, "chromeHelper", () => ({
+    exec: async () => ({ ok: true, found: false, pressed: false }),
+  }) as unknown as ReturnType<typeof chromeAx.chromeHelper>);
+}
+
+function allowGate(): Promise<{ port: number; browserPath: string; release: () => void; close: () => Promise<void> }> {
+  const browserPath = "/devtools/browser/allow-gate";
+  let release = (): void => undefined;
+  const opened = new Promise<void>((resolve) => { release = resolve; });
+  const server = createNetServer((socket) => armAllowSocket(socket, opened));
+  return new Promise((resolve) => {
+    server.listen(0, "127.0.0.1", () => {
+      resolve({
+        port: (server.address() as AddressInfo).port,
+        browserPath,
+        release,
+        close: () => new Promise((done) => server.close(() => done())),
+      });
+    });
+  });
+}
+
+function armAllowSocket(socket: Socket, opened: Promise<void>): void {
+  let buf = Buffer.alloc(0);
+  let http = true;
+  const decoder = new ServerFrameDecoder();
+  socket.on("data", (chunk) => {
+    if (http) {
+      buf = Buffer.concat([buf, chunk]);
+      if (!buf.includes("\r\n\r\n")) return;
+      http = false;
+      void opened.then(() => {
+        if (!socket.destroyed) socket.write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n");
+      });
+      return;
+    }
+    for (const frame of decoder.push(chunk)) {
+      if (frame.opcode !== 1 || !frame.text) continue;
+      let message: { id?: unknown; method?: unknown };
+      try { message = JSON.parse(frame.text) as typeof message; }
+      catch { continue; }
+      if (typeof message.id !== "number") continue;
+      const result = message.method === "Target.getTargets"
+        ? { targetInfos: [{ targetId: "tab", type: "page", url: "https://robinhood.com/stocks", title: "Robinhood" }] }
+        : { windowId: 1 };
+      const payload = Buffer.from(JSON.stringify({ id: message.id, result }));
+      const header = Buffer.alloc(2);
+      header[0] = 0x81;
+      header[1] = payload.length;
+      socket.write(Buffer.concat([header, payload]));
+    }
+  });
+}
 
 async function stopHold(dir: string): Promise<void> {
   try {

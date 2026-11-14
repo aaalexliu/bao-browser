@@ -403,9 +403,17 @@ async function connectFixture(root: string, fixture: HoldFixture): Promise<Curre
 }
 
 /** The throwaway listener a test named. Absent in a normal session, so that session cannot skip the Allow sheet. */
-export function holdFixtureEndpoint(): { port: number; browserPath: string } | undefined {
+export function holdFixtureEndpoint(): { port: number; browserPath: string; chromePid: number } | undefined {
   const fixture = readFixture();
-  return fixture ? { port: fixture.port, browserPath: fixture.browserPath } : undefined;
+  return fixture ? { port: fixture.port, browserPath: fixture.browserPath, chromePid: fixture.chromePid } : undefined;
+}
+
+/** Joins the connection a hold already published. Does not start a hold. Undefined when none is published. */
+export async function joinLiveHold(root: string, signal?: AbortSignal): Promise<CurrentChrome | undefined> {
+  const dataRoot = chromeDataPath(root);
+  const record = await readLive(holdDir(dataRoot), dataRoot);
+  if (!record) return undefined;
+  return joinRecord(record, signal);
 }
 
 function readFixture(): HoldFixture | undefined {
