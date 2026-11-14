@@ -126,7 +126,12 @@ function openedChoice(pick: BrowserPick): AgentBrowser {
 }
 
 /** A command's move to the owner's running Chrome: the line that says so, and the new pick and opened page when it worked. */
-type Moved = { line: string; pick?: BrowserPick; site?: string };
+type Moved = {
+  line: string;
+  pick?: BrowserPick;
+  site?: string;
+  failed?: { result?: AgentBrowserCommandResult; error: unknown };
+};
 
 interface SessionData {
   browser: AgentBrowser;
@@ -1001,7 +1006,8 @@ export class AgentBrowserProxy {
         if (step && step.endedAt === undefined) {
           if (results.length && command !== "close" && command !== "wait_for_owner" && this.waitOf(session) === "off") await this.readPageLog(session, step);
           try {
-            await session.recording.complete(step, results, session.stateDir, () => this.screenshot(session, step!.native.command, visual), failure,
+            const kept = step.native.command === "open" ? this.moved?.failed : undefined;
+            await session.recording.complete(step, kept?.result ? [...results, kept.result] : results, session.stateDir, () => this.screenshot(session, step!.native.command, visual), failure ?? kept?.error,
               this.waitOf(session) !== "off" || command === "wait_for_owner", { ...context, page: session.page, owner: this.ownerPage, current: session.kind === "current",
                 ...this.moved?.pick ? { moved: this.moved.line } : {} });
           } catch (completeError) {
@@ -1367,7 +1373,8 @@ export class AgentBrowserProxy {
       const next = copy
         ? `The page stays in the Chrome copy, without this site's sign-in. To try your running Chrome yourself, call agent_browser with ${JSON.stringify({ command: "close", run_id: session.recording.id })}, then with ${JSON.stringify(open)}.`
         : "The session stays in Bao's window; Bao tries again on the next wait_for_owner.";
-      this.moved = { line: `${stopped}. Bao could not continue in your running Chrome over remote debugging: ${session.moveError}. ${next}` };
+      const failed = this.moved?.failed;
+      this.moved = { line: `${stopped}. Bao could not continue in your running Chrome over remote debugging: ${session.moveError}. ${next}`, ...failed ? { failed } : {} };
       return undefined;
     };
     if (!profile) return fail("Bao could not read Chrome's profiles, so it does not know which Chrome profile to use");
@@ -1379,47 +1386,59 @@ export class AgentBrowserProxy {
     let opened: AgentBrowserCommandResult | undefined;
     let moving: Session | undefined;
     let routeOpen: RecordedAgentBrowserCommand | undefined;
+    let failure: unknown;
+    let nativeOpen = false;
     try {
-      wired = await this.wire(next);
-      moving = { ...session, ...next, ...wired };
-      routeOpen = session.recording.prepareRouteOpen(site);
-      await this.flushHar(session);
-      opened = await this.runNative(moving, "open", [site]);
-      if (opened.exitCode !== 0) throw new Error(`the open in Bao's task tab failed: ${opened.stderr || opened.stdout || `exit ${opened.exitCode}`}`);
-    } catch (error) {
-      try { if (moving) await this.flushHar(moving); }
-      catch (flushError) { process.stderr.write(`Bao step record: network har stop failed: ${flushError instanceof Error ? flushError.message : String(flushError)}\n`); }
-      try { if (wired) await this.stopDaemon(wired.stateDir); }
+      try {
+        wired = await this.wire(next);
+        moving = { ...session, ...next, ...wired };
+        routeOpen = session.recording.prepareRouteOpen(site);
+        await this.flushHar(session);
+        nativeOpen = true;
+        opened = await this.runNative(moving, "open", [site]);
+        if (opened.exitCode !== 0) throw new Error(`the open in Bao's task tab failed: ${opened.stderr || opened.stdout || `exit ${opened.exitCode}`}`);
+      } catch (error) {
+        failure = error;
+        if (!routeOpen && nativeOpen) {
+          fail(error);
+          this.moved = { ...this.moved!, failed: { error, ...opened ? { result: opened } : {} } };
+        }
+        try { if (moving) await this.flushHar(moving); }
+        catch (flushError) { process.stderr.write(`Bao step record: network har stop failed: ${flushError instanceof Error ? flushError.message : String(flushError)}\n`); }
+        try { if (wired) await this.stopDaemon(wired.stateDir); }
+        finally {
+          if (wired) await rm(wired.stateDir, { recursive: true, force: true });
+          await this.discard(next);
+        }
+        return fail(error);
+      }
+      const old = { chrome: session.chrome, background: session.background, stateDir: session.stateDir };
+      const waiting = this.waitOf(session) !== "off";
+      Object.assign(session, moving, { browser: openedChoice(next.pick), missed: undefined, page: undefined });
+      session.recording.pickBrowser(next.pick);
+      if (waiting) this.setWait(session, "off");
+      await this.disarmReloadBanner();
+      this.watch(session);
+      session.moveError = undefined;
+      this.moved = { line: `${stopped}; continued in your running Chrome (Chrome profile "${profile.directory}", ${profile.name}) over remote debugging. Take a fresh snapshot before acting.`, pick: next.pick, site };
+      try { await this.stopDaemon(old.stateDir); }
+      catch (error) { process.stderr.write(`Bao could not stop the agent-browser daemon of its own window: ${error instanceof Error ? error.message : String(error)}\n`); }
       finally {
-        if (wired) await rm(wired.stateDir, { recursive: true, force: true });
-        await this.discard(next);
+        old.background.close();
+        await old.chrome.close().catch((error: unknown) => process.stderr.write(`Bao could not close its own window: ${error instanceof Error ? error.message : String(error)}\n`));
+        await rm(old.stateDir, { recursive: true, force: true });
       }
-      if (routeOpen && routeOpen.endedAt === undefined) {
-        await session.recording.complete(routeOpen, opened ? [opened] : [], session.stateDir, async () => { throw error; }, error);
+      await this.noteWall(session);
+      return opened;
+    } catch (error) {
+      failure ??= error;
+      throw error;
+    } finally {
+      if (routeOpen) {
+        await session.recording.complete(routeOpen, opened ? [opened] : [], session.stateDir, async () => { throw failure ?? new Error("page closed"); }, failure,
+          false, failure === undefined ? { moved: this.moved!.line } : {});
       }
-      return fail(error);
     }
-    const old = { chrome: session.chrome, background: session.background, stateDir: session.stateDir };
-    const waiting = this.waitOf(session) !== "off";
-    Object.assign(session, moving, { browser: openedChoice(next.pick), missed: undefined, page: undefined });
-    session.recording.pickBrowser(next.pick);
-    if (waiting) this.setWait(session, "off");
-    await this.disarmReloadBanner();
-    this.watch(session);
-    session.moveError = undefined;
-    this.moved = { line: `${stopped}; continued in your running Chrome (Chrome profile "${profile.directory}", ${profile.name}) over remote debugging. Take a fresh snapshot before acting.`, pick: next.pick, site };
-    try { await this.stopDaemon(old.stateDir); }
-    catch (error) { process.stderr.write(`Bao could not stop the agent-browser daemon of its own window: ${error instanceof Error ? error.message : String(error)}\n`); }
-    finally {
-      old.background.close();
-      await old.chrome.close().catch((error: unknown) => process.stderr.write(`Bao could not close its own window: ${error instanceof Error ? error.message : String(error)}\n`));
-      await rm(old.stateDir, { recursive: true, force: true });
-    }
-    await this.noteWall(session);
-    if (routeOpen && routeOpen.endedAt === undefined && opened) {
-      await session.recording.complete(routeOpen, [opened], session.stateDir, async () => { throw new Error("page closed"); }, undefined, false, { moved: this.moved.line });
-    }
-    return opened;
   }
 
   private async connectSession(session: Session, options: { timeoutMs: number; signal?: AbortSignal }): Promise<CdpSocket> {

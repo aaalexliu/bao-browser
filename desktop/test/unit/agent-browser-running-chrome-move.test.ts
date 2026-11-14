@@ -149,7 +149,10 @@ async function harness(t: TestContext, initial: "works" | "refused") {
   const raises: { port: number; method: string }[] = [];
   const order: string[] = [];
   let misses = 0;
+  let ownerMisses = 0;
   let missed = 0;
+  let baoReads = 0;
+  let baoMissOn = 0;
   let duringRaise: (() => Promise<void>) | undefined;
   const realConnect = sockets.connectCdp;
   t.mock.method(sockets, "connectCdp", async (port: number, browserPath: string, opts?: Parameters<typeof connectCdp>[2]) => {
@@ -169,9 +172,17 @@ async function harness(t: TestContext, initial: "works" | "refused") {
       return send(method, ...(args as []));
     });
     t.mock.method(cdp, "sendUntilProgress", async (method: string, ...args: unknown[]) => {
+      if (method === "Target.getTargetInfo" && port === endpoint.port && ownerMisses > 0) {
+        ownerMisses -= 1;
+        throw new Error("page metadata is not ready");
+      }
       if (method === "Target.getTargetInfo" && misses > 0) {
         misses -= 1;
         missed += 1;
+        throw new Error("page metadata is not ready");
+      }
+      if (method === "Target.getTargetInfo" && port !== endpoint.port && baoMissOn > 0 && ++baoReads === baoMissOn) {
+        baoMissOn = 0;
         throw new Error("page metadata is not ready");
       }
       return progress(method, ...(args as []));
@@ -191,6 +202,8 @@ async function harness(t: TestContext, initial: "works" | "refused") {
 
   const log = path.join(root, "native.jsonl");
   const ownerOpenFail = path.join(root, "owner-open-fail");
+  const ownerPidBroken = path.join(root, "owner-pid-broken");
+  const tabListFail = path.join(root, "tab-list-fail");
   const executable = path.join(root, "native");
   await writeFile(executable, `#!${process.execPath}
 const fs=require('node:fs'), path=require('node:path');
@@ -204,6 +217,8 @@ ${LIST_TARGETS}
  const tabs=(await listTargets(endpoint.href)).filter(t=>t.type==='page');
  const tab=tabs.find(t=>t.id===bound)??tabs.find(t=>!t.url.startsWith('chrome'))??tabs[0];
  fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,port:endpoint.port,url:tab.url})+'\\n');
+ if(String(endpoint.port)==='${endpoint.port}' && fs.existsSync(${JSON.stringify(ownerPidBroken)})) fs.mkdirSync(path.join(process.env.AGENT_BROWSER_SOCKET_DIR,'bao.pid'),{recursive:true});
+ if(command==='tab' && !rest.includes('--json') && fs.existsSync(${JSON.stringify(tabListFail)})){console.error('tab list failed');process.exitCode=1;return;}
  if(command==='tab'){console.log(rest.includes('--json')?JSON.stringify({data:{tabs:[{tabId:'t1',targetId:tab.id,url:tab.url,title:tab.title,active:true}]}}):'→ [t1] '+tab.title);return;}
  const cdp=await connectCdp(Number(endpoint.port),endpoint.pathname);
  try{
@@ -256,8 +271,11 @@ ${LIST_TARGETS}
   return { proxy, site, home, sourceRoot, baoDir, endpoint, ownerTabs, calls, pages, attaches: () => attaches, launched: () => [...launched],
     raises: () => raises, order: () => [...order],
     allow: () => { attach = "works"; }, slow: (ms: number) => { delay = ms; },
-    missNextRead: () => { misses += 1; }, metadataMisses: () => missed,
+    missNextRead: () => { misses += 1; }, missNextOwnerRead: () => { ownerMisses += 1; }, metadataMisses: () => missed,
+    missBaoRead: (which: number) => { baoReads = 0; baoMissOn = which; },
     failOwnerOpen: (message: string) => writeFile(ownerOpenFail, message),
+    breakOwnerDaemonPid: () => writeFile(ownerPidBroken, ""),
+    failTabList: () => writeFile(tabListFail, ""),
     duringRaise: (run: () => Promise<void>) => { duringRaise = run; } };
 }
 
@@ -389,6 +407,75 @@ test("an open that lands on a sign-in URL in a Bao profile continues in the owne
   assert.ok(await baoClosed(h.baoDir));
 });
 
+test("an open of a sign-in wall records the running Chrome timeout and still returns the halted fallback", { timeout: scaledMs(60_000) }, async (t) => {
+  const h = await harness(t, "works");
+  await h.failOwnerOpen("navigation timed out");
+  const [result] = await h.proxy.execute("open", [`${h.site}/gate`], "bao");
+  const reply = JSON.parse(result!.stdout) as { outcome: string; instruction: string };
+  assert.equal(result!.exitCode, 0);
+  assert.equal(reply.outcome, "halted");
+  assert.match(reply.instruction, /owner's running Chrome/);
+  await h.proxy.close();
+  const run = new Library(h.home).listRuns()[0]!;
+  const open = (run.steps as RecordedAgentBrowserCommand[])[0]!;
+  assert.equal(open.id, "command-1");
+  assert.equal(open.native.command, "open");
+  assert.equal(open.status, "failed");
+  assert.match(open.reason ?? "", /navigation timed out/);
+  assert.match((await readStepRecord(h.home, run.id, open.id)).error ?? "", /navigation timed out/);
+  assert.notEqual(run.status, "passed");
+});
+
+test("a later open of a bound site records the running Chrome timeout and still returns Bao's open", { timeout: scaledMs(60_000) }, async (t) => {
+  const h = await harness(t, "works");
+  assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "bao"))[0]!.exitCode, 0);
+  boundSessions(path.join(h.sourceRoot, "Default"), ["http://127.0.0.1 3f9a"]);
+  await h.failOwnerOpen("navigation timed out");
+  const [opened, tabs] = await h.proxy.execute("open", [`${h.site}/plain`], undefined, false, undefined, {}, h.proxy.activeRunId);
+  assert.equal(opened!.exitCode, 0);
+  assert.equal(tabs!.exitCode, 0);
+  await h.proxy.close();
+  const run = new Library(h.home).listRuns()[0]!;
+  const opens = (run.steps as RecordedAgentBrowserCommand[]).filter((step) => step.native.command === "open");
+  assert.equal(opens.length, 2);
+  assert.equal(opens[1]!.status, "failed");
+  assert.equal(opens[1]!.native.args[0], `${h.site}/plain`);
+  assert.match(opens[1]!.reason ?? "", /navigation timed out/);
+  assert.match((await readStepRecord(h.home, run.id, opens[1]!.id)).error ?? "", /navigation timed out/);
+  assert.notEqual(run.status, "passed");
+});
+
+test("a bound-site fallback keeps the running Chrome timeout when the page read throws", { timeout: scaledMs(60_000) }, async (t) => {
+  const h = await harness(t, "works");
+  assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "bao"))[0]!.exitCode, 0);
+  boundSessions(path.join(h.sourceRoot, "Default"), ["http://127.0.0.1 3f9a"]);
+  await h.failOwnerOpen("navigation timed out");
+  h.missBaoRead(3);
+  await assert.rejects(h.proxy.execute("open", [`${h.site}/story`], undefined, false, undefined, {}, h.proxy.activeRunId), /page metadata is not ready/);
+  await h.proxy.close();
+  const run = new Library(h.home).listRuns()[0]!;
+  const open = (run.steps as RecordedAgentBrowserCommand[]).filter((step) => step.native.command === "open")[1]!;
+  assert.equal(open.status, "failed");
+  assert.ok(open.native.results.some((result) => /navigation timed out/.test(result.stderr)));
+  assert.notEqual(run.status, "passed");
+});
+
+test("a pending open still records the running Chrome timeout when move cleanup throws", { timeout: scaledMs(60_000) }, async (t) => {
+  const h = await harness(t, "works");
+  await h.failOwnerOpen("navigation timed out");
+  await h.breakOwnerDaemonPid();
+  await assert.rejects(h.proxy.execute("open", [`${h.site}/gate`], "bao"), /EISDIR/);
+  await h.proxy.close();
+  const run = new Library(h.home).listRuns()[0]!;
+  const open = (run.steps as RecordedAgentBrowserCommand[]).find((step) => step.id === "command-1")!;
+  assert.equal(open.native.command, "open");
+  assert.equal(open.status, "failed");
+  assert.match(open.reason ?? "", /EISDIR/);
+  assert.ok(open.native.results.some((result) => /navigation timed out/.test(result.stderr)));
+  assert.match((await readStepRecord(h.home, run.id, open.id)).error ?? "", /EISDIR/);
+  assert.notEqual(run.status, "passed");
+});
+
 test("a route move whose native open times out leaves a failed open and the run is not passed", { timeout: scaledMs(60_000) }, async (t) => {
   const h = await harness(t, "works");
   assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "bao"))[0]!.exitCode, 0);
@@ -404,6 +491,60 @@ test("a route move whose native open times out leaves a failed open and the run 
   assert.equal(open?.status, "failed");
   assert.match(open?.reason ?? "", /navigation timed out/);
   assert.match((await readStepRecord(h.home, run.id, open!.id)).error ?? "", /navigation timed out/);
+  assert.notEqual(run.status, "passed");
+});
+
+test("an open whose tab list fails after a route move stays failed, and the run is not passed", { timeout: scaledMs(60_000) }, async (t) => {
+  const h = await harness(t, "works");
+  await h.failTabList();
+  const [opened, tabs] = await h.proxy.execute("open", [`${h.site}/gate`], "bao");
+  assert.equal(opened!.exitCode, 0);
+  assert.equal(tabs!.exitCode, 1);
+  const runId = h.proxy.activeRunId!;
+  await h.proxy.close();
+  const run = new Library(h.home).readRun(runId);
+  const open = (run.steps as RecordedAgentBrowserCommand[])[0]!;
+  assert.equal(open.status, "failed");
+  assert.deepEqual(open.native.results.map((result) => result.exitCode), [0, 1]);
+  assert.ok(open.summary!.text.startsWith("Bao's own browser hit a sign-in page on 127.0.0.1; continued in your running Chrome"), open.summary!.text);
+  assert.notEqual(open.afterShotError, "Page screenshot unavailable: page closed.");
+  assert.equal((await readStepRecord(h.home, run.id, open.id)).status, "failed");
+  assert.notEqual(run.status, "passed");
+});
+
+test("a route open whose page read fails after the move still ends in the record", { timeout: scaledMs(60_000) }, async (t) => {
+  const h = await harness(t, "works");
+  assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "bao"))[0]!.exitCode, 0);
+  await navigateBao(h.baoDir, "/article", `${h.site}/login`);
+  h.missNextOwnerRead();
+  const runId = h.proxy.activeRunId!;
+  await assert.rejects(h.proxy.execute("click", ["@e5"], undefined, false, undefined, {}, runId));
+  await h.proxy.close();
+  const run = new Library(h.home).readRun(runId);
+  const route = (run.steps as RecordedAgentBrowserCommand[]).filter((step) => step.native.command === "open").at(-1)!;
+  assert.notEqual(route.id, "command-1");
+  assert.equal(route.status, "failed");
+  const record = await readStepRecord(h.home, run.id, route.id);
+  assert.equal(record.status, "failed");
+  assert.ok(record.endedAt);
+  assert.notEqual(run.status, "passed");
+});
+
+test("a route open whose cleanup fails after a failed move still ends failed in the record", { timeout: scaledMs(60_000) }, async (t) => {
+  const h = await harness(t, "works");
+  assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "bao"))[0]!.exitCode, 0);
+  await navigateBao(h.baoDir, "/article", `${h.site}/login`);
+  await h.failOwnerOpen("navigation timed out");
+  await h.breakOwnerDaemonPid();
+  const runId = h.proxy.activeRunId!;
+  await assert.rejects(h.proxy.execute("click", ["@e5"], undefined, false, undefined, {}, runId), /EISDIR/);
+  await h.proxy.close();
+  const run = new Library(h.home).readRun(runId);
+  const route = (run.steps as RecordedAgentBrowserCommand[]).filter((step) => step.native.command === "open").at(-1)!;
+  assert.notEqual(route.id, "command-1");
+  assert.equal(route.status, "failed");
+  assert.match(route.reason ?? "", /navigation timed out/);
+  assert.match((await readStepRecord(h.home, run.id, route.id)).error ?? "", /navigation timed out/);
   assert.notEqual(run.status, "passed");
 });
 
