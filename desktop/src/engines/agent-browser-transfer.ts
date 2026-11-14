@@ -328,7 +328,7 @@ const linkSaved = (saved: string, url: string): DownloadOutcome => ({ result: { 
 /**
  * Clicks an element and saves what it gives. Page handlers run on that click. Bao then fetches the http(s) URL they left, or the
  * URL they passed to `window.open`, in the page with the page's cookies, so no tab opens and the owner's tab stays where it was.
- * A link the page cannot fetch opens in a background tab in that tab's own browser context, which Bao closes. If that context
+ * A cross-origin miss opens in a background tab in that tab's own browser context, which Bao closes, including one the page can read. A same-origin HTML page or HTTP error does not, unless that fetch ended on another site. If that context
  * cannot be confirmed, Bao does not open the tab. Any other element is clicked with the same guard, and Bao saves a download
  * Chrome starts or a PDF Chrome shows. Bao points Chrome's downloads at `saved`'s folder only for this command and gives Chrome
  * back its own download settings after, so the owner's later downloads go where Chrome puts them.
