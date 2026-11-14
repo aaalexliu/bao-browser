@@ -38,7 +38,7 @@ export function doneAsk(instruction: string): string {
 
 /** A result that skipped the command because the owner held the tab. Success bookkeeping must not treat it as done. */
 export function handedBack(result: { stdout: string; exitCode: number }): boolean {
-  return result.exitCode === 0 && result.stdout.includes(HANDED_BACK);
+  return result.exitCode === 0 && result.stdout.trim() === HANDED_BACK;
 }
 
 /**

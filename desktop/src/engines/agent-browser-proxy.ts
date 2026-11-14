@@ -865,7 +865,7 @@ export class AgentBrowserProxy {
         results.push(...await this.finishAsk(session));
         return results;
       }
-      if (!releasedAsk && continuing && command !== "close" && command !== "wait_for_owner") {
+      if (!releasedAsk && continuing && command !== "close" && command !== "wait_for_owner" && this.takeover?.held !== true) {
         await this.noteWall(session);
         const opened = await this.settleWall(session);
         // Refs from Bao's browser do not hold in the new tab, so an action waits for a fresh snapshot.
@@ -1904,6 +1904,7 @@ export class AgentBrowserProxy {
    * A copy or Running Chrome does not take this move. It raises once, the way it already does.
    */
   private async settleWall(session: Session, options?: { retry?: boolean; what?: string; url?: string }): Promise<AgentBrowserCommandResult | undefined> {
+    if (this.takeover?.held) return undefined;
     const wait = this.wallOf(session);
     if (!wait && !options?.what) return undefined;
     if (this.movable(session, options?.retry === true)) {
@@ -1993,8 +1994,8 @@ export class AgentBrowserProxy {
     const takeover = this.overlayOn(session) ? this.takeover : undefined;
     if (takeover) {
       await takeover.follow(targetId).catch(() => undefined);
-      if (waiting) await takeover.showAsk(askLine(ownerTask(ownerWaitPage(this.waitOf(session), session.ownerPage))));
-      else await takeover.clearAsk();
+      if (!takeover.held && waiting) await takeover.showAsk(askLine(ownerTask(ownerWaitPage(this.waitOf(session), session.ownerPage))));
+      else if (!takeover.held) await takeover.clearAsk();
     } else if (waiting) await this.armReloadBanner(session, targetId, text).catch(() => undefined);
     else await this.disarmReloadBanner();
     const cdp = await this.connectSession(session, { timeoutMs: 2000, signal: session.abort.signal });

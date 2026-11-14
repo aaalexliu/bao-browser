@@ -421,7 +421,10 @@ export async function replay(
       stamp({ id: step.id, status: "paused", reason: decision.class === "login_wall" ? "sign in" : "bot check" });
       const paused = finish({ runId, status: "paused", steps, pausedStepId: step.id, pausedKind: "wall", ask });
       opts.onPause?.(structuredClone(paused));
-      if (!opts.holdForPerson) return { result: paused };
+      if (!opts.holdForPerson) {
+        driver.askUnwatched?.();
+        return { result: paused };
+      }
       const timeout = actWaitMs(undefined, settings.actTimeoutMs);
       const start = Date.now();
       while (Date.now() - start < timeout) {

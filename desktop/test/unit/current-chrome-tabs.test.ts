@@ -17,6 +17,7 @@ import { shareConnection } from "../../src/cdp-live/shared-connection";
 import * as socket from "../../src/cdp-live/socket";
 import type { CdpMessage, CdpRoute, CdpSocket } from "../../src/cdp-live/socket";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
+import { HANDED_BACK, OWNER_IN_CONTROL } from "../../../shared/takeover-overlay";
 import * as bao from "../../src/engines/bao-profile";
 import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
 import { pinTestBrowser } from "../../src/launch";
@@ -73,6 +74,8 @@ async function fixture(t: TestContext) {
     windowCheck: undefined as ((targetId: string) => void) | undefined,
     /** Runs as a command's reply is sent, after that list was built and before the next command. */
     after: undefined as ((command: string, args: string[]) => void) | undefined,
+    /** Replaces the next native reply, then clears. A handback line uses this. */
+    forced: undefined as string | undefined,
     /** Exit code of the next command that has no tab-specific reply. */
     exit: 0,
     /** Targets Chrome lists that this daemon has not numbered yet. */
@@ -164,7 +167,11 @@ async function fixture(t: TestContext) {
     const tabArgs = command === "tab" ? withoutJson(args) : args;
     const named = (ref: string | undefined) => tabs.find(item => item.tabId === ref || item.tabId === canonicalTabId(ref) || item.label === ref?.trim() || (ref !== undefined && item.targetId.toLowerCase() === ref.trim().toLowerCase()));
     const listing = command === "tab" && tabArgs[0] !== "close" && tabArgs[0] !== "new" && (!tabArgs[0] || tabArgs[0] === "list");
-    if (command === "tab" && listing && args.includes("--json")) reply(JSON.stringify({ success: true, data: { tabs } }));
+    if (daemon.forced !== undefined) {
+      const stdout = daemon.forced;
+      daemon.forced = undefined;
+      reply(stdout);
+    } else if (command === "tab" && listing && args.includes("--json")) reply(JSON.stringify({ success: true, data: { tabs } }));
     else if (command === "tab" && (!args[0] || args[0] === "list")) reply(tabs.map(tab => `${tab.active ? "→" : " "} [${tab.tabId}] ${tab.title} - ${tab.url}`).join("\n") + "\n");
     else if (command === "tab" && tabArgs[0] === "close") {
       const tab = named(tabArgs[1]);
@@ -847,3 +854,67 @@ async function sharedClient(query: string) {
     },
   };
 }
+
+test("a tab title equal to the handback sentence still goes through the ownership filter", async (t) => {
+  const f = await fixture(t);
+  await f.proxy.execute("open", [MAPS], "current");
+  const owner = f.targets.find((tab) => tab.targetId === "owner");
+  assert.ok(owner);
+  owner.title = HANDED_BACK;
+  const listed = JSON.parse((await f.proxy.execute("tab", ["list", "--json"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout) as { data: { tabs: { tabId: string; title?: string; targetId?: string }[] } };
+  assert.deepEqual(listed.data.tabs.map((tab) => tab.tabId), ["t1"]);
+  assert.equal(listed.data.tabs.some((tab) => tab.title === HANDED_BACK || tab.targetId === "owner"), false);
+  (f.proxy as unknown as { takeover: { held: boolean; stoppedByOwner: boolean; follow(): Promise<void>; noteOwned(): Promise<void>; waitConfirm(): Promise<void>; showAsk(): Promise<void>; clearAsk(): Promise<void>; activityLine(): Promise<void>; hideForShot<T>(fn: () => Promise<T>): Promise<T>; finish(): Promise<void>; dispose(): Promise<void> } }).takeover = {
+    held: true,
+    stoppedByOwner: false,
+    async follow() {},
+    async noteOwned() {},
+    async waitConfirm() {},
+    async showAsk() {},
+    async clearAsk() {},
+    async activityLine() {},
+    async hideForShot(fn) { return fn(); },
+    async finish() {},
+    async dispose() {},
+  };
+  let lists = 0;
+  f.daemon.observe = (command, args) => {
+    if (command !== "tab" || !args.includes("--json")) return;
+    lists += 1;
+    if (lists === 2) f.daemon.forced = `${HANDED_BACK}\n`;
+  };
+  const [handed] = await f.proxy.execute("tab", ["list", "--json"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  assert.equal(handed!.exitCode, 0);
+  assert.equal(handed!.stdout, `${HANDED_BACK}\n`);
+});
+
+test("a snapshot while the owner holds a sign-in tab says so and keeps the takeover chart", async (t) => {
+  const f = await fixture(t);
+  await f.proxy.execute("open", [MAPS], "current");
+  const task = f.targets.find((tab) => tab.targetId === "task");
+  assert.ok(task);
+  task.url = "https://shop.example/login";
+  task.title = "Sign in";
+  const asks: string[] = [];
+  const takeover = {
+    held: true,
+    heldSince: 1,
+    stoppedByOwner: false,
+    async follow() {},
+    async noteOwned() {},
+    async waitConfirm() {},
+    async showAsk(text: string) { asks.push(text); },
+    async clearAsk() { asks.push("clear"); },
+    async hideForShot<T>(fn: () => Promise<T>) { return fn(); },
+    async activityLine() {},
+    async finish() {},
+    async dispose() {},
+  };
+  (f.proxy as unknown as { takeover: typeof takeover }).takeover = takeover;
+  const [shot] = await f.proxy.execute("snapshot", ["-i"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  assert.equal(shot!.exitCode, 0);
+  assert.match(shot!.stdout, /Done on task/);
+  assert.match(shot!.stdout, new RegExp(OWNER_IN_CONTROL.replace(/[.]/g, "\\.")));
+  assert.equal(shot!.stdout.includes('"outcome":"halted"'), false);
+  assert.deepEqual(asks, []);
+});

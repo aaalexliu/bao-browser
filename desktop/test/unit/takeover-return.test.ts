@@ -210,6 +210,97 @@ test("Done after an owner-press replay has returned ends the overlay without res
   assert.equal(fake.calls.includes("dispose"), true);
 });
 
+test("a wall pause that has returned ends on Done, and a live wall wait does not", async () => {
+  const save = { surface: "dom", role: "button", name: "Save", path: [] } as Identity;
+  const doc = testWorkflow({
+    startUrl: "https://example.test/",
+    steps: [{
+      id: "open",
+      index: 0,
+      timeoutMs: 0,
+      caption: { text: "Click Save" },
+      action: "click",
+      heal: "never",
+      target: targetFor(save),
+      check: { kind: "element", locators: targetFor(save).locators, timeoutMs: 0 },
+    }],
+  });
+  const wall = { nodes: [], texts: ["hcaptcha"], values: [], url: "https://example.test/check" };
+  const page = { nodes: [save], texts: [], values: [], url: "https://example.test/" };
+  const returned = overlayFake();
+  let returnedOverlay: Takeover | undefined;
+  let returnedBack = false;
+  const returnedDriver: Driver = {
+    tree: async () => wall,
+    snapshot: async () => ({}),
+    click: async () => {},
+    fill: async () => {},
+    key: async () => {},
+    upload: async () => {},
+    drop: async () => {},
+    digits: async () => {},
+    check: async () => {},
+    notify: async () => {},
+    showAsk: async () => {
+      returnedOverlay = new Takeover({ heartbeatMs: 0, finishHoldMs: 0, onAskDone: () => { returnedBack = true; } });
+      await returnedOverlay.attachShared(returned.cdp, "page-0");
+      await returnedOverlay.showAsk("Sign in, then click Done");
+    },
+    loginContinued: () => returnedBack,
+    askUnwatched: () => returnedOverlay?.noteAskReturned(),
+  };
+  const paused = await replay(doc, {}, returnedDriver, { settings: { heal: "never" } });
+  assert.equal(paused.status, "paused");
+  assert.equal(paused.pausedKind, "wall");
+  assert.equal(returned.calls.includes("dispose"), false);
+  returned.emit({ type: "done" });
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  const returnedAsk = returned.views.findIndex((view) => view.phase === "control");
+  const returnedAfter = returned.views.slice(returnedAsk + 1);
+  assert.equal(returnedAfter.some((view) => view.phase === "finished"), true);
+  assert.equal(returnedAfter.some((view) => view.phase === "releasing" || view.activity === "Resuming…" || view.phase === "working"), false);
+  assert.equal(returned.calls.includes("dispose"), true);
+
+  const live = overlayFake();
+  let liveOverlay: Takeover | undefined;
+  let liveBack = false;
+  let clicks = 0;
+  const liveDriver: Driver = {
+    tree: async () => liveBack ? page : wall,
+    snapshot: async () => ({}),
+    click: async () => { clicks += 1; },
+    fill: async () => {},
+    key: async () => {},
+    upload: async () => {},
+    drop: async () => {},
+    digits: async () => {},
+    check: async () => {},
+    notify: async () => {},
+    sleep: async () => {
+      if (!liveOverlay || liveBack) return;
+      live.emit({ type: "done" });
+      const start = Date.now();
+      while (!liveBack && Date.now() - start < 1000) await new Promise((resolve) => setTimeout(resolve, 10));
+    },
+    showAsk: async () => {
+      liveOverlay = new Takeover({ heartbeatMs: 0, finishHoldMs: 0, onAskDone: () => { liveBack = true; } });
+      await liveOverlay.attachShared(live.cdp, "page-0");
+      await liveOverlay.showAsk("Sign in, then click Done");
+    },
+    loginContinued: () => liveBack,
+    askUnwatched: () => liveOverlay?.noteAskReturned(),
+  };
+  const continued = await replay(doc, {}, liveDriver, { holdForPerson: true, settings: { heal: "never", actTimeoutMs: 2000 } });
+  const liveAsk = live.views.findIndex((view) => view.phase === "control");
+  const liveAfter = live.views.slice(liveAsk + 1);
+  assert.equal(continued.status, "passed");
+  assert.equal(clicks, 1);
+  assert.equal(liveAfter.some((view) => view.phase === "working" && view.activity === "Working…"), true);
+  assert.equal(liveAfter.some((view) => view.phase === "finished" || view.phase === "releasing" || view.activity === "Resuming…"), false);
+  assert.equal(live.calls.includes("dispose"), false);
+  await liveOverlay?.dispose();
+});
+
 test("a lost execution context still hands the tab back and still reports the take", async () => {
   const views: OverlayView[] = [];
   const queued: { type: string }[] = [];
