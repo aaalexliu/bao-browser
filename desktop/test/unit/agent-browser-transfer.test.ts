@@ -16,6 +16,7 @@ pinTestBrowser();
 const JANUARY = "JANUARY-PDF\n";
 const OCTOBER = "OCTOBER-PDF\n";
 const REPORT = "<!doctype html><title>Report</title><p>October report</p>\n";
+const FOREIGN = "<!doctype html><title>Foreign</title><p>not a file</p>\n";
 
 async function listen(server: Server): Promise<string> {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -125,7 +126,10 @@ test("a failed background navigation closes the tab and does not save", async ()
 test("a download saves the handler's file, captures window.open, and falls back in that tab's browser context", { timeout: scaledMs(120_000) }, async () => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-transfer-click-"));
   const page = `<!doctype html><title>Statements</title>
+<base href="/statements/october/">
 <a id=plain href=/october.pdf>October</a>
+<a id=based href=/gate>Based</a>
+<a id=foreign download>Foreign</a>
 <a id=report href=/report.html download>Report</a>
 <a id=month href=/january.pdf>Month</a>
 <a id=popup href=/gate target=_blank>Popup</a>
@@ -146,6 +150,7 @@ test("a download saves the handler's file, captures window.open, and falls back 
 <script>
 month.addEventListener("click", () => { month.href = "/october.pdf"; });
 popup.addEventListener("click", (event) => { event.preventDefault(); window.open("/october.pdf"); });
+based.addEventListener("click", (event) => { event.preventDefault(); window.open("statement.pdf"); });
 halt.addEventListener("submit", (event) => event.preventDefault());
 </script>`;
   const site = createServer((request, response) => {
@@ -153,6 +158,8 @@ halt.addEventListener("submit", (event) => event.preventDefault());
     if (request.url === "/january.pdf") { response.setHeader("content-type", "application/pdf"); response.end(JANUARY); return; }
     if (request.url === "/gate") { response.setHeader("content-type", "text/html"); response.end("<!doctype html><title>Gate</title>"); return; }
     if (request.url === "/report.html") { response.setHeader("content-type", "text/html"); response.end(REPORT); return; }
+    if (request.url === "/statement.pdf") { response.setHeader("content-type", "application/pdf"); response.end(JANUARY); return; }
+    if (request.url === "/statements/october/statement.pdf") { response.setHeader("content-type", "application/pdf"); response.end(OCTOBER); return; }
     const asked = new URL(request.url ?? "/", "http://127.0.0.1");
     if (asked.pathname === "/statement") {
       const months = asked.searchParams.getAll("month");
@@ -172,6 +179,16 @@ halt.addEventListener("submit", (event) => event.preventDefault());
     if (request.url === "/statement.bin") {
       response.writeHead(200, { "content-type": "application/octet-stream", "content-disposition": "attachment; filename=\"statement.bin\"" });
       response.end(`attach=${request.headers.cookie ?? ""}\n`);
+      return;
+    }
+    if (request.url === "/foreign.html") {
+      const origin = request.headers.origin;
+      if (typeof origin === "string") {
+        response.setHeader("access-control-allow-origin", origin);
+        response.setHeader("access-control-allow-credentials", "true");
+      }
+      response.setHeader("content-type", "text/html");
+      response.end(FOREIGN);
       return;
     }
     response.writeHead(404);
@@ -209,7 +226,8 @@ halt.addEventListener("submit", (event) => event.preventDefault());
     for (const tab of [workTab, personalTab]) {
       while (await evaluate(cdp, tab, "document.readyState") !== "complete") await new Promise((resolve) => setTimeout(resolve, 20));
       await evaluate(cdp, tab, `document.querySelector("#cross").href = ${JSON.stringify(`${crossBase}/statement.pdf`)};
-        document.querySelector("#attach").href = ${JSON.stringify(`${crossBase}/statement.bin`)};`);
+        document.querySelector("#attach").href = ${JSON.stringify(`${crossBase}/statement.bin`)};
+        document.querySelector("#foreign").href = ${JSON.stringify(`${crossBase}/foreign.html`)};`);
     }
     const setCookie = async (targetId: string, value: string) => {
       const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true });
@@ -247,6 +265,14 @@ halt.addEventListener("submit", (event) => event.preventDefault());
     assert.match(report.outcome.result.stdout, /did not open a tab/);
     assert.deepEqual(report.contexts, [], "an HTML download attribute opens no tab");
 
+    const foreignBefore = born.length;
+    const foreign = await downloadByClick(cdp, workTab, path.join(root, "foreign.html"), click(workTab, "#foreign"));
+    assert.equal(foreign.result.exitCode, 1);
+    assert.match(foreign.result.stderr, /returned a page, not a file/);
+    await assert.rejects(readFile(path.join(root, "foreign.html")));
+    const foreignContexts = (await Promise.all(born.slice(foreignBefore))).filter((id): id is string => typeof id === "string");
+    assert.deepEqual(foreignContexts, [], "a cross-origin download attribute opens no tab");
+
     const month = await save(workTab, "#month", "month.pdf");
     assert.equal(month.text, OCTOBER);
     assert.notEqual(month.text, JANUARY);
@@ -259,6 +285,12 @@ halt.addEventListener("submit", (event) => event.preventDefault());
     assert.equal(popup.outcome.from && "url" in popup.outcome.from ? popup.outcome.from.url : "", `${base}/october.pdf`);
     assert.deepEqual(popup.contexts, [], "a handler that calls window.open opens no tab");
     assert.equal(await evaluate(cdp, workTab, "location.pathname"), "/files", "the handler popup does not navigate the agent's tab");
+
+    const based = await save(workTab, "#based", "based.pdf");
+    assert.equal(based.text, OCTOBER);
+    assert.notEqual(based.text, JANUARY);
+    assert.equal(based.outcome.from && "url" in based.outcome.from ? based.outcome.from.url : "", `${base}/statements/october/statement.pdf`);
+    assert.deepEqual(based.contexts, [], "a base-relative window.open opens no tab");
 
     const workFile = await save(workTab, "#cross", "work.pdf");
     assert.match(workFile.outcome.result.stdout, /background tab/);

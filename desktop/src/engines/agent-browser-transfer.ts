@@ -139,7 +139,7 @@ const ARM_CLICK = `(() => {
   window.__baoPriorOpen = window.open;
   window.open = function(url) {
     let resolved;
-    try { resolved = new URL(String(url == null ? "" : url), location.href); } catch { resolved = undefined; }
+    try { resolved = new URL(String(url == null ? "" : url), document.baseURI); } catch { resolved = undefined; }
     if (resolved && (resolved.protocol === "http:" || resolved.protocol === "https:")) window.__baoOpened = resolved.href;
     return null;
   };
@@ -160,7 +160,7 @@ const ARM_CLICK = `(() => {
     if (url.protocol !== "http:" && url.protocol !== "https:") return;
     event.preventDefault();
     window.__baoDownloadHref = url.href;
-    window.__baoDownloadNamed = link.hasAttribute("download");
+    window.__baoDownloadNamed = link.hasAttribute("download") && url.origin === location.origin;
   };
   const onSubmit = (event) => {
     if (event.defaultPrevented) return;
