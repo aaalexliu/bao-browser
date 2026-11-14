@@ -98,7 +98,7 @@ for (const end of ["tab closes", "CDP disconnects"] as const) test(`tab video fo
     await run.encodeVideo();
     await run.endVideoCapture();
     await run.encodeVideo();
-    run.finish();
+    await run.finish();
     const receipt = new Library(path.join(f.root, "home")).listRuns()[0]!;
     assert.equal(receipt.video, `${run.id}.mp4`);
     assert.ok(receipt.videoStartedAt! >= receipt.at);
@@ -133,7 +133,7 @@ test("tab video omits frames painted during an owner wait", { skip: !ffmpeg, tim
     await wait(400);
     await run.endVideoCapture();
     await run.encodeVideo();
-    run.finish();
+    await run.finish();
     const file = path.join(f.root, "home", "videos", `${run.id}.mp4`);
     assert.ok((await stat(file)).size > 1000);
     const pixels = frames(file);
@@ -194,7 +194,7 @@ test("unavailable tab recording does not fail commands or their receipt", { time
     });
     await run.endVideoCapture();
     await run.encodeVideo();
-    run.finish();
+    await run.finish();
     const receipt = new Library(home).listRuns()[0]!;
     assert.equal(receipt.status, "passed");
     assert.equal(receipt.video, undefined);

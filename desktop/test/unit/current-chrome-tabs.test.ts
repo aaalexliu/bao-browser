@@ -430,7 +430,7 @@ test("a sign-in popup opened while moving to Running Chrome is followed, and fin
     close() {}, on() { return this; },
   }) as unknown as CdpSocket);
   await f.proxy.execute("open", ["https://example.com/"], "bao");
-  f.daemon.before = (command) => {
+  f.daemon.observe = (command) => {
     if (command === "open") f.targets.push({ targetId: "signin", type: "page", url: "https://accounts.google.com/o/oauth2/v2/auth", title: "Choose an account", openerId: "task", inWindow: true });
   };
   const [moved] = await f.proxy.execute("open", ["https://www.google.com/maps"], undefined, false, undefined, {}, f.proxy.activeRunId);

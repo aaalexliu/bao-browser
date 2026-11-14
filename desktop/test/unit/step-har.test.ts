@@ -47,7 +47,7 @@ test("one HAR is copied as bytes and a second is concatenated", async () => {
     await writeRunHar(home, "run-1", [{ raw: first, har: parseHar(first) }, { raw: Buffer.from("{}"), har: second }]);
     const merged = JSON.parse((await readFile(runHarPath(home, "run-1"))).toString("utf8")) as HarLog;
     assert.equal(merged.log.creator.name, "agent-browser");
-    assert.deepEqual(merged.log.entries.map((entry: { url: string }) => entry.url), ["a", "b"]);
+    assert.deepEqual(merged.log.entries.map((entry) => entry.url), ["a", "b"]);
     assert.deepEqual(mergeHar([parseHar(first), second]).log.entries.map((entry) => entry.url), ["a", "b"]);
   } finally {
     await rm(home, { recursive: true, force: true });
