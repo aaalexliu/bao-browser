@@ -129,7 +129,7 @@ type Moved = {
   line: string;
   pick?: BrowserPick;
   site?: string;
-  failed?: { result?: AgentBrowserCommandResult; error: unknown; cleanup?: boolean };
+  failed?: { result?: AgentBrowserCommandResult; error: unknown };
 };
 
 interface SessionData {
@@ -997,17 +997,15 @@ export class AgentBrowserProxy {
         if (!agentClosedTab) failure = new Error("Bao's task tab was closed");
         return results;
       }
-      const kept = this.moved?.failed;
-      failure = kept?.cleanup && step?.native.command === "open" ? kept.error : error;
+      failure = error;
       session.workflow.unavailable("a browser command was interrupted", step ? { id: step.id, command: step.native.command } : undefined);
       throw error;
     } finally {
       try {
         if (step && step.endedAt === undefined) {
           try {
-            const keptOpen = step.native.command === "open" ? this.moved?.failed : undefined;
-            const ownFailure = failure !== undefined && failure !== keptOpen?.error;
-            await session.recording.complete(step, !ownFailure && keptOpen?.result ? [...results, keptOpen.result] : results, session.stateDir, () => this.screenshot(session, step!.native.command, visual), ownFailure || !keptOpen ? failure : keptOpen.error,
+            const kept = step.native.command === "open" ? this.moved?.failed : undefined;
+            await session.recording.complete(step, kept?.result ? [...results, kept.result] : results, session.stateDir, () => this.screenshot(session, step!.native.command, visual), failure ?? kept?.error,
               this.waitOf(session) !== "off" || command === "wait_for_owner", { ...context, page: session.page, owner: this.ownerPage, current: session.kind === "current",
                 ...this.moved?.pick ? { moved: this.moved.line } : {} });
           } catch (completeError) {
@@ -1374,7 +1372,7 @@ export class AgentBrowserProxy {
         ? `The page stays in the Chrome copy, without this site's sign-in. To try your running Chrome yourself, call agent_browser with ${JSON.stringify({ command: "close", run_id: session.recording.id })}, then with ${JSON.stringify(open)}.`
         : "The session stays in Bao's window; Bao tries again on the next wait_for_owner.";
       const failed = this.moved?.failed;
-      this.moved = { line: `${stopped}. Bao could not continue in your running Chrome over remote debugging: ${session.moveError}. ${next}`, ...failed ? { failed: { ...failed, cleanup: false } } : {} };
+      this.moved = { line: `${stopped}. Bao could not continue in your running Chrome over remote debugging: ${session.moveError}. ${next}`, ...failed ? { failed } : {} };
       return undefined;
     };
     if (!profile) return fail("Bao could not read Chrome's profiles, so it does not know which Chrome profile to use");
@@ -1401,7 +1399,7 @@ export class AgentBrowserProxy {
         failure = error;
         if (!routeOpen && nativeOpen) {
           fail(error);
-          this.moved = { ...this.moved!, failed: { error, cleanup: true, ...opened ? { result: opened } : {} } };
+          this.moved = { ...this.moved!, failed: { error, ...opened ? { result: opened } : {} } };
         }
         try { if (moving) await this.flushHar(moving); }
         catch (flushError) { process.stderr.write(`Bao step record: network har stop failed: ${flushError instanceof Error ? flushError.message : String(flushError)}\n`); }

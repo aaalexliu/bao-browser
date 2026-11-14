@@ -151,6 +151,8 @@ async function harness(t: TestContext, initial: "works" | "refused") {
   let misses = 0;
   let ownerMisses = 0;
   let missed = 0;
+  let baoReads = 0;
+  let baoMissOn = 0;
   let duringRaise: (() => Promise<void>) | undefined;
   const realConnect = sockets.connectCdp;
   t.mock.method(sockets, "connectCdp", async (port: number, browserPath: string, opts?: Parameters<typeof connectCdp>[2]) => {
@@ -177,6 +179,10 @@ async function harness(t: TestContext, initial: "works" | "refused") {
       if (method === "Target.getTargetInfo" && misses > 0) {
         misses -= 1;
         missed += 1;
+        throw new Error("page metadata is not ready");
+      }
+      if (method === "Target.getTargetInfo" && port !== endpoint.port && baoMissOn > 0 && ++baoReads === baoMissOn) {
+        baoMissOn = 0;
         throw new Error("page metadata is not ready");
       }
       return progress(method, ...(args as []));
@@ -266,6 +272,7 @@ ${LIST_TARGETS}
     raises: () => raises, order: () => [...order],
     allow: () => { attach = "works"; }, slow: (ms: number) => { delay = ms; },
     missNextRead: () => { misses += 1; }, missNextOwnerRead: () => { ownerMisses += 1; }, metadataMisses: () => missed,
+    missBaoRead: (which: number) => { baoReads = 0; baoMissOn = which; },
     failOwnerOpen: (message: string) => writeFile(ownerOpenFail, message),
     breakOwnerDaemonPid: () => writeFile(ownerPidBroken, ""),
     failTabList: () => writeFile(tabListFail, ""),
@@ -422,8 +429,9 @@ test("an open of a sign-in wall records the running Chrome timeout and still ret
 test("a later open of a bound site records the running Chrome timeout and still returns Bao's open", { timeout: scaledMs(60_000) }, async (t) => {
   const h = await harness(t, "works");
   assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "bao"))[0]!.exitCode, 0);
+  boundSessions(path.join(h.sourceRoot, "Default"), ["http://127.0.0.1 3f9a"]);
   await h.failOwnerOpen("navigation timed out");
-  const [opened, tabs] = await h.proxy.execute("open", ["https://www.nytimes.com/"], undefined, false, undefined, {}, h.proxy.activeRunId);
+  const [opened, tabs] = await h.proxy.execute("open", [`${h.site}/plain`], undefined, false, undefined, {}, h.proxy.activeRunId);
   assert.equal(opened!.exitCode, 0);
   assert.equal(tabs!.exitCode, 0);
   await h.proxy.close();
@@ -431,9 +439,24 @@ test("a later open of a bound site records the running Chrome timeout and still 
   const opens = (run.steps as RecordedAgentBrowserCommand[]).filter((step) => step.native.command === "open");
   assert.equal(opens.length, 2);
   assert.equal(opens[1]!.status, "failed");
-  assert.match(opens[1]!.native.args[0] ?? "", /nytimes\.com/);
+  assert.equal(opens[1]!.native.args[0], `${h.site}/plain`);
   assert.match(opens[1]!.reason ?? "", /navigation timed out/);
   assert.match((await readStepRecord(h.home, run.id, opens[1]!.id)).error ?? "", /navigation timed out/);
+  assert.notEqual(run.status, "passed");
+});
+
+test("a bound-site fallback keeps the running Chrome timeout when the page read throws", { timeout: scaledMs(60_000) }, async (t) => {
+  const h = await harness(t, "works");
+  assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "bao"))[0]!.exitCode, 0);
+  boundSessions(path.join(h.sourceRoot, "Default"), ["http://127.0.0.1 3f9a"]);
+  await h.failOwnerOpen("navigation timed out");
+  h.missBaoRead(3);
+  await assert.rejects(h.proxy.execute("open", [`${h.site}/story`], undefined, false, undefined, {}, h.proxy.activeRunId), /page metadata is not ready/);
+  await h.proxy.close();
+  const run = new Library(h.home).listRuns()[0]!;
+  const open = (run.steps as RecordedAgentBrowserCommand[]).filter((step) => step.native.command === "open")[1]!;
+  assert.equal(open.status, "failed");
+  assert.ok(open.native.results.some((result) => /navigation timed out/.test(result.stderr)));
   assert.notEqual(run.status, "passed");
 });
 
@@ -447,10 +470,9 @@ test("a pending open still records the running Chrome timeout when move cleanup 
   const open = (run.steps as RecordedAgentBrowserCommand[]).find((step) => step.id === "command-1")!;
   assert.equal(open.native.command, "open");
   assert.equal(open.status, "failed");
-  assert.match(open.reason ?? "", /navigation timed out/);
-  assert.doesNotMatch(open.reason ?? "", /EISDIR/);
-  assert.match((await readStepRecord(h.home, run.id, open.id)).error ?? "", /navigation timed out/);
-  assert.doesNotMatch((await readStepRecord(h.home, run.id, open.id)).error ?? "", /EISDIR/);
+  assert.match(open.reason ?? "", /EISDIR/);
+  assert.ok(open.native.results.some((result) => /navigation timed out/.test(result.stderr)));
+  assert.match((await readStepRecord(h.home, run.id, open.id)).error ?? "", /EISDIR/);
   assert.notEqual(run.status, "passed");
 });
 
