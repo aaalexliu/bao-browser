@@ -8,9 +8,9 @@ Search this checkout only, unless the person who asked authorizes a wider search
 
 ## Load skills by name
 
-Load an applicable skill by its name through the harness. If that load fails, read the vendored file named in `.cursor/third-party/pstack/VENDORED.md`. The vendored poteto-mode skill is `.cursor/skills/poteto-mode/SKILL.md`. Do not search the machine for a skill with a similar name.
+Load an applicable skill by its name through the harness. pstack skills come from the harness's own install (pstack-pi in Pi); this repo keeps no copy.
 
-`.cursor/rules/pstack.mdc` names three skills to use before a shape decision, and before calling a spike done. They are architect, arena, and principle-prove-it-works.
+Use architect before a big shape decision, arena when one attempt would lock in the wrong design, and principle-prove-it-works before calling a spike done.
 
 ## Run the checks that match the change
 
