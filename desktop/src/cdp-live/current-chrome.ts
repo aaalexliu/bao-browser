@@ -16,7 +16,7 @@ import { REMOTE_CHECKBOX } from "./consent";
 import type { AxNode } from "../proxy/os-macos";
 import { endpointOnPid, listenPid, listenPorts, probeDevToolsVersion, readDevToolsActivePort, type DevToolsEndpoint, type VersionProbe } from "./endpoint";
 import { CHROME_APP_EXE, dailyChromePids, pathKeys } from "./remote-debugging";
-import { holdDir, holdFixtureEndpoint, joinOrStartHold } from "./chrome-hold";
+import { holdFixtureEndpoint, joinOrStartHold } from "./chrome-hold";
 import { shareConnection } from "./shared-connection";
 import { connectCdp, type CdpSocket } from "./socket";
 import { accessibilityMissing, presentMissingMacPermission } from "../app/mac-permissions";
@@ -360,30 +360,31 @@ function profileDirectoryFromReported(reported: string | undefined, root: string
 }
 
 /**
- * Joins the consent-managed connection when a listener is already up, runs `read`, and releases that join.
- * Does not turn debugging on and does not open a window. Undefined when nothing listens, the hold cannot be had,
- * the read fails, or it times out. A hermetic run uses only the throwaway listener a test named.
+ * Attaches to a debugging endpoint that is already listening, runs `read`, and closes that socket.
+ * Does not turn debugging on, open Inspect, or launch Chrome. Undefined when nothing listens, the listener
+ * is gone, or the read fails. A hermetic run uses only the throwaway listener a test named.
  */
-export async function withListeningConnection<T>(root: string, read: (cdp: CdpSocket) => Promise<T>, axLog?: string): Promise<T | undefined> {
+export async function withListeningConnection<T>(root: string, read: (cdp: CdpSocket) => Promise<T>): Promise<T | undefined> {
   const fixture = holdFixtureEndpoint();
   if (!fixture && process.env.BAO_LANE === "hermetic") return undefined;
-  if (!fixture && !await dailyListener(root)) return undefined;
-  let chrome: CurrentChrome | undefined;
+  const endpoint = fixture ?? await dailyListener(root);
+  if (!endpoint) return undefined;
+  let cdp: CdpSocket | undefined;
   try {
-    chrome = await joinOrStartHold({ root, axLog: axLog ?? path.join(holdDir(root), "ax.jsonl") });
-    return await read(chrome.cdp);
+    cdp = await connectCdp(endpoint.port, endpoint.browserPath, { timeoutMs: 2000 });
+    return await read(cdp);
   } catch {
     return undefined;
-  } finally { chrome?.detach(); }
+  } finally { cdp?.close(); }
 }
 
 /**
- * The profile the listening browser reports, found without DevToolsActivePort. The version page is read on the
- * consent-managed hold, after a listener is confirmed. Undefined when nothing listens, the hold cannot be had, the
- * report fails, or it times out. A hermetic run uses only the throwaway listener a test named.
+ * The profile the listening browser reports, found without DevToolsActivePort. The version page is read on an
+ * already listening endpoint. Undefined when nothing listens, the listener is gone, the report fails, or it times out.
+ * A hermetic run uses only the throwaway listener a test named.
  */
-export async function listeningProfileDirectory(root: string, axLog?: string): Promise<string | undefined> {
-  return withListeningConnection(root, async (cdp) => profileDirectoryFromReported(await defaultContextProfile(cdp), root), axLog);
+export async function listeningProfileDirectory(root: string, _axLog?: string): Promise<string | undefined> {
+  return withListeningConnection(root, async (cdp) => profileDirectoryFromReported(await defaultContextProfile(cdp), root));
 }
 
 async function dailyListener(root: string): Promise<DevToolsEndpoint | undefined> {

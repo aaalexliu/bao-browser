@@ -90,7 +90,8 @@ export function openTabsFromSnss(buf: Buffer): SavedTab[] | undefined {
       if (!nav) continue;
       const tab = state(tabs, nav.tab);
       tab.closed = false;
-      tab.history.set(nav.index, { url: nav.url, title: nav.title });
+      if (/^https?:\/\//.test(nav.url)) tab.history.set(nav.index, { url: nav.url, title: nav.title });
+      else tab.history.delete(nav.index);
     } else if (id === 24 && payload.length >= 12) {
       const count = payload.readInt32LE(8);
       if (count > 0) pruneHistory(state(tabs, payload.readUInt32LE(0)), payload.readInt32LE(4), count);
@@ -151,7 +152,7 @@ function selectedEntry(tab: TabState): SavedTab | undefined {
 
 function readNavigation(payload: Buffer): { tab: number; index: number; url: string; title: string } | undefined {
   const url = readString(payload, 12);
-  if (!url || !/^https?:\/\//.test(url.text)) return undefined;
+  if (!url) return undefined;
   const title = readString16(payload, url.offset);
   if (!title) return undefined;
   return { tab: payload.readUInt32LE(4), index: payload.readInt32LE(8), url: url.text, title: title.text };

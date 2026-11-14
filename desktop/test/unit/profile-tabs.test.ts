@@ -150,6 +150,37 @@ test("a readable profile keeps its live tabs when another profile's session cann
   assert.doesNotMatch(quiet, /robinhood/);
 });
 
+test("a side panel is not an open tab and does not spoil a match", async () => {
+  const stocks = page("rh", "https://robinhood.com/stocks", "Robinhood", "work");
+  const comply = page("cs", "https://complysci.com/home", "ComplySci", "work");
+  const panel = page("panel", "https://www.google.com/search?q=pizza", "Search side panel", "work");
+  const lone = page("only", "https://robinhood.com/stocks", "Robinhood", "home");
+  const cdp: TabSocket = {
+    async send<T>(method: string, params?: Record<string, unknown>): Promise<T> {
+      if (method === "Target.getTargets") return { targetInfos: [stocks, comply, panel, lone] } as T;
+      if (method === "Browser.getWindowForTarget") {
+        if (params?.targetId === "panel") throw new Error("not a window tab");
+        return { windowId: 1 } as T;
+      }
+      return {} as T;
+    },
+  };
+  const contexts = await readLivePages(cdp);
+  assert.equal(contexts.flatMap((context) => context.tabs).some((tab) => tab.targetId === "panel"), false);
+  const both = confirmOpenTabs({
+    urls: { Default: [stocks.url, comply.url] },
+    failed: {},
+  }, { contexts: [contexts[0]!] });
+  assert.deepEqual(both.byDirectory.Default?.tabs.map((tab) => tab.host), ["robinhood.com", "complysci.com"]);
+  assert.equal(JSON.stringify(both).includes("google.com"), false);
+  const one = confirmOpenTabs({
+    urls: { Default: [lone.url] },
+    failed: {},
+  }, { contexts: [contexts[1]!] });
+  assert.deepEqual(one.byDirectory.Default?.tabs, [{ title: "Robinhood", host: "robinhood.com" }]);
+  assert.equal(one.unmatched, undefined);
+});
+
 test("an equal overlap matches no profile", () => {
   const listing = confirmOpenTabs({
     urls: {
@@ -236,7 +267,36 @@ test("a hermetic run does not connect even when a port file names a listener", a
   }
 });
 
-test("a fixture browser is read through the shared connection and that join is released", { timeout: 120_000 }, async (t) => {
+test("a vanished listener is unread and does not start a debugging hold", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-profile-tabs-gone-"));
+  const prior = process.env.BAO_LANE;
+  const previousFixture = process.env.BAO_CHROME_HOLD_FIXTURE;
+  const previousBrowser = process.env.BAO_TEST_BROWSER;
+  try {
+    delete process.env.BAO_LANE;
+    process.env.BAO_TEST_BROWSER = process.execPath;
+    process.env.BAO_CHROME_HOLD_FIXTURE = JSON.stringify({
+      port: 1, browserPath: "/devtools/browser/gone", chromePid: process.pid, executable: process.execPath,
+    });
+    const started = Date.now();
+    const listing = await listProfileTabs(root, ["Default"]);
+    assert.equal(listing.unread, "remote debugging is off");
+    assert.equal(listing.byDirectory.Default, undefined);
+    assert.ok(Date.now() - started < 8_000, "a vanished listener must not wait for Chrome to be opened");
+    await assert.rejects(readFile(path.join(holdDir(root), "hold.json"), "utf8"));
+    await assert.rejects(readFile(path.join(holdDir(root), "starting.json"), "utf8"));
+  } finally {
+    if (prior === undefined) delete process.env.BAO_LANE;
+    else process.env.BAO_LANE = prior;
+    if (previousFixture === undefined) delete process.env.BAO_CHROME_HOLD_FIXTURE;
+    else process.env.BAO_CHROME_HOLD_FIXTURE = previousFixture;
+    if (previousBrowser === undefined) delete process.env.BAO_TEST_BROWSER;
+    else process.env.BAO_TEST_BROWSER = previousBrowser;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a fixture browser is read from the listener that is already up", { timeout: 60_000 }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-profile-tabs-chrome-"));
   await mkdir(path.join(root, "Profile 2"), { recursive: true });
   const exe = process.env.BAO_TEST_BROWSER || testChromium.executablePath();
@@ -277,8 +337,8 @@ test("a fixture browser is read through the shared connection and that join is r
     assert.deepEqual(listing.byDirectory.Default?.tabs.map((tab) => tab.host), ["127.0.0.1"]);
     assert.equal(listing.unavailable?.["Profile 2"], "no session file");
     assert.equal(listing.byDirectory["Profile 2"], undefined);
-    const held = JSON.parse(await readFile(path.join(holdDir(root), "hold.json"), "utf8")) as { port?: number };
-    assert.equal(Number.isInteger(held.port), true);
+    await assert.rejects(readFile(path.join(holdDir(root), "hold.json"), "utf8"));
+    await assert.rejects(readFile(path.join(holdDir(root), "starting.json"), "utf8"));
     const again = await connectCdp(endpoint.port, endpoint.browserPath, { timeoutMs: 5000 });
     const { targetInfos } = await again.send<{ targetInfos: { url?: string }[] }>("Target.getTargets", {}, undefined, 2000);
     assert.equal(targetInfos.some((target) => target.url?.startsWith("chrome://version")), false);
@@ -435,6 +495,14 @@ test("a closed tab in a session file is not listed, and a query is not either", 
   assert.deepEqual(openTabsFromSnss(snssFile(
     navigationCommand(7, "https://a.example/old", "Old", 0),
     snssCommand(7, missing),
+  )), []);
+  const selected = Buffer.alloc(8);
+  selected.writeUInt32LE(8, 0);
+  selected.writeInt32LE(0, 4);
+  assert.deepEqual(openTabsFromSnss(snssFile(
+    navigationCommand(8, "https://a.example/", "Old", 0),
+    navigationCommand(8, "about:blank", "Blank", 0),
+    snssCommand(7, selected),
   )), []);
   const root = await mkdtemp(path.join(tmpdir(), "bao-snss-synthetic-"));
   try {

@@ -1090,8 +1090,8 @@ export class AgentBrowserProxy {
   }
 
   /**
-   * Tabs for the profile question. A failed read still asks. It does not open a browser or turn debugging on.
-   * Live tabs are listed only when a listener is already up, through Bao's shared Chrome connection. That join is released before this returns.
+   * Tabs for the profile question. A failed read still asks. It does not open a browser, turn debugging on, or launch Chrome.
+   * Live tabs are listed only by attaching to a listener that is already up. That socket is closed before this returns.
    */
   private async withOpenTabs(error: ChromeProfileQuestion): Promise<ChromeProfileQuestion> {
     try {

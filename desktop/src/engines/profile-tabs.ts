@@ -1,3 +1,4 @@
+import { isChromeTab } from "../cdp-live/chrome-tabs";
 import { withListeningConnection } from "../cdp-live/current-chrome";
 import { readSavedProfileTabs, type ProfileSessions, type SessionFailure } from "./snss-tabs";
 
@@ -107,7 +108,8 @@ export async function readLivePages(cdp: TabSocket): Promise<LiveContext[]> {
   const { targetInfos } = await cdp.send<{ targetInfos: TargetInfo[] }>("Target.getTargets", {}, undefined, 2000);
   const byContext = new Map<string, LivePage[]>();
   for (const target of targetInfos) {
-    if (target.type !== "page" || !target.url || !tabHost(target.url)) continue;
+    if (!target.targetId || !target.type || !target.url || !tabHost(target.url)) continue;
+    if (!await isChromeTab(cdp, { targetId: target.targetId, type: target.type, url: target.url })) continue;
     const key = target.browserContextId ?? "";
     const list = byContext.get(key) ?? [];
     list.push({ targetId: target.targetId ?? `${key}:${list.length}`, url: target.url, title: target.title ?? "" });
@@ -193,7 +195,7 @@ function pagesToTabs(pages: LivePage[]): ProfileTab[] {
 /**
  * Live pages from a debugger that is already listening on this Chrome folder.
  * A hermetic run does not scan or connect: a test that did would raise the owner's Allow sheet.
- * This joins Bao's shared connection and releases that join before returning. It does not turn debugging on.
+ * This attaches to that listener and closes the socket before returning. It does not turn debugging on.
  */
 export async function readListeningProfileTabs(root: string): Promise<LivePages> {
   const contexts = await withListeningConnection(root, (cdp) => readLivePages(cdp));
