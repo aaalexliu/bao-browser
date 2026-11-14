@@ -47,8 +47,8 @@ async function main(): Promise<void> {
   // Sessions spawn this and join its endpoint. It is not a user command.
   if (cmd === "chrome-hold") {
     const { holdMain } = await import("../cdp-live/chrome-hold");
-    const { connectOwnedChrome } = await import("../cdp-live/current-chrome");
-    await holdMain(rest, connectOwnedChrome);
+    const { connectListeningChrome, connectOwnedChrome } = await import("../cdp-live/current-chrome");
+    await holdMain(rest, rest.includes("--listen-only") ? connectListeningChrome : connectOwnedChrome);
     return;
   }
   if (cmd === "import-login") {

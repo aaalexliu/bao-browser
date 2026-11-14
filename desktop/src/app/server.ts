@@ -271,6 +271,8 @@ export async function startApp(opts: {
   desktopMcpLauncher?: string;
 }): Promise<App> {
   opts = { ...opts, home: path.resolve(opts.home) };
+  const { settleDebugSwitch } = await import("../cdp-live/chrome-hold");
+  await settleDebugSwitch();
   sweepClaimedVideoFrames(opts.home);
   process.env.BAO_HOME = opts.home;
   await readCursorAccount().catch(() => undefined);

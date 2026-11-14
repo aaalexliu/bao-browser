@@ -3,14 +3,15 @@
 
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { closeSync, constants, existsSync, openSync, writeSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { chmod, lstat, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { createConnection, createServer, type AddressInfo, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test, { type TestContext } from "node:test";
-import { holdDir, holdLaunch, joinOrStartHold, serveHold } from "../../src/cdp-live/chrome-hold";
+import { bindHoldSessions, holdDir, holdEnd, holdLaunch, joinOrStartHold, serveHold, starterReusable } from "../../src/cdp-live/chrome-hold";
 import { openCurrentChrome, type CurrentChrome } from "../../src/cdp-live/current-chrome";
+import { claimOwned, writeClaim } from "../../src/cdp-live/debug-switch";
 import { readDevToolsActivePort, type DevToolsEndpoint } from "../../src/cdp-live/endpoint";
 import { connectCdp, ServerFrameDecoder, serverFrame } from "../../src/cdp-live/socket";
 import { launchOwnedChromeEndpoint, pinTestBrowser } from "../../src/launch";
@@ -255,7 +256,7 @@ async function versionEndpoint(t: TestContext, browserPath: string) {
         if (message.id === undefined) continue;
         socket.write(serverFrame(1, Buffer.from(JSON.stringify({
           id: message.id,
-          result: { protocolVersion: "1.3", product: "Chrome/test", revision: "0", userAgent: "test", jsVersion: "0" },
+          result: { protocolVersion: "1.3", product: "Chrome/test", revision: "0", userAgent: "test", jsVersion: "0", sessionId: "browser-session" },
         }))));
       }
     }
@@ -281,75 +282,97 @@ function published(root: string, port: number, browserPath: string, holderPid: n
   };
 }
 
-test("serveHold publishes only after the hold lock is free", async (t) => {
-  const browserPath = "/devtools/browser/locked-publish";
-  const scratch = await mkdtemp(path.join(tmpdir(), "bao-chrome-hold-lock-"));
+function admitted(port: number): Promise<Socket> {
+  const socket = createConnection({ host: "127.0.0.1", port });
+  return new Promise((resolve, reject) => {
+    const fail = (error: Error) => { socket.destroy(); reject(error); };
+    socket.on("data", (chunk: Buffer) => {
+      if (chunk.includes(0x31)) resolve(socket);
+    });
+    socket.once("error", fail);
+    socket.once("close", () => fail(new Error("session closed")));
+  });
+}
+
+test("a settle cannot take the switch while the holder is still opening", { timeout: scaledMs(20_000) }, async (t) => {
+  const scratch = await mkdtemp(path.join(tmpdir(), "bao-chrome-hold-owner-"));
+  const root = await realpath(scratch);
+  const axLog = path.join(scratch, "ax.jsonl");
+  const marker = path.join(scratch, "opening");
+  const dir = holdDir(root);
+  const script = `
+    const { holdMain } = require(${JSON.stringify(path.resolve(__dirname, "../../src/cdp-live/chrome-hold.js"))});
+    const { writeFileSync } = require("fs");
+    holdMain(${JSON.stringify(["--root", root, "--ax-log", axLog, "--initiator-fd", "3"])}, async () => {
+      writeFileSync(${JSON.stringify(marker)}, "opening");
+      await new Promise(() => undefined);
+    }).catch((error) => {
+      process.stderr.write(error && error.stack ? error.stack : String(error));
+      process.exit(1);
+    });
+  `;
+  let errText = "";
+  const child = spawn(process.execPath, ["-e", script], { stdio: ["ignore", "pipe", "pipe", "pipe"] });
+  child.stderr?.on("data", (chunk: Buffer) => { errText += chunk.toString("utf8"); });
+  t.after(() => { if (child.pid && pidAlive(child.pid)) child.kill("SIGKILL"); });
+  t.after(async () => {
+    await rm(dir, { recursive: true, force: true });
+    await rm(scratch, { recursive: true, force: true });
+  });
+  const started = Date.now() + scaledMs(8_000);
+  let sessionPort = 0;
+  while (!sessionPort) {
+    if (Date.now() >= started) throw new Error(`the holder did not publish a session port: ${errText}`);
+    try {
+      sessionPort = (JSON.parse(await readFile(path.join(dir, "starting.json"), "utf8")) as { sessionPort?: number }).sessionPort ?? 0;
+    } catch { sessionPort = 0; }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  const session = await admitted(sessionPort);
+  t.after(() => session.destroy());
+  const opening = Date.now() + scaledMs(8_000);
+  while (!existsSync(marker)) {
+    if (Date.now() >= opening) throw new Error(`the holder did not open after the session was counted: ${errText}`);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  assert.equal(existsSync(path.join(dir, "hold.json")), false);
+  writeClaim(dir, true);
+  const settle = `
+    const { holdMain } = require(${JSON.stringify(path.resolve(__dirname, "../../src/cdp-live/chrome-hold.js"))});
+    holdMain(${JSON.stringify(["--root", root, "--ax-log", axLog, "--settle"])}).catch((error) => {
+      process.stderr.write(error && error.stack ? error.stack : String(error));
+      process.exit(1);
+    });
+  `;
+  const settler = spawn(process.execPath, ["-e", settle], { stdio: ["ignore", "ignore", "pipe"] });
+  let settleErr = "";
+  settler.stderr?.on("data", (chunk: Buffer) => { settleErr += chunk.toString("utf8"); });
+  const code = await new Promise<number>((resolve, reject) => {
+    const timer = setTimeout(() => { settler.kill("SIGKILL"); reject(new Error(`settle did not leave the live holder: ${settleErr}`)); }, 5_000);
+    settler.once("exit", (status) => { clearTimeout(timer); resolve(status ?? 1); });
+  });
+  assert.equal(code, 0, settleErr);
+  const starting = JSON.parse(await readFile(path.join(dir, "starting.json"), "utf8")) as { holderPid: number };
+  assert.equal(starting.holderPid, child.pid);
+  assert.equal(claimOwned(dir), true);
+  assert.equal(pidAlive(child.pid ?? 0), true);
+  assert.equal(existsSync(marker), true);
+});
+
+test("a session that starts before the hold is published still joins it", { timeout: scaledMs(15_000) }, async (t) => {
+  const browserPath = "/devtools/browser/reread";
+  const endpoint = await versionEndpoint(t, browserPath);
+  const sessions = await bindHoldSessions();
+  t.after(() => sessions.close());
+  const scratch = await mkdtemp(path.join(tmpdir(), "bao-chrome-hold-reread-"));
   const root = await realpath(scratch);
   const dir = await privateHoldDir(root);
-  const lock = path.join(dir, "lock");
-  let release: () => void = () => undefined;
-  const closed = new Promise<void>((resolve) => { release = resolve; });
-  t.after(() => release());
+  const axLog = path.join(scratch, "ax.jsonl");
   t.after(async () => {
-    await rm(lock, { force: true });
     await rm(dir, { recursive: true, force: true });
     await rm(scratch, { recursive: true, force: true });
   });
   await writeFile(path.join(dir, "starting.json"), JSON.stringify({ holderPid: process.pid, startedAt: Date.now() }));
-  await writeFile(lock, `${process.pid}\n`);
-  const serving = serveHold({
-    pid: process.pid,
-    executable: "/bin/test-chrome",
-    root,
-    endpoint: { port: 9, browserPath },
-    closed,
-    isClosed: () => false,
-    detach() {},
-  } as CurrentChrome);
-  const failed = serving.then(() => undefined, (error: unknown) => error);
-  await new Promise((resolve) => setTimeout(resolve, 400));
-  assert.equal(await Promise.race([failed, Promise.resolve("waiting")]), "waiting");
-  assert.equal(existsSync(path.join(dir, "hold.json")), false);
-  assert.equal(existsSync(path.join(dir, "starting.json")), true);
-  await rm(lock);
-  const holdFile = path.join(dir, "hold.json");
-  const startingFile = path.join(dir, "starting.json");
-  const deadline = Date.now() + scaledMs(2_000);
-  while (!existsSync(holdFile) || existsSync(startingFile)) {
-    if (Date.now() >= deadline) {
-      throw new Error(`the hold did not finish publishing after the lock was released (hold.json ${existsSync(holdFile)}, starting.json ${existsSync(startingFile)})`);
-    }
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-  assert.equal(existsSync(holdFile), true);
-  assert.equal(existsSync(startingFile), false);
-  const saved = JSON.parse(await readFile(path.join(dir, "hold.json"), "utf8")) as { holderPid: number; port: number; browserPath: string };
-  assert.equal(saved.holderPid, process.pid);
-  assert.equal(saved.port, 9);
-  assert.equal(saved.browserPath, browserPath);
-  release();
-  await serving;
-});
-
-test("a session that misses the hold reads it again before reporting it stopped", { timeout: scaledMs(15_000) }, async (t) => {
-  const browserPath = "/devtools/browser/reread";
-  const endpoint = await versionEndpoint(t, browserPath);
-  const scratch = await mkdtemp(path.join(tmpdir(), "bao-chrome-hold-reread-"));
-  const root = await realpath(scratch);
-  const dir = await privateHoldDir(root);
-  const starting = path.join(dir, "starting.json");
-  const axLog = path.join(scratch, "ax.jsonl");
-  let writer: number | undefined;
-  t.after(() => { if (writer !== undefined) closeSync(writer); });
-  t.after(async () => {
-    await rm(dir, { recursive: true, force: true });
-    await rm(scratch, { recursive: true, force: true });
-  });
-  await new Promise<void>((resolve, reject) => {
-    const made = spawn("mkfifo", [starting]);
-    made.once("error", reject);
-    made.once("exit", (code) => code === 0 ? resolve() : reject(new Error(`mkfifo exited ${code}`)));
-  });
   const script = `
     const { joinOrStartHold } = require(${JSON.stringify(path.resolve(__dirname, "../../src/cdp-live/chrome-hold.js"))});
     joinOrStartHold({ root: ${JSON.stringify(root)}, axLog: ${JSON.stringify(axLog)} }).then((chrome) => {
@@ -366,36 +389,22 @@ test("a session that misses the hold reads it again before reporting it stopped"
   child.stdout?.on("data", (chunk: Buffer) => { out += chunk.toString("utf8"); });
   child.stderr?.on("data", (chunk: Buffer) => { errText += chunk.toString("utf8"); });
   t.after(() => { if (child.pid && pidAlive(child.pid)) child.kill("SIGKILL"); });
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  await writeFile(path.join(dir, "starting.json"), JSON.stringify({
+    holderPid: process.pid, startedAt: Date.now(), sessionPort: sessions.port,
+  }));
+  await writeFile(path.join(dir, "hold.json"), JSON.stringify({
+    ...published(root, endpoint.port, browserPath, process.pid), sessionPort: sessions.port,
+  }));
   const deadline = Date.now() + scaledMs(8_000);
-  let fedStart = false;
   while (!out.includes("port")) {
     if (Date.now() >= deadline) throw new Error(`the session did not join the hold it missed: ${errText}`);
-    if (writer === undefined) {
-      try {
-        writer = openSync(starting, constants.O_WRONLY | constants.O_NONBLOCK);
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "ENXIO") throw error;
-        await new Promise((resolve) => setTimeout(resolve, 10));
-        continue;
-      }
-    }
-    if (!fedStart && existsSync(path.join(dir, "lock"))) {
-      writeSync(writer, JSON.stringify({ holderPid: process.pid, startedAt: Date.now() }));
-      closeSync(writer);
-      writer = undefined;
-      fedStart = true;
-      continue;
-    }
-    await writeFile(path.join(dir, "hold.json"), JSON.stringify(published(root, endpoint.port, browserPath, process.pid)));
-    closeSync(writer);
-    writer = undefined;
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
   const joined = JSON.parse(out) as { port: number };
   assert.equal(joined.port, endpoint.port);
-  assert.equal(endpoint.upgrades(), 1, "the session joined the hold it missed on the first read");
-  const saved = JSON.parse(await readFile(path.join(dir, "hold.json"), "utf8")) as { holderPid: number };
-  assert.equal(saved.holderPid, process.pid);
+  assert.equal(endpoint.upgrades(), 1, "the session joined the hold it missed");
+  assert.equal(sessions.count(), 0);
 });
 
 test("teardown leaves a successor hold, and a waiting session joins the published one", { timeout: scaledMs(20_000) }, async (t) => {
@@ -412,7 +421,11 @@ test("teardown leaves a successor hold, and a waiting session joins the publishe
     await rm(dir, { recursive: true, force: true });
     await rm(scratch, { recursive: true, force: true });
   });
-  await writeFile(path.join(dir, "starting.json"), JSON.stringify({ holderPid: process.pid, startedAt: Date.now() }));
+  const sessions = await bindHoldSessions();
+  t.after(() => sessions.close());
+  await writeFile(path.join(dir, "starting.json"), JSON.stringify({
+    holderPid: process.pid, startedAt: Date.now(), sessionPort: sessions.port,
+  }));
   let release: () => void = () => undefined;
   const closed = new Promise<void>((resolve) => { release = resolve; });
   const serving = serveHold({
@@ -423,13 +436,17 @@ test("teardown leaves a successor hold, and a waiting session joins the publishe
     closed,
     isClosed: () => false,
     detach() {},
-  } as CurrentChrome);
+  } as CurrentChrome, undefined, { sessionPort: sessions.port });
   const joined = await joinOrStartHold({ root, axLog: path.join(scratch, "ax.jsonl") });
   assert.equal(joined.endpoint.port, endpoint.port);
   assert.equal(endpoint.upgrades(), 1, "the waiting session joined the published hold");
   joined.detach();
-  await writeFile(path.join(dir, "hold.json"), JSON.stringify(published(root, endpoint.port, browserPath, successorPid)));
-  await writeFile(path.join(dir, "starting.json"), JSON.stringify({ holderPid: successorPid, startedAt: Date.now() }));
+  await writeFile(path.join(dir, "hold.json"), JSON.stringify({
+    ...published(root, endpoint.port, browserPath, successorPid), sessionPort: sessions.port,
+  }));
+  await writeFile(path.join(dir, "starting.json"), JSON.stringify({
+    holderPid: successorPid, startedAt: Date.now(), sessionPort: sessions.port,
+  }));
   release();
   await serving;
   const hold = JSON.parse(await readFile(path.join(dir, "hold.json"), "utf8")) as { holderPid: number };
@@ -481,13 +498,18 @@ test("a failed hold records its error and leaves a successor starting record", {
   t.after(() => { if (child.pid && pidAlive(child.pid)) child.kill("SIGKILL"); });
   const started = Date.now() + scaledMs(10_000);
   let holder = 0;
-  while (holder !== child.pid) {
+  let sessionPort = 0;
+  while (holder !== child.pid || !sessionPort) {
     if (Date.now() >= started) throw new Error(`the hold did not write its starting record: ${errText}`);
     try {
-      holder = (JSON.parse(await readFile(path.join(dir, "starting.json"), "utf8")) as { holderPid: number }).holderPid;
+      const starting = JSON.parse(await readFile(path.join(dir, "starting.json"), "utf8")) as { holderPid: number; sessionPort?: number };
+      holder = starting.holderPid;
+      sessionPort = starting.sessionPort ?? 0;
     } catch { holder = 0; }
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
+  const session = await admitted(sessionPort);
+  t.after(() => session.destroy());
   await writeFile(path.join(dir, "starting.json"), JSON.stringify({ holderPid: process.pid, startedAt: Date.now() }));
   fail();
   const code = await new Promise<number>((resolve, reject) => {
@@ -499,4 +521,324 @@ test("a failed hold records its error and leaves a successor starting record", {
   assert.ok(err.length > 0);
   const starting = JSON.parse(await readFile(path.join(dir, "starting.json"), "utf8")) as { holderPid: number };
   assert.equal(starting.holderPid, process.pid);
+});
+
+test("a holder that is turning the switch off is not replaced while it still runs", () => {
+  const alive = () => true;
+  const dead = () => false;
+  assert.equal(starterReusable({ holderPid: 99, startedAt: Date.now(), stopping: true }, alive), "wait");
+  assert.equal(starterReusable({ holderPid: 99, startedAt: Date.now(), stopping: true }, dead), "replace");
+  assert.equal(starterReusable({ holderPid: 99, startedAt: Date.now() }, alive), "wait");
+  assert.equal(starterReusable({ holderPid: 99, startedAt: Date.now() - 120_000 }, alive), "wait");
+  assert.equal(starterReusable(undefined, alive), "replace");
+});
+
+test("a signaled hold turns the switch off even while a session is still connected", () => {
+  assert.equal(holdEnd({ signaled: true, chromeClosed: false, sessions: 1, owned: true, seenSession: true }), "turn-off");
+  assert.equal(holdEnd({ signaled: false, chromeClosed: false, sessions: 1, owned: true, seenSession: true }), "wait");
+  assert.equal(holdEnd({ signaled: false, chromeClosed: false, sessions: 0, owned: true, seenSession: true }), "turn-off");
+  assert.equal(holdEnd({ signaled: false, chromeClosed: false, sessions: 0, owned: false, seenSession: true }), "leave");
+  assert.equal(holdEnd({ signaled: false, chromeClosed: true, sessions: 1, owned: true, seenSession: true }), "turn-off");
+  assert.equal(holdEnd({ signaled: true, chromeClosed: false, sessions: 1, owned: false, seenSession: true }), "leave");
+});
+
+test("a new session is rejected once the hold is draining, and one close does not empty two", async () => {
+  const sessions = await bindHoldSessions();
+  const first = createConnection({ host: "127.0.0.1", port: sessions.port });
+  const second = createConnection({ host: "127.0.0.1", port: sessions.port });
+  await new Promise<void>((resolve, reject) => {
+    let open = 0;
+    const up = () => { if (++open === 2) resolve(); };
+    first.once("connect", up);
+    second.once("connect", up);
+    first.once("error", reject);
+    second.once("error", reject);
+  });
+  const counted = Date.now() + 1_000;
+  while (sessions.count() !== 2) {
+    if (Date.now() >= counted) throw new Error(`the hold counted ${sessions.count()} of 2 sessions`);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  first.end();
+  const one = Date.now() + 1_000;
+  while (sessions.count() !== 1) {
+    if (Date.now() >= one) throw new Error(`one close left ${sessions.count()} sessions`);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  sessions.drain();
+  const rejected = createConnection({ host: "127.0.0.1", port: sessions.port });
+  await new Promise<void>((resolve) => {
+    rejected.once("close", () => resolve());
+    rejected.once("error", () => resolve());
+  });
+  assert.equal(sessions.count(), 1);
+  second.end();
+  const none = Date.now() + 1_000;
+  while (sessions.count() !== 0) {
+    if (Date.now() >= none) throw new Error(`the last close left ${sessions.count()} sessions`);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  sessions.close();
+});
+
+test("a joined session is a connection to the hold, and detach closes it", async (t) => {
+  const browserPath = "/devtools/browser/session";
+  const endpoint = await versionEndpoint(t, browserPath);
+  const scratch = await mkdtemp(path.join(tmpdir(), "bao-chrome-hold-session-"));
+  const root = await realpath(scratch);
+  const dir = await privateHoldDir(root);
+  t.after(async () => {
+    await rm(dir, { recursive: true, force: true });
+    await rm(scratch, { recursive: true, force: true });
+  });
+  const sessions = await bindHoldSessions();
+  t.after(() => sessions.close());
+  await writeFile(path.join(dir, "starting.json"), JSON.stringify({ holderPid: process.pid, startedAt: Date.now(), sessionPort: sessions.port }));
+  const serving = serveHold({
+    pid: process.pid,
+    executable: "/bin/test-chrome",
+    root,
+    endpoint: { port: endpoint.port, browserPath },
+    closed: new Promise<void>(() => undefined),
+    isClosed: () => false,
+    detach() {},
+  } as CurrentChrome, undefined, { sessionPort: sessions.port });
+  t.after(() => { serving.catch(() => undefined); });
+  const joined = await joinOrStartHold({ root, axLog: path.join(scratch, "ax.jsonl") });
+  assert.equal(sessions.count(), 1);
+  joined.detach();
+  const gone = Date.now() + 2_000;
+  while (sessions.count() !== 0) {
+    if (Date.now() >= gone) throw new Error("detach did not close the session connection");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+});
+
+test("a listen-only hold is spawned with that flag and does not turn the switch on", () => {
+  const options = { root: "/tmp/chrome", axLog: "/tmp/ax.jsonl", listenOnly: true };
+  const dev = holdLaunch("/work/cli.js", options);
+  assert.ok(dev.args.includes("--listen-only"));
+  assert.equal(dev.args.includes("--settle"), false);
+  const settle = holdLaunch("/work/cli.js", { root: options.root, axLog: options.axLog, settle: true });
+  assert.ok(settle.args.includes("--settle"));
+  assert.equal(settle.args.includes("--listen-only"), false);
+});
+
+test("a profile read uses the shared connection only after the hold counts it", { timeout: scaledMs(15_000) }, async (t) => {
+  const browserPath = "/devtools/browser/profile-read";
+  const endpoint = await versionEndpoint(t, browserPath);
+  const scratch = await mkdtemp(path.join(tmpdir(), "bao-chrome-hold-profile-"));
+  const root = await realpath(scratch);
+  const dir = await privateHoldDir(root);
+  const marker = path.join(scratch, "read-done");
+  t.after(async () => {
+    await rm(dir, { recursive: true, force: true });
+    await rm(scratch, { recursive: true, force: true });
+  });
+  const sessions = await bindHoldSessions();
+  t.after(() => sessions.close());
+  sessions.drain();
+  await writeFile(path.join(dir, "hold.json"), JSON.stringify({
+    ...published(root, endpoint.port, browserPath, process.pid), sessionPort: sessions.port,
+  }));
+  const script = `
+    delete process.env.BAO_LANE;
+    delete process.env.BAO_TEST_BROWSER;
+    const { existsSync } = require("fs");
+    const { withListeningConnection } = require(${JSON.stringify(path.resolve(__dirname, "../../src/cdp-live/current-chrome.js"))});
+    withListeningConnection(${JSON.stringify(root)}, async (cdp) => {
+      await cdp.send("Browser.getVersion", {}, undefined, 5000);
+      process.stdout.write("reading\\n");
+      const deadline = Date.now() + 8000;
+      while (!existsSync(${JSON.stringify(marker)})) {
+        if (Date.now() >= deadline) throw new Error("the profile read was not released");
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      return "ok";
+    }).then((value) => {
+      if (value !== "ok") process.exit(2);
+    }).catch((error) => {
+      process.stderr.write(error && error.stack ? error.stack : String(error));
+      process.exit(1);
+    });
+  `;
+  let errText = "";
+  let out = "";
+  const child = spawn(process.execPath, ["-e", script], { stdio: ["ignore", "pipe", "pipe"] });
+  child.stdout?.on("data", (chunk: Buffer) => { out += chunk.toString("utf8"); });
+  child.stderr?.on("data", (chunk: Buffer) => { errText += chunk.toString("utf8"); });
+  t.after(() => { if (child.pid && pidAlive(child.pid)) child.kill("SIGKILL"); });
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  assert.equal(out.includes("reading"), false, errText);
+  assert.equal(endpoint.upgrades(), 0);
+  sessions.resume();
+  const deadline = Date.now() + scaledMs(8_000);
+  while (!out.includes("reading")) {
+    if (Date.now() >= deadline) throw new Error(`the profile read did not join after admission: ${errText}`);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  assert.equal(sessions.count(), 1);
+  assert.equal(endpoint.upgrades(), 1);
+  await writeFile(marker, "done");
+  const code = await new Promise<number>((resolve, reject) => {
+    const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error(errText)); }, 8_000);
+    child.once("exit", (status) => { clearTimeout(timer); resolve(status ?? 1); });
+  });
+  assert.equal(code, 0, errText);
+  assert.equal(sessions.count(), 0);
+});
+
+test("a client does not join a hold that is turning the switch off", { timeout: scaledMs(15_000) }, async (t) => {
+  const browserPath = "/devtools/browser/draining";
+  const endpoint = await versionEndpoint(t, browserPath);
+  const scratch = await mkdtemp(path.join(tmpdir(), "bao-chrome-hold-drain-"));
+  const root = await realpath(scratch);
+  const dir = await privateHoldDir(root);
+  t.after(async () => {
+    await rm(dir, { recursive: true, force: true });
+    await rm(scratch, { recursive: true, force: true });
+  });
+  const sessions = await bindHoldSessions();
+  t.after(() => sessions.close());
+  sessions.drain();
+  await writeFile(path.join(dir, "hold.json"), JSON.stringify({
+    ...published(root, endpoint.port, browserPath, process.pid), sessionPort: sessions.port,
+  }));
+  let joined = false;
+  const joining = joinOrStartHold({ root, axLog: path.join(scratch, "ax.jsonl") }).then((chrome) => {
+    joined = true;
+    return chrome;
+  });
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  assert.equal(joined, false);
+  assert.equal(endpoint.upgrades(), 0);
+  const saved = JSON.parse(await readFile(path.join(dir, "hold.json"), "utf8")) as { holderPid: number };
+  assert.equal(saved.holderPid, process.pid);
+  sessions.resume();
+  const chrome = await joining;
+  assert.equal(chrome.endpoint.port, endpoint.port);
+  assert.equal(endpoint.upgrades(), 1);
+  assert.equal(sessions.count(), 1);
+  chrome.detach();
+});
+
+test("a starter that exits before it connects does not enable debugging", { timeout: scaledMs(15_000) }, async (t) => {
+  const scratch = await mkdtemp(path.join(tmpdir(), "bao-chrome-hold-starter-"));
+  const root = await realpath(scratch);
+  const axLog = path.join(scratch, "ax.jsonl");
+  const marker = path.join(scratch, "enabled");
+  const dir = holdDir(root);
+  const script = `
+    const { holdMain } = require(${JSON.stringify(path.resolve(__dirname, "../../src/cdp-live/chrome-hold.js"))});
+    const { writeFileSync } = require("fs");
+    holdMain(${JSON.stringify(["--root", root, "--ax-log", axLog, "--initiator-fd", "3"])}, async () => {
+      writeFileSync(${JSON.stringify(marker)}, "enabled");
+      return new Promise(() => undefined);
+    }).catch((error) => {
+      process.stderr.write(error && error.stack ? error.stack : String(error));
+      process.exit(1);
+    });
+  `;
+  let errText = "";
+  const child = spawn(process.execPath, ["-e", script], { stdio: ["ignore", "pipe", "pipe", "pipe"] });
+  child.stderr?.on("data", (chunk: Buffer) => { errText += chunk.toString("utf8"); });
+  t.after(() => { if (child.pid && pidAlive(child.pid)) child.kill("SIGKILL"); });
+  t.after(async () => {
+    await rm(dir, { recursive: true, force: true });
+    await rm(scratch, { recursive: true, force: true });
+  });
+  const started = Date.now() + scaledMs(8_000);
+  while (!existsSync(path.join(dir, "starting.json"))) {
+    if (Date.now() >= started) throw new Error(`the holder did not start: ${errText}`);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  const pipe = child.stdio[3];
+  if (!pipe || typeof pipe === "number") throw new Error("the starter pipe was not passed");
+  pipe.destroy();
+  const code = await new Promise<number>((resolve, reject) => {
+    const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error(`the holder stayed up without a session: ${errText}`)); }, 8_000);
+    child.once("exit", (status) => { clearTimeout(timer); resolve(status ?? 1); });
+  });
+  assert.equal(code, 0, errText);
+  assert.equal(existsSync(marker), false);
+  assert.equal(existsSync(path.join(dir, "hold.json")), false);
+  assert.equal(existsSync(path.join(dir, "starting.json")), false);
+});
+
+test("a listen-only profile read returns the opener error when the switch is off", { timeout: scaledMs(15_000) }, async (t) => {
+  const scratch = await mkdtemp(path.join(tmpdir(), "bao-chrome-hold-silent-"));
+  const root = await realpath(scratch);
+  const axLog = path.join(scratch, "ax.jsonl");
+  const dir = holdDir(root);
+  const script = `
+    const { holdMain } = require(${JSON.stringify(path.resolve(__dirname, "../../src/cdp-live/chrome-hold.js"))});
+    holdMain(${JSON.stringify(["--root", root, "--ax-log", axLog, "--listen-only", "--initiator-fd", "3"])}, async () => {
+      throw new Error("Chrome is not listening");
+    }).catch((error) => {
+      process.stderr.write(error && error.stack ? error.stack : String(error));
+      process.exit(1);
+    });
+  `;
+  let errText = "";
+  const child = spawn(process.execPath, ["-e", script], { stdio: ["ignore", "pipe", "pipe", "pipe"] });
+  child.stderr?.on("data", (chunk: Buffer) => { errText += chunk.toString("utf8"); });
+  t.after(() => { if (child.pid && pidAlive(child.pid)) child.kill("SIGKILL"); });
+  t.after(async () => {
+    await rm(dir, { recursive: true, force: true });
+    await rm(scratch, { recursive: true, force: true });
+  });
+  const started = Date.now() + scaledMs(8_000);
+  while (!existsSync(path.join(dir, "starting.json"))) {
+    if (Date.now() >= started) throw new Error(`the holder did not start: ${errText}`);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  const began = Date.now();
+  await assert.rejects(joinOrStartHold({ root, axLog, listenOnly: true }), /Chrome is not listening/);
+  assert.ok(Date.now() - began < 5_000, "the profile read waited out the hold deadline");
+  const pipe = child.stdio[3];
+  if (pipe && typeof pipe !== "number") pipe.destroy();
+});
+
+test("a stale hold error from a dead holder does not cancel a fresh start", { timeout: scaledMs(20_000) }, async (t) => {
+  const browserPath = "/devtools/browser/stale-err";
+  const endpoint = await versionEndpoint(t, browserPath);
+  const scratch = await mkdtemp(path.join(tmpdir(), "bao-chrome-hold-stale-err-"));
+  const root = await realpath(scratch);
+  const dir = await privateHoldDir(root);
+  const dead = spawn("sleep", ["30"], { stdio: "ignore" });
+  if (!dead.pid) throw new Error("no dead holder pid");
+  const deadPid = dead.pid;
+  process.kill(deadPid, "SIGKILL");
+  const stale = JSON.stringify({ holderPid: deadPid, message: "stale opener" });
+  const previous = process.env.BAO_CHROME_HOLD_FIXTURE;
+  process.env.BAO_CHROME_HOLD_FIXTURE = JSON.stringify({
+    port: endpoint.port, browserPath, chromePid: process.pid, executable: "/bin/test-chrome",
+  });
+  t.after(() => {
+    if (previous === undefined) delete process.env.BAO_CHROME_HOLD_FIXTURE;
+    else process.env.BAO_CHROME_HOLD_FIXTURE = previous;
+  });
+  t.after(async () => {
+    try {
+      const record = JSON.parse(await readFile(path.join(dir, "hold.json"), "utf8")) as { holderPid?: number };
+      if (record.holderPid && pidAlive(record.holderPid)) process.kill(record.holderPid, "SIGKILL");
+    } catch {
+      /* the holder already exited */
+    }
+    await rm(dir, { recursive: true, force: true });
+    await rm(scratch, { recursive: true, force: true });
+  });
+  let stop = false;
+  const keepStale = setInterval(() => {
+    if (stop || existsSync(path.join(dir, "hold.json"))) return;
+    writeFile(path.join(dir, "hold.err"), stale).catch(() => undefined);
+  }, 5);
+  t.after(() => { stop = true; clearInterval(keepStale); });
+  await writeFile(path.join(dir, "hold.err"), stale);
+  const chrome = await joinOrStartHold({ root, axLog: path.join(scratch, "ax.jsonl") });
+  stop = true;
+  clearInterval(keepStale);
+  await chrome.cdp.send("Browser.getVersion", {}, undefined, 5_000);
+  assert.equal(endpoint.upgrades(), 1);
+  chrome.detach();
 });

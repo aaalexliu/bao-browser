@@ -1,6 +1,6 @@
 // The owner's running Chrome over remote debugging. BaoOSHelper turns on Chrome's remote-debugging setting and presses
-// Chrome's Allow prompt with Bao's Device Control and Data Access grant. Chrome asks for every new connection, so one long-lived Bao process
-// holds one connection per user-data-dir and every session joins it. Bao's task tab opens in a window of the Chrome profile
+// Chrome's Allow prompt with Bao's Device Control and Data Access grant. Chrome asks for every new connection, so a detached chrome-hold
+// process holds one connection per user-data-dir and every session joins it while that hold is live. Bao's task tab opens in a window of the Chrome profile
 // the call chose.
 
 import { execFile, spawn } from "node:child_process";
@@ -12,12 +12,12 @@ import { ChromeFolderDenied, assertChromeReadable, chromeDenied } from "../chrom
 import { chromeProfilesRoot } from "../engines/chrome-profile-copy";
 import { killCommandToken, LAUNCH_SERVICES_RESTART, launchServicesStalled, processesNaming } from "../launch";
 import * as chromeAx from "./ax";
-import { chromeHelper, CHROME_BUNDLE, helperBin, INSPECT_URL, logAx, type ChromeAx } from "./ax";
+import { chromeHelper, CHROME_BUNDLE, helperBin, inspectTabCloseArgs, INSPECT_URL, logAx, type ChromeAx } from "./ax";
 import { REMOTE_CHECKBOX } from "./consent";
-import type { AxNode } from "../proxy/os-macos";
 import { endpointOnPid, listenPid, listenPorts, probeDevToolsVersion, readDevToolsActivePort, type DevToolsEndpoint, type VersionProbe } from "./endpoint";
-import { CHROME_APP_EXE, dailyChromePids, pathKeys } from "./remote-debugging";
-import { holdDir, holdFixtureEndpoint, joinLiveHold, joinOrStartHold, retainHold } from "./chrome-hold";
+import { checkboxKnown, CHROME_APP_EXE, dailyChromePids, pathKeys } from "./remote-debugging";
+import { claimForEnable, readClaim, writeClaim } from "./debug-switch";
+import { holdDir, holdFixtureEndpoint, joinLiveHold, joinOrStartHold } from "./chrome-hold";
 import { shareConnection } from "./shared-connection";
 import { connectCdp, type CdpSocket } from "./socket";
 import { accessibilityMissing, presentMissingMacPermission } from "../app/mac-permissions";
@@ -92,29 +92,6 @@ async function withConsent<T>(helper: CurrentChromeDeps["helper"], pid: number, 
     }
     throw error;
   }
-}
-
-const INSPECT_TAB = "Inspect with Chrome Developer Tools";
-
-function labeled(node: AxNode): string {
-  return node.name || node.title || node.description || "";
-}
-
-function inspectTabs(nodes: AxNode[]): AxNode[] {
-  return nodes.filter((node) => node.role === "AXRadioButton" && node.subrole === "AXTabButton" && labeled(node).includes(INSPECT_TAB));
-}
-
-/** Press arguments for the only inspect tab. No press when another inspect tab is open, and never the window close button. */
-export function inspectTabCloseArgs(nodes: AxNode[], pid: number): string[] | undefined {
-  const tabs = inspectTabs(nodes);
-  if (tabs.length !== 1) return undefined;
-  const label = labeled(tabs[0]!);
-  const button = nodes.find((node) => node.role === "AXButton"
-    && [node.name, node.title, node.description].includes("Close")
-    && node.subrole !== "AXCloseButton"
-    && node.path.some((seg) => seg.role === "AXRadioButton" && seg.name === label));
-  if (!button?.path.length) return undefined;
-  return ["press", "--bundle", CHROME_BUNDLE, "--pid", String(pid), "--role", "AXButton", "--name", "Close", "--path", JSON.stringify(button.path)];
 }
 
 async function closeOpenedInspect(helper: CurrentChromeDeps["helper"], pid: number): Promise<void> {
@@ -226,6 +203,8 @@ export async function connectOwnedChrome(options: {
   root: string;
   axLog: string;
   signal?: AbortSignal;
+  /** The hold sets this. A missing listener is not a claim; the checkbox is read first. */
+  recordClaim?: boolean;
 }, overrides: Partial<CurrentChromeDeps> = {}): Promise<CurrentChrome> {
   if (process.platform !== "darwin" && !overrides.helper) throw new Error("Current Chrome control needs BaoOSHelper on a Mac");
   if (process.env.BAO_LANE === "hermetic" && !overrides.helper) throw new Error("Hermetic tests never drive the owner's running Chrome");
@@ -289,31 +268,69 @@ export async function connectOwnedChrome(options: {
     if (blocked && blocked.startsWith("Device Control")) throw new Error(accessibilityMissing(await presentMissingMacPermission()));
     if (blocked) throw new Error(blocked);
     if (await deps.helper.screenLocked()) throw new Error("The screen is locked. Unlock it, then try again.");
-    if (!endpoint) {
+    const claimDir = options.recordClaim ? holdDir(options.root) : undefined;
+    const waitForPort = async (): Promise<void> => {
+      const portDeadline = Date.now() + 10_000;
+      for (;;) {
+        options.signal?.throwIfAborted();
+        endpoint = await endpointFromFile();
+        if (endpoint) return;
+        if (Date.now() >= portDeadline) throw new Error("Chrome did not open its debugging port");
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+    };
+    const enableIfNeeded = async (): Promise<void> => {
+      if (claimDir) {
+        let fresh: DevToolsEndpoint | undefined;
+        try { fresh = await endpointFromFile(); }
+        catch (error) {
+          if (!(error instanceof ChromeFolderDenied)) throw error;
+        }
+        if (!fresh) fresh = await endpointFromListener();
+        endpoint = fresh;
+        const prior = readClaim(claimDir)?.owned === true;
+        if (endpoint) {
+          const decision = claimForEnable(prior, undefined, true);
+          if (decision === true) writeClaim(claimDir, true);
+          else if (decision === false) writeClaim(claimDir, false);
+          return;
+        }
+      }
+      if (endpoint) return;
       const helper = deps.helper;
       options.signal?.throwIfAborted();
       await helper.exec(["inspect-open-ax", "--pid", String(pid)], 30_000);
       openedInspect = true;
       const deadline = Date.now() + 60_000;
+      let readOn = false;
       for (;;) {
         options.signal?.throwIfAborted();
         if (Date.now() >= deadline) throw new Error("Chrome's remote-debugging checkbox did not appear");
         const box = await helper.exec(["checkbox-read", "--pid", String(pid), "--name", REMOTE_CHECKBOX], 30_000);
-        if (box.found) break;
+        if (box.found) {
+          const known = checkboxKnown(String(box.value ?? ""));
+          if (known === null) throw new Error("Chrome's remote-debugging checkbox value was not read");
+          readOn = known;
+          break;
+        }
         await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      if (claimDir) {
+        const prior = readClaim(claimDir)?.owned === true;
+        const decision = claimForEnable(prior, readOn, false);
+        if (decision === true) writeClaim(claimDir, true);
+        else if (decision === false) writeClaim(claimDir, false);
+      }
+      if (readOn) {
+        await waitForPort();
+        return;
       }
       const checkbox = await helper.exec(["checkbox-set", "--pid", String(pid), "--name", REMOTE_CHECKBOX, "--value", "1"], 30_000);
       if (!checkbox.found) throw new Error("Chrome's remote-debugging checkbox was not found");
       if (checkbox.pressed) await logAx(options.axLog, { what: "AXPress", role: "AXCheckBox", name: REMOTE_CHECKBOX, window: "Inspect with Chrome Developer Tools", at: new Date().toISOString(), via: "BaoOSHelper" });
-      const portDeadline = Date.now() + 10_000;
-      for (;;) {
-        options.signal?.throwIfAborted();
-        endpoint = await endpointFromFile();
-        if (endpoint) break;
-        if (Date.now() >= portDeadline) throw new Error("Chrome did not open its debugging port");
-        await new Promise((resolve) => setTimeout(resolve, 250));
-      }
-    }
+      await waitForPort();
+    };
+    await enableIfNeeded();
     const cdp = await withConsent(deps.helper, pid, options.axLog, async (parent) => {
       const signal = AbortSignal.any([parent, AbortSignal.timeout(25_000)]);
       const socket = await deps.connect(endpoint!.port, endpoint!.browserPath, { timeoutMs: 20_000, signal });
@@ -363,9 +380,10 @@ function profileDirectoryFromReported(reported: string | undefined, root: string
 /**
  * Reads through the approved connection when one is already published, and otherwise attaches to an endpoint
  * that is already listening while pressing Allow. Does not turn debugging on, open Inspect, or launch Chrome.
- * A one-shot read closes its socket. A profile read that a later open joins keeps that socket as the shared
- * connection, so Chrome is not asked Allow again. Undefined when nothing listens, the listener is gone, or the
- * read fails. A hermetic run uses only the throwaway listener a test named.
+ * A one-shot read closes its socket and starts no hold. A profile read starts a detached listen-only hold,
+ * which keeps the Chrome socket after this read ends, so a later open joins it and Chrome is not asked Allow again.
+ * Undefined when nothing listens, the listener is gone, or the read fails. A hermetic run uses only the throwaway
+ * listener a test named.
  */
 export async function withListeningConnection<T>(root: string, read: (cdp: CdpSocket) => Promise<T>, axLog?: string, retain = false): Promise<T | undefined> {
   const fixture = holdFixtureEndpoint();
@@ -379,31 +397,59 @@ export async function withListeningConnection<T>(root: string, read: (cdp: CdpSo
   } catch {
     return undefined;
   }
+  if (retain) {
+    try {
+      const chrome = await joinOrStartHold({
+        root,
+        axLog: axLog ?? path.join(holdDir(root), "ax.jsonl"),
+        listenOnly: true,
+      });
+      try { return await read(chrome.cdp); }
+      finally { chrome.detach(); }
+    } catch {
+      return undefined;
+    }
+  }
   const listening = fixture
     ? { endpoint: { port: fixture.port, browserPath: fixture.browserPath }, pid: fixture.chromePid }
     : await dailyListener(root);
   if (!listening) return undefined;
   let cdp: CdpSocket | undefined;
-  let retained = false;
   try {
     cdp = await withConsent(chromeAx.chromeHelper(), listening.pid, axLog ?? path.join(holdDir(root), "ax.jsonl"), (signal) =>
       connectCdp(listening.endpoint.port, listening.endpoint.browserPath, { timeoutMs: 8_000, signal }));
-    const value = await read(cdp);
-    const executable = fixture?.executable ?? listenerExecutable(listening.pid);
-    if (retain && executable) {
-      const shared = await shareConnection(cdp);
-      const socket = cdp;
-      await retainHold({
-        pid: listening.pid, executable, root, endpoint: shared.endpoint, cdp: socket,
-        closed: socket.disconnected, isClosed: () => !socket.isOpen,
-        detach: () => { shared.close(); socket.close(); },
-      });
-      retained = true;
-    }
-    return value;
+    return await read(cdp);
   } catch {
     return undefined;
-  } finally { if (!retained) cdp?.close(); }
+  } finally { cdp?.close(); }
+}
+
+/** Attaches to a Chrome that is already listening. Does not start Chrome, open Inspect, or turn the switch on. */
+export async function connectListeningChrome(options: {
+  root: string;
+  axLog: string;
+  signal?: AbortSignal;
+}): Promise<CurrentChrome> {
+  options.signal?.throwIfAborted();
+  const listening = await dailyListener(options.root);
+  if (!listening) throw new Error("Chrome is not listening");
+  const executable = listenerExecutable(listening.pid);
+  if (!executable) throw new Error("Chrome is not listening");
+  const cdp = await withConsent(chromeAx.chromeHelper(), listening.pid, options.axLog, (parent) => {
+    const signal = options.signal ? AbortSignal.any([parent, options.signal]) : parent;
+    return connectCdp(listening.endpoint.port, listening.endpoint.browserPath, { timeoutMs: 8_000, signal });
+  });
+  const shared = await shareConnection(cdp);
+  return {
+    pid: listening.pid,
+    executable,
+    root: options.root,
+    endpoint: shared.endpoint,
+    cdp,
+    closed: cdp.disconnected,
+    isClosed: () => !cdp.isOpen,
+    detach: () => { shared.close(); cdp.close(); },
+  };
 }
 
 function listenerExecutable(pid: number): string | undefined {
@@ -412,9 +458,9 @@ function listenerExecutable(pid: number): string | undefined {
 
 /**
  * The profile the listening browser reports, found without DevToolsActivePort. The version page is read on the
- * approved connection, or on an already listening endpoint after Allow. That connection stays published so a
- * later open joins it. Undefined when nothing listens, the listener is gone, the report fails, or it times out.
- * A hermetic run uses only the throwaway listener a test named. A vanished listener does not turn debugging on.
+ * approved connection, or through a detached listen-only hold that presses Allow and does not turn debugging on.
+ * That hold keeps the socket after this read, so a later open joins it. Undefined when nothing listens, the
+ * listener is gone, the report fails, or it times out. A hermetic run uses only the throwaway listener a test named.
  */
 export async function listeningProfileDirectory(root: string, axLog?: string): Promise<string | undefined> {
   return withListeningConnection(root, async (cdp) => profileDirectoryFromReported(await defaultContextProfile(cdp), root), axLog, true);

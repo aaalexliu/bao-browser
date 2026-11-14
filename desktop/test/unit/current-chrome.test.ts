@@ -9,7 +9,7 @@ import * as currentChrome from "../../src/cdp-live/current-chrome";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { shareConnection } from "../../src/cdp-live/shared-connection";
 import { connectCdp, type CdpSocket } from "../../src/cdp-live/socket";
-import { INSPECT_URL } from "../../src/cdp-live/ax";
+import { inspectTabCloseArgs, INSPECT_URL } from "../../src/cdp-live/ax";
 import * as profileCopy from "../../src/engines/chrome-profile-copy";
 import * as baoProfile from "../../src/engines/bao-profile";
 import * as copyFront from "../../src/engines/copy-front";
@@ -44,7 +44,7 @@ test("inspect tab close presses that tab's Close button, not the window or anoth
     axNode({ role: "AXRadioButton", subrole: "AXTabButton", name: "Inspect with Chrome Developer Tools", title: "Inspect with Chrome Developer Tools", description: "Inspect with Chrome Developer Tools", value: "false" }),
     axNode({ role: "AXButton", name: "Close", title: "Close", description: "Close", path: [{ role: "AXRadioButton", name: "Inspect with Chrome Developer Tools" }] }),
   ];
-  const args = currentChrome.inspectTabCloseArgs(nodes, 7);
+  const args = inspectTabCloseArgs(nodes, 7);
   assert.ok(args);
   const encoded = args[args.indexOf("--path") + 1] || "";
   assert.match(encoded, /Inspect with Chrome Developer Tools/);
@@ -56,7 +56,7 @@ test("inspect tab close presses that tab's Close button, not the window or anoth
     name: "Inspect with Chrome Developer Tools", title: "Inspect with Chrome Developer Tools",
     description: "Inspect with Chrome Developer Tools", value: "true",
   });
-  assert.equal(currentChrome.inspectTabCloseArgs([...nodes, second], 7), undefined);
+  assert.equal(inspectTabCloseArgs([...nodes, second], 7), undefined);
 });
 
 async function fixture(on = false) {

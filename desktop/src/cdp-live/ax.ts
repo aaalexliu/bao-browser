@@ -120,6 +120,29 @@ export async function closeInspectTab(helper: Pick<MacOsHelper, "exec">, logFile
   await note(logFile, { what: "ae-close", name: opened.tabId, window: "Inspect with Chrome Developer Tools" });
 }
 
+const INSPECT_TAB = "Inspect with Chrome Developer Tools";
+
+function labeled(node: AxNode): string {
+  return node.name || node.title || node.description || "";
+}
+
+function inspectTabs(nodes: AxNode[]): AxNode[] {
+  return nodes.filter((node) => node.role === "AXRadioButton" && node.subrole === "AXTabButton" && labeled(node).includes(INSPECT_TAB));
+}
+
+/** Press arguments for the only inspect tab. No press when another inspect tab is open, and never the window close button. */
+export function inspectTabCloseArgs(nodes: AxNode[], pid: number): string[] | undefined {
+  const tabs = inspectTabs(nodes);
+  if (tabs.length !== 1) return undefined;
+  const label = labeled(tabs[0]!);
+  const button = nodes.find((node) => node.role === "AXButton"
+    && [node.name, node.title, node.description].includes("Close")
+    && node.subrole !== "AXCloseButton"
+    && node.path.some((seg) => seg.role === "AXRadioButton" && seg.name === label));
+  if (!button?.path.length) return undefined;
+  return ["press", "--bundle", CHROME_BUNDLE, "--pid", String(pid), "--role", "AXButton", "--name", "Close", "--path", JSON.stringify(button.path)];
+}
+
 /** Read the checkbox. Does not type and does not press. */
 export async function checkboxState(helper: Pick<ChromeAx, "nodes">, pid?: number): Promise<{ pid?: number; summary: AxSummary; on: boolean | null }> {
   const tree = await chromeTree(helper, pid);
