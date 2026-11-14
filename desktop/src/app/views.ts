@@ -5,6 +5,7 @@ import { importErrorView } from "./import-error";
 import type { inspectRunView } from "../mcp/run-view";
 import type { BrowserPick, RunRoute } from "../engines/browser-pick";
 import type { FileTransfer } from "../engines/agent-browser-files";
+import type { RunRecordIndex } from "./step-record-view";
 import { ROUTE_LABELS } from "../engines/route-labels";
 import { shellPlaces, shellScreen, shellScreens, type Screen } from "./shell-navigation";
 import type { ImportLoginError } from "../v1/import-login-error";
@@ -2197,6 +2198,29 @@ interface InspectorStep {
   caption?: { text?: string };
   native?: StepView["native"];
   transfer?: FileTransfer;
+  why?: string;
+}
+
+/** Which steps of a run have a stored step record, and which of those sections the owner has open. */
+export interface ReceiptRecord {
+  index: RunRecordIndex;
+  open: ReadonlySet<string>;
+}
+
+function byteSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} bytes`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function receiptHar(runId: string, record: ReceiptRecord | undefined): string {
+  if (record?.index.harBytes === undefined) return "";
+  return `<p class="receipt-har"><a href="/api/runs/${esc(encodeURIComponent(runId))}/run.har" download="${esc(runId)}.har">Download run.har</a> <span class="record-quiet">${esc(byteSize(record.index.harBytes))}. Every request of the run. To open it in Chrome, open DevTools, choose Network, and drop the file there.</span></p>`;
+}
+
+function receiptStepRecord(stepId: string | undefined, record: ReceiptRecord | undefined): string {
+  if (!stepId || !record?.index.steps.includes(stepId)) return "";
+  return `<details class="receipt-record" data-record-step="${esc(stepId)}"${record.open.has(stepId) ? " open" : ""}><summary>Network, page, and console</summary><div class="record-body"></div></details>`;
 }
 
 /** The files an upload or download moved, each with its full path, size, and SHA-256, and how Bao moved them. */
@@ -2230,7 +2254,7 @@ function receiptReadBack(run: RunSummary, stepId: string | undefined): string | 
   return lines.length ? lines.join("\n") : undefined;
 }
 
-function receiptInspector(view: ReturnType<typeof inspectRunView>, run: RunSummary, workflowSteps?: ReceiptWorkflowStep[]): string {
+function receiptInspector(view: ReturnType<typeof inspectRunView>, run: RunSummary, workflowSteps?: ReceiptWorkflowStep[], record?: ReceiptRecord): string {
   const labels = new Map(view.steps.flatMap((step) => step.id ? [[step.id, step]] as const : []));
   const stored = (run.steps || []) as InspectorStep[];
   if (!stored.length && !view.steps.length) return `<p class="quiet">No step results recorded.</p>`;
@@ -2248,7 +2272,7 @@ function receiptInspector(view: ReturnType<typeof inspectRunView>, run: RunSumma
     const timing = typeof step.startedAt === "number" && typeof run.at === "number" ? receiptClock(step.startedAt - run.at) : "";
     const duration = typeof step.startedAt === "number" && typeof step.endedAt === "number" ? receiptDuration(step.endedAt - step.startedAt) : "";
     const command = [native?.command, ...args, timing, duration].filter(Boolean).join(" · ");
-    const search = [label, native?.command, ...args, status, receiptReadBack(run, step.id)].filter(Boolean).join(" ");
+    const search = [label, native?.command, ...args, status, receiptReadBack(run, step.id), step.why].filter(Boolean).join(" ");
     const shot = imageRef(run.id, step.afterShot);
     const shotNote = step.shotNote?.trim() ? plainPictureNote(step.shotNote.trim()) : "";
     const shotAlt = shotNote || label;
@@ -2258,12 +2282,12 @@ function receiptInspector(view: ReturnType<typeof inspectRunView>, run: RunSumma
     const evidence = command || shot || stderr
       ? `<details><summary>Evidence</summary>${evidenceLine ? `<p class="receipt-command">${esc(evidenceLine)}</p>` : ""}${stderr ? `<p>${esc(stderr)}</p>` : ""}${shotHtml}</details>`
       : "";
-    return `<li id="receipt-step-${index + 1}" value="${index + 1}" data-step="${index + 1}" data-search="${esc(search)}"${status === "failed" ? " class=\"failed\"" : ""}><div><strong>${esc(label)}</strong>${receiptStatusHtml(status)}</div>${reason ? `<p>${esc(ownerStopText(reason))}</p>` : ""}${command ? `<p class="receipt-command">${esc(command)}</p>` : ""}${receiptFiles(step.transfer)}${evidence}</li>`;
+    return `<li id="receipt-step-${index + 1}" value="${index + 1}" data-step="${index + 1}" data-search="${esc(search)}"${status === "failed" ? " class=\"failed\"" : ""}><div><strong>${esc(label)}</strong>${receiptStatusHtml(status)}</div>${reason ? `<p>${esc(ownerStopText(reason))}</p>` : ""}${command ? `<p class="receipt-command">${esc(command)}</p>` : ""}${step.why ? `<p class="receipt-why"><strong>Why:</strong> ${esc(step.why)}</p>` : ""}${receiptFiles(step.transfer)}${evidence}${receiptStepRecord(step.id, record)}</li>`;
   }).join("");
   return `<h3 id="receipt-step-heading" tabindex="-1">Command inspector</h3><input id="receipt-search" type="search" aria-label="Search commands" placeholder="Search commands, targets, and values"><ol class="receipt-steps" start="1">${rows}</ol>`;
 }
 
-export function runReceipt(view: ReturnType<typeof inspectRunView>, name: string, run: RunSummary, workflowSteps?: ReceiptWorkflowStep[]): string {
+export function runReceipt(view: ReturnType<typeof inspectRunView>, name: string, run: RunSummary, workflowSteps?: ReceiptWorkflowStep[], record?: ReceiptRecord): string {
   const kind = runListKind(run);
   const at = view.run.at === null ? "Time unknown" : formatWhen(view.run.at);
   const calls = view.run.modelCalls;
@@ -2276,13 +2300,14 @@ export function runReceipt(view: ReturnType<typeof inspectRunView>, name: string
   return `<section id="run-receipt" aria-label="Run receipt"><p class="receipt-kicker"><span class="receipt-recorded-status${recordedKind ? ` run-state ${esc(recordedKind)}` : ""}">Recorded as ${esc(statusLabel(kind))}</span> · ${esc(at)}</p><h2>${esc(name)}</h2>
     <p class="receipt-meta">${view.run.stepCount} step${view.run.stepCount === 1 ? "" : "s"}${calls === null ? "" : ` · ${calls} model call${calls === 1 ? "" : "s"}`}</p>
     ${receiptBrowsers(run)}
+    ${receiptHar(run.id, record)}
     ${spoken ? `<p class="receipt-reason">${esc(spoken)}</p>` : ask ? runWaiting(run) ? `<aside class="receipt-handoff"><h3>Needs you</h3><p>${esc(ownerStopText(ask))}</p>${view.handoff?.deadline ? `<p>Deadline: ${esc(view.handoff.deadline)}</p>` : ""}</aside>` : `<h3>${esc(statusLabel(kind))}</h3><p class="receipt-reason">${esc(ownerStopText(ask))}</p>` : ""}
     ${spoken || (isAgentBrowserSession(run) && ask && runWaiting(run)) || skipUnlabeled ? "" : unlabeled ? `<p class="receipt-reason">${esc(ownerStopText(unlabeled))}</p>` : ""}
     ${pendingHealCount([run]) ? `<p>A target change is ready to review.</p><button type="button" data-screen="heals">Review heals</button>` : ""}
     <section class="receipt-outcome" aria-label="Outcome"><h3>Outcome</h3>${receiptOutcomeHtml(outline)}${receiptShotHtml(run.id, outline)}</section>
     ${receiptAgentHtml(run, outline)}
     ${receiptChaptersHtml(outline)}
-    ${receiptInspector(view, run, workflowSteps)}
+    ${receiptInspector(view, run, workflowSteps, record)}
   </section>`;
 }
 

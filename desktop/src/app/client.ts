@@ -12,6 +12,8 @@ import { trajectoryFromWorkflow } from "../v1/trajectory";
 import type { WorkflowV2 } from "../v1/schema";
 import { oneTimeCodeInput } from "../../../shared/saved-secrets";
 import type { inspectRunView } from "../mcp/run-view";
+import { stepRecordBody } from "./step-record-html";
+import type { RunRecordIndex, StepRecordView } from "./step-record-view";
 import type { DamagedWorkflow, Settings } from "../v1/store";
 import { captureTrailOwnsSteps, livePageFromQuery, liveRunView, liveSessionView, screenFromQuery } from "./live-view";
 import type { LiveSessionRecord } from "../cdp-live/live-record";
@@ -65,6 +67,8 @@ let renderKey = "";
 let stateLoaded = false;
 let initialConnectionError = false;
 let receiptOffset = 0;
+const openRecords = new Set<string>();
+const recordViews = new Map<string, StepRecordView | "missing">();
 let receiptQuery = "";
 let receiptSearchSelection: { start: number; end: number } | null = null;
 let evidenceOpen = false;
@@ -1405,6 +1409,36 @@ function bindReceipt(host: HTMLElement): void {
   });
 }
 
+/** Fills each open "Network, page, and console" section. It shows the last copy at once and reads the step record again, which a live run can still rewrite. */
+function bindStepRecords(host: HTMLElement, runId: string): void {
+  host.querySelectorAll<HTMLDetailsElement>("details[data-record-step]").forEach((details) => {
+    const stepId = details.dataset.recordStep || "";
+    const key = `${runId}/${stepId}`;
+    const body = details.querySelector<HTMLElement>(".record-body")!;
+    const fill = () => {
+      body.innerHTML = stepRecordBody(runId, stepId, recordViews.get(key) ?? "loading");
+      void fetch(`/api/runs/${encodeURIComponent(runId)}/steps/${encodeURIComponent(stepId)}/record`)
+        .then(async (response) => response.status === 404 ? "missing" as const : response.ok ? await response.json() as StepRecordView : "error" as const)
+        .catch(() => "error" as const)
+        .then((view) => {
+          if (view !== "error") recordViews.set(key, view);
+          if (details.isConnected && details.open) body.innerHTML = stepRecordBody(runId, stepId, view === "error" ? recordViews.get(key) ?? view : view);
+        });
+    };
+    if (details.open) fill();
+    details.ontoggle = () => {
+      if (!details.isConnected) return;
+      if (!details.open) {
+        openRecords.delete(key);
+        body.replaceChildren();
+        return;
+      }
+      openRecords.add(key);
+      if (!body.hasChildNodes()) fill();
+    };
+  });
+}
+
 async function showRun(id: string): Promise<void> {
   const request = ++runRequest;
   try {
@@ -1419,13 +1453,15 @@ async function showRun(id: string): Promise<void> {
 }
 
 async function loadRun(id: string, request: number): Promise<void> {
-  const [runResponse, receiptResponse] = await Promise.all([
+  const [runResponse, receiptResponse, recordResponse] = await Promise.all([
     fetch("/api/runs/" + encodeURIComponent(id)),
     fetch("/api/runs/" + encodeURIComponent(id) + "/receipt?step_offset=" + receiptOffset).catch(() => null),
+    fetch("/api/runs/" + encodeURIComponent(id) + "/record").catch(() => null),
   ]);
   if (!runResponse.ok) throw new Error("Run unavailable");
   const run = await runResponse.json() as RunSummary;
   const receipt = receiptResponse?.ok ? await receiptResponse.json().catch(() => null) as ReturnType<typeof inspectRunView> | null : null;
+  const recordIndex = recordResponse?.ok ? await recordResponse.json().catch(() => null) as RunRecordIndex | null : null;
   const listed = (state.workflows || []).some((item) => item.id === run.workflowId);
   const response = listed ? await fetch("/api/workflows/" + encodeURIComponent(run.workflowId)) : undefined;
   const workflow = response?.ok
@@ -1444,7 +1480,8 @@ async function loadRun(id: string, request: number): Promise<void> {
   merged.set(run.id, run);
   const history = [...merged.values()].sort((a, b) => (a.at || 0) - (b.at || 0)).slice(-8);
   const reviewStepIds = reviewItems((state.runs || []).filter((item) => item.workflowId === run.workflowId)).map((item) => item.stepId);
-  host.innerHTML = (receipt ? runReceipt(receipt, workflow.name, run, workflow.recordedOnly ? undefined : workflow.steps) : receiptError()) + `<details id="run-evidence"${evidenceOpen ? " open" : ""}><summary>Detailed evidence</summary>${runViewer(run, workflow, selectedStep, { recent: history, recorded, reviewStepIds })}</details>`;
+  const record = recordIndex ? { index: recordIndex, open: new Set([...openRecords].flatMap((key) => key.startsWith(`${id}/`) ? [key.slice(id.length + 1)] : [])) } : undefined;
+  host.innerHTML = (receipt ? runReceipt(receipt, workflow.name, run, workflow.recordedOnly ? undefined : workflow.steps, record) : receiptError()) + `<details id="run-evidence"${evidenceOpen ? " open" : ""}><summary>Detailed evidence</summary>${runViewer(run, workflow, selectedStep, { recent: history, recorded, reviewStepIds })}</details>`;
   if (!receipt) receiptSearchSelection = null;
   const retry = document.getElementById("retry-run");
   if (retry) retry.onclick = () => { void showRun(id).then(() => focusMain({ preventScroll: true })); };
@@ -1457,6 +1494,7 @@ async function loadRun(id: string, request: number): Promise<void> {
     };
   });
   bindReceipt(host);
+  bindStepRecords(host, id);
   restoreReceiptSearch(host);
   host.querySelectorAll<HTMLElement>("[data-screen=heals]").forEach((button) => {
     button.onclick = () => navigate("heals");
