@@ -1377,47 +1377,53 @@ export class AgentBrowserProxy {
     let opened: AgentBrowserCommandResult | undefined;
     let moving: Session | undefined;
     let routeOpen: RecordedAgentBrowserCommand | undefined;
+    let failure: unknown;
     try {
-      wired = await this.wire(next);
-      moving = { ...session, ...next, ...wired };
-      routeOpen = session.recording.prepareRouteOpen(site);
-      await this.flushHar(session);
-      opened = await this.runNative(moving, "open", [site]);
-      if (opened.exitCode !== 0) throw new Error(`the open in Bao's task tab failed: ${opened.stderr || opened.stdout || `exit ${opened.exitCode}`}`);
-    } catch (error) {
-      try { if (moving) await this.flushHar(moving); }
-      catch (flushError) { process.stderr.write(`Bao step record: network har stop failed: ${flushError instanceof Error ? flushError.message : String(flushError)}\n`); }
-      try { if (wired) await this.stopDaemon(wired.stateDir); }
+      try {
+        wired = await this.wire(next);
+        moving = { ...session, ...next, ...wired };
+        routeOpen = session.recording.prepareRouteOpen(site);
+        await this.flushHar(session);
+        opened = await this.runNative(moving, "open", [site]);
+        if (opened.exitCode !== 0) throw new Error(`the open in Bao's task tab failed: ${opened.stderr || opened.stdout || `exit ${opened.exitCode}`}`);
+      } catch (error) {
+        failure = error;
+        try { if (moving) await this.flushHar(moving); }
+        catch (flushError) { process.stderr.write(`Bao step record: network har stop failed: ${flushError instanceof Error ? flushError.message : String(flushError)}\n`); }
+        try { if (wired) await this.stopDaemon(wired.stateDir); }
+        finally {
+          if (wired) await rm(wired.stateDir, { recursive: true, force: true });
+          await this.discard(next);
+        }
+        return fail(error);
+      }
+      const old = { chrome: session.chrome, background: session.background, stateDir: session.stateDir };
+      const waiting = this.waitOf(session) !== "off";
+      Object.assign(session, moving, { browser: openedChoice(next.pick), missed: undefined, page: undefined });
+      session.recording.pickBrowser(next.pick);
+      if (waiting) this.setWait(session, "off");
+      await this.disarmReloadBanner();
+      this.watch(session);
+      session.moveError = undefined;
+      this.moved = { line: `${stopped}; continued in your running Chrome (Chrome profile "${profile.directory}", ${profile.name}) over remote debugging. Take a fresh snapshot before acting.`, pick: next.pick, site };
+      try { await this.stopDaemon(old.stateDir); }
+      catch (error) { process.stderr.write(`Bao could not stop the agent-browser daemon of its own window: ${error instanceof Error ? error.message : String(error)}\n`); }
       finally {
-        if (wired) await rm(wired.stateDir, { recursive: true, force: true });
-        await this.discard(next);
+        old.background.close();
+        await old.chrome.close().catch((error: unknown) => process.stderr.write(`Bao could not close its own window: ${error instanceof Error ? error.message : String(error)}\n`));
+        await rm(old.stateDir, { recursive: true, force: true });
       }
-      if (routeOpen && routeOpen.endedAt === undefined) {
-        await session.recording.complete(routeOpen, opened ? [opened] : [], session.stateDir, async () => { throw error; }, error);
+      await this.noteWall(session);
+      return opened;
+    } catch (error) {
+      failure ??= error;
+      throw error;
+    } finally {
+      if (routeOpen) {
+        await session.recording.complete(routeOpen, opened ? [opened] : [], session.stateDir, async () => { throw failure ?? new Error("page closed"); }, failure,
+          false, failure === undefined ? { moved: this.moved!.line } : {});
       }
-      return fail(error);
     }
-    const old = { chrome: session.chrome, background: session.background, stateDir: session.stateDir };
-    const waiting = this.waitOf(session) !== "off";
-    Object.assign(session, moving, { browser: openedChoice(next.pick), missed: undefined, page: undefined });
-    session.recording.pickBrowser(next.pick);
-    if (waiting) this.setWait(session, "off");
-    await this.disarmReloadBanner();
-    this.watch(session);
-    session.moveError = undefined;
-    this.moved = { line: `${stopped}; continued in your running Chrome (Chrome profile "${profile.directory}", ${profile.name}) over remote debugging. Take a fresh snapshot before acting.`, pick: next.pick, site };
-    try { await this.stopDaemon(old.stateDir); }
-    catch (error) { process.stderr.write(`Bao could not stop the agent-browser daemon of its own window: ${error instanceof Error ? error.message : String(error)}\n`); }
-    finally {
-      old.background.close();
-      await old.chrome.close().catch((error: unknown) => process.stderr.write(`Bao could not close its own window: ${error instanceof Error ? error.message : String(error)}\n`));
-      await rm(old.stateDir, { recursive: true, force: true });
-    }
-    await this.noteWall(session);
-    if (routeOpen && routeOpen.endedAt === undefined && opened) {
-      await session.recording.complete(routeOpen, [opened], session.stateDir, async () => { throw new Error("page closed"); }, undefined, false, { moved: this.moved.line });
-    }
-    return opened;
   }
 
   private async connectSession(session: Session, options: { timeoutMs: number; signal?: AbortSignal }): Promise<CdpSocket> {
