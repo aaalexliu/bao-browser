@@ -82,7 +82,7 @@ test("a copy that restores 20 tabs opens a timer-heavy page in its own tab, keep
   }
 });
 
-// The 20-tab case can pass when the real daemon starts under 5 s. `activePage` leaves its first tab read without a timer, so removing only the daemonStarted clear does not fail it. With both first-call guards removed, the 30 s progress ceiling bounds that read, and a 6 s sleep still passes. A first-call limit under 6 s, like the old 5 s tab read, fails it.
+// The 20-tab case can pass when the real daemon starts under 5 s. The first native call is HAR start, and it stays unbounded while the daemon has not started. A limit under 6 s on that call, like the old 5 s tab read, kills the sleep and fails this test. The workflow tab read runs after that start.
 const SLOW_NATIVE_MS = 6_000;
 
 test("a copy capture still saves as a workflow when the first native call sleeps past 5 seconds", { timeout: scaledMs(60_000) }, async (t) => {
@@ -202,7 +202,7 @@ main().catch((error) => { console.error(error); process.exitCode = 1; });
     const recorded = (await readFile(calls, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as { command: string; args: string[]; first: boolean; sleptMs: number });
     const first = recorded.find((call) => call.first);
     assert.ok(first, "the fake native executable ran");
-    assert.deepEqual([first.command, first.args[0], first.args.includes("--json")], ["tab", "list", true], "the first native call is the workflow recorder's tab read");
+    assert.deepEqual([first.command, first.args[0], first.args.includes("--json")], ["network", "har", false], "the unbounded first native call starts HAR, then the workflow tab read runs");
     assert.ok(first.sleptMs >= 5_000, `first native call slept ${first.sleptMs} ms`);
     assert.match(proxy.lastWorkflowOutcome ?? "", /^Saved workflow:/);
     assert.equal(new Library(home).list().workflows.length, 1);

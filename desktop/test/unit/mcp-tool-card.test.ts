@@ -165,7 +165,7 @@ test("close cards keep the last same-run picture and the closing command's ident
     await f.recording.complete(latest, native, f.home, async () => png);
     const close = f.recording.begin("close", []);
     await f.recording.complete(close, [], f.home, async () => { throw new Error("closed"); });
-    f.recording.finish();
+    await f.recording.finish();
     const lastPicture = readLastPicture();
     assert.ok(lastPicture);
     assert.deepEqual(lastPicture, { stepId: latest.id, phase: "after" });
@@ -351,14 +351,14 @@ test("capture receipts preserve recording, owner handoff, and finished outcomes 
     assert.equal(waiting.reason, "owner_signin");
     assert.match(waiting.handoff?.ask || "", /waiting for you/);
     f.recording.ownerWaiting(false);
-    f.recording.finish();
+    await f.recording.finish();
     assert.equal(read().outcome, "ok");
     assert.equal(inspectRunView(library, { run_id: f.recording.id }).run.status, "passed");
   } finally { await f.close(); }
   const failed = await recorded();
   try {
     await failed.recording.complete(failed.step, [], failed.home, async () => png, new Error("Native command failed"));
-    failed.recording.finish();
+    await failed.recording.finish();
     const outcome = getRun(new Library(failed.home), failed.recording.id);
     assert.equal(outcome.outcome, "failed");
     assert.equal(outcome.reason, "Native command failed");
@@ -432,7 +432,7 @@ test("recording captures do not present recovered failures as current stops", as
     f.recording.ownerWaiting(false);
     assert.equal(getRun(library, f.recording.id).ask, undefined);
     assert.equal(inspectRunView(library, { run_id: f.recording.id }).reason, undefined);
-    f.recording.finish();
+    await f.recording.finish();
     assert.equal(getRun(library, f.recording.id).outcome, "failed");
     assert.equal(inspectRunView(library, { run_id: f.recording.id }).reason, "The browser could not do this step.");
   } finally { await f.close(); }
@@ -544,7 +544,7 @@ test("a host that forwards only content and isError still draws each step's card
   const wait = f.recording.begin("wait_for_owner", ["60000"]);
   const waiting = [{ stdout: JSON.stringify({ outcome: "waiting", instruction: "Keep waiting" }), stderr: "", exitCode: 0 }];
   await f.recording.complete(wait, waiting, f.home, async () => png, undefined, true, { owner: { url: "https://shop.example/signin", title: "Sign in to Shop", since: wait.startedAt - 240_000 } });
-  f.recording.finish({ outcome: "passed", reason: "Added blueberries to the cart.", done: ["Added blueberries"] });
+  await f.recording.finish({ outcome: "passed", reason: "Added blueberries to the cart.", done: ["Added blueberries"] });
   const steps = f.recording.steps;
   const results = [
     browserToolResult("click", clicked, { runId: f.recording.id, step: click, steps }),

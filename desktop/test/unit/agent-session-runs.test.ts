@@ -32,10 +32,10 @@ test("finish_task stores a trimmed task name and ignores a blank one", async () 
   try {
     const library = new Library(root);
     const named = new AgentBrowserRun(root);
-    named.finish({ outcome: "failed", reason: "The item was sold out.", task: "  Add milk  " });
+    await named.finish({ outcome: "failed", reason: "The item was sold out.", task: "  Add milk  " });
     assert.equal(library.readRun(named.id).task, "Add milk");
     const blank = new AgentBrowserRun(root);
-    blank.finish({ outcome: "passed", reason: "Done.", task: "   " });
+    await blank.finish({ outcome: "passed", reason: "Done.", task: "   " });
     assert.equal(library.readRun(blank.id).task, undefined);
     const tool = TOOLS.find((item) => item.name === "finish_task")!;
     assert.ok("task" in tool.inputSchema.properties);
@@ -155,7 +155,7 @@ test("an ended agent session receipt names its steps in words and marks the cut-
     await recorded.complete(open, [{ stdout: "", stderr: "", exitCode: 0 }], root, noPage);
     const wait = recorded.begin("wait_for_owner", ["60000"]);
     recorded.ownerWaiting(true);
-    recorded.finish("session_closed");
+    await recorded.finish("session_closed");
     await recorded.complete(wait, [{ stdout: JSON.stringify({ outcome: "closed" }), stderr: "", exitCode: 0 }], root, noPage, undefined, true);
     const step = (id: string, text: string, status: string, extra: Record<string, unknown> = {}) =>
       ({ id, status, label: text, caption: { text }, ...extra });

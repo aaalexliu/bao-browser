@@ -11,6 +11,7 @@ import { pageWall } from "../../src/cdp-live/page-wall";
 import { connectCdp, type CdpSocket } from "../../src/cdp-live/socket";
 import * as sockets from "../../src/cdp-live/socket";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
+import { readStepRecord } from "../../src/engines/step-har";
 import { AgentBrowserRun, type RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
 import type { BrowserPick } from "../../src/engines/browser-pick";
 import * as bao from "../../src/engines/bao-profile";
@@ -189,6 +190,7 @@ async function harness(t: TestContext, initial: "works" | "refused") {
   });
 
   const log = path.join(root, "native.jsonl");
+  const ownerOpenFail = path.join(root, "owner-open-fail");
   const executable = path.join(root, "native");
   await writeFile(executable, `#!${process.execPath}
 const fs=require('node:fs'), path=require('node:path');
@@ -207,6 +209,11 @@ ${LIST_TARGETS}
  try{
   const {sessionId}=await cdp.send('Target.attachToTarget',{targetId:tab.id,flatten:true});
   const read=async(expression)=>(await cdp.send('Runtime.evaluate',{expression,returnByValue:true},sessionId)).result.value;
+  if(command==='open' && String(endpoint.port)==='${endpoint.port}' && fs.existsSync(${JSON.stringify(ownerOpenFail)})){
+   console.error(fs.readFileSync(${JSON.stringify(ownerOpenFail)},'utf8'));
+   process.exitCode=1;
+   return;
+  }
   if(command==='open'){
    await cdp.send('Page.enable',{},sessionId);
    const loaded=new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('fixture navigation timed out')),20000);cdp.on('Page.loadEventFired',sessionId,()=>{clearTimeout(timer);resolve();});});
@@ -250,6 +257,7 @@ ${LIST_TARGETS}
     raises: () => raises, order: () => [...order],
     allow: () => { attach = "works"; }, slow: (ms: number) => { delay = ms; },
     missNextRead: () => { misses += 1; }, metadataMisses: () => missed,
+    failOwnerOpen: (message: string) => writeFile(ownerOpenFail, message),
     duringRaise: (run: () => Promise<void>) => { duringRaise = run; } };
 }
 
@@ -342,8 +350,9 @@ for (const { wall, page, before, after } of [
   const moved = calls.findIndex((call) => call.port !== baoPort);
   assert.ok(moved > 0);
   assert.deepEqual(calls.slice(moved).map((call) => call.port), calls.slice(moved).map(() => String(h.endpoint.port)), "every later command acts in the owner's Chrome");
-  assert.equal(calls[moved]!.command, "open", "Bao opens the page in its task tab first");
-  assert.ok(calls.slice(moved + 1).every((call) => call.url === `${h.site}${page}`), "on the same page, in Bao's task tab");
+  const pageCalls = calls.slice(moved).filter((call) => call.command !== "network");
+  assert.equal(pageCalls[0]?.command, "open", "Bao opens the page in its task tab first");
+  assert.ok(pageCalls.slice(1).every((call) => call.url === `${h.site}${page}`), "on the same page, in Bao's task tab");
 
   const runs = new Library(h.home).listRuns();
   assert.equal(runs.length, 1, "the session and its run continue");
@@ -351,7 +360,7 @@ for (const { wall, page, before, after } of [
   assert.deepEqual(runs[0]!.browser && { route: runs[0]!.browser.route, why: runs[0]!.browser.why }, { route: "current", why: "fallback after a sign-in wall" });
   assert.deepEqual(savedRoutes(h.home), [
     { fromStep: 1, route: "bao", why: "named by the agent", userDataDir: h.baoDir, profile: "Default" },
-    { fromStep: 2, route: "current", why: "fallback after a sign-in wall", userDataDir: h.sourceRoot, profile: "Default" },
+    { fromStep: 3, route: "current", why: "fallback after a sign-in wall", userDataDir: h.sourceRoot, profile: "Default" },
   ]);
 
   assert.ok(await h.proxy.finishTask({ outcome: "passed", reason: "fixture" }, h.proxy.activeRunId));
@@ -378,6 +387,70 @@ test("an open that lands on a sign-in URL in a Bao profile continues in the owne
     { fromStep: 1, route: "current", why: "fallback after a sign-in wall", userDataDir: h.sourceRoot, profile: "Default" },
   ]);
   assert.ok(await baoClosed(h.baoDir));
+});
+
+test("a route move whose native open times out leaves a failed open and the run is not passed", { timeout: scaledMs(60_000) }, async (t) => {
+  const h = await harness(t, "works");
+  assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "bao"))[0]!.exitCode, 0);
+  await navigateBao(h.baoDir, "/article", `${h.site}/login`);
+  await h.failOwnerOpen("navigation timed out");
+  const [result] = await h.proxy.execute("click", ["@e5"], undefined, false, undefined, {}, h.proxy.activeRunId);
+  const reply = JSON.parse(result!.stdout) as { outcome: string; instruction: string };
+  assert.equal(reply.outcome, "halted", "the agent still sees the move fallback, not the native timeout");
+  assert.match(reply.instruction, /owner's running Chrome/);
+  await h.proxy.close();
+  const run = new Library(h.home).listRuns()[0]!;
+  const open = (run.steps as RecordedAgentBrowserCommand[]).find((step) => step.status === "failed" && step.native.command === "open");
+  assert.equal(open?.status, "failed");
+  assert.match(open?.reason ?? "", /navigation timed out/);
+  assert.match((await readStepRecord(h.home, run.id, open!.id)).error ?? "", /navigation timed out/);
+  assert.notEqual(run.status, "passed");
+});
+
+test("a wait retry keeps the wait and records a passed route open", { timeout: scaledMs(60_000) }, async (t) => {
+  const h = await harness(t, "works");
+  assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "bao"))[0]!.exitCode, 0);
+  h.missNextRead();
+  const why = "Wait for the sign-in to clear.";
+  const [moved] = await h.proxy.execute("wait_for_owner", ["5000"], undefined, false, undefined, {}, h.proxy.activeRunId, undefined, why);
+  assert.equal(moved!.stdout, `\u2713 Article\n  ${h.site}/article\n`);
+  const run = new Library(h.home).listRuns()[0]!;
+  const steps = run.steps as RecordedAgentBrowserCommand[];
+  const wait = steps.find((step) => step.native.command === "wait_for_owner");
+  const route = steps.filter((step) => step.native.command === "open").at(-1)!;
+  assert.equal(wait?.why, why);
+  assert.notEqual(route.id, wait?.id);
+  assert.equal(route.status, "passed");
+  assert.equal((await readStepRecord(h.home, run.id, wait!.id)).why, why);
+  assert.equal((await readStepRecord(h.home, run.id, route.id)).status, "passed");
+});
+
+test("a snapshot route move that times out keeps the snapshot and a failed open", { timeout: scaledMs(60_000) }, async (t) => {
+  const h = await harness(t, "works");
+  assert.equal((await h.proxy.execute("open", [`${h.site}/account`], "bao"))[0]!.exitCode, 0);
+  await h.failOwnerOpen("navigation timed out");
+  const [shot] = await h.proxy.execute("snapshot", [], undefined, false, undefined, {}, h.proxy.activeRunId);
+  assert.equal(shot!.exitCode, 0);
+  const snapshot = savedSteps(h.home).find((step) => step.native.command === "snapshot");
+  assert.equal(snapshot?.native.command, "snapshot");
+  await h.proxy.close();
+  const run = new Library(h.home).listRuns()[0]!;
+  const open = (run.steps as RecordedAgentBrowserCommand[]).find((step) => step.status === "failed" && step.native.command === "open");
+  assert.match(open?.reason ?? "", /navigation timed out/);
+  assert.equal((await readStepRecord(h.home, run.id, snapshot!.id)).command, "snapshot");
+  assert.match((await readStepRecord(h.home, run.id, open!.id)).error ?? "", /navigation timed out/);
+  assert.notEqual(run.status, "passed");
+});
+
+test("a route move that keeps an open keeps the agent's why", { timeout: scaledMs(60_000) }, async (t) => {
+  const h = await harness(t, "works");
+  const why = "Fetch the statement.";
+  await h.proxy.execute("open", [`${h.site}/gate`], "bao", false, undefined, {}, undefined, undefined, why);
+  const run = new Library(h.home).listRuns()[0]!;
+  const step = (run.steps as RecordedAgentBrowserCommand[])[0]!;
+  assert.equal(step.native.command, "open");
+  assert.equal(step.why, why);
+  assert.equal((await readStepRecord(h.home, run.id, step.id)).why, why);
 });
 
 test("a page with no wall stays in Bao's profile", { timeout: scaledMs(60_000) }, async (t) => {
@@ -703,10 +776,13 @@ test("a command whose move lands on a sign-in page in the owner's Chrome halts t
   assert.equal((JSON.parse(result!.stdout) as { outcome: string }).outcome, "halted");
   assert.equal(h.attaches(), 1);
   assert.ok(!(await h.calls()).some((call) => call.command === "click"), "the click never ran");
-  const step = savedSteps(h.home).at(-1)!;
+  const steps = savedSteps(h.home);
+  const step = steps.at(-1)!;
   assert.deepEqual({ command: step.native.command, args: step.native.args }, { command: "open", args: [`${h.site}/trap`] });
-  assert.ok(step.summary!.text.startsWith(`Bao's own browser hit a sign-in page on 127.0.0.1; continued in your running Chrome (Chrome profile "Default", Owner) over remote debugging. Take a fresh snapshot before acting. Your turn: sign in`), step.summary!.text);
-  assert.ok(!savedSteps(h.home)[0]!.summary!.text.includes("running Chrome"), "the first open ran in Bao's own browser");
+  assert.ok(step.summary!.text.startsWith(`Bao's own browser hit a sign-in page on 127.0.0.1; continued in your running Chrome (Chrome profile "Default", Owner) over remote debugging. Take a fresh snapshot before acting. Went to `), step.summary!.text);
+  const click = steps.find((item) => item.native.command === "click");
+  assert.match(click?.summary?.text ?? "", /Your turn: sign in/, click?.summary?.text);
+  assert.ok(!steps[0]!.summary!.text.includes("running Chrome"), "the first open ran in Bao's own browser");
   assert.match(h.proxy.pickLines[0]!, /^Browser: Running Chrome over remote debugging, fallback after a sign-in wall\./);
   assert.ok(await baoClosed(h.baoDir));
 });

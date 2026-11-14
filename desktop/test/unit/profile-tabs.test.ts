@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { chmod, mkdtemp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createServer as createNetServer, type AddressInfo, type Socket } from "node:net";
@@ -348,8 +348,8 @@ test("a fixture browser is read from the listener that is already up", { timeout
   const child: ChildProcess = spawn(exe, [
     `--user-data-dir=${root}`, "--remote-debugging-port=0", "--headless=new",
     "--use-mock-keychain", "--password-store=basic", "--no-first-run", "--no-default-browser-check",
-  ], { stdio: "ignore" });
-  t.after(() => { child.kill("SIGKILL"); });
+  ], { stdio: "ignore", detached: true });
+  t.after(() => { stopBrowser(child); });
   const page = createServer((_req, response) => {
     response.setHeader("content-type", "text/html");
     response.end("<title>Robinhood</title><p>ok</p>");
@@ -403,10 +403,10 @@ test("a fixture browser is read from the listener that is already up", { timeout
       if (child.exitCode !== null || child.signalCode !== null) resolve(undefined);
       else child.once("exit", () => resolve(undefined));
     });
-    child.kill("SIGKILL");
+    stopBrowser(child);
     await exited;
     page.close();
-    await rm(root, { recursive: true, force: true });
+    await removeProfile(root);
   }
 });
 
@@ -671,9 +671,9 @@ test("a session file Chrome wrote names the profile, and the query stays out", {
   } finally {
     if (prior === undefined) delete process.env.BAO_LANE;
     else process.env.BAO_LANE = prior;
-    for (const child of children) child.kill("SIGKILL");
+    for (const child of children) stopBrowser(child);
     page.close();
-    await rm(root, { recursive: true, force: true });
+    await removeProfile(root);
   }
 });
 
@@ -721,7 +721,7 @@ async function writeProfileSession(root: string, profile: string, children: Chil
   const child = spawn(exe, [
     `--user-data-dir=${root}`, "--remote-debugging-port=0", "--headless=new", `--profile-directory=${profile}`,
     "--use-mock-keychain", "--password-store=basic", "--no-first-run", "--no-default-browser-check", url,
-  ], { stdio: "ignore" });
+  ], { stdio: "ignore", detached: true });
   children.push(child);
   const endpoint = await waitForEndpoint(path.join(root, "DevToolsActivePort"));
   const cdp = await connectCdp(endpoint.port, endpoint.browserPath, { timeoutMs: 5000 });
@@ -750,4 +750,18 @@ async function waitForSavedUrl(dir: string, url: string): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   throw new Error(`Chrome did not write ${url} to ${dir}: ${last}`);
+}
+
+function stopBrowser(child: ChildProcess): void {
+  if (child.pid === undefined) return;
+  try { process.kill(-child.pid, "SIGKILL"); }
+  catch {
+    try { child.kill("SIGKILL"); } catch { /* already gone */ }
+  }
+}
+
+function removeProfile(root: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    execFile("rm", ["-rf", root], (error) => error ? reject(error) : resolve());
+  });
 }

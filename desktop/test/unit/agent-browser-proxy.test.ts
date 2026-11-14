@@ -18,6 +18,7 @@ import { describeStep } from "../../src/engines/agent-browser-describe";
 import { pageShotLine, textToolResult } from "../../src/mcp/tool-card";
 import { Library } from "../../src/v1/store";
 import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
+import { readStepRecord } from "../../src/engines/step-har";
 import { scaledMs } from "../runtime";
 
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aL1sAAAAASUVORK5CYII=", "base64");
@@ -553,6 +554,56 @@ async function waitFor(ready: () => Promise<boolean>): Promise<void> {
   }
 }
 
+test("closing the Bao window during an owner poll finishes the wait record", async (t) => {
+  const f = await fixture(t);
+  try {
+    await f.proxy.execute("open", [], "copy");
+    const runId = f.proxy.activeRunId!;
+    let polls = 0;
+    t.mock.method(sockets, "connectCdp", async () => {
+      const cdp = new sockets.CdpSocket(new Socket());
+      t.mock.method(cdp, "send", async (method: string) => {
+        if (method === "Target.getTargetInfo") return { targetInfo: { targetId: "ABC123", url: "http://127.0.0.1/login", title: "Sign in" } };
+        if (method === "Target.getTargets") {
+          polls += 1;
+          if (polls === 1) f.closeWindow();
+          return { targetInfos: [{ targetId: "ABC123", url: "http://127.0.0.1/login", title: "Sign in" }] };
+        }
+        return { sessionId: "fixture" };
+      });
+      followSend(t, cdp);
+      return cdp;
+    });
+    const [result] = await f.proxy.execute("wait_for_owner", ["5000"], undefined, false, undefined, {}, runId);
+    assert.equal((JSON.parse(result!.stdout) as { outcome: string }).outcome, "closed");
+    assert.ok(polls >= 1);
+    const wait = (new Library(path.join(f.root, "home")).readRun(runId).steps as RecordedAgentBrowserCommand[]).find((step) => step.native.command === "wait_for_owner");
+    const record = await readStepRecord(path.join(f.root, "home"), runId, wait!.id);
+    assert.equal(record.status, "failed");
+    assert.equal(record.command, "wait_for_owner");
+    assert.ok(record.endedAt);
+    assert.ok(record.error);
+    assert.ok(record.waits.length > 0);
+  } finally { await f.close(); }
+});
+
+test("a hanging click that disconnects stays failed and the run is not passed", async (t) => {
+  const f = await fixture(t);
+  try {
+    await f.proxy.execute("open", [], "copy");
+    const runId = f.proxy.activeRunId!;
+    const outcome = f.proxy.execute("click", ["hang"], undefined, false, undefined, {}, runId).then(() => undefined, (error: unknown) => error);
+    await waitFor(async () => access(path.join(f.root, "command.pid")).then(() => true, () => false));
+    f.proxy.disconnect();
+    assert.equal((await outcome as Error).name, "AbortError");
+    await f.proxy.close();
+    const run = new Library(path.join(f.root, "home")).readRun(runId);
+    const click = (run.steps as RecordedAgentBrowserCommand[]).find((step) => step.native.command === "click");
+    assert.equal(click?.status, "failed");
+    assert.notEqual(run.status, "passed");
+  } finally { await f.close(); }
+});
+
 for (const command of ["open", "click", "close"]) {
   test(`disconnect aborts a hung ${command} and removes only its session`, async (t) => {
     const f = await fixture(t);
@@ -756,7 +807,7 @@ test("recording write and screenshot failures do not change native command resul
   } finally { await f.close(); }
 });
 
-test("missing privacy metadata refuses page input before recording its arguments", async (t) => {
+test("missing privacy metadata refuses the fill and keeps the failed step", async (t) => {
   const f = await fixture(t);
   try {
     await f.proxy.execute("open", [], "copy");
@@ -764,7 +815,9 @@ test("missing privacy metadata refuses page input before recording its arguments
     await assert.rejects(f.proxy.execute("fill", ["#password", "private-owner-value"], undefined, false, undefined, {}, f.proxy.activeRunId), /privacy metadata unavailable/);
     const calls = await f.calls();
     assert.equal(calls.some((call) => call.args.includes("fill")), false);
-    assert.doesNotMatch(JSON.stringify(new Library(path.join(f.root, "home")).listRuns()), /private-owner-value/);
+    const fill = (new Library(path.join(f.root, "home")).listRuns()[0]!.steps as RecordedAgentBrowserCommand[]).find((step) => step.native.command === "fill");
+    assert.equal(fill?.status, "failed");
+    assert.match(fill?.reason ?? "", /privacy metadata unavailable/);
   } finally { await f.close(); }
 });
 
@@ -824,11 +877,12 @@ test("an upload to a file input runs natively with absolute paths, and the run k
       ["upload", "input[type=file]", path.join(downloads, "statement.pdf"), w2], ["upload", "#f", path.join(f.root, "gone", "w2.pdf")],
     ]);
     const steps = new Library(path.join(f.root, "home")).readRun(runId).steps as unknown as RecordedAgentBrowserCommand[];
-    assert.deepEqual(steps.slice(1).map((step) => [step.caption.text, step.summary?.text, step.native.args]), [
+    assert.deepEqual(steps.slice(1, 3).map((step) => [step.caption.text, step.summary?.text, step.native.args]), [
       ["Upload statement.pdf, w2.pdf", 'Uploaded "statement.pdf, w2.pdf".', ["input[type=file]", path.join(downloads, "statement.pdf"), w2]],
       ["Upload w2.pdf", 'Could not upload "w2.pdf".', ["#f", path.join(f.root, "gone", "w2.pdf")]],
     ]);
-    assert.equal(steps.at(-1)!.summary?.error, `\u2717 File not found: ${path.join(f.root, "gone", "w2.pdf")}`, "the run keeps the real path the native error names");
+    const missingUpload = steps.find((step) => step.native.args[1] === path.join(f.root, "gone", "w2.pdf"));
+    assert.equal(missingUpload?.summary?.error, `\u2717 File not found: ${path.join(f.root, "gone", "w2.pdf")}`, "the run keeps the real path the native error names");
     const sha = createHash("sha256").update("%PDF").digest("hex");
     assert.deepEqual(steps[1]!.transfer, { command: "upload", source: "file-input", files: [
       { path: path.join(downloads, "statement.pdf"), bytes: 4, sha256: sha }, { path: w2, bytes: 4, sha256: sha },

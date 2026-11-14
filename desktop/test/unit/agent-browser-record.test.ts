@@ -27,7 +27,7 @@ test("recorder keeps exact native values and requested image bytes without workf
     await recorder.complete(screenshot, [{ stdout: "✓ Screenshot saved to relative.png\n", stderr: "", exitCode: 0 }], root, async () => png);
     const implicit = recorder.begin("screenshot", ["--json"]);
     await recorder.complete(implicit, [{ stdout: JSON.stringify({ data: { path: path.join(root, "relative.png") } }), stderr: "", exitCode: 0 }], root, async () => png);
-    recorder.finish();
+    await recorder.finish();
     const saved = library.readRun(initial.id);
     const steps = saved.steps as RecordedAgentBrowserCommand[];
     assert.equal(saved.status, "failed");
@@ -39,7 +39,7 @@ test("recorder keeps exact native values and requested image bytes without workf
       assert.deepEqual(await readFile(path.join(root, "shots", "runs", initial.id, artifact.file)), png);
     }
     assert.deepEqual(library.list().workflows, []);
-    recorder.finish();
+    await recorder.finish();
     assert.deepEqual(library.readRun(initial.id), saved, "finalization is idempotent");
   } finally { await rm(root, { recursive: true, force: true }); }
 });
@@ -51,15 +51,15 @@ for (const status of ["passed", "failed", "paused"] as const) test(`outcome-less
     const recorder = new AgentBrowserRun(root);
     const step = recorder.begin("snapshot", []);
     if (status !== "paused") await recorder.complete(step, [{ stdout: "native result", stderr: "", exitCode: status === "failed" ? 1 : 0 }], root, async () => png);
-    recorder.finish();
+    await recorder.finish();
     assert.equal(library.readRun(recorder.id).status, status);
     assert.equal(library.readRun(recorder.id).envelope, undefined);
-    recorder.finish({ outcome: "failed", reason: "Checked task failed" });
+    await recorder.finish({ outcome: "failed", reason: "Checked task failed" });
     const saved = library.readRun(recorder.id);
     assert.equal(saved.status, "failed");
     assert.equal(saved.envelope?.reason, "Checked task failed");
-    recorder.finish({ outcome: "passed", reason: "Later claim" });
-    recorder.finish();
+    await recorder.finish({ outcome: "passed", reason: "Later claim" });
+    await recorder.finish();
     assert.deepEqual(library.readRun(recorder.id), saved);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
@@ -72,14 +72,14 @@ for (const waiting of [true, false]) test(`closed owner wait finalizes a ${waiti
     const id = library.listRuns()[0]!.id;
     if (waiting) recorder.ownerWaiting(true);
     assert.equal(library.readRun(id).status, waiting ? "needs_human" : "recording");
-    recorder.finish(waiting ? undefined : "session_closed");
+    await recorder.finish(waiting ? undefined : "session_closed");
     const ended = library.readRun(id);
     assert.equal(ended.status, "failed");
     assert.equal(ended.envelope?.status, "failed");
     assert.equal(ended.envelope?.reason, "session_closed");
     assert.doesNotMatch(ended.envelope?.ask ?? "", /will continue here|is waiting/);
-    recorder.finish();
-    recorder.finish({ outcome: "passed", reason: "Later claim" });
+    await recorder.finish();
+    await recorder.finish({ outcome: "passed", reason: "Later claim" });
     assert.deepEqual(library.readRun(id), ended);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
@@ -97,7 +97,7 @@ test("a session that ends between owner waits marks only the last wait of that w
     const wall = recorder.begin("snapshot", []);
     recorder.ownerWaiting(true);
     await recorder.complete(wall, [{ stdout: "", stderr: "", exitCode: 0 }], root, noPage);
-    recorder.finish("session_closed");
+    await recorder.finish("session_closed");
     const kept = (library.readRun(recorder.id).steps as RecordedAgentBrowserCommand[]).find((step) => step.id === ready.id);
     assert.equal(kept?.status, "passed", "a wait that already finished stays passed");
 
@@ -107,7 +107,7 @@ test("a session that ends between owner waits marks only the last wait of that w
     await between.complete(first, [{ stdout: JSON.stringify({ outcome: "waiting" }), stderr: "", exitCode: 0 }], root, noPage, undefined, true);
     const last = between.begin("wait_for_owner", ["60000"]);
     await between.complete(last, [{ stdout: JSON.stringify({ outcome: "waiting" }), stderr: "", exitCode: 0 }], root, noPage, undefined, true);
-    between.finish();
+    await between.finish();
     const ended = library.readRun(between.id);
     const endedSteps = ended.steps as RecordedAgentBrowserCommand[];
     assert.equal(ended.envelope?.reason, "session_closed");
@@ -120,7 +120,7 @@ test("a session that ends between owner waits marks only the last wait of that w
     const waited = givenUp.begin("wait_for_owner", ["60000"]);
     givenUp.ownerWaiting(true);
     await givenUp.complete(waited, [{ stdout: JSON.stringify({ outcome: "waiting" }), stderr: "", exitCode: 0 }], root, noPage, undefined, true);
-    givenUp.finish({ outcome: "failed", reason: "Gave up." });
+    await givenUp.finish({ outcome: "failed", reason: "Gave up." });
     const closed = library.readRun(givenUp.id);
     const closedStep = (closed.steps as RecordedAgentBrowserCommand[]).find((step) => step.id === waited.id);
     assert.equal(closed.envelope?.reason, "session_closed");
@@ -140,7 +140,7 @@ test("a wall found after a ready wait, before the next step, leaves that wait pa
     await recorder.complete(ready, [{ stdout: JSON.stringify({ outcome: "ready" }), stderr: "", exitCode: 0 }], root, noPage, undefined, true);
     recorder.ownerWaiting(false);
     recorder.ownerWaiting(true);
-    recorder.finish("session_closed");
+    await recorder.finish("session_closed");
     const saved = library.readRun(recorder.id);
     const kept = (saved.steps as RecordedAgentBrowserCommand[]).find((step) => step.id === ready.id);
     assert.equal(saved.status, "failed");
@@ -161,9 +161,9 @@ test("a failed atomic run replacement keeps the last readable partial run", asyn
     t.mock.method(fs, "renameSync", () => { throw new Error("replacement denied"); });
     const step = recorder.begin("snapshot", []);
     await recorder.complete(step, [{ stdout: "snapshot output\n", stderr: "", exitCode: 0 }], root, async () => { throw new Error("page unavailable"); });
-    recorder.finish();
+    await recorder.finish();
     assert.deepEqual(library.readRun(saved.id), saved);
-    assert.deepEqual(await readdir(path.join(root, "runs")), [`${saved.id}.json`]);
+    assert.deepEqual((await readdir(path.join(root, "runs"))).filter((name) => name !== saved.id), [`${saved.id}.json`], "a denied replacement leaves the run json and no replacement file");
     assert.ok(warnings.some((text) => text.includes("run write")));
   } finally { await rm(root, { recursive: true, force: true }); }
 });
