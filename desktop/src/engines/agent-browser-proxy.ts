@@ -36,6 +36,7 @@ import { activeNativeTab, parseNativeTabs, type NativeTab } from "./agent-browse
 import { fileOperands } from "../v1/file-operands";
 import { fileArgs, fileFacts, isFileCommand, type FileArgs, type FileCommand, type FileTransfer } from "./agent-browser-files";
 import { downloadByClick, NOT_FILE_INPUT, uploadThroughChooser } from "./agent-browser-transfer";
+import { errorText, readPage, type PageCapture } from "./step-page";
 
 export const AGENT_BROWSER_COMMANDS = ["open", "snapshot", "click", "fill", "press", "scroll", "tab", "screenshot", "upload", "download", "wait_for_owner", "close"] as const;
 export type AgentBrowserCommand = typeof AGENT_BROWSER_COMMANDS[number];
@@ -82,6 +83,8 @@ export function uncapturablePage(url: string | undefined, type: string | undefin
 
 const TASK_TAB_PICTURE = "The active tab could not be pictured, so Bao kept a picture of its task tab.";
 const OWNER_PRIVATE = "owner input is private";
+/** One page read and its MHTML archive; the step record keeps an error past this. */
+const PAGE_STATE_TIMEOUT_MS = 10_000;
 
 class ActiveTargetMiss extends Error {
   constructor(cause: unknown) {
@@ -802,14 +805,16 @@ export class AgentBrowserProxy {
     if (!session) throw new Error("start agent-browser with open before sending commands");
     this.shown = { session, command: command as string };
     const ownerPrivate = continuing && command !== "close" && command !== "wait_for_owner" && this.waitOf(session) !== "off";
+    clearTimeout(session.idleTimer);
+    let commandDone!: () => void;
+    session.commandDone = new Promise<void>((resolve) => { commandDone = resolve; });
+    // Read before the step starts, so the page read is not counted in the step's own wait.
+    const before = continuing && !ownerPrivate && command !== "wait_for_owner" ? await this.capturePage(session, "before") : undefined;
     if (continuing && !ownerPrivate) {
       step = recording.begin(command as string, args, why);
       this.latest = { runId: recording.id, step, steps: recording.steps };
     }
     let nativeArgs = args;
-    clearTimeout(session.idleTimer);
-    let commandDone!: () => void;
-    session.commandDone = new Promise<void>((resolve) => { commandDone = resolve; });
     const results: AgentBrowserCommandResult[] = [];
     const context: StepContext = {};
     let failure: unknown;
@@ -932,7 +937,7 @@ export class AgentBrowserProxy {
           }
         } else if (continuing && site && "importLogin" in session.chrome) this.imported(session, await session.chrome.importLogin(site));
       }
-      const target = command === "click" || command === "fill" ? args[0] : files ? fileOperands(args).selector : undefined;
+      const target = command === "click" || command === "fill" || files ? fileOperands(args).selector : undefined;
       if (target) {
         await this.captureTarget(session, step, target);
         if (this.waitOf(session) !== "off") {
@@ -1004,17 +1009,20 @@ export class AgentBrowserProxy {
     } finally {
       try {
         if (step && step.endedAt === undefined) {
+          const privatePage = this.waitOf(session) !== "off" || command === "wait_for_owner";
           if (results.length && command !== "close" && command !== "wait_for_owner" && this.waitOf(session) === "off") await this.readPageLog(session, step);
           try {
             const kept = step.native.command === "open" ? this.moved?.failed : undefined;
             await session.recording.complete(step, kept?.result ? [...results, kept.result] : results, session.stateDir, () => this.screenshot(session, step!.native.command, visual), failure ?? kept?.error,
-              this.waitOf(session) !== "off" || command === "wait_for_owner", { ...context, page: session.page, owner: this.ownerPage, current: session.kind === "current",
+              privatePage, { ...context, page: session.page, owner: this.ownerPage, current: session.kind === "current",
                 ...this.moved?.pick ? { moved: this.moved.line } : {} });
           } catch (completeError) {
             // A hung command already failed with AbortError. The completion
             // screenshot throws page closed after disconnect and must not replace it.
             if (failure === undefined) throw completeError;
           }
+          if (before) await session.recording.savePage(step, "before", before);
+          if (!privatePage && command !== "close") await session.recording.savePage(step, "after", await this.capturePage(session, "after"));
           if (command === "close") this.latest = { runId: recording.id, step, steps: recording.steps, lastPicture: recording.lastPicture };
         }
       } finally {
@@ -2066,6 +2074,35 @@ export class AgentBrowserProxy {
     const { targetInfo } = await session.chrome.cdp.send<{ targetInfo: { url?: string; title?: string } }>("Target.getTargetInfo", { targetId }, undefined, 2000);
     if (session.abort.signal.aborted) throw new Error("page closed");
     if (ownerWall({ url: targetInfo.url ?? "", title: targetInfo.title ?? "" })) throw new Error(OWNER_PRIVATE);
+  }
+
+  /** Reads the agent's tab on Bao's own CDP socket, the way a page picture does. A failure comes back as the capture's error. */
+  private async capturePage(session: Session, phase: "before" | "after"): Promise<PageCapture> {
+    const started = Date.now();
+    const deadline = started + PAGE_STATE_TIMEOUT_MS;
+    const remaining = () => Math.max(1, deadline - Date.now());
+    const signal = AbortSignal.any([session.abort.signal, AbortSignal.timeout(PAGE_STATE_TIMEOUT_MS)]);
+    let cdp: CdpSocket | undefined;
+    let attached: string | undefined;
+    const close = () => { if (session.kind === "copy") cdp?.close(); };
+    signal.addEventListener("abort", close, { once: true });
+    try {
+      if (this.gone() || session.abort.signal.aborted) throw new Error("page closed");
+      const targetId = session.agentTarget;
+      if (!targetId) throw new Error("no active page");
+      const socket = cdp = await this.connectSession(session, { signal, timeoutMs: remaining() });
+      const { sessionId } = await socket.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true }, undefined, remaining());
+      attached = sessionId;
+      const read = await readPage(<T>(method: string, params?: Record<string, unknown>) => socket.send<T>(method, params ?? {}, sessionId, remaining()),
+        (url) => session.recording.needsArchive(url), phase === "after");
+      return { ...read, ms: Date.now() - started };
+    } catch (error) {
+      return { error: errorText(error), ms: Date.now() - started };
+    } finally {
+      signal.removeEventListener("abort", close);
+      if (session.kind === "copy") cdp?.close();
+      else if (attached) await cdp?.send("Target.detachFromTarget", { sessionId: attached }, undefined, 2000).catch(() => undefined);
+    }
   }
 
   private async captureFrame(session: Session, targetId: string, visual: boolean): Promise<{ bytes: Buffer; viewport?: { width: number; height: number } }> {
