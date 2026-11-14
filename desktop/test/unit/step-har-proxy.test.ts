@@ -10,6 +10,13 @@ import * as sockets from "../../src/cdp-live/socket";
 import { AGENT_WAIT_ENDED } from "../../src/v1/stop-copy";
 import { Library } from "../../src/v1/store";
 import { readStepRecord, runHarPath } from "../../src/engines/step-har";
+import type { PageState, PageStateEntry } from "../../src/engines/step-page";
+import { gunzipSync } from "node:zlib";
+
+async function pageFile(home: string, runId: string, entry: PageStateEntry | undefined): Promise<PageState> {
+  assert.ok(entry && "file" in entry, `page read failed: ${entry && "error" in entry ? entry.error : "missing"}`);
+  return JSON.parse(gunzipSync(await readFile(path.join(home, "runs", runId, entry.file))).toString("utf8")) as PageState;
+}
 
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aL1sAAAAASUVORK5CYII=", "base64");
 const har = Buffer.from(JSON.stringify({
@@ -43,10 +50,23 @@ async function fixture(t: TestContext) {
     };
   });
   const page = { url: "http://127.0.0.1/", title: "Fixture" };
+  const cdpCalls: string[] = [];
+  const failing = new Set<string>();
   t.mock.method(sockets, "connectCdp", async () => {
     const cdp = new sockets.CdpSocket(new Socket());
-    t.mock.method(cdp, "send", async (method: string) => {
+    t.mock.method(cdp, "send", async (method: string, params?: Record<string, unknown>) => {
+      cdpCalls.push(method);
+      if (failing.has(method)) throw new Error(`${method} failed`);
       if (method === "Target.attachToTarget") return { sessionId: "fixture" };
+      if (method === "Runtime.evaluate") {
+        return String(params?.expression).includes("location.href")
+          ? { result: { value: { url: page.url, title: page.title, x: 0, y: 12 } } }
+          : { result: { value: 1 } };
+      }
+      if (method === "Page.getLayoutMetrics") return { cssLayoutViewport: { pageX: 0, pageY: 12, clientWidth: 800, clientHeight: 600 } };
+      if (method === "DOMSnapshot.captureSnapshot") return { documents: [{ documentURL: page.url, nodes: { inputValue: { index: [3], value: [1] } } }], strings: [page.url, "quarterly"] };
+      if (method === "Accessibility.getFullAXTree") return { nodes: [{ nodeId: "1", role: { value: "button" }, name: { value: "Upload statement" } }] };
+      if (method === "Page.captureSnapshot") return { data: `MHTML ${page.url}` };
       if (method === "Target.getTargetInfo") return { targetInfo: { ...page } };
       if (method === "Target.getTargets") return { targetInfos: [{ targetId: "ABC123", url: page.url, title: page.title, type: "page" }] };
       return { data: png.toString("base64") };
@@ -90,6 +110,10 @@ if (command === 'network' && args.includes('start') && fs.existsSync(${JSON.stri
   process.exitCode = 1;
 } else if (command === 'tab' && args.includes('--json') && fs.existsSync(${JSON.stringify(path.join(root, "no-active-tab"))})) {
   process.stdout.write(JSON.stringify({ data: { tabs: [] } }));
+} else if (command === 'snapshot') {
+  process.stdout.write('- button "Upload statement" [ref=e3]\\n- link "Statements" [ref=e4]\\n');
+} else if (command === 'get' && args.includes('box')) {
+  process.stdout.write(JSON.stringify({ data: { x: 10, y: 20, width: 120, height: 30 } }));
 } else if (args.includes('fail')) {
   process.stderr.write('native error\\n');
   process.exitCode = 1;
@@ -99,7 +123,7 @@ if (command === 'network' && args.includes('start') && fs.existsSync(${JSON.stri
 `, { mode: 0o700 });
   const proxy = new AgentBrowserProxy({ home: path.join(root, "home"), sourceRoot, executable });
   return {
-    root, proxy, page,
+    root, proxy, page, cdpCalls, failing,
     calls: async () => (await readFile(log, "utf8")).trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as { args: string[]; at: number }),
     async close() {
       try { await proxy.close(); } catch { /* the test already closed it */ }
@@ -267,6 +291,83 @@ test("closing during a sign-in wait writes the ended wait to the step file and t
     assert.ok(step);
     assert.equal(step.status, "failed");
     assert.equal(step.reason, AGENT_WAIT_ENDED);
+  } finally {
+    await f.close();
+  }
+});
+
+test("each step keeps the page before and after, one archive per page, and the element it acted on", async (t) => {
+  const f = await fixture(t);
+  try {
+    const home = path.join(f.root, "home");
+    await f.proxy.execute("open", ["http://127.0.0.1/"], "copy", false, undefined, {}, undefined, undefined, "Open the statement page.");
+    const runId = f.proxy.activeRunId!;
+    await f.proxy.execute("snapshot", ["-i"], undefined, false, undefined, {}, runId);
+    await f.proxy.execute("click", ["@e3"], undefined, false, undefined, {}, runId, undefined, "Upload the statement.");
+    f.page.url = "http://127.0.0.1/api/upload";
+    await f.proxy.execute("click", ["@e4", "fail"], undefined, false, undefined, {}, runId);
+    await f.proxy.execute("close", [], undefined, false, undefined, {}, runId);
+
+    const open = await readStepRecord(home, runId, "command-1");
+    assert.equal(open.page?.before, undefined, "the first open has no page before it");
+    const opened = await pageFile(home, runId, open.page?.after);
+    assert.equal(opened.schema, "bao.page-state/v1");
+    assert.equal(opened.url, "http://127.0.0.1/");
+    assert.equal(opened.title, "Fixture");
+    assert.deepEqual(opened.scroll, { x: 0, y: 12 });
+    assert.deepEqual((opened.layout as { cssLayoutViewport: { clientWidth: number } }).cssLayoutViewport.clientWidth, 800);
+    assert.deepEqual((opened.dom as { strings: string[] }).strings, ["http://127.0.0.1/", "quarterly"]);
+    assert.equal((opened.ax as { nodes: unknown[] }).nodes.length, 1);
+    const archive = open.page?.after && "mhtml" in open.page.after ? open.page.after.mhtml : undefined;
+    assert.equal(archive, "steps/command-1.after.mhtml.gz");
+    assert.equal(gunzipSync(await readFile(path.join(home, "runs", runId, archive!))).toString("utf8"), "MHTML http://127.0.0.1/");
+
+    const read = await readStepRecord(home, runId, "command-2");
+    assert.equal((await pageFile(home, runId, read.page?.before)).url, "http://127.0.0.1/");
+    assert.equal((await pageFile(home, runId, read.page?.after)).url, "http://127.0.0.1/");
+    assert.ok(read.page?.before && !("mhtml" in read.page.before), "a page already archived is not archived again");
+    assert.equal(read.target, undefined);
+
+    const click = await readStepRecord(home, runId, "command-3");
+    assert.equal(click.why, "Upload the statement.");
+    assert.deepEqual(click.target, { ref: "@e3", role: "button", name: "Upload statement", box: { x: 10, y: 20, width: 120, height: 30 } });
+    assert.equal(typeof (click.page?.before as { ms: number }).ms, "number");
+
+    const failed = await readStepRecord(home, runId, "command-4");
+    assert.equal(failed.status, "failed");
+    assert.equal(failed.error, "native error");
+    assert.deepEqual(failed.target, { ref: "@e4", role: "link", name: "Statements", box: { x: 10, y: 20, width: 120, height: 30 } });
+    assert.equal((await pageFile(home, runId, failed.page?.before)).url, "http://127.0.0.1/api/upload");
+    assert.equal((await pageFile(home, runId, failed.page?.after)).url, "http://127.0.0.1/api/upload");
+    assert.equal(failed.page?.before && "mhtml" in failed.page.before ? failed.page.before.mhtml : undefined, "steps/command-4.before.mhtml.gz", "a new page gets its archive on the first read that reaches it");
+
+    const closed = await readStepRecord(home, runId, "command-5");
+    assert.equal((await pageFile(home, runId, closed.page?.before)).url, "http://127.0.0.1/api/upload");
+    assert.equal(closed.page?.after, undefined, "close leaves no page to read");
+  } finally {
+    await f.close();
+  }
+});
+
+test("a page read that fails is kept as an error and the command still runs", async (t) => {
+  const f = await fixture(t);
+  try {
+    const home = path.join(f.root, "home");
+    await f.proxy.execute("open", ["http://127.0.0.1/"], "copy", false, undefined, {}, undefined, undefined, "Open.");
+    const runId = f.proxy.activeRunId!;
+    f.failing.add("DOMSnapshot.captureSnapshot");
+    const read = await f.proxy.execute("snapshot", [], undefined, false, undefined, {}, runId);
+    assert.equal(read[0]?.exitCode, 0);
+    f.failing.delete("DOMSnapshot.captureSnapshot");
+    f.failing.add("Page.captureSnapshot");
+    f.page.url = "http://127.0.0.1/next";
+    await f.proxy.execute("snapshot", [], undefined, false, undefined, {}, runId);
+    const broken = await readStepRecord(home, runId, "command-2");
+    assert.deepEqual(broken.page?.before && "error" in broken.page.before ? broken.page.before.error : undefined, "DOMSnapshot.captureSnapshot failed");
+    assert.equal(broken.status, "passed");
+    const noArchive = await readStepRecord(home, runId, "command-3");
+    assert.equal(noArchive.page?.before && "mhtmlError" in noArchive.page.before ? noArchive.page.before.mhtmlError : undefined, "Page.captureSnapshot failed");
+    assert.equal((await pageFile(home, runId, noArchive.page?.before)).url, "http://127.0.0.1/next");
   } finally {
     await f.close();
   }

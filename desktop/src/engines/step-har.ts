@@ -1,6 +1,7 @@
 import { gunzipSync, gzipSync } from "node:zlib";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import type { PageStateEntry } from "./step-page";
 
 export const STEP_RECORD_SCHEMA = "bao.step-record/v1";
 const WHY_LIMIT = 500;
@@ -25,6 +26,14 @@ export interface StepWait {
   ms: number;
 }
 
+/** The element a click, fill, upload or download named: its ref or selector, role and name from the latest snapshot, and its CDP box. */
+export interface StepTarget {
+  ref: string;
+  role?: string;
+  name?: string;
+  box?: { x: number; y: number; width: number; height: number };
+}
+
 export interface StepNetworkRecord {
   schema: typeof STEP_RECORD_SCHEMA;
   id: string;
@@ -37,6 +46,9 @@ export interface StepNetworkRecord {
   endedAt?: string;
   waits: StepWait[];
   network: { entries: HarEntry[] };
+  target?: StepTarget;
+  /** Page reads taken just before the step started and just after it ended. */
+  page?: { before?: PageStateEntry; after?: PageStateEntry };
   /** agent-browser's `console` result at step end, as its `batch --json` returned it. */
   console?: unknown;
   /** agent-browser's `errors` result at step end, as its `batch --json` returned it. */

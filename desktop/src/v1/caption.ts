@@ -190,6 +190,14 @@ export function commandSentence(command: string, arg: string | readonly string[]
   return { text: command };
 }
 
+/** Role and name the snapshot line for this ref gives, such as `button` and `Upload statement`. */
+export function refIdentity(ref: string | undefined, snapshot: string | undefined): { role?: string; name?: string } {
+  const line = refLine(ref, snapshot);
+  const role = line?.match(/^\s*-\s*([A-Za-z]+)/)?.[1];
+  const name = refName(line);
+  return { ...(role ? { role } : {}), ...(name ? { name } : {}) };
+}
+
 function refLine(arg: string | undefined, snapshot: string | undefined): string | undefined {
   const ref = arg?.trim();
   if (!ref || !snapshot || !isElementRef(ref)) return undefined;

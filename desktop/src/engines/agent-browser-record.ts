@@ -3,7 +3,8 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { OwnerPage } from "../cdp-live/owner-wait";
 import type { CdpSocket } from "../cdp-live/socket";
-import { commandSentence } from "../v1/caption";
+import { commandSentence, refIdentity } from "../v1/caption";
+import { fileOperands } from "../v1/file-operands";
 import { AGENT_CLOSED_ASK, AGENT_STEP_FAILED, AGENT_WAIT_ENDED } from "../v1/stop-copy";
 import { RUN_SCHEMA_ID, stepTitle, type StepCaption } from "../v1/schema";
 import { Library, type StoredRun } from "../v1/store";
@@ -15,7 +16,8 @@ import type { BrowserPick } from "./browser-pick";
 import type { SignInImport } from "./bao-profile";
 import { startCdpVideo, type CdpVideo } from "./cdp-video";
 import { HOST_STOP_VIDEO_UNAVAILABLE } from "./video-handoff";
-import { assignEntries, parseHar, stepWait, stepWhy, writeRunHar, writeStepRecord, type HarEntry, type HarLog, type StepNetworkRecord, type StepPageLog } from "./step-har";
+import { assignEntries, parseHar, stepWait, stepWhy, writeRunHar, writeStepRecord, type HarEntry, type HarLog, type StepNetworkRecord, type StepPageLog, type StepTarget } from "./step-har";
+import { errorText, writePageState, type PageCapture, type PageStateEntry } from "./step-page";
 
 const hostStopRuns = new Set<AgentBrowserRun>();
 
@@ -104,6 +106,11 @@ export class AgentBrowserRun {
   private videoAbandoned = false;
   private harParts: { raw: Buffer; har: HarLog }[] = [];
   private network = new Map<string, HarEntry[]>();
+  private pages = new Map<string, { before?: PageStateEntry; after?: PageStateEntry }>();
+  /** Role and name for the element a step named, read from the snapshot current when the step began. */
+  private targets = new Map<string, Omit<StepTarget, "box">>();
+  /** Pages that already have an MHTML archive, keyed by URL without its fragment. */
+  private archived = new Set<string>();
   private pageLogs = new Map<string, StepPageLog>();
 
   constructor(private readonly home: string) {
@@ -154,8 +161,29 @@ export class AgentBrowserRun {
       ...(storedWhy ? { why: storedWhy } : {}),
     };
     this.run.steps.push(step);
+    const ref = command === "click" || command === "fill" ? args[0] : command === "upload" || command === "download" ? fileOperands(args).selector : undefined;
+    if (ref) this.targets.set(step.id, { ref, ...refIdentity(ref, this.lastSnapshot || latestSnapshot(this.run.steps)) });
     this.persist();
     return step;
+  }
+
+  /** True when no earlier read of this page kept an MHTML archive. */
+  needsArchive(url: string): boolean {
+    return !this.archived.has(pageKey(url));
+  }
+
+  /** Writes one page read beside the step record and rewrites that record to name it. A write failure is kept as the read's error. */
+  async savePage(step: RecordedAgentBrowserCommand, phase: "before" | "after", capture: PageCapture): Promise<void> {
+    let entry: PageStateEntry;
+    try {
+      entry = await writePageState(this.home, this.id, step.id, phase, capture);
+    } catch (error) {
+      entry = { error: `page state write failed: ${errorText(error)}`, ms: capture.ms };
+      this.warn("page state");
+    }
+    if ("state" in capture && "mhtml" in entry && entry.mhtml) this.archived.add(pageKey(capture.state.url));
+    this.pages.set(step.id, { ...this.pages.get(step.id), [phase]: entry });
+    await this.saveStep(step);
   }
 
   async complete(step: RecordedAgentBrowserCommand, results: AgentBrowserCommandResult[], stateDir: string,
@@ -464,7 +492,7 @@ export class AgentBrowserRun {
 
   private async saveStep(step: RecordedAgentBrowserCommand): Promise<void> {
     try {
-      await writeStepRecord(this.home, this.id, stepNetworkRecord(step, this.network.get(step.id) ?? [], this.pageLogs.get(step.id)));
+      await writeStepRecord(this.home, this.id, stepNetworkRecord(step, this.network.get(step.id) ?? [], this.pageLogs.get(step.id), this.targets.get(step.id), this.pages.get(step.id)));
     } catch {
       this.warn("step record");
     }
@@ -475,7 +503,9 @@ export class AgentBrowserRun {
   }
 }
 
-function stepNetworkRecord(step: RecordedAgentBrowserCommand, entries: HarEntry[], log?: StepPageLog): StepNetworkRecord {
+function stepNetworkRecord(step: RecordedAgentBrowserCommand, entries: HarEntry[], log: StepPageLog | undefined, target: Omit<StepTarget, "box"> | undefined,
+  page: StepNetworkRecord["page"]): StepNetworkRecord {
+  const box = step.target?.rect;
   const error = step.native.error ?? failedOutput(step);
   return {
     schema: "bao.step-record/v1",
@@ -490,6 +520,8 @@ function stepNetworkRecord(step: RecordedAgentBrowserCommand, entries: HarEntry[
     waits: step.endedAt ? [stepWait(step.native.command, step.startedAt, step.endedAt)] : [],
     network: { entries },
     ...log,
+    ...(target ? { target: { ...target, ...(box ? { box: { x: box.x, y: box.y, width: box.width, height: box.height } } : {}) } } : {}),
+    ...(page ? { page } : {}),
   };
 }
 
