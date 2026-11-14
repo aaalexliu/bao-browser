@@ -3,6 +3,7 @@ import { describeStep, ownerOutcome, ownerReply, type OwnerHandoff, type OwnerWa
 import type { AgentBrowserCommandResult } from "../engines/agent-browser-proxy";
 import type { RecordedAgentBrowserCommand } from "../engines/agent-browser-record";
 import type { ChromeProfileQuestion } from "../engines/browser-pick";
+import { agentProfileRetry, agentProfileText } from "../engines/profile-tabs";
 import type { StoredRun } from "../v1/store";
 
 type Target = NonNullable<RecordedAgentBrowserCommand["target"]>;
@@ -233,17 +234,34 @@ export function finishToolResult(card: BrowserToolCard | undefined, receipt: Rec
 }
 
 /**
- * Chrome has more than one profile and the open named none. Bao opened nothing; the sentence lists them and the next block gives the retry.
+ * Chrome has more than one profile and the open named none. Bao opened nothing. The list tells the model to pick, and the next block is a call shape, not the answer.
  * structuredContent carries both, with status needs_profile, so an agent that reads only it does not take this for an owner wait.
  */
 export function profileQuestionResult(question: ChromeProfileQuestion, call: Record<string, unknown>, ui: boolean) {
-  const retry = question.retry(call);
-  const card: BrowserToolCard = { command: "open", status: "waiting", style: "text", caption: question.message, parts: [question.message],
+  const listing = question.listing ?? { byDirectory: {}, unread: "remote debugging is off" };
+  const summary = agentProfileText(question.root, question.profiles, question.settings, listing);
+  const example = question.settings && question.profiles.some((profile) => profile.directory === question.settings)
+    ? question.settings : question.profiles[0]!.directory;
+  const retry = agentProfileRetry(call, example);
+  const card: BrowserToolCard = { command: "open", status: "waiting", style: "text", caption: summary, parts: [summary],
     runId: null, stepId: null, picture: unavailable("Bao opened nothing.") };
   return {
-    content: [textBlock(question.message), textBlock(retry)],
-    structuredContent: { command: "open", status: "needs_profile", run_id: null, step_id: null, summary: question.message, retry,
-      profiles: question.profiles.map((profile) => ({ ...profile, ...(profile.directory === question.settings ? { pickedInSettings: true } : {}) })) },
+    content: [textBlock(summary), textBlock(retry)],
+    structuredContent: { command: "open", status: "needs_profile", run_id: null, step_id: null, summary, retry,
+      ...(listing?.unread ? { tabsUnread: listing.unread } : {}),
+      ...(listing?.unmatched ? { tabsUnmatched: listing.unmatched } : {}),
+      profiles: question.profiles.map((profile) => {
+        const group = listing.byDirectory[profile.directory];
+        const failed = listing.unread ? undefined : listing.unavailable?.[profile.directory];
+        const matched = group
+          ? { tabs: group.tabs, ...(group.omitted ? { tabsOmitted: group.omitted } : {}) }
+          : listing.unmatched ? {} : { tabs: [] };
+        return {
+          ...profile,
+          ...(profile.directory === question.settings ? { pickedInSettings: true } : {}),
+          ...(listing.unread || failed ? (failed ? { tabsUnread: failed } : {}) : matched),
+        };
+      }) },
     ...(ui ? { _meta: { baoToolCard: card } } : {}),
     isError: false,
   };

@@ -81,6 +81,8 @@ export interface StoredRun {
   browser?: import("../engines/browser-pick").BrowserPick;
   /** Every browser route this run used, oldest first, each with the step it started at. Absent on older runs. */
   routes?: import("../engines/browser-pick").RunRoute[];
+  /** The folder the agent named on the opening call, and its stated reason when it sent one. */
+  profileChoice?: { directory: string; reason?: string };
   /** File values are names, not paths. */
   inputs?: Record<string, string>;
   /** Saved values this run used. Secrets are listed as "saved password". */

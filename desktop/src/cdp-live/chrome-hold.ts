@@ -1,17 +1,18 @@
-// One debugging connection per running Chrome. Chrome asks on every new WebSocket to /devtools/browser, so a long-lived
-// Bao process owns that socket for one user-data-dir (every profile in it shares the port) and publishes the local
-// endpoint here. Sessions join it. A session leaving does not close it. Chrome quitting does: the kernel closes the
-// loopback socket, the hold ends, and the next session starts a new hold, which is one new sheet.
+// One debugging connection per running Chrome. The detached chrome-hold process owns that socket and is the only
+// process that turns the remote-debugging switch on or off. A session is a connection to that process. When Bao
+// turned the switch on, the last connection to close turns it off. When the owner had already turned it on, the
+// hold stays while Chrome runs. Chrome quitting does not delete a claim Bao still owns.
 
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { closeSync, constants, existsSync, fchmodSync, fstatSync, linkSync, lstatSync, openSync, readFileSync, renameSync, unlinkSync, writeSync } from "node:fs";
 import { chmod, mkdir, rm } from "node:fs/promises";
+import net from "node:net";
 import path from "node:path";
 import { appBundleOf } from "../app/bundle";
 import { chromeDataPath } from "../chrome-access";
 import type { CurrentChrome } from "./current-chrome";
-import { productionTurnOff, takeLease, testProcess, turnOffIfIdle, type SwitchLease } from "./debug-switch";
+import { claimOwned, finishOwnedSwitch, testProcess, turnSwitchOff } from "./debug-switch";
 import { shareConnection } from "./shared-connection";
 import { connectCdp } from "./socket";
 
@@ -28,6 +29,10 @@ export interface HoldOptions {
   root: string;
   axLog: string;
   signal?: AbortSignal;
+  /** Attach to a Chrome that is already listening. Do not start Chrome or turn the switch on. */
+  listenOnly?: boolean;
+  /** Turn off a leftover claim and exit. Not a session. */
+  settle?: boolean;
 }
 
 interface HoldRecord {
@@ -37,11 +42,14 @@ interface HoldRecord {
   port: number;
   browserPath: string;
   holderPid: number;
+  sessionPort?: number;
 }
 
 interface HoldStarting {
   holderPid: number;
   startedAt: number;
+  sessionPort?: number;
+  stopping?: boolean;
 }
 
 interface HoldFixture {
@@ -65,6 +73,31 @@ function pidAlive(pid: number): boolean {
   }
 }
 
+/** A live holder is waited on, including one that is turning the switch off. A dead or expired start is replaced. */
+export function starterReusable(
+  starting: { holderPid: number; startedAt: number; stopping?: boolean } | undefined,
+  alive: (pid: number) => boolean,
+  now = Date.now(),
+): "wait" | "replace" {
+  if (!starting || !alive(starting.holderPid)) return "replace";
+  if (starting.stopping) return "wait";
+  if (now - starting.startedAt >= HOLD_WAIT_MS) return "replace";
+  return "wait";
+}
+
+/** Whether this hold should turn the switch off, leave it, or keep serving. */
+export function holdEnd(input: {
+  signaled: boolean;
+  chromeClosed: boolean;
+  sessions: number;
+  owned: boolean;
+  seenSession: boolean;
+}): "turn-off" | "leave" | "wait" {
+  if (input.signaled || input.chromeClosed) return input.owned ? "turn-off" : "leave";
+  if (input.seenSession && input.sessions === 0) return input.owned ? "turn-off" : "leave";
+  return "wait";
+}
+
 function cliPath(): string {
   return path.join(__dirname, "../app/cli.js");
 }
@@ -75,6 +108,8 @@ function cliPath(): string {
  */
 export function holdLaunch(cli: string, options: HoldOptions, bao?: string): { command: string; args: string[] } {
   const args = ["chrome-hold", "--root", options.root, "--ax-log", options.axLog];
+  if (options.listenOnly) args.push("--listen-only");
+  if (options.settle) args.push("--settle");
   if (bao) return { command: bao, args: ["--run-node", "--own", cli, ...args] };
   return { command: process.execPath, args: [cli, ...args] };
 }
@@ -290,7 +325,7 @@ async function ensureHold(dir: string, root: string, options: HoldOptions): Prom
     const live = await readLive(dir, root);
     if (live) return live;
     const starting = await readStarting(dir);
-    if (starting && pidAlive(starting.holderPid) && Date.now() - starting.startedAt < HOLD_WAIT_MS) return undefined;
+    if (starterReusable(starting, pidAlive) === "wait") return undefined;
     await rm(path.join(dir, "starting.json"), { force: true });
     await rm(path.join(dir, "hold.err"), { force: true });
     await rm(path.join(dir, "hold.json"), { force: true });
@@ -358,49 +393,153 @@ async function dropUnchanged(dir: string, record: HoldRecord): Promise<void> {
   });
 }
 
-function bindLease(chrome: CurrentChrome, lease: SwitchLease): CurrentChrome {
+export interface HoldSessions {
+  port: number;
+  count(): number;
+  drain(): void;
+  resume(): void;
+  nextChange(): Promise<void>;
+  close(): void;
+}
+
+/** Loopback sockets the hold counts as sessions. A drain rejects a new socket so a dying hold is not joined. */
+export function bindHoldSessions(): Promise<HoldSessions> {
+  let count = 0;
+  let draining = false;
+  let waiters: (() => void)[] = [];
+  const changed = () => {
+    const pending = waiters;
+    waiters = [];
+    for (const fn of pending) fn();
+  };
+  const server = net.createServer((socket) => {
+    if (draining) {
+      socket.destroy();
+      return;
+    }
+    count += 1;
+    changed();
+    const down = () => {
+      count = Math.max(0, count - 1);
+      changed();
+    };
+    socket.on("close", down);
+    socket.on("error", () => socket.destroy());
+  });
+  return new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        reject(new Error("Bao could not listen for its Chrome session"));
+        return;
+      }
+      resolve({
+        port: address.port,
+        count: () => count,
+        drain() { draining = true; },
+        resume() { draining = false; },
+        nextChange: () => new Promise((done) => { waiters.push(done); }),
+        close() {
+          server.close();
+          changed();
+        },
+      });
+    });
+  });
+}
+
+function connectSession(port: number, signal?: AbortSignal): Promise<net.Socket> {
+  const socket = net.connect({ host: "127.0.0.1", port });
+  return new Promise((resolve, reject) => {
+    const fail = (error: Error) => {
+      socket.destroy();
+      reject(error);
+    };
+    const onAbort = () => fail(new Error("aborted"));
+    socket.once("connect", () => {
+      socket.off("error", fail);
+      signal?.removeEventListener("abort", onAbort);
+      socket.on("error", () => socket.destroy());
+      resolve(socket);
+    });
+    socket.once("error", fail);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+function bindSession(chrome: CurrentChrome, socket: net.Socket): CurrentChrome {
   const detach = chrome.detach.bind(chrome);
   let released = false;
   chrome.detach = () => {
     if (!released) {
       released = true;
-      lease.release();
+      socket.destroy();
     }
     detach();
   };
   return chrome;
 }
 
-/** Joins the hold for this user-data-dir, starting it when Chrome has none. A second call does not open a second socket. */
+/** Connects as soon as the hold publishes a session port, so a client that exits during start is visible. */
+async function attachSession(dir: string, root: string, signal: AbortSignal): Promise<net.Socket | undefined> {
+  const deadline = Date.now() + HOLD_WAIT_MS;
+  while (!signal.aborted && Date.now() < deadline) {
+    const starting = await readStarting(dir);
+    const record = await readJson<HoldRecord>(path.join(dir, "hold.json"));
+    const published = isRecord(record, root);
+    const port = starting?.sessionPort ?? (published ? record.sessionPort : undefined);
+    if (port) {
+      try { return await connectSession(port, signal); }
+      catch { return undefined; }
+    }
+    if (published && !record.sessionPort) return undefined;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  return undefined;
+}
+
+/** Joins the hold for this user-data-dir, starting it when Chrome has none. A second call does not open a second Chrome socket. */
 export async function joinOrStartHold(options: HoldOptions): Promise<CurrentChrome> {
   const root = chromeDataPath(options.root);
   const dir = holdDir(root);
   await prepareHoldDir(dir);
-  // finish_task, close, MCP disconnect, idle end, and a handled stop all detach this session.
-  // A quit or a crash leaves the lease file; the hold reaps a dead pid.
-  const lease = takeLease(dir);
-  try {
-    let missed = false;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const record = await ensureHold(dir, root, options);
-      try {
-        return bindLease(await joinRecord(record, options.signal), lease);
-      } catch (error) {
-        if (options.signal?.aborted) throw error;
-        if (connectionRefused(error)) {
-          await dropUnchanged(dir, record);
-          continue;
-        }
-        if (await readLive(dir, root)) throw error;
-        if (missed) throw error;
-        missed = true;
+  let missed = false;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const sessionAbort = new AbortController();
+    const early = attachSession(dir, root, sessionAbort.signal);
+    let record: HoldRecord | undefined;
+    try {
+      record = await ensureHold(dir, root, options);
+      const chrome = await joinRecord(record, options.signal);
+      let socket = await early;
+      if (!socket && record.sessionPort) {
+        try { socket = await connectSession(record.sessionPort, options.signal); }
+        catch { socket = undefined; }
       }
+      if (record.sessionPort && !socket) {
+        chrome.detach();
+        throw Object.assign(new Error("session closed"), { code: "ECONNREFUSED" });
+      }
+      if (socket) return bindSession(chrome, socket);
+      return chrome;
+    } catch (error) {
+      sessionAbort.abort();
+      const socket = await early.catch(() => undefined);
+      socket?.destroy();
+      if (options.signal?.aborted) throw error;
+      if (record && connectionRefused(error)) {
+        await dropUnchanged(dir, record);
+        continue;
+      }
+      if (await readLive(dir, root)) throw error;
+      const err = await readErr(dir);
+      if (err) throw new Error(err);
+      if (missed) throw error;
+      missed = true;
     }
-    throw new Error("Bao's Chrome connection closed before the session joined");
-  } catch (error) {
-    lease.release();
-    throw error;
   }
+  throw new Error("Bao's Chrome connection closed before the session joined");
 }
 
 async function connectFixture(root: string, fixture: HoldFixture): Promise<CurrentChrome> {
@@ -425,9 +564,17 @@ async function connectFixture(root: string, fixture: HoldFixture): Promise<Curre
 }
 
 /** The throwaway listener a test named. Absent in a normal session, so that session cannot skip the Allow sheet. */
-export function holdFixtureEndpoint(): { port: number; browserPath: string } | undefined {
+export function holdFixtureEndpoint(): { port: number; browserPath: string; chromePid: number; executable: string } | undefined {
   const fixture = readFixture();
-  return fixture ? { port: fixture.port, browserPath: fixture.browserPath } : undefined;
+  return fixture ? { port: fixture.port, browserPath: fixture.browserPath, chromePid: fixture.chromePid, executable: fixture.executable } : undefined;
+}
+
+/** Joins the connection a hold already published. Does not start a hold. Undefined when none is published. */
+export async function joinLiveHold(root: string, signal?: AbortSignal): Promise<CurrentChrome | undefined> {
+  const dataRoot = chromeDataPath(root);
+  const record = await readLive(holdDir(dataRoot), dataRoot);
+  if (!record) return undefined;
+  return joinRecord(record, signal);
 }
 
 function readFixture(): HoldFixture | undefined {
@@ -442,15 +589,18 @@ function readFixture(): HoldFixture | undefined {
   return fixture;
 }
 
-const SWITCH_POLL_MS = 250;
-
-/** Owns the Chrome socket until that socket closes, and publishes the endpoint sessions join. */
-export async function serveHold(chrome: CurrentChrome, signal?: AbortSignal, turnOff?: () => Promise<void>): Promise<void> {
+/** Owns the Chrome socket until that socket closes or the signal fires, and publishes the endpoint sessions join. */
+export async function serveHold(
+  chrome: CurrentChrome,
+  signal?: AbortSignal,
+  extra?: { sessionPort?: number },
+): Promise<void> {
   const root = chromeDataPath(chrome.root);
   const dir = holdDir(root);
   const record: HoldRecord = {
     root, chromePid: chrome.pid, executable: chrome.executable,
     port: chrome.endpoint.port, browserPath: chrome.endpoint.browserPath, holderPid: process.pid,
+    ...(extra?.sessionPort ? { sessionPort: extra.sessionPort } : {}),
   };
   await prepareHoldDir(dir);
   await withHoldLock(dir, async () => {
@@ -462,20 +612,7 @@ export async function serveHold(chrome: CurrentChrome, signal?: AbortSignal, tur
     if (signal?.aborted) resolve();
     else signal?.addEventListener("abort", () => resolve(), { once: true });
   });
-  if (turnOff) {
-    while (!signal?.aborted && !chrome.isClosed()) {
-      if (await turnOffIfIdle(dir, turnOff)) break;
-      await Promise.race([
-        chrome.closed,
-        stopped,
-        new Promise((resolve) => setTimeout(resolve, SWITCH_POLL_MS)),
-      ]);
-    }
-    // The last session released, or this process was signaled, or Chrome quit. A dead lease is a session that did not detach.
-    await turnOffIfIdle(dir, turnOff);
-  } else {
-    await Promise.race([chrome.closed, stopped]);
-  }
+  await Promise.race([chrome.closed, stopped]);
   chrome.detach();
   await withHoldLock(dir, async () => {
     const current = await readJson<HoldRecord>(path.join(dir, "hold.json"));
@@ -490,10 +627,87 @@ function flag(args: readonly string[], name: string): string | undefined {
   return index >= 0 ? args[index + 1] : undefined;
 }
 
+function markStopping(dir: string, sessionPort?: number): void {
+  writePrivate(path.join(dir, "starting.json"), JSON.stringify({
+    holderPid: process.pid, startedAt: Date.now(), stopping: true,
+    ...(sessionPort ? { sessionPort } : {}),
+  }));
+}
+
+async function oneChromePid(root: string): Promise<number | undefined> {
+  try {
+    const { chromeProfilesRoot } = await import("../engines/chrome-profile-copy");
+    const { dailyChromePids } = await import("./remote-debugging");
+    const pids = await dailyChromePids(root, chromeProfilesRoot());
+    return pids.length === 1 ? pids[0] : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Turns the switch off only when this hold owns it and Chrome is still the one process we can see. A miss keeps the claim. */
+async function ownedOff(dir: string, root: string, axLog: string): Promise<void> {
+  if (!claimOwned(dir) || testProcess()) return;
+  const pid = await oneChromePid(root);
+  if (!pid) return;
+  await finishOwnedSwitch(dir, () => turnSwitchOff(pid, axLog));
+}
+
+async function unpublish(dir: string): Promise<void> {
+  await withHoldLock(dir, async () => {
+    const current = await readJson<HoldRecord>(path.join(dir, "hold.json"));
+    if (!current || current.holderPid === process.pid) await rm(path.join(dir, "hold.json"), { force: true });
+  });
+}
+
+function onceAborted(signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) resolve();
+    else signal.addEventListener("abort", () => resolve(), { once: true });
+  });
+}
+
+async function watchSessions(
+  sessions: HoldSessions,
+  chrome: CurrentChrome,
+  signal: AbortSignal,
+  dir: string,
+): Promise<"turn-off" | "leave"> {
+  let seen = sessions.count() > 0;
+  for (;;) {
+    const end = holdEnd({
+      signaled: signal.aborted,
+      chromeClosed: chrome.isClosed(),
+      sessions: sessions.count(),
+      owned: claimOwned(dir),
+      seenSession: seen,
+    });
+    if (end === "turn-off") {
+      sessions.drain();
+      if (!signal.aborted && !chrome.isClosed() && sessions.count() > 0) {
+        sessions.resume();
+        seen = true;
+        continue;
+      }
+      return "turn-off";
+    }
+    if (end === "leave") {
+      if (!signal.aborted && !chrome.isClosed()) {
+        await Promise.race([chrome.closed, onceAborted(signal), sessions.nextChange()]);
+        if (sessions.count() > 0) seen = true;
+        continue;
+      }
+      return "leave";
+    }
+    if (sessions.count() > 0) seen = true;
+    await Promise.race([chrome.closed, onceAborted(signal), sessions.nextChange()]);
+  }
+}
+
 /** `bao chrome-hold`. Not a user command: sessions start it and then join its endpoint. The opener is passed in so this module does not import the session entry that joins it. */
 export async function holdMain(
   args: readonly string[],
-  openChrome?: (options: { root: string; axLog: string }) => Promise<CurrentChrome>,
+  openChrome?: (options: { root: string; axLog: string; signal?: AbortSignal; recordClaim?: boolean }) => Promise<CurrentChrome>,
 ): Promise<void> {
   const rootArg = flag(args, "--root");
   const axLog = flag(args, "--ax-log");
@@ -501,40 +715,95 @@ export async function holdMain(
   const root = chromeDataPath(rootArg);
   const dir = holdDir(root);
   await prepareHoldDir(dir);
-  writePrivate(path.join(dir, "starting.json"), JSON.stringify({ holderPid: process.pid, startedAt: Date.now() }));
+  if (args.includes("--settle")) {
+    markStopping(dir);
+    try { await ownedOff(dir, root, axLog); }
+    finally {
+      const starting = await readStarting(dir);
+      if (!starting || starting.holderPid === process.pid) await rm(path.join(dir, "starting.json"), { force: true });
+    }
+    process.exit(0);
+  }
+  const sessions = await bindHoldSessions();
+  writePrivate(path.join(dir, "starting.json"), JSON.stringify({
+    holderPid: process.pid, startedAt: Date.now(), sessionPort: sessions.port,
+  }));
   const stopping = new AbortController();
+  let published = false;
   process.once("SIGTERM", () => stopping.abort());
   process.once("SIGINT", () => stopping.abort());
+  const abandon = (async () => {
+    let seen = false;
+    while (!published && !stopping.signal.aborted) {
+      if (sessions.count() > 0) seen = true;
+      if (seen && sessions.count() === 0) {
+        stopping.abort();
+        return;
+      }
+      await sessions.nextChange();
+    }
+  })();
+  void abandon.catch(() => undefined);
   try {
     const fixture = readFixture();
+    const listenOnly = args.includes("--listen-only");
     let chrome: CurrentChrome;
     if (fixture) chrome = await connectFixture(root, fixture);
-    else if (openChrome) chrome = await openChrome({ root, axLog });
+    else if (openChrome) chrome = await openChrome({ root, axLog, signal: stopping.signal, recordClaim: !listenOnly });
     else throw new Error("bao chrome-hold was started without its Chrome opener");
-    await serveHold(chrome, stopping.signal, () => productionTurnOff(path.join(root, "DevToolsActivePort"), axLog));
+    if (stopping.signal.aborted) {
+      chrome.detach();
+      throw new Error("session ended during start");
+    }
+    published = true;
+    const serving = serveHold(chrome, stopping.signal, { sessionPort: sessions.port });
+    const reason = await Promise.race([
+      watchSessions(sessions, chrome, stopping.signal, dir),
+      serving.then(() => "leave" as const),
+    ]);
+    if (reason === "turn-off" || claimOwned(dir)) {
+      markStopping(dir, sessions.port);
+      await unpublish(dir);
+      await ownedOff(dir, root, axLog);
+    }
+    stopping.abort();
+    await serving;
+    sessions.close();
     process.exit(0);
   } catch (error) {
+    const aborted = stopping.signal.aborted;
+    if (claimOwned(dir)) {
+      markStopping(dir, sessions.port);
+      await ownedOff(dir, root, axLog);
+    }
     const message = error instanceof Error ? error.message : String(error);
     await withHoldLock(dir, async () => {
-      writePrivate(path.join(dir, "hold.err"), message);
+      if (!aborted) writePrivate(path.join(dir, "hold.err"), message);
       const starting = await readStarting(dir);
       if (!starting || starting.holderPid === process.pid) await rm(path.join(dir, "starting.json"), { force: true });
     });
+    sessions.close();
+    if (aborted) process.exit(0);
     throw error;
   }
 }
 
-/** Next Bao start: a crash that skipped the off leaves the claim. Turn it off when nothing still holds it. */
+/** Next Bao start: a crash that skipped the off leaves the claim. The hold turns it off. This process does not. */
 export async function settleDebugSwitch(): Promise<void> {
-  if (testProcess() || process.platform !== "darwin") return;
+  if (testProcess()) return;
+  if (process.platform !== "darwin") return;
   try {
     const { chromeProfilesRoot } = await import("../engines/chrome-profile-copy");
     const root = chromeDataPath(chromeProfilesRoot());
     const dir = holdDir(root);
-    if (!existsSync(path.join(dir, "switch.json"))) return;
-    const record = await readJson<HoldRecord>(path.join(dir, "hold.json"));
-    const holderAlive = !!record && isRecord(record, root) && pidAlive(record.holderPid);
-    await turnOffIfIdle(dir, () => productionTurnOff(path.join(root, "DevToolsActivePort"), path.join(dir, "ax.jsonl")), { holderAlive });
+    if (!claimOwned(dir)) return;
+    if (await readLive(dir, root)) return;
+    const axLog = path.join(dir, "ax.jsonl");
+    const pid = spawnHolder({ root, axLog, settle: true });
+    const deadline = Date.now() + 30_000;
+    while (pidAlive(pid) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
   }

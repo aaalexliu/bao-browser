@@ -9,7 +9,7 @@ import { createConnection, createServer, type AddressInfo, type Socket } from "n
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test, { type TestContext } from "node:test";
-import { holdDir, holdLaunch, joinOrStartHold, serveHold } from "../../src/cdp-live/chrome-hold";
+import { bindHoldSessions, holdDir, holdEnd, holdLaunch, joinOrStartHold, serveHold, starterReusable } from "../../src/cdp-live/chrome-hold";
 import { openCurrentChrome, type CurrentChrome } from "../../src/cdp-live/current-chrome";
 import { readDevToolsActivePort, type DevToolsEndpoint } from "../../src/cdp-live/endpoint";
 import { connectCdp, ServerFrameDecoder, serverFrame } from "../../src/cdp-live/socket";
@@ -499,4 +499,105 @@ test("a failed hold records its error and leaves a successor starting record", {
   assert.ok(err.length > 0);
   const starting = JSON.parse(await readFile(path.join(dir, "starting.json"), "utf8")) as { holderPid: number };
   assert.equal(starting.holderPid, process.pid);
+});
+
+test("a holder that is turning the switch off is not replaced while it still runs", () => {
+  const alive = () => true;
+  const dead = () => false;
+  assert.equal(starterReusable({ holderPid: 99, startedAt: Date.now(), stopping: true }, alive), "wait");
+  assert.equal(starterReusable({ holderPid: 99, startedAt: Date.now(), stopping: true }, dead), "replace");
+  assert.equal(starterReusable({ holderPid: 99, startedAt: Date.now() }, alive), "wait");
+  assert.equal(starterReusable({ holderPid: 99, startedAt: Date.now() - 120_000 }, alive), "replace");
+  assert.equal(starterReusable(undefined, alive), "replace");
+});
+
+test("a signaled hold turns the switch off even while a session is still connected", () => {
+  assert.equal(holdEnd({ signaled: true, chromeClosed: false, sessions: 1, owned: true, seenSession: true }), "turn-off");
+  assert.equal(holdEnd({ signaled: false, chromeClosed: false, sessions: 1, owned: true, seenSession: true }), "wait");
+  assert.equal(holdEnd({ signaled: false, chromeClosed: false, sessions: 0, owned: true, seenSession: true }), "turn-off");
+  assert.equal(holdEnd({ signaled: false, chromeClosed: false, sessions: 0, owned: false, seenSession: true }), "leave");
+  assert.equal(holdEnd({ signaled: false, chromeClosed: true, sessions: 1, owned: true, seenSession: true }), "turn-off");
+  assert.equal(holdEnd({ signaled: true, chromeClosed: false, sessions: 1, owned: false, seenSession: true }), "leave");
+});
+
+test("a new session is rejected once the hold is draining, and one close does not empty two", async () => {
+  const sessions = await bindHoldSessions();
+  const first = createConnection({ host: "127.0.0.1", port: sessions.port });
+  const second = createConnection({ host: "127.0.0.1", port: sessions.port });
+  await new Promise<void>((resolve, reject) => {
+    let open = 0;
+    const up = () => { if (++open === 2) resolve(); };
+    first.once("connect", up);
+    second.once("connect", up);
+    first.once("error", reject);
+    second.once("error", reject);
+  });
+  const counted = Date.now() + 1_000;
+  while (sessions.count() !== 2) {
+    if (Date.now() >= counted) throw new Error(`the hold counted ${sessions.count()} of 2 sessions`);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  first.end();
+  const one = Date.now() + 1_000;
+  while (sessions.count() !== 1) {
+    if (Date.now() >= one) throw new Error(`one close left ${sessions.count()} sessions`);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  sessions.drain();
+  const rejected = createConnection({ host: "127.0.0.1", port: sessions.port });
+  await new Promise<void>((resolve) => {
+    rejected.once("close", () => resolve());
+    rejected.once("error", () => resolve());
+  });
+  assert.equal(sessions.count(), 1);
+  second.end();
+  const none = Date.now() + 1_000;
+  while (sessions.count() !== 0) {
+    if (Date.now() >= none) throw new Error(`the last close left ${sessions.count()} sessions`);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  sessions.close();
+});
+
+test("a joined session is a connection to the hold, and detach closes it", async (t) => {
+  const browserPath = "/devtools/browser/session";
+  const endpoint = await versionEndpoint(t, browserPath);
+  const scratch = await mkdtemp(path.join(tmpdir(), "bao-chrome-hold-session-"));
+  const root = await realpath(scratch);
+  const dir = await privateHoldDir(root);
+  t.after(async () => {
+    await rm(dir, { recursive: true, force: true });
+    await rm(scratch, { recursive: true, force: true });
+  });
+  const sessions = await bindHoldSessions();
+  t.after(() => sessions.close());
+  await writeFile(path.join(dir, "starting.json"), JSON.stringify({ holderPid: process.pid, startedAt: Date.now(), sessionPort: sessions.port }));
+  const serving = serveHold({
+    pid: process.pid,
+    executable: "/bin/test-chrome",
+    root,
+    endpoint: { port: endpoint.port, browserPath },
+    closed: new Promise<void>(() => undefined),
+    isClosed: () => false,
+    detach() {},
+  } as CurrentChrome, undefined, { sessionPort: sessions.port });
+  t.after(() => { serving.catch(() => undefined); });
+  const joined = await joinOrStartHold({ root, axLog: path.join(scratch, "ax.jsonl") });
+  assert.equal(sessions.count(), 1);
+  joined.detach();
+  const gone = Date.now() + 2_000;
+  while (sessions.count() !== 0) {
+    if (Date.now() >= gone) throw new Error("detach did not close the session connection");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+});
+
+test("a listen-only hold is spawned with that flag and does not turn the switch on", () => {
+  const options = { root: "/tmp/chrome", axLog: "/tmp/ax.jsonl", listenOnly: true };
+  const dev = holdLaunch("/work/cli.js", options);
+  assert.ok(dev.args.includes("--listen-only"));
+  assert.equal(dev.args.includes("--settle"), false);
+  const settle = holdLaunch("/work/cli.js", { root: options.root, axLog: options.axLog, settle: true });
+  assert.ok(settle.args.includes("--settle"));
+  assert.equal(settle.args.includes("--listen-only"), false);
 });

@@ -4,9 +4,10 @@
 // chrome://, chrome-extension://, and devtools://, and without --pin-tab it can make a new target current on its own.
 
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import childProcess from "node:child_process";
 import { EventEmitter } from "node:events";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -72,6 +73,8 @@ async function fixture(t: TestContext) {
     windowCheck: undefined as ((targetId: string) => void) | undefined,
     /** Runs as a command's reply is sent, after that list was built and before the next command. */
     after: undefined as ((command: string, args: string[]) => void) | undefined,
+    /** Exit code of the next command that has no tab-specific reply. */
+    exit: 0,
     /** Targets Chrome lists that this daemon has not numbered yet. */
     untracked: new Set<string>() };
   // agent-browser's should_track_target lists page and webview targets, and skips chrome://, chrome-extension://, and devtools://.
@@ -91,6 +94,8 @@ async function fixture(t: TestContext) {
     url: target.url, type: target.type, active: target.targetId === daemon.active }));
   const closed: string[] = [];
   const sent: { method: string; params: Record<string, unknown> }[] = [];
+  const listeners: { method: string; handler: (params: Record<string, unknown>) => void }[] = [];
+  const emit = (method: string, params: Record<string, unknown>) => { for (const listener of listeners.filter(item => item.method === method)) listener.handler(params); };
   const cdp = {
     isOpen: true,
     disconnected: new Promise<void>(() => undefined),
@@ -112,6 +117,10 @@ async function fixture(t: TestContext) {
       if (method === "Target.closeTarget") closed.push(String(params.targetId));
       if (method === "Target.attachToTarget") return { sessionId: "page" };
       if (method === "Page.captureScreenshot") return { data: "iVBORw0KGgo=" };
+      if (method === "Runtime.evaluate" && String(params.expression ?? "").includes("__bao")) {
+        const expression = String(params.expression);
+        return { result: { value: expression.includes("return {") ? { href: "", opened: "" } : undefined } };
+      }
       return {};
     },
     sendUntilProgress(this: { send: (method: string, params?: Record<string, unknown>, sessionId?: string) => Promise<unknown> }, method: string, params: Record<string, unknown> = {}, sessionId?: string) {
@@ -184,7 +193,9 @@ async function fixture(t: TestContext) {
     } else {
       if (command === "click") daemon.clicked?.();
       if (command === "press") daemon.pressed?.();
-      reply(`✓ Done on ${daemon.active}\n`);
+      const code = daemon.exit;
+      daemon.exit = 0;
+      reply(`✓ Done on ${daemon.active}\n`, code);
     }
     return new EventEmitter();
   });
@@ -193,7 +204,13 @@ async function fixture(t: TestContext) {
   const home = path.join(root, "home");
   const proxy = new AgentBrowserProxy({ home, sourceRoot: root, executable });
   t.after(() => proxy.end());
-  return { proxy, targets, daemon, closed, sent, home };
+  // Without events the tab video stops at once. A test that needs Chrome's events turns them on after open.
+  const listen = () => Object.assign(cdp, { on(method: string, _sessionId: string | undefined, handler: (params: Record<string, unknown>) => void) {
+    const listener = { method, handler };
+    listeners.push(listener);
+    return () => { listeners.splice(listeners.indexOf(listener), 1); };
+  } });
+  return { proxy, targets, daemon, closed, sent, home, emit, listeners, listen };
 }
 
 test("Chrome's Gemini panel and side panels stay out of the agent's tab list, and Bao's task tab says so", async (t) => {
@@ -201,11 +218,12 @@ test("Chrome's Gemini panel and side panels stay out of the agent's tab list, an
   const opened = await f.proxy.execute("open", [MAPS], "current");
   assert.equal(f.daemon.pinned, true, "the native daemon stays on its bound tab");
   assert.match(f.daemon.cdp, /\?background=1$/, "only the native daemon's connection stays behind");
-  assert.equal(opened[1]!.stdout, `→ [t1] (Bao task tab) Google Maps - ${MAPS}\n  [t2] Google Maps - ${MAPS}\n  [t3] Gemini - ${GLIC}\n`,
-    "Bao's task tab and the owner's tabs are told apart; the Gemini panel and both side panels are gone; a real tab on the panel URL stays");
+  assert.equal(opened[1]!.stdout, `→ [t1] (Bao task tab) Google Maps - ${MAPS}\n`,
+    "Running Chrome names only Bao's task tab; the owner's tab, the Gemini panel, and both side panels are gone");
   assert.equal((await f.proxy.execute("tab", [], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout, opened[1]!.stdout);
-  const json = JSON.parse((await f.proxy.execute("tab", ["list", "--json"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout) as { data: { tabs: { tabId: string; baoTaskTab?: boolean }[] } };
-  assert.deepEqual(json.data.tabs.map(tab => [tab.tabId, tab.baoTaskTab ?? false]), [["t1", true], ["t2", false], ["t3", false]]);
+  const json = JSON.parse((await f.proxy.execute("tab", ["list", "--json"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout) as { data: { tabs: { tabId: string; baoTaskTab?: boolean; url?: string }[] } };
+  assert.deepEqual(json.data.tabs.map(tab => [tab.tabId, tab.baoTaskTab ?? false]), [["t1", true]]);
+  assert.equal(json.data.tabs.some(tab => tab.url === GLIC), false);
 });
 
 test("when the native daemon makes the Gemini panel current mid-session, the next click and snapshot still land in the task tab", async (t) => {
@@ -289,8 +307,7 @@ test("a popup that appears after the tab read and before the native command stay
   assert.equal(firstTabSawGap, false, "the popup was not on the tab read that preceded the native command");
   assert.ok(f.targets.some(item => item.targetId === "gap"));
   const listed = (await f.proxy.execute("tab", [], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout;
-  assert.match(listed, /Gap popup/);
-  assert.doesNotMatch(listed, /\(Bao task tab\) Gap popup/);
+  assert.doesNotMatch(listed, /Gap popup/);
   assert.equal(f.daemon.active, "task");
   assert.equal(f.sent.some(call => call.method === "Target.attachToTarget" && call.params.targetId === "gap"), false);
   assert.ok(await f.proxy.finishTask({ outcome: "failed", reason: "fixture" }, f.proxy.activeRunId));
@@ -353,7 +370,7 @@ test("a popup the agent follows from its task tab is a Bao task tab, and finish_
   f.daemon.clicked = () => f.targets.push({ targetId: "popup", type: "page", url: "https://www.google.com/maps/place/Ceres", title: "Ceres", openerId: "task", inWindow: true });
   assert.equal((await f.proxy.execute("click", ["@e2"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout, "✓ Done on task\n");
   const listed = (await f.proxy.execute("tab", [], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout;
-  assert.equal(listed, `  [t1] (Bao task tab) Google Maps - ${MAPS}\n  [t2] Google Maps - ${MAPS}\n  [t3] Gemini - ${GLIC}\n→ [t7] (Bao task tab) Ceres - https://www.google.com/maps/place/Ceres\n`);
+  assert.equal(listed, `  [t1] (Bao task tab) Google Maps - ${MAPS}\n→ [t7] (Bao task tab) Ceres - https://www.google.com/maps/place/Ceres\n`);
   f.daemon.clicked = () => f.targets.push({ targetId: "popup2", type: "page", url: "https://www.google.com/maps/place/Vesta", title: "Vesta", openerId: "popup", inWindow: true });
   await f.proxy.execute("click", ["@e3"], undefined, false, undefined, {}, f.proxy.activeRunId);
   assert.match((await f.proxy.execute("tab", [], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout, /→ \[t8\] \(Bao task tab\) Vesta - https:\/\/www\.google\.com\/maps\/place\/Vesta\n/);
@@ -363,6 +380,38 @@ test("a popup the agent follows from its task tab is a Bao task tab, and finish_
     "following a popup does not ask Chrome to raise it");
   assert.ok(await f.proxy.finishTask({ outcome: "passed", reason: "fixture" }, f.proxy.activeRunId));
   assert.deepEqual([...f.closed].sort(), ["popup", "popup2", "task"], "Bao closes the followed popups and the task tab, not the owner's tabs");
+});
+
+test("a download on the owner's Chrome points Chrome's downloads at the run only for that click, also when the click fails", async (t) => {
+  const f = await fixture(t);
+  await f.proxy.execute("open", [MAPS], "current");
+  f.listen();
+  const behavior = () => f.sent.filter(call => call.method === "Browser.setDownloadBehavior").map(call => call.params.behavior);
+  f.daemon.clicked = () => {
+    const folder = String(f.sent.filter(call => call.method === "Browser.setDownloadBehavior").at(-1)!.params.downloadPath);
+    void writeFile(path.join(folder, "guid-1"), "statement").then(() => {
+      f.emit("Browser.downloadWillBegin", { guid: "guid-1", url: "https://example.com/statement.pdf", suggestedFilename: "statement.pdf" });
+      f.emit("Browser.downloadProgress", { guid: "guid-1", state: "completed" });
+    });
+  };
+  const listening = f.listeners.length;
+  const [saved] = await f.proxy.execute("download", ["@e2", "statement.pdf"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  assert.equal(saved!.exitCode, 0, saved!.stderr);
+  const file = path.join(f.home, "downloads", f.proxy.activeRunId!, "statement.pdf");
+  assert.equal(saved!.stdout, `\u2713 Download saved to ${file}\n`);
+  assert.equal(await readFile(file, "utf8"), "statement");
+  const recorded = (new Library(f.home).readRun(f.proxy.activeRunId!).steps as unknown as RecordedAgentBrowserCommand[]).at(-1)!;
+  assert.deepEqual(recorded.transfer, { command: "download", source: "download", url: "https://example.com/statement.pdf",
+    files: [{ path: file, bytes: 9, sha256: createHash("sha256").update("statement").digest("hex") }] });
+  assert.deepEqual(behavior(), ["allowAndName", "default"], "Bao's own connection gives Chrome its download settings back after the click");
+  assert.deepEqual(f.daemon.commands.filter(item => item.command === "click").map(item => item.args), [["@e2"]], "the native CLI only clicks");
+  assert.equal(f.listeners.length, listening, "the download leaves no listener on the owner's connection");
+  f.daemon.clicked = undefined;
+  f.daemon.exit = 1;
+  assert.equal((await f.proxy.execute("download", ["@e3", "other.pdf"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.exitCode, 1);
+  assert.deepEqual(behavior(), ["allowAndName", "default", "allowAndName", "default"], "a failed click resets too");
+  assert.equal((await f.proxy.execute("click", ["@e4"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.exitCode, 0);
+  assert.equal(behavior().length, 4, "a click is not a download");
 });
 
 test("a sign-in popup opened while moving to Running Chrome is followed, and finish closes it", async (t) => {
@@ -454,8 +503,7 @@ test("an owner target=_blank during workflow capture is not adopted and not clos
   assert.ok(listedAt >= 0 && listedAt < openAt, "the owner's tab appeared on the tab list before the open ran");
   assert.equal(f.daemon.commands[openAt]!.on, "task", "the open stayed on Bao's task tab");
   const listed = opened.find(result => result.stdout.includes("["))!.stdout;
-  assert.match(listed, /Owner tab/);
-  assert.doesNotMatch(listed, /\(Bao task tab\) Owner tab/);
+  assert.doesNotMatch(listed, /Owner tab/);
   await assertOwnerKeeps(f, listed);
 });
 
@@ -500,8 +548,7 @@ test("a popup that appears during the tab read after tab new is not adopted and 
   assert.equal((await f.proxy.execute("tab", ["new"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.exitCode, 0);
   assert.equal(f.daemon.active, "opened", "a popup that appears during the post-command tab read does not become the agent's tab");
   const listed = (await f.proxy.execute("tab", [], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout;
-  assert.match(listed, /Late owner/);
-  assert.doesNotMatch(listed, /\(Bao task tab\) Late owner/);
+  assert.doesNotMatch(listed, /Late owner/);
   assert.equal(f.daemon.commands.some(entry => entry.command === "tab" && entry.args[0] === "t8"), false, "Bao does not switch to the popup");
   assert.ok(await f.proxy.finishTask({ outcome: "passed", reason: "fixture" }, f.proxy.activeRunId));
   assert.equal(f.closed.includes("late"), false, "finish does not close a tab that appeared after the native command returned");
@@ -747,9 +794,8 @@ function placeAfterCommand(f: Awaited<ReturnType<typeof fixture>>, command: stri
 
 async function assertOwnerKeeps(f: Awaited<ReturnType<typeof fixture>>, listed?: string): Promise<void> {
   const shown = listed ?? (await f.proxy.execute("tab", [], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout;
-  assert.match(shown, /Owner tab/);
-  assert.doesNotMatch(shown, /\(Bao task tab\) Owner tab/);
-  const id = /\[([^\]]+)\] Owner tab/.exec(shown)?.[1];
+  assert.doesNotMatch(shown, /Owner tab/);
+  const id = f.daemon.tabIds.get("owner-new");
   assert.ok(id);
   const [refused] = await f.proxy.execute("tab", [id!], undefined, false, undefined, {}, f.proxy.activeRunId);
   assert.equal(refused!.exitCode, 1);

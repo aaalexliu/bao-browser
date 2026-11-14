@@ -19,6 +19,7 @@ import { chromeProfilesRoot, openCopiedChromeForProxy } from "./chrome-profile-c
 import { ChromeFolderDenied } from "../chrome-access";
 import { baoAgentProfileDir, openBaoChromeForProxy, type SignInImport } from "./bao-profile";
 import { baoPick, boundOpenPlan, boundRoute, chromeApp, ChromeProfileQuestion, chooseChromeProfile, failedPickLine, fallbackPlan, fallsBack, openOrFallBack, pickLine, RoutesFailed, shortPickLine, signInLine, signInSource, type BrowserPick, type BrowserPlan, type RouteWhy } from "./browser-pick";
+import { listProfileTabs } from "./profile-tabs";
 import { BOUND_REASON, boundSite, purgeBoundSites } from "./bound-sign-in";
 import { OWNER_WAIT_LIMIT_MS, ownerWall, ownerWallOnAddress, ownerCanResume, ownerTask, ownerWaitTimeout, ownerWaitInstruction, type OwnerPage } from "../cdp-live/owner-wait";
 import { pageWall } from "../cdp-live/page-wall";
@@ -29,8 +30,11 @@ import { diffView, findView, snapshotView } from "./snapshot-view";
 import { AGENT_DISCONNECTED, AGENT_IDLE_REASON, NEWER_TASK_REASON } from "../v1/stop-copy";
 import { openBackgroundCdp, type BackgroundCdp } from "./background-cdp";
 import { activeNativeTab, parseNativeTabs, type NativeTab } from "./agent-browser-tabs";
+import { fileOperands } from "../v1/file-operands";
+import { fileArgs, fileFacts, isFileCommand, type FileArgs, type FileCommand, type FileTransfer } from "./agent-browser-files";
+import { downloadByClick, NOT_FILE_INPUT, uploadThroughChooser } from "./agent-browser-transfer";
 
-export const AGENT_BROWSER_COMMANDS = ["open", "snapshot", "click", "fill", "press", "scroll", "tab", "screenshot", "wait_for_owner", "close"] as const;
+export const AGENT_BROWSER_COMMANDS = ["open", "snapshot", "click", "fill", "press", "scroll", "tab", "screenshot", "upload", "download", "wait_for_owner", "close"] as const;
 export type AgentBrowserCommand = typeof AGENT_BROWSER_COMMANDS[number];
 export interface AgentBrowserCommandResult { stdout: string; stderr: string; exitCode: number }
 
@@ -38,7 +42,7 @@ const SESSION_IDLE_MS = 10 * 60 * 1000;
 
 const FIXED_OPTIONS = new Set([
   "--session", "--namespace", "--profile", "--executable-path", "--headed", "--cdp", "--auto-connect",
-  "--provider", "-p", "--engine", "--config", "--args", "--idle-timeout", "--all", "--pin-tab", "--no-pin-tab",
+  "--provider", "-p", "--engine", "--config", "--args", "--idle-timeout", "--all", "--pin-tab", "--no-pin-tab", "--download-path",
 ]);
 
 /** One MCP process serves every chat, so a call that acts on a session names the run it belongs to. */
@@ -55,7 +59,7 @@ export function validateAgentBrowserCommand(command: unknown, args: unknown): as
     throw new Error("agent-browser args must be an array of strings");
   }
   if (args.some((arg) => FIXED_OPTIONS.has(arg.split("=", 1)[0]!))) {
-    throw new Error("Bao fixes the agent-browser session, browser, headed mode, profile, and lifetime");
+    throw new Error("Bao fixes the agent-browser session, browser, headed mode, profile, lifetime, and download folder");
   }
 }
 
@@ -444,6 +448,9 @@ export class AgentBrowserProxy {
   private workflowOutcome: string | undefined;
 
   get lastWorkflowOutcome(): string | undefined { return this.workflowOutcome; }
+  /** Where the latest command's download landed. */
+  get savedFile(): string | undefined { return this.saved; }
+  private saved: string | undefined;
   get lastCommand(): typeof this.latest { return this.latest; }
   get activeRunId(): string | undefined { return this.session?.recording.id; }
   /** The open session drives the owner's own running Chrome. */
@@ -647,12 +654,13 @@ export class AgentBrowserProxy {
    * with the same args; the run still records the full native output.
    */
   async execute(command: unknown, args: unknown = [], browser?: unknown, visual = false, profile?: unknown,
-    snapshot: { find?: unknown; diff?: unknown } = {}, runId?: unknown): Promise<AgentBrowserCommandResult[]> {
+    snapshot: { find?: unknown; diff?: unknown } = {}, runId?: unknown, profileReason?: unknown): Promise<AgentBrowserCommandResult[]> {
     this.endedLine = undefined;
     this.refusal = undefined;
     this.latest = undefined;
     this.shown = undefined;
     this.notOpened = undefined;
+    this.saved = undefined;
     this.imports = [];
     this.moved = undefined as Moved | undefined;
     this.workflowOutcome = undefined;
@@ -673,6 +681,10 @@ export class AgentBrowserProxy {
     if (profile !== undefined && (command !== "open" || typeof profile !== "string" || !profile.trim())) {
       throw new Error("profile is only accepted on open and must be a Chrome profile folder, such as Default or Profile 2");
     }
+    if (profileReason !== undefined && (command !== "open" || typeof profileReason !== "string")) {
+      throw new Error("profile_reason is only accepted on open and must be a short reason");
+    }
+    const statedReason = typeof profileReason === "string" ? profileReason : undefined;
     if (command === "wait_for_owner") {
       if (args.length > 1) throw new Error("wait_for_owner accepts only an optional timeout in milliseconds");
       ownerWaitTimeout(args[0] === undefined ? undefined : Number(args[0]));
@@ -746,10 +758,19 @@ export class AgentBrowserProxy {
       if (command === "close") await this.remove(session);
       return this.ownerResult("closed", session);
     }
+    let files: FileArgs | undefined;
+    if (isFileCommand(command) && this.session) {
+      if (this.session.kind === "current" && this.session.relay) {
+        throw new Error("upload and download need Running Chrome over remote debugging, the Bao profile, or a copy, not the Bao extension.");
+      }
+      files = await fileArgs(command, args, this.session.recording.downloadsDir);
+    }
+    const nativeArgs = files?.forwarded ?? args;
     const continuing = !!this.session;
     // The route and profile are settled before any run record, so a question about the profile opens and records nothing.
     const plan = continuing ? undefined : await this.plan(browser as AgentBrowser | undefined, named, webSite(args[0]));
     const recording = this.session?.recording ?? new AgentBrowserRun(this.options.home);
+    if (!continuing && named) recording.noteProfileChoice(named, statedReason);
     let step = continuing ? undefined : recording.begin(command as string, args);
     if (step) this.latest = { runId: recording.id, step, steps: recording.steps };
     if (!this.session) {
@@ -882,7 +903,7 @@ export class AgentBrowserProxy {
           return results;
         }
       }
-      step ??= recording.begin(command as string, args);
+      step ??= recording.begin(command as string, nativeArgs);
       this.latest = { runId: recording.id, step, steps: recording.steps };
       if (command === "open") {
         const site = webSite(args[0]);
@@ -890,13 +911,14 @@ export class AgentBrowserProxy {
           const opened = await this.moveAway(session, BOUND_REASON, site, true);
           if (opened) {
             await this.settleWall(session);
-            results.push(...this.waitOf(session) !== "off" ? this.ownerResult("halted", session) : [opened, await this.run(session, "tab", ["list"])]);
+            results.push(...this.waitOf(session) !== "off" ? this.ownerResult("halted", session) : [opened, await this.forward(session, "tab", ["list"])]);
             return results;
           }
         } else if (continuing && site && "importLogin" in session.chrome) this.imported(session, await session.chrome.importLogin(site));
       }
-      if ((command === "click" || command === "fill") && args[0]) {
-        await this.captureTarget(session, step, args[0]);
+      const target = command === "click" || command === "fill" ? args[0] : files ? fileOperands(args).selector : undefined;
+      if (target) {
+        await this.captureTarget(session, step, target);
         if (this.waitOf(session) !== "off") {
           const opened = await this.settleWall(session, { retry: true });
           if (opened && this.moved?.site) {
@@ -910,11 +932,13 @@ export class AgentBrowserProxy {
         }
       }
       let inPage = false;
-      await session.workflow.record(command as string, args, step.id, async () => {
+      await session.workflow.record(command as string, nativeArgs, step.id, async () => {
         const result = command === "close" && (session.kind === "current" || session.chrome.isClosed())
           ? { stdout: session.kind === "current" ? "Disconnected from the owner's own Chrome. Only Bao's task tabs close; the owner's tabs and windows stay open." : "", stderr: "", exitCode: 0 }
-          : await this.runNative(session, command as string, args);
+          : files ? await this.transfer(session, command as FileCommand, files).then((done) => { context.transfer = done.transfer; return done.result; })
+            : await this.runNative(session, command as string, nativeArgs);
         results.push(result);
+        if (files?.saved && result.exitCode === 0) this.saved = files.saved;
         if (command !== "close" && result.exitCode === 0) await this.noteWall(session, command === "open" ? webSite(args[0]) : undefined);
         return result;
       }, () => this.waitOf(session) !== "off");
@@ -945,7 +969,7 @@ export class AgentBrowserProxy {
         if (view) return [{ ...results[0], stdout: view.kind === "find" ? findView(native, view.find) : diffView(before, native) }];
       }
       if (command === "open" && results[0]!.exitCode === 0) {
-        // Keep the native list intact, including stable tab ids and every restored tab on the site's host.
+        // A copy or Bao profile keeps the native list, including restored tabs. Running Chrome keeps only Bao's task tabs.
         results.push(await this.forward(session, "tab", ["list"]));
       }
       return results;
@@ -953,7 +977,7 @@ export class AgentBrowserProxy {
       if (error instanceof TaskTabClosed) {
         const agentClosedTab = command === "tab" && parseTabArgs(args).action === "close" && results.some((result) => result.exitCode === 0);
         results.splice(0, results.length, ...await this.endTaskTab(session));
-        step ??= recording.begin(command as string, args);
+        step ??= recording.begin(command as string, nativeArgs);
         this.latest = { runId: recording.id, step, steps: recording.steps };
         if (!agentClosedTab) failure = new Error("Bao's task tab was closed");
         return results;
@@ -1066,6 +1090,18 @@ export class AgentBrowserProxy {
   }
 
   /**
+   * Tabs for the profile question. A failed read still asks. It does not open a browser, turn debugging on, or launch Chrome.
+   * Live tabs are listed by joining the approved connection, or by attaching to a listener that is already up and pressing Allow. That does not start a hold. The socket is closed before this returns.
+   */
+  private async withOpenTabs(error: ChromeProfileQuestion): Promise<ChromeProfileQuestion> {
+    try {
+      return error.withListing(await listProfileTabs(error.root, error.profiles.map((profile) => profile.directory)));
+    } catch {
+      return error.withListing({ byDirectory: {}, unread: "remote debugging is off" });
+    }
+  }
+
+  /**
    * The route and Chrome profile for a new session. More than one profile and none named is a question, not a guess. A site that
    * ties its sign-in to the owner's Chrome opens there, whatever route the agent named.
    */
@@ -1082,6 +1118,7 @@ export class AgentBrowserProxy {
       }
       return { route, why, profile };
     } catch (error) {
+      if (error instanceof ChromeProfileQuestion) throw await this.withOpenTabs(error);
       // Bao's own profile works without Chrome's profiles. It opens with no sign-in import and says why. A named profile must exist.
       const fallback = fallsBack(route, why);
       if ((route === "bao" || fallback) && (error instanceof ChromeFolderDenied || named === undefined && !(error instanceof ChromeProfileQuestion))) {
@@ -1471,6 +1508,33 @@ export class AgentBrowserProxy {
     return tab.active ? tabs : this.nativeTabs(session, ceiling);
   }
 
+  /**
+   * An upload to a file input runs natively. An upload through any other element, and every download, runs on Bao's own
+   * connection to the agent's tab: Running Chrome's shared connection, or a direct one to a Bao profile or copy. The native CLI
+   * only clicks there, because its own download waits 30 s on a PDF that Chrome shows instead of downloading, and holds the daemon.
+   */
+  private async transfer(session: Session, command: FileCommand, files: FileArgs): Promise<{ result: AgentBrowserCommandResult; transfer?: FileTransfer }> {
+    if (command === "upload") {
+      const native = await this.runNative(session, "upload", files.forwarded);
+      if (native.exitCode === 0) return { result: native, transfer: { command, source: "file-input", files: await fileFacts(files.files) } };
+      if (!NOT_FILE_INPUT.test(native.stderr)) return { result: native };
+    }
+    const active = await this.activePage(session);
+    if (!active) throw new Error("no active Bao page metadata");
+    const cdp = await this.connectSession(session, { timeoutMs: 5000, signal: session.abort.signal });
+    const click = () => this.runNative(session, "click", files.click);
+    try {
+      if (command === "upload") {
+        const result = await uploadThroughChooser(cdp, active.targetId, files.files, click);
+        return { result, ...result.exitCode === 0 ? { transfer: { command, source: "file-chooser" as const, files: await fileFacts(files.files) } } : {} };
+      }
+      const { result, from } = await downloadByClick(cdp, active.targetId, files.saved!, click);
+      return { result, ...from ? { transfer: { command, ...from, files: await fileFacts([files.saved!]) } } : {} };
+    } finally {
+      if (session.kind === "copy") cdp.close();
+    }
+  }
+
   /** Runs the agent's command. On the owner's Chrome, a new tab is the agent's only when it is in the return list and not the entry list. */
   private async runNative(session: Session, command: string, args: string[]): Promise<AgentBrowserCommandResult> {
     if (session.kind !== "current" || session.relay || this.waitOf(session) !== "off" || !canOpenTab(command, args)) {
@@ -1505,9 +1569,10 @@ export class AgentBrowserProxy {
   }
 
   /**
-   * Runs one agent command. On the owner's Chrome over remote debugging, a tab list leaves out Chrome's own surfaces, such as the
-   * Gemini panel and side panels, and marks Bao's task tabs. Switching to or closing such a surface is refused. Switching to or
-   * closing a tab the owner opened is refused too; the agent opens that page's URL in the task tab instead.
+   * Runs one agent command. On the owner's Chrome over remote debugging, a tab list names only Bao's task tabs in this session's
+   * profile, marked as such, and leaves out the owner's tabs, other profiles, and Chrome's own surfaces, such as the Gemini panel.
+   * Switching to or closing such a surface is refused. Switching to or closing a tab the owner opened is refused too; the agent
+   * opens that page's URL in the task tab instead.
    */
   private async forward(session: Session, command: string, args: string[]): Promise<AgentBrowserCommandResult> {
     const parsed = command === "tab" ? parseTabArgs(args) : undefined;
@@ -1522,7 +1587,8 @@ export class AgentBrowserProxy {
     if (parsed.action === "close" && parsed.ref === undefined && !named?.tabId) return { stdout: "", stderr: "\u2717 No current tab to close.\n", exitCode: 1 };
     const list = parsed.action === "list";
     const ref = parsed.ref ?? named?.tabId;
-    const { targetInfos } = await session.chrome.cdp.send<{ targetInfos: ChromeTarget[] }>("Target.getTargets", {}, undefined, 5000);
+    const { targetInfos } = await session.chrome.cdp.send<{ targetInfos: (ChromeTarget & { browserContextId?: string })[] }>("Target.getTargets", {}, undefined, 5000);
+    const profileContext = targetInfos.find((target) => target.targetId === session.targetId)?.browserContextId;
     const surfaces = new Set<string>();
     for (const tab of list ? tabs : named ? [named] : []) {
       const info = targetInfos.find((target) => target.targetId === tab.targetId);
@@ -1550,20 +1616,26 @@ export class AgentBrowserProxy {
     }
     if (parsed.action !== "list") return result;
     const task = (tab: NativeTab | undefined) => !!tab?.targetId && session.taskTabs.has(tab.targetId);
+    const inProfile = (tab: NativeTab | undefined) => {
+      if (!profileContext || !tab?.targetId) return true;
+      const info = targetInfos.find((target) => target.targetId === tab.targetId);
+      return info?.browserContextId === undefined || info.browserContextId === profileContext;
+    };
+    const shown = (tab: NativeTab | undefined) => task(tab) && inProfile(tab) && (!tab?.tabId || !surfaces.has(tab.tabId));
     if (parsed.json) {
       try {
-        const parsed = JSON.parse(result.stdout) as { data?: { tabs?: (NativeTab & { baoTaskTab?: boolean })[] } };
-        if (parsed.data?.tabs) {
-          parsed.data.tabs = parsed.data.tabs.filter((tab) => !tab.tabId || !surfaces.has(tab.tabId)).map((tab) => task(tab) ? { ...tab, baoTaskTab: true } : tab);
-        }
-        return { ...result, stdout: `${JSON.stringify(parsed)}\n` };
-      } catch { return result; }
+        const body = JSON.parse(result.stdout) as { data?: { tabs?: (NativeTab & { baoTaskTab?: boolean })[] } };
+        if (body.data?.tabs) body.data.tabs = body.data.tabs.filter(shown).map((tab) => ({ ...tab, baoTaskTab: true }));
+        return { ...result, stdout: `${JSON.stringify(body)}\n` };
+      } catch {
+        return { stdout: "", stderr: result.stderr || "Native tab list was not JSON.\n", exitCode: 1 };
+      }
     }
     const stdout = result.stdout.split("\n").flatMap((line) => {
       const tabId = /^(?:→|\s) \[([^\]]+)\] /u.exec(line)?.[1];
       if (!tabId) return [line];
-      if (surfaces.has(tabId)) return [];
-      return [task(tabs.find((tab) => tab.tabId === tabId)) ? line.replace(`[${tabId}] `, `[${tabId}] (Bao task tab) `) : line];
+      if (!shown(tabs.find((tab) => tab.tabId === tabId))) return [];
+      return [line.replace(`[${tabId}] `, `[${tabId}] (Bao task tab) `)];
     }).join("\n");
     return { ...result, stdout };
   }

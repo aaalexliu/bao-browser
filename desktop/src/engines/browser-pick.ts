@@ -4,6 +4,7 @@ import { resolveNormalChrome } from "../launch";
 import type { SignInImport } from "./bao-profile";
 import { BOUND_REASON, boundSite } from "./bound-sign-in";
 import { listChromeProfiles, type ChromeProfileChoice } from "./chrome-profile-copy";
+import type { ProfileTabListing } from "./profile-tabs";
 import { ROUTE_LABELS } from "./route-labels";
 
 export { ROUTE_LABELS };
@@ -199,9 +200,19 @@ export function signInLine(report: SignInImport, profile: string): string {
 
 /** The call named no Chrome profile and Chrome has more than one, so Bao opens nothing and asks. */
 export class ChromeProfileQuestion extends Error {
+  /** Open tabs for the agent_browser list. Absent on the question run_workflow and the app reuse. */
+  listing?: ProfileTabListing;
+
   constructor(readonly root: string, readonly profiles: ChromeProfileChoice[], readonly settings: string | undefined) {
     const marked = profiles.map((profile) => `${profileName(profile)}${profile.directory === settings ? ", picked in Bao Settings" : ""}`);
     super(`Chrome has ${profiles.length} profiles in ${root}, so Bao opened nothing. Choose one: ${marked.join("; ")}.`);
+  }
+
+  /** A copy with tabs attached. The shared message stays the profile list without tabs. */
+  withListing(listing: ProfileTabListing): ChromeProfileQuestion {
+    const next = new ChromeProfileQuestion(this.root, this.profiles, this.settings);
+    next.listing = listing;
+    return next;
   }
 
   /** The exact retry, with the Settings pick or else the first profile filled in. */

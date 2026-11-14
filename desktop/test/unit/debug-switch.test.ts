@@ -1,171 +1,241 @@
-// Bao turns Chrome's debugging switch off only when Bao turned it on and the last session is gone.
-// finish_task, close, MCP disconnect, idle end, and a handled stop all release the session lease.
-// A quit, a crash, or chrome-hold outliving the session leaves a dead pid, which the hold reaps.
+// The hold owns the debugging switch. A missing listener is not a claim. A dead Chrome does not clear one.
+// Off uses the pid-scoped checkbox, never an Apple Event. A test process throws before any platform return.
 
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
-import { existsSync, lstatSync } from "node:fs";
+import { lstatSync } from "node:fs";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { holdDir, serveHold, settleDebugSwitch } from "../../src/cdp-live/chrome-hold";
-import { liveLeaseCount, productionTurnOff, readClaim, rememberSwitch, takeLease, turnOffIfIdle } from "../../src/cdp-live/debug-switch";
-import type { CurrentChrome } from "../../src/cdp-live/current-chrome";
-
-function pidAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
+import { holdDir, settleDebugSwitch } from "../../src/cdp-live/chrome-hold";
+import { connectOwnedChrome } from "../../src/cdp-live/current-chrome";
+import {
+  claimForEnable,
+  claimOwned,
+  clearClaim,
+  finishOwnedSwitch,
+  productionTurnOff,
+  readClaim,
+  setSwitchByAx,
+  writeClaim,
+} from "../../src/cdp-live/debug-switch";
+import { REMOTE_CHECKBOX } from "../../src/cdp-live/consent";
 
 async function scratchDir(prefix: string): Promise<string> {
   return realpath(await mkdtemp(path.join(tmpdir(), prefix)));
 }
 
-function heldChrome(root: string): CurrentChrome & { close(): void } {
-  let closed = false;
-  let resolveClosed: () => void = () => undefined;
-  const done = new Promise<void>((resolve) => { resolveClosed = resolve; });
-  return {
-    pid: process.pid,
-    executable: "/bin/test-chrome",
-    root,
-    endpoint: { port: 9, browserPath: "/devtools/browser/switch" },
-    cdp: {} as CurrentChrome["cdp"],
-    closed: done,
-    isClosed: () => closed,
-    detach() { closed = true; resolveClosed(); },
-    close() { closed = true; resolveClosed(); },
-  };
-}
-
-test("Bao owns the switch only when it had to turn it on", async () => {
-  const dir = await scratchDir("bao-switch-own-");
+test("a claim records exactly whether Bao turned the switch on", async () => {
+  const dir = await scratchDir("bao-switch-claim-");
   try {
-    rememberSwitch(dir, false);
-    assert.deepEqual(readClaim(dir), { owned: false });
+    writeClaim(dir, false);
+    assert.equal(readClaim(dir)?.owned, false);
+    assert.equal(claimOwned(dir), false);
     assert.equal(lstatSync(path.join(dir, "switch.json")).mode & 0o777, 0o600);
-    rememberSwitch(dir, true);
-    assert.deepEqual(readClaim(dir), { owned: true });
-    rememberSwitch(dir, false);
-    assert.deepEqual(readClaim(dir), { owned: true }, "a later connect must not clear a claim Bao still owns");
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("the last released lease turns the switch off, and a second lease keeps it on", async () => {
-  const dir = await scratchDir("bao-switch-leases-");
-  try {
-    rememberSwitch(dir, true);
-    const first = takeLease(dir);
-    const second = takeLease(dir);
-    let offs = 0;
-    assert.equal(await turnOffIfIdle(dir, async () => { offs += 1; }), false);
-    assert.equal(offs, 0);
-    first.release();
-    assert.equal(await turnOffIfIdle(dir, async () => { offs += 1; }), false);
-    assert.equal(offs, 0);
-    assert.equal(liveLeaseCount(dir), 1);
-    second.release();
-    assert.equal(await turnOffIfIdle(dir, async () => { offs += 1; }), true);
-    assert.equal(offs, 1);
-    assert.equal(readClaim(dir), undefined);
-    assert.equal(existsSync(path.join(dir, "switch.json")), false);
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("a quit, a crash, or a hold that outlives the session reaps the dead lease and turns the switch off", async () => {
-  const dir = await scratchDir("bao-switch-dead-");
-  const child = spawn("sleep", ["30"], { stdio: "ignore" });
-  if (!child.pid) throw new Error("no child pid");
-  try {
-    rememberSwitch(dir, true);
-    takeLease(dir, child.pid);
-    const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
-    child.kill("SIGKILL");
-    await exited;
-    let offs = 0;
-    assert.equal(await turnOffIfIdle(dir, async () => { offs += 1; }), true);
-    assert.equal(offs, 1);
+    writeClaim(dir, true);
+    assert.equal(claimOwned(dir), true);
+    writeClaim(dir, false);
+    assert.equal(claimOwned(dir), false);
+    clearClaim(dir);
     assert.equal(readClaim(dir), undefined);
   } finally {
-    if (pidAlive(child.pid)) child.kill("SIGKILL");
     await rm(dir, { recursive: true, force: true });
   }
 });
 
-test("a failed off keeps the claim, and a live holder is left to turn it off", async () => {
-  const dir = await scratchDir("bao-switch-keep-");
+test("a missing listener is not a claim, and a checkbox that is already on is not Bao's", () => {
+  assert.equal(claimForEnable(false, undefined, false), undefined);
+  assert.equal(claimForEnable(false, true, false), false);
+  assert.equal(claimForEnable(false, false, false), true);
+  assert.equal(claimForEnable(true, true, false), true);
+  assert.equal(claimForEnable(true, undefined, true), true);
+  assert.equal(claimForEnable(false, undefined, true), false);
+});
+
+test("off clears the claim only when the checkbox change finished", async () => {
+  const dir = await scratchDir("bao-switch-off-");
   try {
-    rememberSwitch(dir, true);
-    assert.equal(await turnOffIfIdle(dir, async () => { throw new Error("helper failed"); }), false);
-    assert.deepEqual(readClaim(dir), { owned: true });
-    let offs = 0;
-    assert.equal(await turnOffIfIdle(dir, async () => { offs += 1; }, { holderAlive: true }), false);
-    assert.equal(offs, 0);
-    assert.deepEqual(readClaim(dir), { owned: true });
-    await rm(path.join(dir, "switch.json"), { force: true });
-    rememberSwitch(dir, false);
-    assert.equal(await turnOffIfIdle(dir, async () => { offs += 1; }), false);
-    assert.equal(offs, 0, "a switch Bao did not turn on is left alone");
-    assert.deepEqual(readClaim(dir), { owned: false });
+    writeClaim(dir, true);
+    await finishOwnedSwitch(dir, async () => "unavailable");
+    assert.equal(claimOwned(dir), true);
+    await finishOwnedSwitch(dir, async () => { throw new Error("helper failed"); });
+    assert.equal(claimOwned(dir), true);
+    await finishOwnedSwitch(dir, async () => "failed");
+    assert.equal(claimOwned(dir), true);
+    await finishOwnedSwitch(dir, async () => "done");
+    assert.equal(claimOwned(dir), false);
+    writeClaim(dir, false);
+    let called = false;
+    await finishOwnedSwitch(dir, async () => { called = true; return "done"; });
+    assert.equal(called, false);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
 
-test("the hold turns the switch off only after the last session releases its lease", async () => {
-  const scratch = await scratchDir("bao-switch-hold-");
-  const root = scratch;
-  const chrome = heldChrome(root);
+test("the switch moves by pid through the checkbox, and a dead pid is not a success", async () => {
+  const dir = await scratchDir("bao-switch-ax-");
+  const axLog = path.join(dir, "ax.jsonl");
+  const calls: string[][] = [];
+  let on = true;
+  const helper = {
+    async exec(args: string[]) {
+      calls.push(args);
+      assert.equal(args.includes("ae-open"), false);
+      assert.equal(args[args.indexOf("--pid") + 1], "7");
+      if (args[0] === "checkbox-read") return { ok: true, found: true, value: on ? "1" : "0" };
+      if (args[0] === "checkbox-set") {
+        assert.equal(args[args.indexOf("--value") + 1], "0");
+        assert.equal(args[args.indexOf("--name") + 1], REMOTE_CHECKBOX);
+        on = false;
+        return { ok: true, found: true, pressed: true };
+      }
+      return { ok: true, found: false, nodes: [] };
+    },
+  };
+  try {
+    assert.equal(await setSwitchByAx(helper, 7, false, axLog, () => false), "unavailable");
+    assert.equal(calls.length, 0);
+    const done = await setSwitchByAx(helper, 7, false, axLog, () => true);
+    assert.equal(done, "done");
+    assert.equal(on, false);
+    assert.ok(calls.some((call) => call[0] === "inspect-open-ax"));
+    assert.ok(calls.some((call) => call[0] === "checkbox-set"));
+    assert.equal(calls.some((call) => call[0] === "ae-open" || call[0] === "ae-close"), false);
+    calls.length = 0;
+    assert.equal(await setSwitchByAx(helper, 7, false, axLog, () => true), "done");
+    assert.equal(calls.some((call) => call[0] === "checkbox-set"), false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a test process refuses to change the switch before any platform return", async () => {
+  await assert.rejects(productionTurnOff("/tmp/DevToolsActivePort", "/tmp/ax.jsonl"), /tests never change/);
+  await settleDebugSwitch();
+});
+
+test("the hold claims a confirmed-off switch before the press, and does not claim one that is already on", async () => {
+  const root = await scratchDir("bao-switch-enable-");
   const dir = holdDir(root);
-  let offs = 0;
-  const serving = serveHold(chrome, undefined, async () => { offs += 1; });
+  const axLog = path.join(root, "ax.jsonl");
   try {
-    const deadline = Date.now() + 5_000;
-    while (!existsSync(path.join(dir, "hold.json"))) {
-      if (Date.now() >= deadline) throw new Error("the hold did not publish");
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    }
-    const first = takeLease(dir);
-    const second = takeLease(dir);
-    rememberSwitch(dir, true);
-    await new Promise((resolve) => setTimeout(resolve, 600));
-    assert.equal(offs, 0, "two sessions still using the switch");
-    first.release();
-    await new Promise((resolve) => setTimeout(resolve, 600));
-    assert.equal(offs, 0, "one session still using the switch");
-    second.release();
-    const offBy = Date.now() + 5_000;
-    while (offs === 0) {
-      if (Date.now() >= offBy) throw new Error("the hold did not turn the switch off");
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    }
-    assert.equal(offs, 1);
-    assert.equal(readClaim(dir), undefined);
+    let portReady = false;
+    let claimedBeforePress = false;
+    const calls: string[] = [];
+    const helper = {
+      async permissions() { return { ok: true, accessibility: true }; },
+      async screenLocked() { return false; },
+      async exec(args: string[]) {
+        calls.push(args[0] ?? "");
+        if (args[0] === "checkbox-read") {
+          assert.notEqual(readClaim(dir)?.owned, true);
+          return { ok: true, found: true, value: "0" };
+        }
+        if (args[0] === "checkbox-set") {
+          claimedBeforePress = readClaim(dir)?.owned === true;
+          portReady = true;
+          return { ok: true, found: true, pressed: true };
+        }
+        return { ok: true, found: false };
+      },
+    };
+    await assert.rejects(connectOwnedChrome({ root, axLog, recordClaim: true }, {
+      helper,
+      findChrome: async () => [7],
+      startChrome: async () => false,
+      executable: () => "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+      readPort: async () => {
+        if (!portReady) throw new Error("missing");
+        return { port: 9, browserPath: "/devtools/browser/fixture" };
+      },
+      listener: async () => portReady ? 7 : undefined,
+      listenPorts: async () => [],
+      probeVersion: async () => undefined,
+      connect: async () => { throw new Error("stop after the press"); },
+    }), /stop after the press/);
+    assert.equal(claimedBeforePress, true);
+    assert.equal(claimOwned(dir), true);
+    assert.ok(calls.includes("checkbox-set"));
+    assert.equal(calls.includes("ae-open"), false);
   } finally {
-    chrome.close();
-    await serving;
     await rm(dir, { recursive: true, force: true });
-    await rm(scratch, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true });
   }
 });
 
-test("a test process never changes Chrome's debugging switch", async () => {
-  const previous = process.env.BAO_LANE;
-  process.env.BAO_LANE = "hermetic";
+test("a checkbox that already reads on is not pressed and is not claimed", async () => {
+  const root = await scratchDir("bao-switch-already-");
+  const dir = holdDir(root);
+  const axLog = path.join(root, "ax.jsonl");
   try {
-    await assert.rejects(productionTurnOff("/tmp/DevToolsActivePort", "/tmp/ax.jsonl"), /tests never change/);
-    await settleDebugSwitch();
+    let portReady = false;
+    const calls: string[] = [];
+    const helper = {
+      async permissions() { return { ok: true, accessibility: true }; },
+      async screenLocked() { return false; },
+      async exec(args: string[]) {
+        calls.push(args[0] ?? "");
+        if (args[0] === "checkbox-read") {
+          portReady = true;
+          return { ok: true, found: true, value: "1" };
+        }
+        return { ok: true, found: false };
+      },
+    };
+    await assert.rejects(connectOwnedChrome({ root, axLog, recordClaim: true }, {
+      helper,
+      findChrome: async () => [7],
+      startChrome: async () => false,
+      executable: () => "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+      readPort: async () => {
+        if (!portReady) throw new Error("missing");
+        return { port: 9, browserPath: "/devtools/browser/fixture" };
+      },
+      listener: async () => portReady ? 7 : undefined,
+      listenPorts: async () => [],
+      probeVersion: async () => undefined,
+      connect: async () => { throw new Error("stop after the read"); },
+    }), /stop after the read/);
+    assert.equal(calls.includes("checkbox-set"), false);
+    assert.equal(claimOwned(dir), false);
+    assert.equal(readClaim(dir)?.owned, false);
   } finally {
-    if (previous === undefined) delete process.env.BAO_LANE;
-    else process.env.BAO_LANE = previous;
+    await rm(dir, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a listener that is already up is not claimed when Bao has no prior claim", async () => {
+  const root = await scratchDir("bao-switch-listening-");
+  const dir = holdDir(root);
+  const axLog = path.join(root, "ax.jsonl");
+  try {
+    const calls: string[] = [];
+    const helper = {
+      async permissions() { return { ok: true, accessibility: true }; },
+      async screenLocked() { return false; },
+      async exec(args: string[]) {
+        calls.push(args[0] ?? "");
+        return { ok: true, found: false };
+      },
+    };
+    await assert.rejects(connectOwnedChrome({ root, axLog, recordClaim: true }, {
+      helper,
+      findChrome: async () => [7],
+      startChrome: async () => false,
+      executable: () => "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+      readPort: async () => { throw new Error("missing"); },
+      listener: async () => 7,
+      listenPorts: async () => [9],
+      probeVersion: async () => ({ status: 200, body: JSON.stringify({ webSocketDebuggerUrl: "ws://127.0.0.1:9/devtools/browser/fixture" }) }),
+      connect: async () => { throw new Error("stop before press"); },
+    }), /stop before press/);
+    assert.equal(calls.includes("checkbox-set"), false);
+    assert.equal(calls.includes("inspect-open-ax"), false);
+    assert.equal(claimOwned(dir), false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true });
   }
 });
