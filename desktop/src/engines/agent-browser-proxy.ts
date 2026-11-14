@@ -997,7 +997,7 @@ export class AgentBrowserProxy {
       throw error;
     } finally {
       try {
-        if (step && step.status === "pending") {
+        if (step && step.endedAt === undefined) {
           try {
             await session.recording.complete(step, results, session.stateDir, () => this.screenshot(session, step!.native.command, visual), failure,
               this.waitOf(session) !== "off" || command === "wait_for_owner", { ...context, page: session.page, owner: this.ownerPage, current: session.kind === "current",
@@ -1392,7 +1392,7 @@ export class AgentBrowserProxy {
         if (wired) await rm(wired.stateDir, { recursive: true, force: true });
         await this.discard(next);
       }
-      if (routeOpen?.status === "pending") {
+      if (routeOpen && routeOpen.endedAt === undefined) {
         await session.recording.complete(routeOpen, opened ? [opened] : [], session.stateDir, async () => { throw error; }, error);
       }
       return fail(error);
@@ -1414,6 +1414,9 @@ export class AgentBrowserProxy {
       await rm(old.stateDir, { recursive: true, force: true });
     }
     await this.noteWall(session);
+    if (routeOpen && routeOpen.endedAt === undefined && opened) {
+      await session.recording.complete(routeOpen, [opened], session.stateDir, async () => { throw new Error("page closed"); }, undefined, false, { moved: this.moved.line });
+    }
     return opened;
   }
 

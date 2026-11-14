@@ -360,7 +360,7 @@ for (const { wall, page, before, after } of [
   assert.deepEqual(runs[0]!.browser && { route: runs[0]!.browser.route, why: runs[0]!.browser.why }, { route: "current", why: "fallback after a sign-in wall" });
   assert.deepEqual(savedRoutes(h.home), [
     { fromStep: 1, route: "bao", why: "named by the agent", userDataDir: h.baoDir, profile: "Default" },
-    { fromStep: 2, route: "current", why: "fallback after a sign-in wall", userDataDir: h.sourceRoot, profile: "Default" },
+    { fromStep: 3, route: "current", why: "fallback after a sign-in wall", userDataDir: h.sourceRoot, profile: "Default" },
   ]);
 
   assert.ok(await h.proxy.finishTask({ outcome: "passed", reason: "fixture" }, h.proxy.activeRunId));
@@ -403,6 +403,41 @@ test("a route move whose native open times out leaves a failed open and the run 
   const open = (run.steps as RecordedAgentBrowserCommand[]).find((step) => step.status === "failed" && step.native.command === "open");
   assert.equal(open?.status, "failed");
   assert.match(open?.reason ?? "", /navigation timed out/);
+  assert.match((await readStepRecord(h.home, run.id, open!.id)).error ?? "", /navigation timed out/);
+  assert.notEqual(run.status, "passed");
+});
+
+test("a wait retry keeps the wait and records a passed route open", { timeout: scaledMs(60_000) }, async (t) => {
+  const h = await harness(t, "works");
+  assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "bao"))[0]!.exitCode, 0);
+  h.missNextRead();
+  const why = "Wait for the sign-in to clear.";
+  const [moved] = await h.proxy.execute("wait_for_owner", ["5000"], undefined, false, undefined, {}, h.proxy.activeRunId, undefined, why);
+  assert.equal(moved!.stdout, `\u2713 Article\n  ${h.site}/article\n`);
+  const run = new Library(h.home).listRuns()[0]!;
+  const steps = run.steps as RecordedAgentBrowserCommand[];
+  const wait = steps.find((step) => step.native.command === "wait_for_owner");
+  const route = steps.filter((step) => step.native.command === "open").at(-1)!;
+  assert.equal(wait?.why, why);
+  assert.notEqual(route.id, wait?.id);
+  assert.equal(route.status, "passed");
+  assert.equal((await readStepRecord(h.home, run.id, wait!.id)).why, why);
+  assert.equal((await readStepRecord(h.home, run.id, route.id)).status, "passed");
+});
+
+test("a snapshot route move that times out keeps the snapshot and a failed open", { timeout: scaledMs(60_000) }, async (t) => {
+  const h = await harness(t, "works");
+  assert.equal((await h.proxy.execute("open", [`${h.site}/account`], "bao"))[0]!.exitCode, 0);
+  await h.failOwnerOpen("navigation timed out");
+  const [shot] = await h.proxy.execute("snapshot", [], undefined, false, undefined, {}, h.proxy.activeRunId);
+  assert.equal(shot!.exitCode, 0);
+  const snapshot = savedSteps(h.home).find((step) => step.native.command === "snapshot");
+  assert.equal(snapshot?.native.command, "snapshot");
+  await h.proxy.close();
+  const run = new Library(h.home).listRuns()[0]!;
+  const open = (run.steps as RecordedAgentBrowserCommand[]).find((step) => step.status === "failed" && step.native.command === "open");
+  assert.match(open?.reason ?? "", /navigation timed out/);
+  assert.equal((await readStepRecord(h.home, run.id, snapshot!.id)).command, "snapshot");
   assert.match((await readStepRecord(h.home, run.id, open!.id)).error ?? "", /navigation timed out/);
   assert.notEqual(run.status, "passed");
 });

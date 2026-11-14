@@ -18,6 +18,7 @@ import { describeStep } from "../../src/engines/agent-browser-describe";
 import { pageShotLine, textToolResult } from "../../src/mcp/tool-card";
 import { Library } from "../../src/v1/store";
 import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
+import { readStepRecord } from "../../src/engines/step-har";
 import { scaledMs } from "../runtime";
 
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aL1sAAAAASUVORK5CYII=", "base64");
@@ -552,6 +553,39 @@ async function waitFor(ready: () => Promise<boolean>): Promise<void> {
     await delay(10);
   }
 }
+
+test("closing the Bao window during an owner poll finishes the wait record", async (t) => {
+  const f = await fixture(t);
+  try {
+    await f.proxy.execute("open", [], "copy");
+    const runId = f.proxy.activeRunId!;
+    let polls = 0;
+    t.mock.method(sockets, "connectCdp", async () => {
+      const cdp = new sockets.CdpSocket(new Socket());
+      t.mock.method(cdp, "send", async (method: string) => {
+        if (method === "Target.getTargetInfo") return { targetInfo: { targetId: "ABC123", url: "http://127.0.0.1/login", title: "Sign in" } };
+        if (method === "Target.getTargets") {
+          polls += 1;
+          if (polls === 1) f.closeWindow();
+          return { targetInfos: [{ targetId: "ABC123", url: "http://127.0.0.1/login", title: "Sign in" }] };
+        }
+        return { sessionId: "fixture" };
+      });
+      followSend(t, cdp);
+      return cdp;
+    });
+    const [result] = await f.proxy.execute("wait_for_owner", ["5000"], undefined, false, undefined, {}, runId);
+    assert.equal((JSON.parse(result!.stdout) as { outcome: string }).outcome, "closed");
+    assert.ok(polls >= 1);
+    const wait = (new Library(path.join(f.root, "home")).readRun(runId).steps as RecordedAgentBrowserCommand[]).find((step) => step.native.command === "wait_for_owner");
+    const record = await readStepRecord(path.join(f.root, "home"), runId, wait!.id);
+    assert.equal(record.status, "failed");
+    assert.equal(record.command, "wait_for_owner");
+    assert.ok(record.endedAt);
+    assert.ok(record.error);
+    assert.ok(record.waits.length > 0);
+  } finally { await f.close(); }
+});
 
 test("a hanging click that disconnects stays failed and the run is not passed", async (t) => {
   const f = await fixture(t);

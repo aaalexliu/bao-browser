@@ -396,25 +396,10 @@ export class AgentBrowserRun {
     if (changed) await this.saveStep(changed);
   }
 
-  prepareRouteOpen(site: string): RecordedAgentBrowserCommand | undefined {
+  prepareRouteOpen(site: string): RecordedAgentBrowserCommand {
     const last = this.run.steps.at(-1);
-    if (last?.status === "pending" && last.native.command === "snapshot") return undefined;
-    if (last?.status === "pending") {
-      this.applyCommand(last, "open", [site]);
-      return last;
-    }
+    if (last?.status === "pending" && last.native.command === "open") return last;
     return this.begin("open", [site]);
-  }
-
-  private applyCommand(step: RecordedAgentBrowserCommand, command: string, args: string[]): void {
-    const keepWhy = step.native.command === "open" && command === "open";
-    const spoken = commandSentence(command, args, this.lastSnapshot || latestSnapshot(this.run.steps));
-    step.caption = { text: spoken.text, ...(spoken.citation ? { citation: spoken.citation } : {}) };
-    step.label = stepTitle({ caption: step.caption });
-    step.native.command = command;
-    step.native.args = [...args];
-    if (!keepWhy) delete step.why;
-    this.persist();
   }
 
   private cutOffOwnerWait(): RecordedAgentBrowserCommand | undefined {
