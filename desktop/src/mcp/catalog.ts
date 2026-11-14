@@ -440,6 +440,7 @@ export function getRun(library: Library, runId: string): Omit<WorkflowOutcome, "
   status?: string;
   stops: { stepId: string; outcome: OutcomeName | "unknown"; reason: string }[];
   nativeOutputNote?: string;
+  profileChoice?: { directory: string; reason?: string };
   receipts: (WorkflowReceipt & Partial<Pick<RecordedAgentBrowserCommand, "label" | "target" | "afterShot" | "afterShotError" | "shotNote">> & {
     native?: Omit<RecordedAgentBrowserCommand["native"], "results"> & {
       results: (RecordedAgentBrowserCommand["native"]["results"][number] & {
@@ -500,6 +501,7 @@ export function getRun(library: Library, runId: string): Omit<WorkflowOutcome, "
     link: stored.kind === "capture" ? receiptLink(stored.id) : linkFor(stored.workflowId),
     outputs: stored.outputs,
     ...(stored.savedValues ? { savedValues: stored.savedValues } : {}),
+    ...(stored.profileChoice ? { profileChoice: stored.profileChoice } : {}),
     pageLeftOpen: stored.pageLeftOpen,
     status,
     ...(stored.kind === "capture" ? { nativeOutputNote: `For full native output, open ${receiptLink(stored.id)}.` } : {}),

@@ -19,6 +19,7 @@ import { chromeProfilesRoot, openCopiedChromeForProxy } from "./chrome-profile-c
 import { ChromeFolderDenied } from "../chrome-access";
 import { baoAgentProfileDir, openBaoChromeForProxy, type SignInImport } from "./bao-profile";
 import { baoPick, boundOpenPlan, boundRoute, chromeApp, ChromeProfileQuestion, chooseChromeProfile, failedPickLine, fallbackPlan, fallsBack, openOrFallBack, pickLine, RoutesFailed, shortPickLine, signInLine, signInSource, type BrowserPick, type BrowserPlan, type RouteWhy } from "./browser-pick";
+import { listProfileTabs } from "./profile-tabs";
 import { BOUND_REASON, boundSite, purgeBoundSites } from "./bound-sign-in";
 import { OWNER_WAIT_LIMIT_MS, ownerWall, ownerWallOnAddress, ownerCanResume, ownerTask, ownerWaitTimeout, ownerWaitInstruction, type OwnerPage } from "../cdp-live/owner-wait";
 import { pageWall } from "../cdp-live/page-wall";
@@ -653,7 +654,7 @@ export class AgentBrowserProxy {
    * with the same args; the run still records the full native output.
    */
   async execute(command: unknown, args: unknown = [], browser?: unknown, visual = false, profile?: unknown,
-    snapshot: { find?: unknown; diff?: unknown } = {}, runId?: unknown): Promise<AgentBrowserCommandResult[]> {
+    snapshot: { find?: unknown; diff?: unknown } = {}, runId?: unknown, profileReason?: unknown): Promise<AgentBrowserCommandResult[]> {
     this.endedLine = undefined;
     this.refusal = undefined;
     this.latest = undefined;
@@ -680,6 +681,10 @@ export class AgentBrowserProxy {
     if (profile !== undefined && (command !== "open" || typeof profile !== "string" || !profile.trim())) {
       throw new Error("profile is only accepted on open and must be a Chrome profile folder, such as Default or Profile 2");
     }
+    if (profileReason !== undefined && (command !== "open" || typeof profileReason !== "string")) {
+      throw new Error("profile_reason is only accepted on open and must be a short reason");
+    }
+    const statedReason = typeof profileReason === "string" ? profileReason : undefined;
     if (command === "wait_for_owner") {
       if (args.length > 1) throw new Error("wait_for_owner accepts only an optional timeout in milliseconds");
       ownerWaitTimeout(args[0] === undefined ? undefined : Number(args[0]));
@@ -765,6 +770,7 @@ export class AgentBrowserProxy {
     // The route and profile are settled before any run record, so a question about the profile opens and records nothing.
     const plan = continuing ? undefined : await this.plan(browser as AgentBrowser | undefined, named, webSite(args[0]));
     const recording = this.session?.recording ?? new AgentBrowserRun(this.options.home);
+    if (!continuing && named) recording.noteProfileChoice(named, statedReason);
     let step = continuing ? undefined : recording.begin(command as string, args);
     if (step) this.latest = { runId: recording.id, step, steps: recording.steps };
     if (!this.session) {
@@ -1084,6 +1090,18 @@ export class AgentBrowserProxy {
   }
 
   /**
+   * Tabs for the profile question. A failed read still asks. It does not open a browser, turn debugging on, or launch Chrome.
+   * Live tabs are listed by joining the approved connection, or by attaching to a listener that is already up and pressing Allow. That does not start a hold. The socket is closed before this returns.
+   */
+  private async withOpenTabs(error: ChromeProfileQuestion): Promise<ChromeProfileQuestion> {
+    try {
+      return error.withListing(await listProfileTabs(error.root, error.profiles.map((profile) => profile.directory)));
+    } catch {
+      return error.withListing({ byDirectory: {}, unread: "remote debugging is off" });
+    }
+  }
+
+  /**
    * The route and Chrome profile for a new session. More than one profile and none named is a question, not a guess. A site that
    * ties its sign-in to the owner's Chrome opens there, whatever route the agent named.
    */
@@ -1100,6 +1118,7 @@ export class AgentBrowserProxy {
       }
       return { route, why, profile };
     } catch (error) {
+      if (error instanceof ChromeProfileQuestion) throw await this.withOpenTabs(error);
       // Bao's own profile works without Chrome's profiles. It opens with no sign-in import and says why. A named profile must exist.
       const fallback = fallsBack(route, why);
       if ((route === "bao" || fallback) && (error instanceof ChromeFolderDenied || named === undefined && !(error instanceof ChromeProfileQuestion))) {

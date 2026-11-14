@@ -234,6 +234,13 @@ export class AgentBrowserRun {
     this.persist();
   }
 
+  /** The folder this opening call named, and the model's reason when it sent one. Stored on the run, not a new screen. */
+  noteProfileChoice(directory: string, reason?: string): void {
+    const trimmed = reason?.replace(/\s+/g, " ").trim();
+    this.run.profileChoice = { directory, ...(trimmed ? { reason: trimmed.slice(0, 200) } : {}) };
+    this.persist();
+  }
+
   async recordTab(cdp: CdpSocket, targetId: string): Promise<void> {
     if (this.video && this.video.kind !== "recording") return;
     if (this.video?.targetId === targetId) return;
