@@ -997,7 +997,7 @@ export class AgentBrowserProxy {
       throw error;
     } finally {
       try {
-        if (step) {
+        if (step && step.status === "pending") {
           try {
             await session.recording.complete(step, results, session.stateDir, () => this.screenshot(session, step!.native.command, visual), failure,
               this.waitOf(session) !== "off" || command === "wait_for_owner", { ...context, page: session.page, owner: this.ownerPage, current: session.kind === "current",
@@ -1374,20 +1374,16 @@ export class AgentBrowserProxy {
     try { next = await this.open({ route: "current", why: bound ? BOUND_REASON : "fallback after a sign-in wall", profile }, session.abort.signal); }
     catch (error) { return fail(error); }
     let wired: Awaited<ReturnType<AgentBrowserProxy["wire"]>> | undefined;
-    let opened: AgentBrowserCommandResult;
+    let opened: AgentBrowserCommandResult | undefined;
     let moving: Session | undefined;
+    let routeOpen: RecordedAgentBrowserCommand | undefined;
     try {
       wired = await this.wire(next);
       moving = { ...session, ...next, ...wired };
-      const restoreOpen = session.recording.prepareRouteOpen(site);
+      routeOpen = session.recording.prepareRouteOpen(site);
       await this.flushHar(session);
-      try {
-        opened = await this.runNative(moving, "open", [site]);
-        if (opened.exitCode !== 0) throw new Error(`the open in Bao's task tab failed: ${opened.stderr || opened.stdout || `exit ${opened.exitCode}`}`);
-      } catch (error) {
-        restoreOpen();
-        throw error;
-      }
+      opened = await this.runNative(moving, "open", [site]);
+      if (opened.exitCode !== 0) throw new Error(`the open in Bao's task tab failed: ${opened.stderr || opened.stdout || `exit ${opened.exitCode}`}`);
     } catch (error) {
       try { if (moving) await this.flushHar(moving); }
       catch (flushError) { process.stderr.write(`Bao step record: network har stop failed: ${flushError instanceof Error ? flushError.message : String(flushError)}\n`); }
@@ -1395,6 +1391,9 @@ export class AgentBrowserProxy {
       finally {
         if (wired) await rm(wired.stateDir, { recursive: true, force: true });
         await this.discard(next);
+      }
+      if (routeOpen?.status === "pending") {
+        await session.recording.complete(routeOpen, opened ? [opened] : [], session.stateDir, async () => { throw error; }, error);
       }
       return fail(error);
     }

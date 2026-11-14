@@ -396,32 +396,14 @@ export class AgentBrowserRun {
     if (changed) await this.saveStep(changed);
   }
 
-  prepareRouteOpen(site: string): () => void {
+  prepareRouteOpen(site: string): RecordedAgentBrowserCommand | undefined {
     const last = this.run.steps.at(-1);
-    if (last?.status === "pending" && last.native.command === "snapshot") return () => undefined;
+    if (last?.status === "pending" && last.native.command === "snapshot") return undefined;
     if (last?.status === "pending") {
-      const previous = { command: last.native.command, args: [...last.native.args], why: last.why, label: last.label, caption: last.caption };
       this.applyCommand(last, "open", [site]);
-      return () => {
-        last.native.command = previous.command;
-        last.native.args = previous.args;
-        last.label = previous.label;
-        last.caption = previous.caption;
-        if (previous.why) last.why = previous.why;
-        else delete last.why;
-        this.persist();
-      };
+      return last;
     }
-    const added = this.begin("open", [site]);
-    return () => this.dropPending(added);
-  }
-
-  dropPending(step: RecordedAgentBrowserCommand): void {
-    if (step.status !== "pending" || this.run.steps.at(-1) !== step) return;
-    const index = this.run.steps.length - 1;
-    this.run.steps.pop();
-    if (this.ownerWaitAt === index) this.ownerWaitAt = this.run.steps.length;
-    this.persist();
+    return this.begin("open", [site]);
   }
 
   private applyCommand(step: RecordedAgentBrowserCommand, command: string, args: string[]): void {

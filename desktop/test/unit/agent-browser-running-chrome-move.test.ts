@@ -190,6 +190,7 @@ async function harness(t: TestContext, initial: "works" | "refused") {
   });
 
   const log = path.join(root, "native.jsonl");
+  const ownerOpenFail = path.join(root, "owner-open-fail");
   const executable = path.join(root, "native");
   await writeFile(executable, `#!${process.execPath}
 const fs=require('node:fs'), path=require('node:path');
@@ -208,6 +209,11 @@ ${LIST_TARGETS}
  try{
   const {sessionId}=await cdp.send('Target.attachToTarget',{targetId:tab.id,flatten:true});
   const read=async(expression)=>(await cdp.send('Runtime.evaluate',{expression,returnByValue:true},sessionId)).result.value;
+  if(command==='open' && String(endpoint.port)==='${endpoint.port}' && fs.existsSync(${JSON.stringify(ownerOpenFail)})){
+   console.error(fs.readFileSync(${JSON.stringify(ownerOpenFail)},'utf8'));
+   process.exitCode=1;
+   return;
+  }
   if(command==='open'){
    await cdp.send('Page.enable',{},sessionId);
    const loaded=new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('fixture navigation timed out')),20000);cdp.on('Page.loadEventFired',sessionId,()=>{clearTimeout(timer);resolve();});});
@@ -251,6 +257,7 @@ ${LIST_TARGETS}
     raises: () => raises, order: () => [...order],
     allow: () => { attach = "works"; }, slow: (ms: number) => { delay = ms; },
     missNextRead: () => { misses += 1; }, metadataMisses: () => missed,
+    failOwnerOpen: (message: string) => writeFile(ownerOpenFail, message),
     duringRaise: (run: () => Promise<void>) => { duringRaise = run; } };
 }
 
@@ -380,6 +387,24 @@ test("an open that lands on a sign-in URL in a Bao profile continues in the owne
     { fromStep: 1, route: "current", why: "fallback after a sign-in wall", userDataDir: h.sourceRoot, profile: "Default" },
   ]);
   assert.ok(await baoClosed(h.baoDir));
+});
+
+test("a route move whose native open times out leaves a failed open and the run is not passed", { timeout: scaledMs(60_000) }, async (t) => {
+  const h = await harness(t, "works");
+  assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "bao"))[0]!.exitCode, 0);
+  await navigateBao(h.baoDir, "/article", `${h.site}/login`);
+  await h.failOwnerOpen("navigation timed out");
+  const [result] = await h.proxy.execute("click", ["@e5"], undefined, false, undefined, {}, h.proxy.activeRunId);
+  const reply = JSON.parse(result!.stdout) as { outcome: string; instruction: string };
+  assert.equal(reply.outcome, "halted", "the agent still sees the move fallback, not the native timeout");
+  assert.match(reply.instruction, /owner's running Chrome/);
+  await h.proxy.close();
+  const run = new Library(h.home).listRuns()[0]!;
+  const open = (run.steps as RecordedAgentBrowserCommand[]).find((step) => step.status === "failed" && step.native.command === "open");
+  assert.equal(open?.status, "failed");
+  assert.match(open?.reason ?? "", /navigation timed out/);
+  assert.match((await readStepRecord(h.home, run.id, open!.id)).error ?? "", /navigation timed out/);
+  assert.notEqual(run.status, "passed");
 });
 
 test("a route move that keeps an open keeps the agent's why", { timeout: scaledMs(60_000) }, async (t) => {
