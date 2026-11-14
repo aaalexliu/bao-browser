@@ -764,7 +764,12 @@ test("a failed active-tab lookup stops the command", async (t) => {
   const before = f.state.commands.length;
   await assert.rejects(f.proxy.execute("snapshot", [], undefined, false, undefined, {}, f.proxy.activeRunId), /Target.getTargetInfo/);
   assert.equal(f.state.commands.slice(before).includes("snapshot"), false);
-  assert.equal((f.library.readRun(f.library.listRuns()[0]!.id).steps as RecordedAgentBrowserCommand[]).at(-1)!.native.command, "open");
+  const steps = f.library.readRun(f.library.listRuns()[0]!.id).steps as RecordedAgentBrowserCommand[];
+  assert.equal(steps[0]?.native.command, "open");
+  const step = steps.at(-1)!;
+  assert.equal(step.native.command, "snapshot");
+  assert.equal(step.status, "failed");
+  assert.match(step.native.error ?? "", /Target.getTargetInfo/);
 });
 
 test("a failed active-tab lookup stops a copy command", async (t) => {
@@ -779,6 +784,10 @@ test("a failed active-tab lookup stops a copy command", async (t) => {
   const before = f.state.commands.length;
   await assert.rejects(f.proxy.execute("snapshot", [], undefined, false, undefined, {}, f.proxy.activeRunId), /Target.getTargetInfo/);
   assert.equal(f.state.commands.slice(before).includes("snapshot"), false);
+  const step = (f.library.readRun(f.library.listRuns()[0]!.id).steps as RecordedAgentBrowserCommand[]).at(-1)!;
+  assert.equal(step.native.command, "snapshot");
+  assert.equal(step.status, "failed");
+  assert.match(step.native.error ?? "", /Target.getTargetInfo/);
 });
 
 test("a task-tab fallback picture does not keep the active tab's box", async (t) => {

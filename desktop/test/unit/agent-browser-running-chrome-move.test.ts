@@ -776,10 +776,13 @@ test("a command whose move lands on a sign-in page in the owner's Chrome halts t
   assert.equal((JSON.parse(result!.stdout) as { outcome: string }).outcome, "halted");
   assert.equal(h.attaches(), 1);
   assert.ok(!(await h.calls()).some((call) => call.command === "click"), "the click never ran");
-  const step = savedSteps(h.home).at(-1)!;
+  const steps = savedSteps(h.home);
+  const step = steps.at(-1)!;
   assert.deepEqual({ command: step.native.command, args: step.native.args }, { command: "open", args: [`${h.site}/trap`] });
-  assert.ok(step.summary!.text.startsWith(`Bao's own browser hit a sign-in page on 127.0.0.1; continued in your running Chrome (Chrome profile "Default", Owner) over remote debugging. Take a fresh snapshot before acting. Your turn: sign in`), step.summary!.text);
-  assert.ok(!savedSteps(h.home)[0]!.summary!.text.includes("running Chrome"), "the first open ran in Bao's own browser");
+  assert.ok(step.summary!.text.startsWith(`Bao's own browser hit a sign-in page on 127.0.0.1; continued in your running Chrome (Chrome profile "Default", Owner) over remote debugging. Take a fresh snapshot before acting. Went to `), step.summary!.text);
+  const click = steps.find((item) => item.native.command === "click");
+  assert.match(click?.summary?.text ?? "", /Your turn: sign in/, click?.summary?.text);
+  assert.ok(!steps[0]!.summary!.text.includes("running Chrome"), "the first open ran in Bao's own browser");
   assert.match(h.proxy.pickLines[0]!, /^Browser: Running Chrome over remote debugging, fallback after a sign-in wall\./);
   assert.ok(await baoClosed(h.baoDir));
 });
