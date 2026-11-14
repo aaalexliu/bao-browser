@@ -1252,8 +1252,12 @@ async function runHandoff(
   return { ok: false, repairs: [], failure: await fail(driver, step, "expect", "nothing applied", undefined, secrets) };
 }
 
+function ownerReleased(driver: Driver): boolean {
+  return driver.loginContinued?.() === true || driver.ownerContinued?.() === true;
+}
+
 async function ownerDone(step: WorkflowStep, args: ReplayArgs, driver: Driver): Promise<boolean> {
-  if (driver.loginContinued?.() || driver.ownerContinued?.()) return true;
+  if (ownerReleased(driver)) return true;
   const tree = await driver.tree().catch(() => undefined);
   return !!tree && step.action === "handoff" && !!step.check && step.check.kind !== "settled" && checkHolds(step.check, tree, args);
 }
@@ -1263,13 +1267,13 @@ async function waitForOwner(step: WorkflowStep, args: ReplayArgs, driver: Driver
   const start = Date.now();
   const check = step.action === "handoff" && step.check && step.check.kind !== "settled" ? step.check : undefined;
   while (Date.now() - start < timeout) {
-    if (!check && (driver.loginContinued?.() || driver.ownerContinued?.())) return true;
+    if (ownerReleased(driver)) return true;
     if (driver.shouldStop?.()) return false;
     const tree = await driver.tree();
     if (check && checkHolds(check, tree, args)) return true;
     await (driver.sleep ? driver.sleep(100) : sleep(100));
   }
-  if (!check && (driver.loginContinued?.() || driver.ownerContinued?.())) return true;
+  if (ownerReleased(driver)) return true;
   const tree = await driver.tree();
   return !!check && checkHolds(check, tree, args);
 }

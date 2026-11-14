@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { controlState, HANDED_BACK, holdCommand, stepControl } from "../../../shared/takeover-overlay";
+import { controlState, doneAsk, HANDED_BACK, holdCommand, stepControl } from "../../../shared/takeover-overlay";
 
 test("an acting command while the owner holds the tab waits and does not run", async () => {
   let ran = false;
@@ -12,6 +12,25 @@ test("an acting command while the owner holds the tab waits and does not run", a
   assert.equal(gate.held, true);
   if (gate.held) assert.equal(gate.outcome, "done");
   assert.equal(HANDED_BACK, "The owner took control of this tab and handed it back. Take a fresh snapshot before acting.");
+});
+
+test("an open or a tab close while the owner holds the tab waits, and a session close does not", async () => {
+  const waited = async (command: string, args: string[] = []) => {
+    let ran = false;
+    const gate = await holdCommand(true, command, async () => { ran = true; return "ran"; }, async () => "done", args);
+    return { ran, held: gate.held };
+  };
+  assert.deepEqual(await waited("open", ["https://shop.example"]), { ran: false, held: true });
+  assert.deepEqual(await waited("tab", ["close"]), { ran: false, held: true });
+  assert.deepEqual(await waited("tab", ["--json", "close", "t2"]), { ran: false, held: true });
+  assert.deepEqual(await waited("close"), { ran: true, held: false });
+  assert.deepEqual(await waited("tab", ["t2"]), { ran: true, held: false });
+});
+
+test("done keeps the ask and names Done", () => {
+  assert.equal(doneAsk("Sign in in the Bao window, then press Continue."), "Sign in in the Bao window, then click Done.");
+  assert.equal(doneAsk("Finish the check on the page."), "Finish the check on the page, then click Done");
+  assert.equal(doneAsk("Sign in, then click Done"), "Sign in, then click Done");
 });
 
 test("a snapshot while the owner holds the tab is not an acting command", async () => {

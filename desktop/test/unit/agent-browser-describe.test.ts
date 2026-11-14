@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { CURRENT_CHROME_ENDED, describeStep, elementFor, shortName, TASK_TAB_CLOSED } from "../../src/engines/agent-browser-describe";
+import { HANDED_BACK } from "../../../shared/takeover-overlay";
 import { AgentBrowserRun } from "../../src/engines/agent-browser-record";
 
 const ok = (stdout: string) => [{ stdout, stderr: "", exitCode: 0 }];
@@ -209,6 +210,12 @@ test("steps in the owner's own Chrome name that Chrome, not a Bao window", () =>
   assert.equal(say("close", [{ stdout: "", stderr: "✗ failed\n", exitCode: 1 }]), "Could not close Bao's task tab.");
   assert.equal(describeStep({ command: "wait_for_owner", args: [], results: reply("waiting") }).text, "Your turn: finish the check on the page in Bao's Chrome window.");
   assert.equal(describeStep({ command: "close", args: [], results: [{ stdout: "", stderr: "✗ failed\n", exitCode: 1 }] }).text, "Could not close the window.");
+});
+
+test("a handed-back click is not described as clicked", () => {
+  const handed = describeStep({ command: "click", args: ["@e1"], results: ok(`${HANDED_BACK}\n`) });
+  assert.equal(handed.text, HANDED_BACK);
+  assert.equal(handed.text.includes("Clicked"), false);
 });
 
 test("a selector target is the agent's value, not page text", () => {

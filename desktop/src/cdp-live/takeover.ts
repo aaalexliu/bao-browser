@@ -20,7 +20,12 @@ export interface TakeoverOptions {
   onOpen?: () => void;
   onHandoff?: (startedAt: number, endedAt: number) => void;
   onAskDone?: () => void;
+  onHeld?: (held: boolean) => void;
+  onConfirm?: (open: boolean) => void;
 }
+
+/** Bracket returns this when the owner holds the tab, so the command must not run. */
+export const HELD_SKIP = Symbol("bao.held");
 
 interface BoundPage {
   sessionId?: string;
@@ -51,6 +56,8 @@ export class Takeover {
   private calling = true;
   private askDone = false;
   private disconnected = false;
+  private confirmOpen = false;
+  private confirmWait?: () => void;
   private handback?: (outcome: "done" | "timeout" | "disconnect") => void;
   private hiddenShots = 0;
   private readonly source: string;
@@ -77,6 +84,10 @@ export class Takeover {
 
   get waiting(): boolean {
     return this.handback !== undefined;
+  }
+
+  get confirming(): boolean {
+    return this.confirmOpen;
   }
 
   get stoppedByOwner(): boolean {
@@ -135,14 +146,31 @@ export class Takeover {
     if (this.control.phase === "agent") await this.push().catch(() => undefined);
   }
 
-  /** Lowers the shield for one command, then raises it. User input can land during that command. */
-  async bracket<T>(fn: () => Promise<T>): Promise<T> {
+  /** Lowers the shield for one command, then raises it. A hold taken before the command does not lower the shield and does not run. */
+  async bracket<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T | typeof HELD_SKIP> {
+    if (this.confirmOpen) await this.waitConfirm(signal ?? AbortSignal.timeout(12_000));
+    if (signal?.aborted) throw Object.assign(new Error("aborted"), { name: "AbortError" });
+    if (this.held) return HELD_SKIP;
     await this.lowerShield();
     try {
+      if (this.held) return HELD_SKIP;
       return await fn();
     } finally {
       await this.raiseShield();
     }
+  }
+
+  async waitConfirm(signal: AbortSignal): Promise<void> {
+    if (!this.confirmOpen || signal.aborted) return;
+    await new Promise<void>((resolve) => {
+      const finish = () => {
+        signal.removeEventListener("abort", finish);
+        if (this.confirmWait === finish) this.confirmWait = undefined;
+        resolve();
+      };
+      this.confirmWait = finish;
+      signal.addEventListener("abort", finish, { once: true });
+    });
   }
 
   async setHidden(hidden: boolean): Promise<void> {
@@ -256,17 +284,36 @@ export class Takeover {
     }
   }
 
-  private async onEvent(event: { type: string }): Promise<void> {
+  private noteHeld(before: boolean): void {
+    if (before !== this.held) this.options.onHeld?.(this.held);
+  }
+
+  private releaseConfirm(): void {
+    this.confirmOpen = false;
+    this.confirmWait?.();
+    this.confirmWait = undefined;
+  }
+
+  private async onEvent(event: { type: string; open?: boolean }): Promise<void> {
+    if (event.type === "confirm") {
+      this.confirmOpen = event.open === true;
+      if (!this.confirmOpen) this.releaseConfirm();
+      this.options.onConfirm?.(this.confirmOpen);
+      return;
+    }
     if (event.type === "takeControl") {
       if (this.control.phase !== "agent") return;
+      const before = this.held;
       const at = Date.now();
       this.control = stepControl(this.control, { type: "take", at });
       this.control = stepControl(this.control, { type: "own" });
       await this.push();
+      this.noteHeld(before);
       return;
     }
     if (event.type === "done") {
       if (this.control.phase !== "owner") return;
+      const before = this.held;
       const reason = this.control.reason;
       const startedAt = this.control.startedAt;
       const at = Date.now();
@@ -279,9 +326,11 @@ export class Takeover {
       this.control = stepControl(this.control, { type: "resume" });
       await this.push();
       this.handback?.("done");
+      this.noteHeld(before);
       return;
     }
     if (event.type === "disconnect") {
+      this.releaseConfirm();
       this.disconnected = true;
       this.control = stepControl(this.control, { type: "disconnect", at: Date.now() });
       this.handback?.("disconnect");

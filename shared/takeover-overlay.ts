@@ -11,20 +11,40 @@ export function isActing(command: string): boolean {
   return acting.has(command);
 }
 
+function tabHead(args: readonly string[]): string | undefined {
+  return args.find((arg) => arg === "close" || arg === "list" || arg === "new" || !arg.startsWith("-"));
+}
+
+/** A command that would change the tab the owner holds: an acting command, an open, or a tab close. Session close is not one. */
+export function isHeldMutation(command: string, args: readonly string[] = []): boolean {
+  if (isActing(command) || command === "open") return true;
+  return command === "tab" && tabHead(args) === "close";
+}
+
 export function askLine(task: string): string {
   const trimmed = task.trim();
   const sentence = trimmed ? trimmed.charAt(0).toUpperCase() + trimmed.slice(1) : "Take a look";
   return `${sentence}, then click Done`;
 }
 
-/** An acting command while the owner holds the tab does not run. The caller waits, then returns the one line. */
+/** Keeps the ask, and names Done as the way to hand the tab back. */
+export function doneAsk(instruction: string): string {
+  const text = instruction.trim();
+  if (!text) return "Click Done";
+  const swapped = text.replace(/\bpress Continue\b/gi, "click Done");
+  if (swapped !== text || /\bclick Done\b/i.test(swapped)) return swapped;
+  return `${swapped.replace(/[.]+$/, "")}, then click Done`;
+}
+
+/** A mutation of the held tab does not run. The caller waits, then returns the one line. */
 export async function holdCommand<T>(
   held: boolean,
   command: string,
   run: () => Promise<T>,
   wait: () => Promise<"done" | "timeout" | "disconnect">,
+  args: readonly string[] = [],
 ): Promise<{ held: true; outcome: "done" | "timeout" | "disconnect" } | { held: false; value: T }> {
-  if (held && isActing(command)) return { held: true, outcome: await wait() };
+  if (held && isHeldMutation(command, args)) return { held: true, outcome: await wait() };
   return { held: false, value: await run() };
 }
 
@@ -157,10 +177,25 @@ export function takeoverOverlaySource(watchdogMs = WATCHDOG_MS): string {
     if (waiter) { const resolve = waiter; waiter = null; resolve(event); }
     else queue.push(event);
   }
+  let topModal = null;
+  function activeModal() {
+    if (topModal && topModal.isConnected && topModal.open && topModal.matches(":modal")) return topModal;
+    const modals = document.querySelectorAll("dialog:modal");
+    return modals.length ? modals[modals.length - 1] : null;
+  }
   function place() {
-    const parent = document.fullscreenElement || document.querySelector("dialog[open]") || document.documentElement;
+    if (gone) return;
+    const parent = document.fullscreenElement || activeModal() || document.documentElement;
+    if (!parent) return;
     if (host.parentNode !== parent) parent.appendChild(host);
     try { if (!host.matches(":popover-open")) host.showPopover(); } catch (e) {}
+  }
+  function onDialogToggle(event) {
+    const dialog = event.target;
+    if (!dialog || dialog.tagName !== "DIALOG") return;
+    if (event.newState === "open" && dialog.matches(":modal")) topModal = dialog;
+    else if (topModal === dialog) topModal = null;
+    place();
   }
   function visible() { return document.visibilityState === "visible" && !shot && !gone && !disarmed; }
   function paint() {
@@ -182,7 +217,7 @@ export function takeoverOverlaySource(watchdogMs = WATCHDOG_MS): string {
     cancel.hidden = !confirm;
     disconnect.hidden = !confirm;
     if (!working) hideHint();
-    armed = working && !acting;
+    armed = phase === "working" && !acting;
     shield.hidden = !armed;
     shield.style.pointerEvents = armed ? "auto" : "none";
   }
@@ -202,6 +237,7 @@ export function takeoverOverlaySource(watchdogMs = WATCHDOG_MS): string {
   function swallow(event) {
     if (!armed || gone || disarmed) return;
     if (event.composedPath().includes(host)) return;
+    if (confirm) { event.preventDefault(); event.stopImmediatePropagation(); return; }
     if (event.type === "click") { event.preventDefault(); event.stopImmediatePropagation(); emit({ type: "takeControl" }); return; }
     if (event.type === "keydown" && event.key === "Escape") { event.preventDefault(); event.stopImmediatePropagation(); emit({ type: "takeControl" }); return; }
     if (event.type === "pointermove" || event.type === "mousemove") {
@@ -225,7 +261,7 @@ export function takeoverOverlaySource(watchdogMs = WATCHDOG_MS): string {
     if (disarmed || gone) return;
     disarmed = true;
     armed = false;
-    confirm = false;
+    if (confirm) endConfirm();
     hideHint();
     host.style.display = "none";
     shield.style.pointerEvents = "none";
@@ -237,7 +273,7 @@ export function takeoverOverlaySource(watchdogMs = WATCHDOG_MS): string {
     lastTab = state.lastTab === true;
     for (const node of activities) node.textContent = state.activity || "Working…";
     question.textContent = lastTab ? "Stop Bao and disconnect?" : "Disconnect Bao from this tab?";
-    if (phase !== "working") confirm = false;
+    if (phase !== "working" && confirm) endConfirm();
     paint();
     place();
   }
@@ -263,6 +299,11 @@ export function takeoverOverlaySource(watchdogMs = WATCHDOG_MS): string {
     listen(false);
     clearInterval(watch);
     clearTimeout(confirmTimer);
+    host.removeEventListener("toggle", onToggle);
+    document.removeEventListener("fullscreenchange", place);
+    document.removeEventListener("visibilitychange", paint);
+    document.removeEventListener("toggle", onDialogToggle, true);
+    observer.disconnect();
     host.remove();
     delete globalThis.__baoTakeover;
   }
@@ -275,37 +316,30 @@ export function takeoverOverlaySource(watchdogMs = WATCHDOG_MS): string {
     });
   }
   function onToggle(event) { if (!gone && event.newState === "closed") place(); }
+  function endConfirm() {
+    if (!confirm) return;
+    confirm = false;
+    clearTimeout(confirmTimer);
+    emit({ type: "confirm", open: false });
+    paint();
+  }
   function onX(event) {
     event.preventDefault();
     event.stopPropagation();
-    if (confirm) return;
+    if (confirm || phase !== "working") return;
     confirm = true;
     hideHint();
     confirmAt = Date.now();
-    question.textContent = lastTab ? "Stop Bao and disconnect?" : "Disconnect Bao from this tab?";
-    pill.hidden = false;
-    notch.hidden = true;
-    frame.hidden = true;
-    shield.hidden = true;
-    armed = false;
-    shield.style.pointerEvents = "none";
-    done.hidden = true;
-    pill.querySelector(".x").hidden = false;
-    for (const node of activities) node.hidden = true;
-    pill.classList.add("float");
-    question.hidden = false;
-    cancel.hidden = false;
-    disconnect.hidden = false;
+    emit({ type: "confirm", open: true });
+    paint();
     clearTimeout(confirmTimer);
-    confirmTimer = setTimeout(() => { confirm = false; paint(); }, 10000);
+    confirmTimer = setTimeout(endConfirm, 10000);
   }
   function onCancel(event) {
     event.preventDefault();
     event.stopPropagation();
     if (Date.now() - confirmAt < 350) return;
-    confirm = false;
-    clearTimeout(confirmTimer);
-    paint();
+    endConfirm();
   }
   function onDisconnect(event) {
     event.preventDefault();
@@ -327,7 +361,7 @@ export function takeoverOverlaySource(watchdogMs = WATCHDOG_MS): string {
   shield.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
-    if (!armed || gone || disarmed) return;
+    if (!armed || gone || disarmed || confirm) return;
     emit({ type: "takeControl" });
   });
   shield.addEventListener("pointermove", (event) => {
@@ -349,6 +383,7 @@ export function takeoverOverlaySource(watchdogMs = WATCHDOG_MS): string {
   host.addEventListener("toggle", onToggle);
   document.addEventListener("fullscreenchange", place);
   document.addEventListener("visibilitychange", paint);
+  document.addEventListener("toggle", onDialogToggle, true);
   const observer = new MutationObserver(() => { if (!gone && !host.isConnected) place(); });
   function watchTree() {
     const rootNode = document.documentElement;

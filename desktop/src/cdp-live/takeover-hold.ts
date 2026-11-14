@@ -4,7 +4,7 @@
 import type { Socket } from "node:net";
 import type { FinishOutcome } from "../../../shared/takeover-overlay";
 import type { CdpSocket } from "./socket";
-import { Takeover, type TakeoverOptions } from "./takeover";
+import { HELD_SKIP, Takeover, type TakeoverOptions } from "./takeover";
 
 const LINE_MAX = 1024 * 1024;
 const CALL_MS = 10_000;
@@ -13,19 +13,23 @@ interface HoldState {
   held: boolean;
   heldSince?: number;
   stopped: boolean;
+  confirming?: boolean;
 }
 
 type HoldReply = HoldState & {
   ok: boolean;
   error?: string;
   outcome?: "done" | "timeout" | "disconnect";
+  skipped?: boolean;
 };
 
 type HoldEvent =
   | { event: "handoff"; startedAt: number; endedAt: number }
   | { event: "open" }
   | { event: "disconnect" }
-  | { event: "askDone" };
+  | { event: "askDone" }
+  | { event: "held"; held: boolean; heldSince?: number }
+  | { event: "confirm"; open: boolean };
 
 interface HoldRequest {
   id: number;
@@ -81,6 +85,8 @@ class HoldOverlay {
       onOpen: () => write({ event: "open" }),
       onDisconnect: () => write({ event: "disconnect" }),
       onAskDone: () => write({ event: "askDone" }),
+      onHeld: () => write({ event: "held", held: this.takeover.held, heldSince: this.takeover.heldSince }),
+      onConfirm: (open) => write({ event: "confirm", open }),
     });
   }
 
@@ -113,6 +119,7 @@ class HoldOverlay {
       held: this.takeover.held,
       heldSince: this.takeover.heldSince,
       stopped: this.takeover.stoppedByOwner,
+      confirming: this.takeover.confirming,
     };
   }
 
@@ -157,7 +164,18 @@ class HoldOverlay {
       return {};
     }
     if (request.op === "lower") {
+      if (takeover.confirming) {
+        const abort = new AbortController();
+        const timer = setTimeout(() => abort.abort(), 12_000);
+        try { await takeover.waitConfirm(abort.signal); }
+        finally { clearTimeout(timer); }
+      }
+      if (takeover.held || takeover.confirming) return { skipped: true };
       await takeover.lowerShield();
+      if (takeover.held) {
+        await takeover.raiseShield();
+        return { skipped: true };
+      }
       return {};
     }
     if (request.op === "raise") {
@@ -211,10 +229,13 @@ export class AdmittedTakeover {
   private heldFlag = false;
   private heldAt: number | undefined;
   private stopped = false;
+  private confirmFlag = false;
+  private confirmWait?: () => void;
   private askDone = false;
   private waitingFlag = false;
   private hiddenShots = 0;
   private disposed = false;
+  private closing = false;
 
   constructor(private readonly socket: Socket, private readonly options: TakeoverOptions = {}) {
     socket.on("data", (chunk: Buffer) => this.onData(chunk));
@@ -236,6 +257,10 @@ export class AdmittedTakeover {
 
   get stoppedByOwner(): boolean {
     return this.stopped;
+  }
+
+  get confirming(): boolean {
+    return this.confirmFlag;
   }
 
   releasedAsk(): boolean {
@@ -264,13 +289,34 @@ export class AdmittedTakeover {
     this.apply(await this.call("cursor", { x, y }));
   }
 
-  async bracket<T>(fn: () => Promise<T>): Promise<T> {
-    this.apply(await this.call("lower"));
+  async bracket<T>(fn: () => Promise<T>, signal?: AbortSignal, depth = 0): Promise<T | typeof HELD_SKIP> {
+    if (this.held) return HELD_SKIP;
+    const reply = await this.call("lower", {}, 15_000);
+    this.apply(reply);
+    if (this.confirming && !this.held && depth < 2) {
+      await this.waitConfirm(signal ?? AbortSignal.timeout(12_000));
+      if (signal?.aborted) throw Object.assign(new Error("aborted"), { name: "AbortError" });
+      return this.bracket(fn, signal, depth + 1);
+    }
+    if (reply.skipped || this.held) return HELD_SKIP;
     try {
       return await fn();
     } finally {
       this.apply(await this.call("raise"));
     }
+  }
+
+  async waitConfirm(signal: AbortSignal): Promise<void> {
+    if (!this.confirmFlag || signal.aborted) return;
+    await new Promise<void>((resolve) => {
+      const finish = () => {
+        signal.removeEventListener("abort", finish);
+        if (this.confirmWait === finish) this.confirmWait = undefined;
+        resolve();
+      };
+      this.confirmWait = finish;
+      signal.addEventListener("abort", finish, { once: true });
+    });
   }
 
   async hideForShot<T>(fn: () => Promise<T>): Promise<T> {
@@ -317,9 +363,10 @@ export class AdmittedTakeover {
   }
 
   async dispose(): Promise<void> {
-    if (this.disposed) return;
-    this.disposed = true;
+    if (this.disposed || this.closing) return;
+    this.closing = true;
     await this.call("dispose").catch(() => undefined);
+    this.disposed = true;
     this.fail(new Error("overlay disposed"));
   }
 
@@ -328,6 +375,8 @@ export class AdmittedTakeover {
     this.heldFlag = reply.held;
     this.heldAt = reply.heldSince;
     this.stopped = reply.stopped;
+    this.confirmFlag = reply.confirming === true;
+    if (!this.confirmFlag) this.confirmWait?.();
   }
 
   private onData(chunk: Buffer): void {
@@ -363,10 +412,22 @@ export class AdmittedTakeover {
   private onEvent(event: HoldEvent): void {
     if (event.event === "handoff") this.options.onHandoff?.(event.startedAt, event.endedAt);
     else if (event.event === "open") this.options.onOpen?.();
-    else if (event.event === "askDone") this.askDone = true;
-    else if (event.event === "disconnect") {
+    else if (event.event === "askDone") {
+      this.askDone = true;
+      this.options.onAskDone?.();
+    } else if (event.event === "held") {
+      this.heldFlag = event.held;
+      this.heldAt = event.heldSince;
+      this.options.onHeld?.(event.held);
+    } else if (event.event === "confirm") {
+      this.confirmFlag = event.open;
+      this.options.onConfirm?.(event.open);
+      if (!event.open) this.confirmWait?.();
+    } else if (event.event === "disconnect") {
       this.stopped = true;
       this.heldFlag = false;
+      this.confirmFlag = false;
+      this.confirmWait?.();
       if (!this.waitingFlag) this.options.onDisconnect?.();
     }
   }

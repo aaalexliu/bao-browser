@@ -17,7 +17,7 @@ import type { FileArg, Identity, StepLocator } from "./schema";
 import { paddedClip, type ShotBox } from "./shots";
 import { ownerStopText } from "./stop-copy";
 import { Takeover, type CdpSend } from "../cdp-live/takeover";
-import { askLine } from "../../../shared/takeover-overlay";
+import { doneAsk } from "../../../shared/takeover-overlay";
 
 const dialogHandlers = new WeakMap<Page, (dialog: Dialog) => void>();
 
@@ -610,10 +610,7 @@ export class BrowserDriver implements Driver {
   async showAsk(ask: HumanAsk): Promise<void> {
     this.prompts?.showAsk?.(ask);
     this.handedBack = false;
-    const text = ask.kind === "login" ? "Sign in, then click Done"
-      : ask.kind === "confirm" ? askLine("finish this step")
-      : askLine("finish the check");
-    await this.showControl(text);
+    await this.showControl(doneAsk(ask.instruction));
   }
 
   private handedBack = false;
