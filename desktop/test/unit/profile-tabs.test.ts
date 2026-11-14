@@ -7,10 +7,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import * as chromeAx from "../../src/cdp-live/ax";
-import { ServerFrameDecoder } from "../../src/cdp-live/socket";
 import { holdDir } from "../../src/cdp-live/chrome-hold";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
-import { connectCdp } from "../../src/cdp-live/socket";
+import { connectCdp, ServerFrameDecoder } from "../../src/cdp-live/socket";
 import { AgentBrowserRun } from "../../src/engines/agent-browser-record";
 import { ChromeProfileQuestion } from "../../src/engines/browser-pick";
 import {
