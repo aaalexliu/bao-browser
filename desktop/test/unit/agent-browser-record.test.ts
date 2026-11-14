@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { AgentBrowserRun, type RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
+import { readStepRecord } from "../../src/engines/step-har";
 import { Library } from "../../src/v1/store";
 import { runViewer, type RunSummary } from "../../src/app/views";
 
@@ -147,6 +148,25 @@ test("a wall found after a ready wait, before the next step, leaves that wait pa
     assert.equal(saved.envelope?.reason, "session_closed");
     assert.equal(kept?.status, "passed");
     assert.equal(kept?.reason, undefined);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("a click after a JSON snapshot records the element's role and name from the snapshot tree", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-json-snapshot-"));
+  try {
+    const recorder = new AgentBrowserRun(root);
+    const snapshot = recorder.begin("snapshot", ["--json"]);
+    // agent-browser 0.41.2 `snapshot --json` output, from a local data: page.
+    const json = JSON.stringify({ success: true, data: {
+      origin: "data:text/html,<h1>Hi</h1><button>Save</button>",
+      refs: { e1: { name: "Hi", role: "heading" }, e2: { name: "Save", role: "button" } }, removedRefs: [],
+      snapshot: "- heading \"Hi\" [level=1, ref=e1]\n- button \"Save\" [ref=e2]",
+    }, error: null });
+    await recorder.complete(snapshot, [{ stdout: json, stderr: "", exitCode: 0 }], root, async () => png);
+    const click = recorder.begin("click", ["@e2"]);
+    await recorder.complete(click, [{ stdout: "✓ Done\n", stderr: "", exitCode: 0 }], root, async () => png);
+    assert.deepEqual((await readStepRecord(root, recorder.id, click.id)).target, { ref: "@e2", role: "button", name: "Save" });
+    assert.equal(click.caption.citation?.text, "Save");
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 

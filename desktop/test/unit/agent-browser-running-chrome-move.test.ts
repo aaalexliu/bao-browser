@@ -5,13 +5,15 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test, { type TestContext } from "node:test";
+import { gunzipSync } from "node:zlib";
 import * as currentChrome from "../../src/cdp-live/current-chrome";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { pageWall } from "../../src/cdp-live/page-wall";
 import { connectCdp, type CdpSocket } from "../../src/cdp-live/socket";
 import * as sockets from "../../src/cdp-live/socket";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
-import { readStepRecord } from "../../src/engines/step-har";
+import { readStepRecord, type StepNetworkRecord } from "../../src/engines/step-har";
+import type { PageState } from "../../src/engines/step-page";
 import { AgentBrowserRun, type RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
 import type { BrowserPick } from "../../src/engines/browser-pick";
 import * as bao from "../../src/engines/bao-profile";
@@ -211,8 +213,17 @@ const {connectCdp}=require(${JSON.stringify(path.resolve(__dirname, "../../src/c
 const args=process.argv.slice(2), at=args.indexOf('--idle-timeout')+2, command=args[at], rest=args.slice(at+1);
 const endpoint=new URL(args[args.indexOf('--cdp')+1]);
 ${LIST_TARGETS}
+const pageLog=path.join(process.env.AGENT_BROWSER_SOCKET_DIR,'console.jsonl');
+const logLine=(text)=>fs.appendFileSync(pageLog,JSON.stringify({args:[],text,type:'log'})+'\\n');
 (async()=>{
  if(command==='close'){console.log('closed');return;}
+ if(command==='batch'){
+  const messages=fs.existsSync(pageLog)?fs.readFileSync(pageLog,'utf8').trim().split('\\n').filter(Boolean).map(line=>JSON.parse(line)):[];
+  fs.rmSync(pageLog,{force:true});
+  const item=(words,result)=>({command:words,error:null,result,success:true});
+  console.log(JSON.stringify([item(['console'],{messages}),item(['console','--clear'],{cleared:true}),item(['errors'],{errors:[]}),item(['errors','--clear'],{cleared:true})]));
+  return;
+ }
  let bound; try{bound=JSON.parse(fs.readFileSync(path.join(process.env.AGENT_BROWSER_SOCKET_DIR,'bao.target'),'utf8')).targetId;}catch{}
  const tabs=(await listTargets(endpoint.href)).filter(t=>t.type==='page');
  const tab=tabs.find(t=>t.id===bound)??tabs.find(t=>!t.url.startsWith('chrome'))??tabs[0];
@@ -225,6 +236,7 @@ ${LIST_TARGETS}
   const {sessionId}=await cdp.send('Target.attachToTarget',{targetId:tab.id,flatten:true});
   const read=async(expression)=>(await cdp.send('Runtime.evaluate',{expression,returnByValue:true},sessionId)).result.value;
   if(command==='open' && String(endpoint.port)==='${endpoint.port}' && fs.existsSync(${JSON.stringify(ownerOpenFail)})){
+   logLine('open failed on '+endpoint.port);
    console.error(fs.readFileSync(${JSON.stringify(ownerOpenFail)},'utf8'));
    process.exitCode=1;
    return;
@@ -233,6 +245,7 @@ ${LIST_TARGETS}
    await cdp.send('Page.enable',{},sessionId);
    const loaded=new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('fixture navigation timed out')),20000);cdp.on('Page.loadEventFired',sessionId,()=>{clearTimeout(timer);resolve();});});
    await cdp.send('Page.navigate',{url:rest.at(-1)},sessionId); await loaded;
+   logLine('opened '+rest.at(-1)+' on '+endpoint.port);
    console.log('✓ '+await read('document.title')+'\\n  '+await read('location.href'));
   } else if(command==='snapshot') process.stdout.write(await read("document.getElementById('snapshot')?.textContent ?? ''"));
   else if(command==='press'){
@@ -548,6 +561,53 @@ test("a route open whose cleanup fails after a failed move still ends failed in 
   assert.notEqual(run.status, "passed");
 });
 
+const consoleTexts = (record: StepNetworkRecord) => ((record.console as { result?: { messages?: { text: string }[] } } | undefined)?.result?.messages ?? []).map((message) => message.text);
+
+async function afterPage(home: string, runId: string, record: StepNetworkRecord): Promise<PageState> {
+  const entry = record.page?.after;
+  assert.ok(entry && "file" in entry, `after page read: ${entry && "error" in entry ? entry.error : "missing"}`);
+  return JSON.parse(gunzipSync(await readFile(path.join(home, "runs", runId, entry.file))).toString("utf8")) as PageState;
+}
+
+test("a route open made during a move keeps its own console, page state and picture", { timeout: scaledMs(60_000) }, async (t) => {
+  const h = await harness(t, "works");
+  assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "bao"))[0]!.exitCode, 0);
+  await navigateBao(h.baoDir, "/article", `${h.site}/login`);
+  const runId = h.proxy.activeRunId!;
+  assert.equal((await h.proxy.execute("click", ["@e5"], undefined, false, undefined, {}, runId))[0]!.exitCode, 0);
+  assert.equal((await h.proxy.execute("snapshot", [], undefined, false, undefined, {}, runId))[0]!.exitCode, 0);
+  const steps = savedSteps(h.home);
+  const route = steps.filter((step) => step.native.command === "open").at(-1)!;
+  assert.notEqual(route.id, "command-1");
+  const record = await readStepRecord(h.home, runId, route.id);
+  assert.equal(record.status, "passed");
+  assert.deepEqual(consoleTexts(record), [`opened ${h.site}/article on ${h.endpoint.port}`]);
+  assert.equal((await afterPage(h.home, runId, record)).url, `${h.site}/article`);
+  assert.ok(route.afterShot, route.afterShotError);
+  for (const step of steps.filter((item) => item.id !== route.id)) {
+    const texts = consoleTexts(await readStepRecord(h.home, runId, step.id));
+    assert.ok(!texts.some((text) => text.endsWith(` on ${h.endpoint.port}`)), `${step.id} ${step.native.command}: ${texts.join(" | ")}`);
+  }
+});
+
+test("a failed route open during a move keeps its error, the destination's console and its page state", { timeout: scaledMs(60_000) }, async (t) => {
+  const h = await harness(t, "works");
+  assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "bao"))[0]!.exitCode, 0);
+  await navigateBao(h.baoDir, "/article", `${h.site}/login`);
+  await h.failOwnerOpen("navigation timed out");
+  const runId = h.proxy.activeRunId!;
+  const [result] = await h.proxy.execute("click", ["@e5"], undefined, false, undefined, {}, runId);
+  assert.equal((JSON.parse(result!.stdout) as { outcome: string }).outcome, "halted");
+  await h.proxy.close();
+  const route = savedSteps(h.home).filter((step) => step.native.command === "open").at(-1)!;
+  assert.notEqual(route.id, "command-1");
+  const record = await readStepRecord(h.home, runId, route.id);
+  assert.equal(record.status, "failed");
+  assert.match(record.error ?? "", /navigation timed out/);
+  assert.deepEqual(consoleTexts(record), [`open failed on ${h.endpoint.port}`]);
+  assert.equal((await afterPage(h.home, runId, record)).url, "about:blank");
+});
+
 test("a wait retry keeps the wait and records a passed route open", { timeout: scaledMs(60_000) }, async (t) => {
   const h = await harness(t, "works");
   assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "bao"))[0]!.exitCode, 0);
@@ -564,6 +624,7 @@ test("a wait retry keeps the wait and records a passed route open", { timeout: s
   assert.equal(route.status, "passed");
   assert.equal((await readStepRecord(h.home, run.id, wait!.id)).why, why);
   assert.equal((await readStepRecord(h.home, run.id, route.id)).status, "passed");
+  assert.ok(route.afterShot, route.afterShotError);
 });
 
 test("a snapshot route move that times out keeps the snapshot and a failed open", { timeout: scaledMs(60_000) }, async (t) => {
