@@ -14,11 +14,10 @@ test("why keeps one sentence and drops a blank", () => {
   assert.equal(stepWhy(undefined), undefined);
 });
 
-test("wait names the command, the wait argument, or the owner", () => {
-  assert.deepEqual(stepWait("click", ["@e1"], 1000, 1250), { for: "click", ms: 250 });
-  assert.deepEqual(stepWait("wait", ["@e1"], 1000, 1000), { for: "@e1", ms: 0 });
-  assert.deepEqual(stepWait("wait", [], 5, 1), { for: "wait", ms: 0 });
-  assert.deepEqual(stepWait("wait_for_owner", ["60000"], 0, 40), { for: "owner", ms: 40 });
+test("wait names the command or the owner", () => {
+  assert.deepEqual(stepWait("click", 1000, 1250), { for: "click", ms: 250 });
+  assert.deepEqual(stepWait("wait_for_owner", 0, 40), { for: "owner", ms: 40 });
+  assert.deepEqual(stepWait("open", 5, 1), { for: "open", ms: 0 });
 });
 
 test("entries follow the step that had already started", () => {
@@ -34,7 +33,8 @@ test("entries follow the step that had already started", () => {
   ];
   const assigned = assignEntries(entries, steps);
   assert.deepEqual(assigned.get("command-1")?.map((entry) => entry.url), ["during-1", "before"]);
-  assert.deepEqual(assigned.get("command-2")?.map((entry) => entry.url), ["during-2", "undated"]);
+  assert.deepEqual(assigned.get("command-2")?.map((entry) => entry.url), ["during-2"]);
+  assert.equal([...assigned.values()].some((group) => group.some((entry) => entry.url === "undated")), false);
 });
 
 test("one HAR is copied as bytes and a second is concatenated", async () => {

@@ -824,11 +824,12 @@ test("an upload to a file input runs natively with absolute paths, and the run k
       ["upload", "input[type=file]", path.join(downloads, "statement.pdf"), w2], ["upload", "#f", path.join(f.root, "gone", "w2.pdf")],
     ]);
     const steps = new Library(path.join(f.root, "home")).readRun(runId).steps as unknown as RecordedAgentBrowserCommand[];
-    assert.deepEqual(steps.slice(1).map((step) => [step.caption.text, step.summary?.text, step.native.args]), [
+    assert.deepEqual(steps.slice(1, 3).map((step) => [step.caption.text, step.summary?.text, step.native.args]), [
       ["Upload statement.pdf, w2.pdf", 'Uploaded "statement.pdf, w2.pdf".', ["input[type=file]", path.join(downloads, "statement.pdf"), w2]],
       ["Upload w2.pdf", 'Could not upload "w2.pdf".', ["#f", path.join(f.root, "gone", "w2.pdf")]],
     ]);
-    assert.equal(steps.at(-1)!.summary?.error, `\u2717 File not found: ${path.join(f.root, "gone", "w2.pdf")}`, "the run keeps the real path the native error names");
+    const missingUpload = steps.find((step) => step.native.args[1] === path.join(f.root, "gone", "w2.pdf"));
+    assert.equal(missingUpload?.summary?.error, `\u2717 File not found: ${path.join(f.root, "gone", "w2.pdf")}`, "the run keeps the real path the native error names");
     const sha = createHash("sha256").update("%PDF").digest("hex");
     assert.deepEqual(steps[1]!.transfer, { command: "upload", source: "file-input", files: [
       { path: path.join(downloads, "statement.pdf"), bytes: 4, sha256: sha }, { path: w2, bytes: 4, sha256: sha },

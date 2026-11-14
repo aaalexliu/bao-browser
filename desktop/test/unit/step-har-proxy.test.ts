@@ -7,6 +7,8 @@ import test, { type TestContext } from "node:test";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import * as profiles from "../../src/engines/chrome-profile-copy";
 import * as sockets from "../../src/cdp-live/socket";
+import { AGENT_WAIT_ENDED } from "../../src/v1/stop-copy";
+import { Library } from "../../src/v1/store";
 import { readStepRecord, runHarPath } from "../../src/engines/step-har";
 
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aL1sAAAAASUVORK5CYII=", "base64");
@@ -40,10 +42,15 @@ async function fixture(t: TestContext) {
       isClosed: () => gone, keepOpen: () => copy.keepOpen(),
     };
   });
+  const page = { url: "http://127.0.0.1/", title: "Fixture" };
   t.mock.method(sockets, "connectCdp", async () => {
     const cdp = new sockets.CdpSocket(new Socket());
-    t.mock.method(cdp, "send", async (method: string) => method === "Target.attachToTarget" ? { sessionId: "fixture" } : method === "Target.getTargetInfo"
-      ? { targetInfo: { url: "http://127.0.0.1/", title: "Fixture" } } : { data: png.toString("base64") });
+    t.mock.method(cdp, "send", async (method: string) => {
+      if (method === "Target.attachToTarget") return { sessionId: "fixture" };
+      if (method === "Target.getTargetInfo") return { targetInfo: { ...page } };
+      if (method === "Target.getTargets") return { targetInfos: [{ targetId: "ABC123", url: page.url, title: page.title, type: "page" }] };
+      return { data: png.toString("base64") };
+    });
     t.mock.method(cdp, "sendUntilProgress", (method: string, params?: Record<string, unknown>, sessionId?: string) => cdp.send(method, params ?? {}, sessionId));
     return cdp;
   });
@@ -52,14 +59,28 @@ async function fixture(t: TestContext) {
   await writeFile(executable, `#!${process.execPath}
 const fs = require('node:fs');
 const args = process.argv.slice(2);
-fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify({ args }) + '\\n');
+fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify({ args, at: Date.now() }) + '\\n');
 const command = args[args.indexOf('--idle-timeout') + 2];
+const dead = ${JSON.stringify(path.join(root, "daemon-dead"))};
 if (command === 'network' && args.includes('start') && fs.existsSync(${JSON.stringify(path.join(root, "har-start-fail"))})) {
   process.stderr.write('har start failed\\n');
   process.exitCode = 1;
 } else if (command === 'network' && args.includes('stop')) {
-  fs.writeFileSync(args[args.indexOf('stop') + 1], fs.readFileSync(${JSON.stringify(path.join(root, "recorded.har"))}));
-  process.stdout.write('har stopped\\n');
+  if (fs.existsSync(dead)) {
+    process.stderr.write('daemon exited\\n');
+    process.exitCode = 1;
+  } else {
+    fs.writeFileSync(args[args.indexOf('stop') + 1], fs.readFileSync(${JSON.stringify(path.join(root, "recorded.har"))}));
+    process.stdout.write('har stopped\\n');
+  }
+} else if (command === 'close') {
+  fs.writeFileSync(dead, '');
+  process.stdout.write('close unchanged\\n');
+} else if (command === 'tab' && args.includes('--json') && fs.existsSync(${JSON.stringify(path.join(root, "tab-fail"))})) {
+  process.stderr.write('tab list failed\\n');
+  process.exitCode = 1;
+} else if (command === 'tab' && args.includes('--json') && fs.existsSync(${JSON.stringify(path.join(root, "no-active-tab"))})) {
+  process.stdout.write(JSON.stringify({ data: { tabs: [] } }));
 } else if (args.includes('fail')) {
   process.stderr.write('native error\\n');
   process.exitCode = 1;
@@ -69,8 +90,8 @@ if (command === 'network' && args.includes('start') && fs.existsSync(${JSON.stri
 `, { mode: 0o700 });
   const proxy = new AgentBrowserProxy({ home: path.join(root, "home"), sourceRoot, executable });
   return {
-    root, proxy,
-    calls: async () => (await readFile(log, "utf8")).trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as { args: string[] }),
+    root, proxy, page,
+    calls: async () => (await readFile(log, "utf8")).trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as { args: string[]; at: number }),
     async close() {
       try { await proxy.close(); } catch { /* the test already closed it */ }
       await rm(root, { recursive: true, force: true });
@@ -89,6 +110,9 @@ test("a session arms HAR before open and copies the tool file on close", async (
     const commands = calls.map((call) => commandOf(call.args));
     assert.ok(commands.indexOf("network") < commands.indexOf("open"));
     assert.ok(calls.some((call) => call.args.includes("har") && call.args.includes("start") && call.args.includes("--content") && call.args.includes("text")));
+    const stop = calls.findIndex((call) => call.args.includes("har") && call.args.includes("stop"));
+    const close = calls.findIndex((call) => commandOf(call.args) === "close");
+    assert.ok(stop >= 0 && stop < close, "export runs while the daemon still holds the recording");
     assert.equal(calls.filter((call) => call.args.includes("har") && call.args.includes("stop")).length, 1);
     assert.deepEqual(await readFile(runHarPath(path.join(f.root, "home"), runId)), har);
     const open = await readStepRecord(path.join(f.root, "home"), runId, "command-1");
@@ -120,6 +144,89 @@ test("a failed HAR start still records the step and does not fail the command", 
     assert.equal(saved.why, "Still open.");
     assert.equal(saved.network.entries.length, 0);
     await assert.rejects(readFile(runHarPath(path.join(f.root, "home"), runId)));
+  } finally {
+    await f.close();
+  }
+});
+
+test("a tab list failure records the click that asked for it", async (t) => {
+  const f = await fixture(t);
+  try {
+    await f.proxy.execute("open", ["http://127.0.0.1/"], "copy", false, undefined, {}, undefined, undefined, "Open.");
+    const runId = f.proxy.activeRunId!;
+    await writeFile(path.join(f.root, "tab-fail"), "");
+    await assert.rejects(f.proxy.execute("click", ["@e1"], undefined, false, undefined, {}, runId), /tab list failed/);
+    const click = await readStepRecord(path.join(f.root, "home"), runId, "command-2");
+    assert.equal(click.command, "click");
+    assert.equal(click.status, "failed");
+    assert.match(click.error ?? "", /tab list failed/);
+  } finally {
+    await f.close();
+  }
+});
+
+test("a rejected upload or download argument is the step that failed", async (t) => {
+  const f = await fixture(t);
+  try {
+    await f.proxy.execute("open", ["http://127.0.0.1/"], "copy", false, undefined, {}, undefined, undefined, "Open.");
+    const runId = f.proxy.activeRunId!;
+    const home = path.join(f.root, "home");
+    await assert.rejects(f.proxy.execute("upload", ["#f", "never.pdf"], undefined, false, undefined, {}, runId), /no file named never\.pdf/);
+    await assert.rejects(f.proxy.execute("download", ["@e5", "../statement.pdf"], undefined, false, undefined, {}, runId), /plain file name/);
+    const upload = await readStepRecord(home, runId, "command-2");
+    const download = await readStepRecord(home, runId, "command-3");
+    assert.equal(upload.command, "upload");
+    assert.equal(upload.status, "failed");
+    assert.match(upload.error ?? "", /never\.pdf/);
+    assert.deepEqual(upload.args, ["#f", "never.pdf"]);
+    assert.equal(download.command, "download");
+    assert.equal(download.status, "failed");
+    assert.match(download.error ?? "", /plain file name/);
+    assert.deepEqual(download.args, ["@e5", "../statement.pdf"]);
+  } finally {
+    await f.close();
+  }
+});
+
+test("a wait starts before a failed tab list spends its timeout", async (t) => {
+  const f = await fixture(t);
+  try {
+    await f.proxy.execute("open", ["http://127.0.0.1/"], "copy", false, undefined, {}, undefined, undefined, "Open.");
+    const runId = f.proxy.activeRunId!;
+    await writeFile(path.join(f.root, "tab-fail"), "");
+    const started = Date.now();
+    await f.proxy.execute("wait_for_owner", ["120"], undefined, false, undefined, {}, runId);
+    const waited = Date.now() - started;
+    assert.ok(waited >= 100);
+    const wait = await readStepRecord(path.join(f.root, "home"), runId, "command-2");
+    assert.equal(wait.command, "wait_for_owner");
+    assert.equal(wait.waits[0]?.for, "owner");
+    assert.ok((wait.waits[0]?.ms ?? 0) >= 100, "the step clock includes the timeout the wait consumed");
+  } finally {
+    await f.close();
+  }
+});
+
+test("closing during a sign-in wait writes the ended wait to the step file and the run", async (t) => {
+  const f = await fixture(t);
+  try {
+    await f.proxy.execute("open", ["http://127.0.0.1/"], "copy", false, undefined, {}, undefined, undefined, "Open.");
+    const runId = f.proxy.activeRunId!;
+    const home = path.join(f.root, "home");
+    f.page.title = "Sign in";
+    f.page.url = "http://127.0.0.1/login";
+    await f.proxy.execute("wait_for_owner", ["80"], undefined, false, undefined, {}, runId);
+    await f.proxy.execute("close", [], undefined, false, undefined, {}, runId);
+    const saved = await readStepRecord(home, runId, "command-2");
+    const run = new Library(home).readRun(runId);
+    const step = run.steps.find((item): item is { id: string; status: string; reason?: string } =>
+      !!item && typeof item === "object" && (item as { id?: string }).id === "command-2");
+    assert.equal(saved.command, "wait_for_owner");
+    assert.equal(saved.status, "failed");
+    assert.equal(saved.error, AGENT_WAIT_ENDED);
+    assert.ok(step);
+    assert.equal(step.status, "failed");
+    assert.equal(step.reason, AGENT_WAIT_ENDED);
   } finally {
     await f.close();
   }

@@ -377,11 +377,11 @@ export class AgentBrowserRun {
     this.persist();
   }
 
-  finish(result?: "session_closed" | AgentBrowserTaskOutcome): void {
+  async finish(result?: "session_closed" | AgentBrowserTaskOutcome): Promise<void> {
     if (this.run.status !== "recording" && this.run.status !== "needs_human"
       && (typeof result !== "object" || this.run.envelope)) return;
+    const changed = result === "session_closed" || this.run.status === "needs_human" ? this.cutOffOwnerWait() : undefined;
     if (result === "session_closed" || this.run.status === "needs_human") {
-      this.cutOffOwnerWait();
       this.run.envelope = { status: "failed", run_id: this.run.id, reason: "session_closed", ask: AGENT_CLOSED_ASK };
       this.run.status = "failed";
     } else if (result) {
@@ -393,19 +393,58 @@ export class AgentBrowserRun {
     } else this.run.status = this.run.steps.some((step) => step.status === "failed") ? "failed"
       : this.run.steps.some((step) => step.status === "pending") ? "paused" : "passed";
     this.persist();
+    if (changed) await this.saveStep(changed);
   }
 
-  private cutOffOwnerWait(): void {
+  prepareRouteOpen(site: string): () => void {
+    const last = this.run.steps.at(-1);
+    if (last?.status === "pending" && last.native.command === "snapshot") return () => undefined;
+    if (last?.status === "pending") {
+      const previous = { command: last.native.command, args: [...last.native.args], why: last.why, label: last.label, caption: last.caption };
+      this.applyCommand(last, "open", [site]);
+      return () => {
+        last.native.command = previous.command;
+        last.native.args = previous.args;
+        last.label = previous.label;
+        last.caption = previous.caption;
+        if (previous.why) last.why = previous.why;
+        else delete last.why;
+        this.persist();
+      };
+    }
+    const added = this.begin("open", [site]);
+    return () => this.dropPending(added);
+  }
+
+  dropPending(step: RecordedAgentBrowserCommand): void {
+    if (step.status !== "pending" || this.run.steps.at(-1) !== step) return;
+    const index = this.run.steps.length - 1;
+    this.run.steps.pop();
+    if (this.ownerWaitAt === index) this.ownerWaitAt = this.run.steps.length;
+    this.persist();
+  }
+
+  private applyCommand(step: RecordedAgentBrowserCommand, command: string, args: string[]): void {
+    const spoken = commandSentence(command, args, this.lastSnapshot || latestSnapshot(this.run.steps));
+    step.caption = { text: spoken.text, ...(spoken.citation ? { citation: spoken.citation } : {}) };
+    step.label = stepTitle({ caption: step.caption });
+    step.native.command = command;
+    step.native.args = [...args];
+    delete step.why;
+    this.persist();
+  }
+
+  private cutOffOwnerWait(): RecordedAgentBrowserCommand | undefined {
     if (this.ownerWaitAt === undefined) return;
     for (let i = this.run.steps.length - 1; i >= this.ownerWaitAt; i--) {
       const step = this.run.steps[i]!;
       if (step.native.command !== "wait_for_owner") continue;
-      if (step.status !== "failed") {
-        step.status = "failed";
-        step.reason = AGENT_WAIT_ENDED;
-      }
-      return;
+      if (step.status === "failed") return;
+      step.status = "failed";
+      step.reason = AGENT_WAIT_ENDED;
+      return step;
     }
+    return;
   }
 
   private async picture(step: RecordedAgentBrowserCommand, bytes: Buffer, which: "requested" | "before" | "after"): Promise<string> {
@@ -474,7 +513,7 @@ function stepNetworkRecord(step: RecordedAgentBrowserCommand, entries: HarEntry[
     ...(error ? { error } : {}),
     startedAt: new Date(step.startedAt).toISOString(),
     ...(step.endedAt ? { endedAt: new Date(step.endedAt).toISOString() } : {}),
-    waits: step.endedAt ? [stepWait(step.native.command, step.native.args, step.startedAt, step.endedAt)] : [],
+    waits: step.endedAt ? [stepWait(step.native.command, step.startedAt, step.endedAt)] : [],
     network: { entries },
   };
 }

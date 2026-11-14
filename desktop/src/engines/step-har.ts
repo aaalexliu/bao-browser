@@ -47,9 +47,8 @@ export function stepWhy(value: unknown): string | undefined {
 }
 
 /** How long the step ran, and the thing it waited on. */
-export function stepWait(command: string, args: readonly string[], startedAt: number, endedAt: number): StepWait {
+export function stepWait(command: string, startedAt: number, endedAt: number): StepWait {
   const ms = Math.max(0, endedAt - startedAt);
-  if (command === "wait") return { for: args[0] || "wait", ms };
   if (command === "wait_for_owner") return { for: "owner", ms };
   return { for: command, ms };
 }
@@ -68,7 +67,7 @@ export function runHarPath(home: string, runId: string): string {
 
 /**
  * Assigns each entry to the latest step that had already started. An entry before every step
- * stays on the first step. An entry with no parseable time stays on the last step so it is not dropped.
+ * stays on the first step. An entry with no parseable time stays in run.har and is assigned to no step.
  * CDP wall time and the step clock can disagree by a few milliseconds; that can put a boundary request on the previous step.
  */
 export function assignEntries<T extends { startedDateTime?: string }>(
@@ -80,14 +79,11 @@ export function assignEntries<T extends { startedDateTime?: string }>(
   if (!sorted.length) return out;
   for (const entry of entries) {
     const time = Date.parse(entry.startedDateTime ?? "");
+    if (Number.isNaN(time)) continue;
     let chosen = sorted[0]!;
-    if (!Number.isNaN(time)) {
-      for (const step of sorted) {
-        if (step.startedAt <= time) chosen = step;
-        else break;
-      }
-    } else {
-      chosen = sorted.at(-1)!;
+    for (const step of sorted) {
+      if (step.startedAt <= time) chosen = step;
+      else break;
     }
     out.get(chosen.id)!.push(entry);
   }

@@ -101,6 +101,15 @@ function privatePicture(error: unknown): boolean {
   return error instanceof Error && error.message === OWNER_PRIVATE;
 }
 
+function recordedPreflight(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : "";
+  return message.startsWith("Native tab list failed")
+    || message.startsWith("no active Bao page metadata")
+    || message.startsWith("upload takes")
+    || message.startsWith("download takes")
+    || message.startsWith("This run downloaded no file");
+}
+
 function webSite(value: string | undefined): string | undefined {
   try {
     if (!value) return undefined;
@@ -762,14 +771,10 @@ export class AgentBrowserProxy {
       if (command === "close") await this.remove(session);
       return this.ownerResult("closed", session);
     }
-    let files: FileArgs | undefined;
-    if (isFileCommand(command) && this.session) {
-      if (this.session.kind === "current" && this.session.relay) {
-        throw new Error("upload and download need Running Chrome over remote debugging, the Bao profile, or a copy, not the Bao extension.");
-      }
-      files = await fileArgs(command, args, this.session.recording.downloadsDir);
+    if (isFileCommand(command) && this.session?.kind === "current" && this.session.relay) {
+      throw new Error("upload and download need Running Chrome over remote debugging, the Bao profile, or a copy, not the Bao extension.");
     }
-    const nativeArgs = files?.forwarded ?? args;
+    let files: FileArgs | undefined;
     const continuing = !!this.session;
     // The route and profile are settled before any run record, so a question about the profile opens and records nothing.
     const plan = continuing ? undefined : await this.plan(browser as AgentBrowser | undefined, named, webSite(args[0]));
@@ -790,7 +795,7 @@ export class AgentBrowserProxy {
           : failedPickLine(plan!.route, plan!.why, chromeApp(), plan!.route === "extension" ? undefined : plan!.profile);
         step!.failedToStart = true;
         await recording.complete(step!, [], this.options.home, async () => { throw error; }, error);
-        recording.finish();
+        await recording.finish();
         throw error;
       } finally {
         this.clearStart();
@@ -799,9 +804,12 @@ export class AgentBrowserProxy {
     const session = this.session;
     if (!session) throw new Error("start agent-browser with open before sending commands");
     this.shown = { session, command: command as string };
-    if (session.pick.route === "current" && !session.pick.background && opensTab(command as string, args)) {
-      throw new Error(`Chrome would open a new tab in the profile you used last, not necessarily "${session.pick.profile.directory}". Stay in Bao's task tab and use open there.`);
+    const ownerPrivate = continuing && command !== "close" && command !== "wait_for_owner" && this.waitOf(session) !== "off";
+    if (continuing && !ownerPrivate) {
+      step = recording.begin(command as string, args, why);
+      this.latest = { runId: recording.id, step, steps: recording.steps };
     }
+    let nativeArgs = args;
     clearTimeout(session.idleTimer);
     let commandDone!: () => void;
     session.commandDone = new Promise<void>((resolve) => { commandDone = resolve; });
@@ -810,17 +818,29 @@ export class AgentBrowserProxy {
     let failure: unknown;
     try {
       if (this.gone()) throw new Error(AGENT_DISCONNECTED);
+      if (session.pick.route === "current" && !session.pick.background && opensTab(command as string, args)) {
+        throw new Error(`Chrome would open a new tab in the profile you used last, not necessarily "${session.pick.profile.directory}". Stay in Bao's task tab and use open there.`);
+      }
+      if (!ownerPrivate && isFileCommand(command)) {
+        files = await fileArgs(command, args, session.recording.downloadsDir);
+        nativeArgs = files.forwarded;
+        if (step) step.native.args = [...nativeArgs];
+      }
       if (continuing && command !== "close" && command !== "wait_for_owner") {
         await this.noteWall(session);
         const opened = await this.settleWall(session);
         // Refs from Bao's browser do not hold in the new tab, so an action waits for a fresh snapshot.
         if (opened && (this.waitOf(session) !== "off" || command !== "snapshot" && command !== "open")) {
-          step = recording.begin("open", [this.moved!.site!]);
-          this.latest = { runId: recording.id, step, steps: recording.steps };
+          step = step ?? recording.steps.at(-1);
+          if (step) this.latest = { runId: recording.id, step, steps: recording.steps };
           results.push(...this.waitOf(session) !== "off" ? this.ownerResult("halted", session) : [opened]);
           return results;
         }
         if (this.waitOf(session) !== "off") {
+          if (step && step.native.command !== "open") {
+            recording.dropPending(step);
+            step = undefined;
+          }
           results.push(...this.ownerResult("halted", session));
           return results;
         }
@@ -841,8 +861,8 @@ export class AgentBrowserProxy {
         }
         const opened = stop ? await this.settleWall(session, { retry: true, what: this.wallWords(session), url: stop.reopen }) : undefined;
         if (opened) {
-          step = recording.begin("open", [this.moved!.site!]);
-          this.latest = { runId: recording.id, step, steps: recording.steps };
+          step = step ?? recording.steps.at(-1);
+          if (step) this.latest = { runId: recording.id, step, steps: recording.steps };
           results.push(...this.waitOf(session) !== "off" ? this.ownerResult("halted", session) : [opened]);
           return results;
         }
@@ -865,8 +885,8 @@ export class AgentBrowserProxy {
             await new Promise((resolve) => setTimeout(resolve, Math.min(250, Math.max(1, deadline - Date.now()))));
           }
           if (!active) {
-            const discovered = session.abort.signal.aborted || absent ? this.ownerClosed(session) : await this.waitForOwner(session, deadline);
-            step = recording.begin(command as string, args, why);
+            const discovered = session.abort.signal.aborted || absent ? await this.ownerClosed(session) : await this.waitForOwner(session, deadline);
+            step ??= recording.begin(command as string, args, why);
             this.latest = { runId: recording.id, step, steps: recording.steps };
             results.push(...discovered);
             if (ownerReply(results)?.instruction === TASK_TAB_CLOSED) failure = new Error("Bao's task tab was closed");
@@ -876,8 +896,7 @@ export class AgentBrowserProxy {
           this.setWait(session, this.stopped(session, active));
           session.ownerPage = active.page;
           const opened = await this.settleWall(session, { retry: true, what: this.wallWords(session), url: this.reopenOf(session) });
-          const moved = this.moved?.site;
-          step = recording.begin(moved ? "open" : command as string, moved ? [moved] : args, moved ? undefined : why);
+          step ??= recording.steps.at(-1) ?? recording.begin(command as string, args, why);
           this.latest = { runId: recording.id, step, steps: recording.steps };
           if (opened) {
             results.push(...this.waitOf(session) !== "off" ? this.ownerResult("halted", session) : [opened]);
@@ -898,8 +917,8 @@ export class AgentBrowserProxy {
         if (this.waitOf(session) !== "off") {
           const opened = await this.settleWall(session, { retry: true });
           if (opened) {
-            step = recording.begin("open", [this.moved!.site!]);
-            this.latest = { runId: recording.id, step, steps: recording.steps };
+            step = step ?? recording.steps.at(-1);
+            if (step) this.latest = { runId: recording.id, step, steps: recording.steps };
             results.push(...this.waitOf(session) !== "off" ? this.ownerResult("halted", session) : [opened]);
             return results;
           }
@@ -985,6 +1004,10 @@ export class AgentBrowserProxy {
         this.latest = { runId: recording.id, step, steps: recording.steps };
         if (!agentClosedTab) failure = new Error("Bao's task tab was closed");
         return results;
+      }
+      if (step && !results.length && !recordedPreflight(error)) {
+        recording.dropPending(step);
+        step = undefined;
       }
       failure = error;
       session.workflow.unavailable("a browser command was interrupted", step ? { id: step.id, command: step.native.command } : undefined);
@@ -1072,7 +1095,7 @@ export class AgentBrowserProxy {
     session.outcome = outcome;
     try {
       await this.remove(session, this.options.keepOpen?.() === true);
-      session.recording.finish(outcome);
+      await session.recording.finish(outcome);
       this.drop(session);
       return session.recording.id;
     } finally {
@@ -1373,8 +1396,15 @@ export class AgentBrowserProxy {
     try {
       wired = await this.wire(next);
       moving = { ...session, ...next, ...wired };
-      opened = await this.runNative(moving, "open", [site]);
-      if (opened.exitCode !== 0) throw new Error(`the open in Bao's task tab failed: ${opened.stderr || opened.stdout || `exit ${opened.exitCode}`}`);
+      const restoreOpen = session.recording.prepareRouteOpen(site);
+      await this.flushHar(session);
+      try {
+        opened = await this.runNative(moving, "open", [site]);
+        if (opened.exitCode !== 0) throw new Error(`the open in Bao's task tab failed: ${opened.stderr || opened.stdout || `exit ${opened.exitCode}`}`);
+      } catch (error) {
+        restoreOpen();
+        throw error;
+      }
     } catch (error) {
       try { if (moving) await this.flushHar(moving); }
       catch (flushError) { process.stderr.write(`Bao step record: network har stop failed: ${flushError instanceof Error ? flushError.message : String(flushError)}\n`); }
@@ -1385,7 +1415,6 @@ export class AgentBrowserProxy {
       }
       return fail(error);
     }
-    await this.flushHar(session);
     const old = { chrome: session.chrome, background: session.background, stateDir: session.stateDir };
     const waiting = this.waitOf(session) !== "off";
     Object.assign(session, moving, { browser: openedChoice(next.pick), missed: undefined, page: undefined });
@@ -1871,12 +1900,12 @@ export class AgentBrowserProxy {
     }
   }
 
-  private ownerClosed(session: Session): AgentBrowserCommandResult[] {
+  private async ownerClosed(session: Session): Promise<AgentBrowserCommandResult[]> {
     void this.disarmReloadBanner();
     const result = this.ownerResult("closed", session);
     session.abort.abort();
     session.workflow.unavailable("the owner wait did not finish");
-    session.recording.finish("session_closed");
+    await session.recording.finish("session_closed");
     return result;
   }
 
@@ -2074,7 +2103,8 @@ export class AgentBrowserProxy {
 
   private async run(session: Session, command: string, args: string[], readTimeoutMs?: number, bound?: AbortSignal): Promise<AgentBrowserCommandResult> {
     if (this.gone()) throw new Error(AGENT_DISCONNECTED);
-    if (command !== "network" || args[0] !== "har") await this.ensureHar(session);
+    await this.ensureHar(session);
+    if (command === "close") await this.flushHar(session);
     // The session's first call starts the native daemon, which takes seconds on a copy that restores many tabs. Only the session's end bounds it.
     if (!session.daemonStarted) {
       readTimeoutMs = undefined;
@@ -2296,7 +2326,7 @@ export class AgentBrowserProxy {
     await session.commandDone;
     await this.flushHar(session);
     await session.recording.endVideoCapture();
-    session.recording.finish(session.outcome);
+    await session.recording.finish(session.outcome);
     if (this.waitOf(session) !== "off") session.workflow.unavailable("the owner wait did not finish");
     try {
       try { await this.stopDaemon(session.stateDir); }

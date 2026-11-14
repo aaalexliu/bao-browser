@@ -342,8 +342,9 @@ for (const { wall, page, before, after } of [
   const moved = calls.findIndex((call) => call.port !== baoPort);
   assert.ok(moved > 0);
   assert.deepEqual(calls.slice(moved).map((call) => call.port), calls.slice(moved).map(() => String(h.endpoint.port)), "every later command acts in the owner's Chrome");
-  assert.equal(calls[moved]!.command, "open", "Bao opens the page in its task tab first");
-  assert.ok(calls.slice(moved + 1).every((call) => call.url === `${h.site}${page}`), "on the same page, in Bao's task tab");
+  const pageCalls = calls.slice(moved).filter((call) => call.command !== "network");
+  assert.equal(pageCalls[0]?.command, "open", "Bao opens the page in its task tab first");
+  assert.ok(pageCalls.slice(1).every((call) => call.url === `${h.site}${page}`), "on the same page, in Bao's task tab");
 
   const runs = new Library(h.home).listRuns();
   assert.equal(runs.length, 1, "the session and its run continue");
