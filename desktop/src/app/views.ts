@@ -2203,6 +2203,7 @@ interface InspectorStep {
 function receiptFiles(transfer: FileTransfer | undefined): string {
   if (!transfer) return "";
   const how = transfer.source === "download" ? `Chrome downloaded it${transfer.url ? ` from ${transfer.url}` : ""}.`
+    : transfer.source === "link" ? `Bao fetched the link from ${transfer.url} with the page's sign-in and did not open a tab.`
     : transfer.source === "pdf-viewer" ? `Chrome showed it as a PDF instead of downloading it, so Bao fetched it from ${transfer.url} with the page's sign-in.`
       : transfer.source === "file-input" ? "Bao set it on the page's file input."
         : "Bao clicked the target, caught the file chooser it opened, and set it there. No file panel opened.";

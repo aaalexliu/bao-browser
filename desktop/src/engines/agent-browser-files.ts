@@ -18,6 +18,7 @@ export type FileFact = { path: string } & ({ bytes: number; sha256: string } | {
 export type FileTransfer =
   | { command: "download"; source: "download"; url?: string; files: FileFact[] }
   | { command: "download"; source: "pdf-viewer"; url: string; files: FileFact[] }
+  | { command: "download"; source: "link"; url: string; files: FileFact[] }
   | { command: "upload"; source: "file-input" | "file-chooser"; files: FileFact[] };
 
 /** Size and SHA-256 of each file. A file Bao cannot read is kept with the reason. */

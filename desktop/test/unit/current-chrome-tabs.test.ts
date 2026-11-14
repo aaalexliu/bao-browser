@@ -117,6 +117,10 @@ async function fixture(t: TestContext) {
       if (method === "Target.closeTarget") closed.push(String(params.targetId));
       if (method === "Target.attachToTarget") return { sessionId: "page" };
       if (method === "Page.captureScreenshot") return { data: "iVBORw0KGgo=" };
+      if (method === "Runtime.evaluate" && String(params.expression ?? "").includes("__bao")) {
+        const expression = String(params.expression);
+        return { result: { value: expression.includes("return {") ? { href: "", opened: "" } : undefined } };
+      }
       return {};
     },
     sendUntilProgress(this: { send: (method: string, params?: Record<string, unknown>, sessionId?: string) => Promise<unknown> }, method: string, params: Record<string, unknown> = {}, sessionId?: string) {
