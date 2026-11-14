@@ -11,6 +11,7 @@ import { pageWall } from "../../src/cdp-live/page-wall";
 import { connectCdp, type CdpSocket } from "../../src/cdp-live/socket";
 import * as sockets from "../../src/cdp-live/socket";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
+import { readStepRecord } from "../../src/engines/step-har";
 import { AgentBrowserRun, type RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
 import type { BrowserPick } from "../../src/engines/browser-pick";
 import * as bao from "../../src/engines/bao-profile";
@@ -379,6 +380,17 @@ test("an open that lands on a sign-in URL in a Bao profile continues in the owne
     { fromStep: 1, route: "current", why: "fallback after a sign-in wall", userDataDir: h.sourceRoot, profile: "Default" },
   ]);
   assert.ok(await baoClosed(h.baoDir));
+});
+
+test("a route move that keeps an open keeps the agent's why", { timeout: scaledMs(60_000) }, async (t) => {
+  const h = await harness(t, "works");
+  const why = "Fetch the statement.";
+  await h.proxy.execute("open", [`${h.site}/gate`], "bao", false, undefined, {}, undefined, undefined, why);
+  const run = new Library(h.home).listRuns()[0]!;
+  const step = (run.steps as RecordedAgentBrowserCommand[])[0]!;
+  assert.equal(step.native.command, "open");
+  assert.equal(step.why, why);
+  assert.equal((await readStepRecord(h.home, run.id, step.id)).why, why);
 });
 
 test("a page with no wall stays in Bao's profile", { timeout: scaledMs(60_000) }, async (t) => {

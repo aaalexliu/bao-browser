@@ -425,12 +425,13 @@ export class AgentBrowserRun {
   }
 
   private applyCommand(step: RecordedAgentBrowserCommand, command: string, args: string[]): void {
+    const keepWhy = step.native.command === "open" && command === "open";
     const spoken = commandSentence(command, args, this.lastSnapshot || latestSnapshot(this.run.steps));
     step.caption = { text: spoken.text, ...(spoken.citation ? { citation: spoken.citation } : {}) };
     step.label = stepTitle({ caption: step.caption });
     step.native.command = command;
     step.native.args = [...args];
-    delete step.why;
+    if (!keepWhy) delete step.why;
     this.persist();
   }
 

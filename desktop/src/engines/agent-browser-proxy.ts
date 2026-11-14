@@ -101,15 +101,6 @@ function privatePicture(error: unknown): boolean {
   return error instanceof Error && error.message === OWNER_PRIVATE;
 }
 
-function recordedPreflight(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : "";
-  return message.startsWith("Native tab list failed")
-    || message.startsWith("no active Bao page metadata")
-    || message.startsWith("upload takes")
-    || message.startsWith("download takes")
-    || message.startsWith("This run downloaded no file");
-}
-
 function webSite(value: string | undefined): string | undefined {
   try {
     if (!value) return undefined;
@@ -837,10 +828,6 @@ export class AgentBrowserProxy {
           return results;
         }
         if (this.waitOf(session) !== "off") {
-          if (step && step.native.command !== "open") {
-            recording.dropPending(step);
-            step = undefined;
-          }
           results.push(...this.ownerResult("halted", session));
           return results;
         }
@@ -1004,10 +991,6 @@ export class AgentBrowserProxy {
         this.latest = { runId: recording.id, step, steps: recording.steps };
         if (!agentClosedTab) failure = new Error("Bao's task tab was closed");
         return results;
-      }
-      if (step && !results.length && !recordedPreflight(error)) {
-        recording.dropPending(step);
-        step = undefined;
       }
       failure = error;
       session.workflow.unavailable("a browser command was interrupted", step ? { id: step.id, command: step.native.command } : undefined);

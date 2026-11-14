@@ -553,6 +553,23 @@ async function waitFor(ready: () => Promise<boolean>): Promise<void> {
   }
 }
 
+test("a hanging click that disconnects stays failed and the run is not passed", async (t) => {
+  const f = await fixture(t);
+  try {
+    await f.proxy.execute("open", [], "copy");
+    const runId = f.proxy.activeRunId!;
+    const outcome = f.proxy.execute("click", ["hang"], undefined, false, undefined, {}, runId).then(() => undefined, (error: unknown) => error);
+    await waitFor(async () => access(path.join(f.root, "command.pid")).then(() => true, () => false));
+    f.proxy.disconnect();
+    assert.equal((await outcome as Error).name, "AbortError");
+    await f.proxy.close();
+    const run = new Library(path.join(f.root, "home")).readRun(runId);
+    const click = (run.steps as RecordedAgentBrowserCommand[]).find((step) => step.native.command === "click");
+    assert.equal(click?.status, "failed");
+    assert.notEqual(run.status, "passed");
+  } finally { await f.close(); }
+});
+
 for (const command of ["open", "click", "close"]) {
   test(`disconnect aborts a hung ${command} and removes only its session`, async (t) => {
     const f = await fixture(t);
@@ -756,7 +773,7 @@ test("recording write and screenshot failures do not change native command resul
   } finally { await f.close(); }
 });
 
-test("missing privacy metadata refuses page input before recording its arguments", async (t) => {
+test("missing privacy metadata refuses the fill and keeps the failed step", async (t) => {
   const f = await fixture(t);
   try {
     await f.proxy.execute("open", [], "copy");
@@ -764,7 +781,9 @@ test("missing privacy metadata refuses page input before recording its arguments
     await assert.rejects(f.proxy.execute("fill", ["#password", "private-owner-value"], undefined, false, undefined, {}, f.proxy.activeRunId), /privacy metadata unavailable/);
     const calls = await f.calls();
     assert.equal(calls.some((call) => call.args.includes("fill")), false);
-    assert.doesNotMatch(JSON.stringify(new Library(path.join(f.root, "home")).listRuns()), /private-owner-value/);
+    const fill = (new Library(path.join(f.root, "home")).listRuns()[0]!.steps as RecordedAgentBrowserCommand[]).find((step) => step.native.command === "fill");
+    assert.equal(fill?.status, "failed");
+    assert.match(fill?.reason ?? "", /privacy metadata unavailable/);
   } finally { await f.close(); }
 });
 
