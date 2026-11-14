@@ -636,14 +636,16 @@ async function clearForeign(dir: string): Promise<void> {
  * A current holder that lost the lock holds no Chrome connection, and the one that won it is this process.
  * An unreadable process list finds none, so the hold still opens.
  */
-async function olderHolderPids(root: string): Promise<number[]> {
+async function olderHolders(root: string): Promise<{ pid: number; axLog: string }[]> {
   const { processesNaming } = await import("../launch");
   let rows: { pid: number; command: string }[];
   try { rows = processesNaming("chrome-hold --root "); } catch { return []; }
   return rows.flatMap((row) => {
-    const match = / chrome-hold --root (.+?) --ax-log (.+)$/.exec(row.command);
-    if (!match || row.pid === process.pid || / --(?:initiator-fd|settle|listen-only)\b/.test(match[2]!)) return [];
-    try { return chromeDataPath(match[1]!) === root ? [row.pid] : []; }
+    const match = / chrome-hold --root (.+?) --ax-log /.exec(row.command);
+    if (!match || row.pid === process.pid) return [];
+    const axLog = row.command.slice(match.index + match[0].length);
+    if (/ --(?:initiator-fd|settle|listen-only)\b/.test(axLog)) return [];
+    try { return chromeDataPath(match[1]!) === root ? [{ pid: row.pid, axLog }] : []; }
     catch { return []; }
   });
 }
@@ -659,39 +661,43 @@ function processStart(pid: number): number | undefined {
 }
 
 /**
- * An older Bao kept no claim. It logged a checkbox press only when it turned the switch on, so a press after this
- * Chrome started means Bao turned it on. No press, or none since Chrome started, leaves the switch the owner's.
+ * An older Bao kept no claim. It logged a checkbox press only when it turned the switch on, so a press in that
+ * holder's own audit log after this Chrome started means Bao turned it on. No such press leaves the switch the owner's.
  */
-async function olderBaoTurnedSwitchOn(root: string, axLog: string): Promise<boolean> {
+async function olderBaoTurnedSwitchOn(root: string, axLogs: readonly string[]): Promise<boolean> {
   const pid = readFixture()?.chromePid ?? await oneChromePid(root);
   const started = pid ? processStart(pid) : undefined;
   if (started === undefined) return false;
-  let pressed: number | undefined;
-  let log = "";
-  try { log = readFileSync(axLog, "utf8"); } catch { return false; }
-  for (const line of log.split("\n")) {
-    try {
-      const entry = JSON.parse(line) as { role?: unknown; name?: unknown; at?: unknown };
-      if (entry.role === "AXCheckBox" && entry.name === REMOTE_CHECKBOX && typeof entry.at === "string") pressed = Date.parse(entry.at);
-    } catch { /* not a log entry */ }
+  for (const axLog of axLogs) {
+    let pressed: number | undefined;
+    let log = "";
+    try { log = readFileSync(axLog, "utf8"); } catch { continue; }
+    for (const line of log.split("\n")) {
+      try {
+        const entry = JSON.parse(line) as { role?: unknown; name?: unknown; at?: unknown };
+        if (entry.role === "AXCheckBox" && entry.name === REMOTE_CHECKBOX && typeof entry.at === "string") pressed = Date.parse(entry.at);
+      } catch { /* not a log entry */ }
+    }
+    if (pressed !== undefined && pressed >= started) return true;
   }
-  return pressed !== undefined && pressed >= started;
+  return false;
 }
 
 /** Ends every older holder before this one connects, so Chrome never has two Bao connections. */
-async function retireOlderHolders(dir: string, root: string, axLog: string): Promise<void> {
-  const older = await olderHolderPids(root);
+async function retireOlderHolders(dir: string, root: string): Promise<void> {
+  const older = await olderHolders(root);
   if (!older.length) return;
+  const pids = older.map((holder) => holder.pid);
   for (const signal of ["SIGTERM", "SIGKILL"] as const) {
-    for (const pid of older) {
+    for (const pid of pids) {
       try { process.kill(pid, signal); } catch { /* already gone */ }
     }
     const deadline = Date.now() + 10_000;
-    while (older.some(pidAlive) && Date.now() < deadline) await sleep(50);
-    if (!older.some(pidAlive)) break;
+    while (pids.some(pidAlive) && Date.now() < deadline) await sleep(50);
+    if (!pids.some(pidAlive)) break;
   }
-  if (older.some(pidAlive)) throw new Error("An older Bao Chrome connection did not stop");
-  if (await olderBaoTurnedSwitchOn(root, axLog)) writeClaim(dir, true);
+  if (pids.some(pidAlive)) throw new Error("An older Bao Chrome connection did not stop");
+  if (await olderBaoTurnedSwitchOn(root, older.map((holder) => holder.axLog))) writeClaim(dir, true);
 }
 
 async function removeOwnStarting(dir: string): Promise<void> {
@@ -845,7 +851,7 @@ export async function holdMain(
   }
   let exitCode = 0;
   try {
-    try { await retireOlderHolders(dir, root, axLog); }
+    try { await retireOlderHolders(dir, root); }
     catch (error) {
       writeHoldErr(dir, error instanceof Error ? error.message : String(error));
       throw error;
@@ -869,6 +875,10 @@ export async function holdMain(
         process.once("SIGINT", () => stopping.abort());
         const admitted = await waitForFirstSession(sessions, stopping.signal);
         if (!admitted) {
+          if (claimOwned(dir)) {
+            markStopping(dir, sessions.port);
+            await ownedOff(dir, root, axLog);
+          }
           await removeOwnStarting(dir);
         } else {
           let opening = true;

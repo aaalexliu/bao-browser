@@ -875,9 +875,10 @@ async function olderHoldSetup(t: TestContext, press: string, record: boolean) {
   await new Promise<void>((resolve) => counter.listen(0, "127.0.0.1", resolve));
   const port = (counter.address() as AddressInfo).port;
   const dir = await privateHoldDir(root);
-  const axLog = path.join(scratch, "audit", "current-chrome.jsonl");
-  await mkdir(path.dirname(axLog), { recursive: true });
-  await writeFile(axLog, `${JSON.stringify({ what: "AXPress", role: "AXCheckBox", name: "Allow remote debugging for this browser instance", window: "Inspect with Chrome Developer Tools", at: press, via: "BaoOSHelper" })}\n`);
+  const olderLog = path.join(scratch, "older-home", "audit", "current-chrome.jsonl");
+  const axLog = path.join(scratch, "new-home", "audit", "current-chrome.jsonl");
+  await mkdir(path.dirname(olderLog), { recursive: true });
+  await writeFile(olderLog, `${JSON.stringify({ what: "AXPress", role: "AXCheckBox", name: "Allow remote debugging for this browser instance", window: "Inspect with Chrome Developer Tools", at: press, via: "BaoOSHelper" })}\n`);
   // A holder from before the owner lock: same command line, one Chrome connection of its own, a record with no session port.
   const stubFile = path.join(scratch, "older-holder.js");
   await writeFile(stubFile, `
@@ -888,7 +889,7 @@ async function olderHoldSetup(t: TestContext, press: string, record: boolean) {
       process.stdout.write("held\\n");
     });
   `);
-  const older = spawn(process.execPath, [stubFile, "chrome-hold", "--root", root, "--ax-log", axLog], { stdio: ["ignore", "pipe", "inherit"] });
+  const older = spawn(process.execPath, [stubFile, "chrome-hold", "--root", root, "--ax-log", olderLog], { stdio: ["ignore", "pipe", "inherit"] });
   if (!older.pid) throw new Error("the older holder did not start");
   const olderPid = older.pid;
   const exited = new Promise<void>((resolve) => older.once("exit", () => resolve()));
@@ -914,7 +915,7 @@ async function olderHoldSetup(t: TestContext, press: string, record: boolean) {
     await rm(dir, { recursive: true, force: true });
     await rm(scratch, { recursive: true, force: true });
   });
-  return { root, dir, axLog, olderPid, olderExit, mostLive: () => mostLive };
+  return { root, dir, axLog, olderLog, olderPid, olderExit, mostLive: () => mostLive };
 }
 
 async function holderAfterLastSession(root: string, chrome: CurrentChrome): Promise<{ holder: number; exited: boolean }> {
@@ -932,6 +933,10 @@ test("an older Bao's live hold is retired before the new hold connects, and the 
   await older.olderExit();
   assert.equal(older.mostLive(), 1, "Chrome never had two Bao connections at once");
   assert.equal(pidAlive(older.olderPid), false, "the older holder ended");
+  assert.notEqual(older.olderLog, older.axLog);
+  let sessionAudit = "";
+  try { sessionAudit = await readFile(older.axLog, "utf8"); } catch { sessionAudit = ""; }
+  assert.equal(sessionAudit.includes("AXCheckBox"), false, "the upgraded session's audit has no press");
   assert.equal(claimOwned(older.dir), true, "a press since this Chrome started is Bao's switch");
   await chrome.cdp.send("Browser.getVersion");
   const { holder, exited } = await holderAfterLastSession(older.root, chrome);
