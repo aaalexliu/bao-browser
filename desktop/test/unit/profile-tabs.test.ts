@@ -6,6 +6,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { holdDir } from "../../src/cdp-live/chrome-hold";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { connectCdp } from "../../src/cdp-live/socket";
 import { AgentBrowserRun } from "../../src/engines/agent-browser-record";
@@ -71,7 +72,7 @@ test("live tabs are listed under the profile whose session URLs overlap, and a q
     },
     failed: {},
   }, { contexts });
-  assert.equal(listing.unmatched, 1);
+  assert.deepEqual(listing.unmatched, { tabs: [{ title: "Other", host: "other.example.test" }], omitted: 0 });
   assert.equal(listing.byDirectory["Profile 2"]?.tabs.length, 10);
   assert.equal(listing.byDirectory["Profile 2"]?.omitted, 4);
   assert.equal(listing.byDirectory["Profile 2"]?.tabs[0]?.host, "robinhood.com");
@@ -98,7 +99,8 @@ test("live tabs are listed under the profile whose session URLs overlap, and a q
   assert.match(text, /"Work compliance" docs.google.com/);
   assert.match(text, /and 4 more/);
   assert.match(text, /picked in Bao Settings/);
-  assert.match(text, /1 open tabs could not be matched/);
+  assert.match(text, /open in a profile Bao could not match: "Other" other.example.test/);
+  assert.doesNotMatch(text, /no open tabs/);
   const asked = profileQuestionResult(new ChromeProfileQuestion(root, [
     { directory: "Default", name: "Alex", email: "alex@example.test" },
     { directory: "Profile 2", name: "Work", email: "" },
@@ -107,7 +109,8 @@ test("live tabs are listed under the profile whose session URLs overlap, and a q
   assert.equal(JSON.stringify(asked).includes(secret), false);
   assert.equal(profiles.find((profile) => profile.directory === "Profile 2")?.tabs?.[0]?.host, "robinhood.com");
   assert.equal(profiles.find((profile) => profile.directory === "Profile 2")?.tabsOmitted, 4);
-  assert.equal(asked.structuredContent.tabsUnmatched, 1);
+  assert.deepEqual(asked.structuredContent.tabsUnmatched, listing.unmatched);
+  assert.equal((asked.structuredContent.profiles as { directory: string; tabs?: ProfileTab[] }[]).some((profile) => profile.tabs?.some((tab) => tab.host === "other.example.test")), false);
 });
 
 test("a readable profile keeps its live tabs when another profile's session cannot be read", () => {
@@ -123,14 +126,15 @@ test("a readable profile keeps its live tabs when another profile's session cann
   ]);
   assert.equal(listing.byDirectory["Profile 2"], undefined);
   assert.equal(listing.unavailable?.["Profile 2"], "the session file could not be read");
-  assert.equal(listing.unmatched, 1);
+  assert.deepEqual(listing.unmatched, { tabs: [{ title: "ComplySci", host: "complysci.com" }], omitted: 0 });
   const text = agentProfileText("/Chrome", [
     { directory: "Default", name: "Alex", email: "" },
     { directory: "Profile 2", name: "Work", email: "" },
   ], undefined, listing);
   assert.match(text, /"Robinhood" robinhood.com/);
   assert.match(text, /"Profile 2".*open tabs were not read \(the session file could not be read\)/);
-  assert.doesNotMatch(text, /ComplySci/);
+  assert.match(text, /open in a profile Bao could not match: "ComplySci" complysci.com/);
+  assert.doesNotMatch(text, /"Profile 2".*ComplySci/);
   const unread = confirmOpenTabs({
     urls: { Default: ["https://robinhood.com/stocks"] },
     failed: { "Profile 2": "denied" },
@@ -155,7 +159,64 @@ test("an equal overlap matches no profile", () => {
     failed: {},
   }, { contexts: [{ tabs: [{ targetId: "doc", url: "https://docs.google.com/document/budget", title: "Budget" }] }] });
   assert.deepEqual(listing.byDirectory, {});
-  assert.equal(listing.unmatched, 1);
+  assert.deepEqual(listing.unmatched, { tabs: [{ title: "Budget", host: "docs.google.com" }], omitted: 0 });
+  const text = agentProfileText("/Chrome", [
+    { directory: "Default", name: "Alex", email: "" },
+    { directory: "Profile 2", name: "Work", email: "" },
+  ], undefined, listing);
+  assert.match(text, /open in a profile Bao could not match: "Budget" docs.google.com/);
+  assert.doesNotMatch(text, /no open tabs/);
+});
+
+test("a partial or inexact overlap is not listed under a folder", () => {
+  const mail = { targetId: "mail", url: "https://mail.google.com/mail/u/0/", title: "Inbox" };
+  const stocks = { targetId: "rh", url: "https://robinhood.com/stocks", title: "Robinhood" };
+  const wrong = confirmOpenTabs({
+    urls: { "Profile 2": [mail.url] },
+    failed: { Default: "unreadable" },
+  }, { contexts: [{ tabs: [mail, stocks] }] });
+  assert.equal(wrong.byDirectory["Profile 2"], undefined);
+  assert.deepEqual(wrong.unmatched?.tabs.map((tab) => tab.host), ["mail.google.com", "robinhood.com"]);
+  const text = agentProfileText("/Chrome", [
+    { directory: "Default", name: "Alex", email: "" },
+    { directory: "Profile 2", name: "Work", email: "" },
+  ], undefined, wrong);
+  assert.match(text, /open in a profile Bao could not match: "Inbox" mail.google.com; "Robinhood" robinhood.com/);
+  assert.doesNotMatch(text, /no open tabs/);
+  assert.doesNotMatch(text, /"Profile 2".*Robinhood/);
+  const asked = profileQuestionResult(new ChromeProfileQuestion("/Chrome", [
+    { directory: "Default", name: "Alex", email: "" },
+    { directory: "Profile 2", name: "Work", email: "" },
+  ], undefined).withListing(wrong), { command: "open" }, false);
+  const profiles = asked.structuredContent.profiles as { tabs?: ProfileTab[] }[];
+  assert.equal(profiles.every((profile) => profile.tabs === undefined), true);
+  const slash = confirmOpenTabs({
+    urls: { Default: ["https://robinhood.com/stocks/"] },
+    failed: {},
+  }, { contexts: [{ tabs: [stocks] }] });
+  assert.equal(slash.byDirectory.Default, undefined);
+  assert.equal(slash.unmatched?.tabs[0]?.host, "robinhood.com");
+  const close = confirmOpenTabs({
+    urls: {
+      Default: ["https://a.example/1", "https://a.example/2", "https://a.example/3"],
+      "Profile 2": ["https://a.example/1", "https://a.example/2"],
+    },
+    failed: {},
+  }, { contexts: [{ tabs: [1, 2, 3, 4].map((n) => ({ targetId: String(n), url: `https://a.example/${n}`, title: `T${n}` })) }] });
+  assert.deepEqual(close.byDirectory, {});
+  assert.equal(close.unmatched?.tabs.length, 4);
+  const clear = confirmOpenTabs({
+    urls: { Default: ["https://a.example/1", "https://a.example/2", "https://a.example/3"], "Profile 2": [] },
+    failed: {},
+  }, { contexts: [{ tabs: [1, 2, 3].map((n) => ({ targetId: String(n), url: `https://a.example/${n}`, title: `T${n}` })) }] });
+  assert.equal(clear.byDirectory.Default?.tabs.length, 3);
+  assert.equal(clear.unmatched, undefined);
+  const many = confirmOpenTabs({ urls: {}, failed: {} }, {
+    contexts: [{ tabs: Array.from({ length: 12 }, (_, i) => ({ targetId: `u${i}`, url: `https://loose.example/${i}`, title: `Loose ${i}` })) }],
+  });
+  assert.equal(many.unmatched?.tabs.length, 10);
+  assert.equal(many.unmatched?.omitted, 2);
+  assert.deepEqual(many.byDirectory, {});
 });
 
 test("a hermetic run does not connect even when a port file names a listener", async () => {
@@ -175,7 +236,7 @@ test("a hermetic run does not connect even when a port file names a listener", a
   }
 });
 
-test("a fixture browser is read and the socket is closed without leaving debugging to us", { timeout: 60_000 }, async (t) => {
+test("a fixture browser is read through the shared connection and that join is released", { timeout: 120_000 }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-profile-tabs-chrome-"));
   await mkdir(path.join(root, "Profile 2"), { recursive: true });
   const exe = process.env.BAO_TEST_BROWSER || testChromium.executablePath();
@@ -191,6 +252,8 @@ test("a fixture browser is read and the socket is closed without leaving debuggi
   await new Promise<void>((resolve) => page.listen(0, "127.0.0.1", resolve));
   const pagePort = (page.address() as AddressInfo).port;
   const prior = process.env.BAO_LANE;
+  const previousFixture = process.env.BAO_CHROME_HOLD_FIXTURE;
+  const previousBrowser = process.env.BAO_TEST_BROWSER;
   try {
     const endpoint = await waitForEndpoint(path.join(root, "DevToolsActivePort"));
     const opened = await connectCdp(endpoint.port, endpoint.browserPath, { timeoutMs: 5000 });
@@ -200,6 +263,12 @@ test("a fixture browser is read and the socket is closed without leaving debuggi
     assert.equal(opened.isOpen, false);
     await waitForSavedUrl(path.join(root, "Default", "Sessions"), `http://127.0.0.1:${pagePort}/stocks?code=${secret}`);
     delete process.env.BAO_LANE;
+    if (!child.pid) throw new Error("fixture Chrome has no pid");
+    process.env.BAO_TEST_BROWSER = exe;
+    process.env.BAO_CHROME_HOLD_FIXTURE = JSON.stringify({
+      port: endpoint.port, browserPath: endpoint.browserPath, chromePid: child.pid, executable: exe,
+    });
+    await chmod(path.join(root, "DevToolsActivePort"), 0);
     const listing = await listProfileTabs(root, ["Default", "Profile 2"]);
     const packed = JSON.stringify(listing);
     assert.equal(listing.unread, undefined, packed);
@@ -208,6 +277,8 @@ test("a fixture browser is read and the socket is closed without leaving debuggi
     assert.deepEqual(listing.byDirectory.Default?.tabs.map((tab) => tab.host), ["127.0.0.1"]);
     assert.equal(listing.unavailable?.["Profile 2"], "no session file");
     assert.equal(listing.byDirectory["Profile 2"], undefined);
+    const held = JSON.parse(await readFile(path.join(holdDir(root), "hold.json"), "utf8")) as { port?: number };
+    assert.equal(Number.isInteger(held.port), true);
     const again = await connectCdp(endpoint.port, endpoint.browserPath, { timeoutMs: 5000 });
     const { targetInfos } = await again.send<{ targetInfos: { url?: string }[] }>("Target.getTargets", {}, undefined, 2000);
     assert.equal(targetInfos.some((target) => target.url?.startsWith("chrome://version")), false);
@@ -216,11 +287,25 @@ test("a fixture browser is read and the socket is closed without leaving debuggi
   } finally {
     if (prior === undefined) delete process.env.BAO_LANE;
     else process.env.BAO_LANE = prior;
+    if (previousFixture === undefined) delete process.env.BAO_CHROME_HOLD_FIXTURE;
+    else process.env.BAO_CHROME_HOLD_FIXTURE = previousFixture;
+    if (previousBrowser === undefined) delete process.env.BAO_TEST_BROWSER;
+    else process.env.BAO_TEST_BROWSER = previousBrowser;
+    await chmod(path.join(root, "DevToolsActivePort"), 0o600).catch(() => undefined);
+    await stopHold(holdDir(root));
+    await rm(holdDir(root), { recursive: true, force: true });
     child.kill("SIGKILL");
     page.close();
     await rm(root, { recursive: true, force: true });
   }
 });
+
+async function stopHold(dir: string): Promise<void> {
+  try {
+    const record = JSON.parse(await readFile(path.join(dir, "hold.json"), "utf8")) as { holderPid?: number };
+    if (record.holderPid && record.holderPid !== process.pid) process.kill(record.holderPid, "SIGTERM");
+  } catch { /* the hold already ended */ }
+}
 
 async function waitForHost(cdp: Awaited<ReturnType<typeof connectCdp>>, host: string): Promise<void> {
   const deadline = Date.now() + 5_000;
@@ -344,6 +429,13 @@ test("a closed tab in a session file is not listed, and a query is not either", 
     snssCommand(7, stillOnNow),
     pruneCommand(6, 0, 1),
   )), [{ url: "https://b.example/now", title: "Now" }]);
+  const missing = Buffer.alloc(8);
+  missing.writeUInt32LE(7, 0);
+  missing.writeInt32LE(1, 4);
+  assert.deepEqual(openTabsFromSnss(snssFile(
+    navigationCommand(7, "https://a.example/old", "Old", 0),
+    snssCommand(7, missing),
+  )), []);
   const root = await mkdtemp(path.join(tmpdir(), "bao-snss-synthetic-"));
   try {
     const sessions = path.join(root, "Default", "Sessions");

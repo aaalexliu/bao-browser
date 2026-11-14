@@ -1,6 +1,4 @@
-import path from "node:path";
-import { connectCdp, type CdpSocket } from "../cdp-live/socket";
-import { readDevToolsActivePort, type DevToolsEndpoint } from "../cdp-live/endpoint";
+import { withListeningConnection } from "../cdp-live/current-chrome";
 import { readSavedProfileTabs, type ProfileSessions, type SessionFailure } from "./snss-tabs";
 
 /**
@@ -26,8 +24,8 @@ export interface ProfileTabListing {
   byDirectory: Record<string, ProfileTabGroup>;
   /** Set when the live tab list was not read. A fixed phrase, never an error that might contain a URL. */
   unread?: string;
-  /** Live page targets whose profile folder could not be matched. Their URLs are not included. */
-  unmatched?: number;
+  /** Live tabs whose profile folder could not be matched. Titles and hosts only, never under a folder. */
+  unmatched?: ProfileTabGroup;
   /** A profile whose session file could not be used to match live tabs. A fixed phrase, never a URL. */
   unavailable?: Record<string, string>;
 }
@@ -101,17 +99,6 @@ function safeTitle(title: string): string {
   return trimField(cut, PROFILE_TAB_TITLE_MAX);
 }
 
-/** Page identity for matching a live context to a session file. Not shown to the model. */
-function urlKey(url: string): string | undefined {
-  let parsed: URL;
-  try { parsed = new URL(url); }
-  catch { return undefined; }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return undefined;
-  const pathName = parsed.pathname.replace(/\/$/, "") || "/";
-  const port = parsed.port ? `:${parsed.port}` : "";
-  return `${parsed.protocol}//${parsed.hostname}${port}${pathName}${parsed.search}`;
-}
-
 /**
  * Live page targets grouped by browser context. Does not open a tab and does not assign a profile folder.
  * Does not close the caller's socket.
@@ -143,8 +130,9 @@ export async function listProfileTabs(root: string, directories: readonly string
 }
 
 /**
- * Match each live context to the profile whose session URLs overlap it most, then list that context's live tabs.
- * A tie matches no profile. URLs are stripped here, at the output boundary.
+ * Match each live context to one profile only when that profile's session URLs cover most of its live tabs exactly
+ * and no other profile comes close. A weak match, including one while another session could not be read, stays unassigned.
+ * URLs are stripped here, at the output boundary.
  */
 export function confirmOpenTabs(sessions: ProfileSessions, live: LivePages): ProfileTabListing {
   const unavailable: Record<string, string> = {};
@@ -152,35 +140,41 @@ export function confirmOpenTabs(sessions: ProfileSessions, live: LivePages): Pro
   const failed = Object.keys(unavailable).length ? { unavailable } : {};
   if (live.unread) return { byDirectory: {}, unread: live.unread, ...failed };
   const assigned = new Map<string, LivePage[]>();
-  let unmatched = 0;
+  const loose: LivePage[] = [];
+  const anyFailed = Object.keys(sessions.failed).length > 0;
   for (const context of live.contexts) {
-    const directory = bestProfile(context, sessions.urls);
+    const directory = clearProfile(context, sessions.urls, anyFailed);
     if (!directory) {
-      unmatched += context.tabs.length;
+      loose.push(...context.tabs);
       continue;
     }
     assigned.set(directory, [...(assigned.get(directory) ?? []), ...context.tabs]);
   }
   const byDirectory: Record<string, ProfileTabGroup> = {};
   for (const [directory, pages] of assigned) byDirectory[directory] = capTabs(pagesToTabs(pages));
-  return { byDirectory, ...(unmatched ? { unmatched } : {}), ...failed };
+  const unmatched = capTabs(pagesToTabs(loose));
+  return { byDirectory, ...(unmatched.tabs.length ? { unmatched } : {}), ...failed };
 }
 
-function bestProfile(context: LiveContext, urls: Record<string, string[]>): string | undefined {
-  const liveKeys = context.tabs.map((tab) => urlKey(tab.url)).filter((key): key is string => !!key);
+function clearProfile(context: LiveContext, urls: Record<string, string[]>, anyFailed: boolean): string | undefined {
+  const live = context.tabs.map((tab) => tab.url);
+  if (!live.length) return undefined;
   let best: { directory: string; count: number } | undefined;
-  let tie = false;
+  let second = 0;
   for (const [directory, saved] of Object.entries(urls)) {
-    const keys = new Set(saved.map(urlKey).filter((key): key is string => !!key));
+    const keys = new Set(saved);
     let count = 0;
-    for (const key of liveKeys) if (keys.has(key)) count++;
+    for (const url of live) if (keys.has(url)) count++;
     if (!count) continue;
     if (!best || count > best.count) {
+      second = best?.count ?? 0;
       best = { directory, count };
-      tie = false;
-    } else if (count === best.count) tie = true;
+    } else if (count > second) second = count;
   }
-  return best && !tie ? best.directory : undefined;
+  if (!best || best.count * 2 <= live.length) return undefined;
+  if (second > 0 && second * 2 >= best.count) return undefined;
+  if (anyFailed && best.count !== live.length) return undefined;
+  return best.directory;
 }
 
 function pagesToTabs(pages: LivePage[]): ProfileTab[] {
@@ -199,27 +193,12 @@ function pagesToTabs(pages: LivePage[]): ProfileTab[] {
 /**
  * Live pages from a debugger that is already listening on this Chrome folder.
  * A hermetic run does not scan or connect: a test that did would raise the owner's Allow sheet.
- * This connects its own socket and closes it before returning. It does not turn debugging on,
- * and it does not join the Chrome hold, so nothing is left on for a later session to end.
+ * This joins Bao's shared connection and releases that join before returning. It does not turn debugging on.
  */
 export async function readListeningProfileTabs(root: string): Promise<LivePages> {
-  if (process.env.BAO_LANE === "hermetic") return { contexts: [], unread: "remote debugging is off" };
-  const endpoint = await listeningEndpoint(root);
-  if (!endpoint) return { contexts: [], unread: "remote debugging is off" };
-  let cdp: CdpSocket | undefined;
-  try {
-    cdp = await connectCdp(endpoint.port, endpoint.browserPath, { timeoutMs: 2000 });
-    return { contexts: await readLivePages(cdp) };
-  } catch {
-    return { contexts: [], unread: "remote debugging is off" };
-  } finally {
-    cdp?.close();
-  }
-}
-
-async function listeningEndpoint(root: string): Promise<DevToolsEndpoint | undefined> {
-  try { return await readDevToolsActivePort(path.join(root, "DevToolsActivePort")); }
-  catch { return undefined; }
+  const contexts = await withListeningConnection(root, (cdp) => readLivePages(cdp));
+  if (!contexts) return { contexts: [], unread: "remote debugging is off" };
+  return { contexts };
 }
 
 function profileLabel(profile: { directory: string; name: string; email: string }): string {
@@ -241,13 +220,19 @@ export function agentProfileText(root: string, profiles: { directory: string; na
     if (failed) return `${name}: open tabs were not read (${failed})${mark}`;
     if (read.unread) return `${name}: open tabs were not read (${read.unread})${mark}`;
     const group = read.byDirectory[profile.directory];
+    if (!group && read.unmatched) return `${name}: open tabs were not matched to this folder${mark}`;
     const tabs = group?.tabs ?? [];
     const body = tabs.length ? tabs.map(tabText).join("; ") : "no open tabs";
     const more = group?.omitted ? `; and ${group.omitted} more` : "";
     return `${name}: ${body}${more}${mark}`;
   });
-  const unmatched = read.unmatched ? [`${read.unmatched} open tabs could not be matched to a profile.`] : [];
+  const unmatched = read.unmatched ? [unmatchedText(read.unmatched)] : [];
   return [head, ...lines, ...unmatched].join("\n");
+}
+
+function unmatchedText(group: ProfileTabGroup): string {
+  const more = group.omitted ? `; and ${group.omitted} more` : "";
+  return `open in a profile Bao could not match: ${group.tabs.map(tabText).join("; ")}${more}`;
 }
 
 /** The example folder is a call shape, not the profile the model should pick. */

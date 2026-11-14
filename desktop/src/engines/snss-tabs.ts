@@ -144,11 +144,9 @@ function pruneHistory(tab: TabState, index: number, count: number): void {
 }
 
 function selectedEntry(tab: TabState): SavedTab | undefined {
+  if (tab.current !== undefined) return tab.history.get(tab.current);
   const keys = [...tab.history.keys()].sort((a, b) => a - b);
-  if (!keys.length) return undefined;
-  const wanted = tab.current ?? keys[keys.length - 1]!;
-  const found = keys.find((key) => key >= wanted) ?? keys[keys.length - 1]!;
-  return tab.history.get(found);
+  return keys.length ? tab.history.get(keys[keys.length - 1]!) : undefined;
 }
 
 function readNavigation(payload: Buffer): { tab: number; index: number; url: string; title: string } | undefined {

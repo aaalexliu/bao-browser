@@ -871,9 +871,8 @@ test("several Chrome profiles and no named one open nothing and record no run; a
     await chromeProfiles(f.sourceRoot, { Default: { name: "Alex", user_name: "alex@example.test" }, "Profile 2": { name: "Synthetic" } });
     const question = await f.proxy.execute("open", ["http://127.0.0.1/"], "copy").then(() => undefined, (error: unknown) => error);
     assert.ok(question instanceof ChromeProfileQuestion);
-    assert.equal(question.listing?.unread, undefined);
-    assert.deepEqual(question.listing?.byDirectory.Default, { tabs: [], omitted: 0 });
-    assert.deepEqual(question.listing?.byDirectory["Profile 2"], { tabs: [], omitted: 0 });
+    assert.equal(question.listing?.unread, "remote debugging is off");
+    assert.deepEqual(question.listing?.byDirectory, {});
     assert.deepEqual(question.profiles.map((profile) => profile.directory), ["Default", "Profile 2"]);
     await assert.rejects(f.proxy.execute("open", ["http://127.0.0.1/"], "copy", false, "Profile 9", {}, f.proxy.activeRunId),
       /Chrome has no profile "Profile 9" in .*\. Choose one of: "Default" \(Alex, alex@example\.test\); "Profile 2" \(Synthetic\)\./);

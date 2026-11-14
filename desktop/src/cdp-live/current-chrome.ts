@@ -360,21 +360,30 @@ function profileDirectoryFromReported(reported: string | undefined, root: string
 }
 
 /**
- * The profile the listening browser reports, found without DevToolsActivePort. The version page is read on the
- * consent-managed hold, after a listener is confirmed. Undefined when nothing listens, the hold cannot be had, the
- * report fails, or it times out. A hermetic run uses only the throwaway listener a test named.
+ * Joins the consent-managed connection when a listener is already up, runs `read`, and releases that join.
+ * Does not turn debugging on and does not open a window. Undefined when nothing listens, the hold cannot be had,
+ * the read fails, or it times out. A hermetic run uses only the throwaway listener a test named.
  */
-export async function listeningProfileDirectory(root: string, axLog?: string): Promise<string | undefined> {
+export async function withListeningConnection<T>(root: string, read: (cdp: CdpSocket) => Promise<T>, axLog?: string): Promise<T | undefined> {
   const fixture = holdFixtureEndpoint();
   if (!fixture && process.env.BAO_LANE === "hermetic") return undefined;
   if (!fixture && !await dailyListener(root)) return undefined;
   let chrome: CurrentChrome | undefined;
   try {
     chrome = await joinOrStartHold({ root, axLog: axLog ?? path.join(holdDir(root), "ax.jsonl") });
-    return profileDirectoryFromReported(await defaultContextProfile(chrome.cdp), root);
+    return await read(chrome.cdp);
   } catch {
     return undefined;
   } finally { chrome?.detach(); }
+}
+
+/**
+ * The profile the listening browser reports, found without DevToolsActivePort. The version page is read on the
+ * consent-managed hold, after a listener is confirmed. Undefined when nothing listens, the hold cannot be had, the
+ * report fails, or it times out. A hermetic run uses only the throwaway listener a test named.
+ */
+export async function listeningProfileDirectory(root: string, axLog?: string): Promise<string | undefined> {
+  return withListeningConnection(root, async (cdp) => profileDirectoryFromReported(await defaultContextProfile(cdp), root), axLog);
 }
 
 async function dailyListener(root: string): Promise<DevToolsEndpoint | undefined> {

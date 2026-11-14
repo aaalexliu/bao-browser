@@ -251,12 +251,15 @@ export function profileQuestionResult(question: ChromeProfileQuestion, call: Rec
       ...(listing?.unread ? { tabsUnread: listing.unread } : {}),
       ...(listing?.unmatched ? { tabsUnmatched: listing.unmatched } : {}),
       profiles: question.profiles.map((profile) => {
-        const group = listing?.byDirectory[profile.directory];
+        const group = listing.byDirectory[profile.directory];
         const failed = listing.unread ? undefined : listing.unavailable?.[profile.directory];
+        const matched = group
+          ? { tabs: group.tabs, ...(group.omitted ? { tabsOmitted: group.omitted } : {}) }
+          : listing.unmatched ? {} : { tabs: [] };
         return {
           ...profile,
           ...(profile.directory === question.settings ? { pickedInSettings: true } : {}),
-          ...(listing.unread || failed ? (failed ? { tabsUnread: failed } : {}) : { tabs: group?.tabs ?? [], ...(group?.omitted ? { tabsOmitted: group.omitted } : {}) }),
+          ...(listing.unread || failed ? (failed ? { tabsUnread: failed } : {}) : matched),
         };
       }) },
     ...(ui ? { _meta: { baoToolCard: card } } : {}),
