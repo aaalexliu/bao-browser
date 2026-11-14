@@ -426,3 +426,73 @@ test("replay on the owner's Chrome starts and finishes while another owner tab n
     await rm(root, { recursive: true, force: true });
   }
 });
+
+// Headless Chrome does not join a second profile window to this process. A second browser context on the same
+// debugging port is how remote debugging lists another profile's tabs. The same-profile tab is one the owner opened.
+test("Running Chrome open returns only Bao's task tab, not every profile's tabs", { skip: !binary, timeout: scaledMs(90_000) }, async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-open-tab-dump-"));
+  const userData = path.join(root, "chrome");
+  await chromeProfiles(userData, {
+    Default: { name: "Personal" },
+    "Profile 1": { name: "Work" },
+    "Profile 2": { name: "Other" },
+  });
+  const server = createServer((request, response) => {
+    response.setHeader("content-type", "text/html");
+    const url = request.url ?? "/";
+    response.end(`<!doctype html><title>${url.startsWith("/task") ? "Task" : "Other"}</title><p>${url}</p>`);
+  });
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const sameProfileSecret = `${base}/mail?id=personal-gmail-secret`;
+  const otherProfileSecret = `${base}/oauth?code=live-oauth-code`;
+  const chrome = await launchOwnedChromeEndpoint({
+    userDataDir: userData, headless: true, args: ["--profile-directory=Profile 1"],
+  });
+  const endpoint = await readDevToolsActivePort(chrome.portFile);
+  const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
+  const probe = await connectCdp(endpoint.port, endpoint.browserPath);
+  t.mock.method(profileCopy, "chromeProfilesRoot", () => userData);
+  t.mock.method(currentChrome, "openCurrentChrome", async () => {
+    const shared = await shareConnection(cdp);
+    return { pid: chrome.pid ?? 7, executable: pinTestBrowser(), root: userData, endpoint: shared.endpoint, cdp, closed: cdp.disconnected,
+      isClosed: () => !cdp.isOpen, detach: () => { shared.close(); cdp.close(); } };
+  });
+  const home = path.join(root, "home");
+  const proxy = new AgentBrowserProxy({ home, sourceRoot: userData, executable: binary });
+  try {
+    await probe.send("Target.createTarget", { url: sameProfileSecret });
+    const { browserContextId } = await probe.send<{ browserContextId: string }>("Target.createBrowserContext");
+    await probe.send("Target.createTarget", { url: otherProfileSecret, browserContextId });
+    const { targetInfos } = await probe.send<{ targetInfos: { type: string; url: string }[] }>("Target.getTargets");
+    const pages = targetInfos.filter(target => target.type === "page").map(target => target.url);
+    assert.ok(pages.includes(sameProfileSecret), pages.join("\n"));
+    assert.ok(pages.includes(otherProfileSecret), pages.join("\n"));
+
+    const opened = await proxy.execute("open", [`${base}/task`], "current", false, "Profile 1");
+    assert.equal(opened[0]!.exitCode, 0, opened[0]!.stderr);
+    const reply = opened.map(result => `${result.stdout}\n${result.stderr}`).join("\n");
+    const tabLines = reply.split("\n").filter(line => /\[[^\]]+\]/.test(line) && line.includes("http"));
+    assert.deepEqual(tabLines, tabLines.filter(line => line.includes("(Bao task tab)") && line.includes(`${base}/task`)), reply);
+    assert.equal(tabLines.length, 1, reply);
+    assert.doesNotMatch(reply, /personal-gmail-secret|live-oauth-code/);
+
+    const listed = await proxy.execute("tab", ["list"], undefined, false, undefined, {}, proxy.activeRunId);
+    const json = await proxy.execute("tab", ["list", "--json"], undefined, false, undefined, {}, proxy.activeRunId);
+    const shown = [listed, json].flat().map(result => `${result.stdout}\n${result.stderr}`).join("\n");
+    assert.doesNotMatch(shown, /personal-gmail-secret|live-oauth-code/);
+    assert.match(shown, /\(Bao task tab\)/);
+
+    const run = new Library(home).readRun(proxy.activeRunId!);
+    const recorded = JSON.stringify(run);
+    assert.doesNotMatch(recorded, /personal-gmail-secret|live-oauth-code/);
+    assert.match(recorded, /\(Bao task tab\)/);
+  } finally {
+    await proxy.end();
+    probe.close();
+    cdp.close();
+    await chrome.close();
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});

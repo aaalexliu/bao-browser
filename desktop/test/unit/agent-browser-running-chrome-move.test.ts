@@ -202,7 +202,7 @@ ${LIST_TARGETS}
  const tabs=(await listTargets(endpoint.href)).filter(t=>t.type==='page');
  const tab=tabs.find(t=>t.id===bound)??tabs.find(t=>!t.url.startsWith('chrome'))??tabs[0];
  fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,port:endpoint.port,url:tab.url})+'\\n');
- if(command==='tab'){console.log(rest.includes('--json')?JSON.stringify({data:{tabs:[{targetId:tab.id,url:tab.url,title:tab.title,active:true}]}}):'→ [t1] '+tab.title);return;}
+ if(command==='tab'){console.log(rest.includes('--json')?JSON.stringify({data:{tabs:[{tabId:'t1',targetId:tab.id,url:tab.url,title:tab.title,active:true}]}}):'→ [t1] '+tab.title);return;}
  const cdp=await connectCdp(Number(endpoint.port),endpoint.pathname);
  try{
   const {sessionId}=await cdp.send('Target.attachToTarget',{targetId:tab.id,flatten:true});
@@ -368,7 +368,7 @@ test("an open that lands on a sign-in URL in a Bao profile continues in the owne
   const h = await harness(t, "works");
   const [opened, tabs] = await h.proxy.execute("open", [`${h.site}/gate`], "bao");
   assert.equal(opened!.stdout, `✓ Article\n  ${h.site}/gate\n`, "the requested page, opened in the owner's Chrome");
-  assert.equal(tabs!.stdout, "→ [t1] Article\n");
+  assert.equal(tabs!.stdout, "→ [t1] (Bao task tab) Article\n");
   assert.ok(savedSteps(h.home)[0]!.summary!.text.startsWith(`Bao's own browser hit a sign-in page on 127.0.0.1; continued in your running Chrome (Chrome profile "Default", Owner) over remote debugging. Take a fresh snapshot before acting. Went to `));
   assert.equal(h.raises().length, 0, "a successful move does not select or Dock-raise Bao's window");
   assert.match(h.proxy.pickLines[0]!, /^Browser: Running Chrome over remote debugging, fallback after a sign-in wall\./);

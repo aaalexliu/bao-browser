@@ -905,7 +905,7 @@ export class AgentBrowserProxy {
           const opened = await this.moveAway(session, BOUND_REASON, site, true);
           if (opened) {
             await this.settleWall(session);
-            results.push(...this.waitOf(session) !== "off" ? this.ownerResult("halted", session) : [opened, await this.run(session, "tab", ["list"])]);
+            results.push(...this.waitOf(session) !== "off" ? this.ownerResult("halted", session) : [opened, await this.forward(session, "tab", ["list"])]);
             return results;
           }
         } else if (continuing && site && "importLogin" in session.chrome) this.imported(session, await session.chrome.importLogin(site));
@@ -963,7 +963,7 @@ export class AgentBrowserProxy {
         if (view) return [{ ...results[0], stdout: view.kind === "find" ? findView(native, view.find) : diffView(before, native) }];
       }
       if (command === "open" && results[0]!.exitCode === 0) {
-        // Keep the native list intact, including stable tab ids and every restored tab on the site's host.
+        // A copy or Bao profile keeps the native list, including restored tabs. Running Chrome keeps only Bao's task tabs.
         results.push(await this.forward(session, "tab", ["list"]));
       }
       return results;
@@ -1550,9 +1550,10 @@ export class AgentBrowserProxy {
   }
 
   /**
-   * Runs one agent command. On the owner's Chrome over remote debugging, a tab list leaves out Chrome's own surfaces, such as the
-   * Gemini panel and side panels, and marks Bao's task tabs. Switching to or closing such a surface is refused. Switching to or
-   * closing a tab the owner opened is refused too; the agent opens that page's URL in the task tab instead.
+   * Runs one agent command. On the owner's Chrome over remote debugging, a tab list names only Bao's task tabs in this session's
+   * profile, marked as such, and leaves out the owner's tabs, other profiles, and Chrome's own surfaces, such as the Gemini panel.
+   * Switching to or closing such a surface is refused. Switching to or closing a tab the owner opened is refused too; the agent
+   * opens that page's URL in the task tab instead.
    */
   private async forward(session: Session, command: string, args: string[]): Promise<AgentBrowserCommandResult> {
     const parsed = command === "tab" ? parseTabArgs(args) : undefined;
@@ -1567,7 +1568,8 @@ export class AgentBrowserProxy {
     if (parsed.action === "close" && parsed.ref === undefined && !named?.tabId) return { stdout: "", stderr: "\u2717 No current tab to close.\n", exitCode: 1 };
     const list = parsed.action === "list";
     const ref = parsed.ref ?? named?.tabId;
-    const { targetInfos } = await session.chrome.cdp.send<{ targetInfos: ChromeTarget[] }>("Target.getTargets", {}, undefined, 5000);
+    const { targetInfos } = await session.chrome.cdp.send<{ targetInfos: (ChromeTarget & { browserContextId?: string })[] }>("Target.getTargets", {}, undefined, 5000);
+    const profileContext = targetInfos.find((target) => target.targetId === session.targetId)?.browserContextId;
     const surfaces = new Set<string>();
     for (const tab of list ? tabs : named ? [named] : []) {
       const info = targetInfos.find((target) => target.targetId === tab.targetId);
@@ -1595,20 +1597,26 @@ export class AgentBrowserProxy {
     }
     if (parsed.action !== "list") return result;
     const task = (tab: NativeTab | undefined) => !!tab?.targetId && session.taskTabs.has(tab.targetId);
+    const inProfile = (tab: NativeTab | undefined) => {
+      if (!profileContext || !tab?.targetId) return true;
+      const info = targetInfos.find((target) => target.targetId === tab.targetId);
+      return info?.browserContextId === undefined || info.browserContextId === profileContext;
+    };
+    const shown = (tab: NativeTab | undefined) => task(tab) && inProfile(tab) && (!tab?.tabId || !surfaces.has(tab.tabId));
     if (parsed.json) {
       try {
-        const parsed = JSON.parse(result.stdout) as { data?: { tabs?: (NativeTab & { baoTaskTab?: boolean })[] } };
-        if (parsed.data?.tabs) {
-          parsed.data.tabs = parsed.data.tabs.filter((tab) => !tab.tabId || !surfaces.has(tab.tabId)).map((tab) => task(tab) ? { ...tab, baoTaskTab: true } : tab);
-        }
-        return { ...result, stdout: `${JSON.stringify(parsed)}\n` };
-      } catch { return result; }
+        const body = JSON.parse(result.stdout) as { data?: { tabs?: (NativeTab & { baoTaskTab?: boolean })[] } };
+        if (body.data?.tabs) body.data.tabs = body.data.tabs.filter(shown).map((tab) => ({ ...tab, baoTaskTab: true }));
+        return { ...result, stdout: `${JSON.stringify(body)}\n` };
+      } catch {
+        return { stdout: "", stderr: result.stderr || "Native tab list was not JSON.\n", exitCode: 1 };
+      }
     }
     const stdout = result.stdout.split("\n").flatMap((line) => {
       const tabId = /^(?:→|\s) \[([^\]]+)\] /u.exec(line)?.[1];
       if (!tabId) return [line];
-      if (surfaces.has(tabId)) return [];
-      return [task(tabs.find((tab) => tab.tabId === tabId)) ? line.replace(`[${tabId}] `, `[${tabId}] (Bao task tab) `) : line];
+      if (!shown(tabs.find((tab) => tab.tabId === tabId))) return [];
+      return [line.replace(`[${tabId}] `, `[${tabId}] (Bao task tab) `)];
     }).join("\n");
     return { ...result, stdout };
   }
