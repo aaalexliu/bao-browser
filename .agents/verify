@@ -1,0 +1,62 @@
+#!/bin/sh
+# Match the required Guardrails static gates and every group in test/essential.json.
+cd "$(dirname "$0")/.." || exit 1
+start=$(date +%s)
+log=$(mktemp) || exit 1
+scratch=$(mktemp -d) || { rm -f "$log"; exit 1; }
+trap 'rm -f "$log"; rm -rf "$scratch"' 0
+
+run() {
+  step=$1
+  shift
+  printf 'verify: running %s\n' "$step"
+  if ! "$@" >"$log" 2>&1; then
+    tail -40 "$log"
+    echo "verify: FAIL at $step ($(( $(date +%s) - start ))s)"
+    exit 1
+  fi
+}
+
+if [ ! -d node_modules ] || [ ! -d web/node_modules ]; then
+  run 'npm ci' npm ci
+fi
+run 'types' npm run typecheck
+run 'lint' npm run lint
+run 'architecture: baselines' npm run baselines:check
+run 'architecture: imports' npm run arch:check
+run 'architecture: guardrails' npm run test:guardrails
+run 'architecture: manifest' node scripts/run-node-test.mjs test/essential-manifest.test.mjs
+run 'desktop emit' npm run build:desktop -- --noCheck
+
+# CI downloads Chromium on a cache miss. Keep its cache outside the isolated test HOME.
+export PLAYWRIGHT_BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH:-"$(cd ~ && pwd)/Library/Caches/ms-playwright"}
+if ! node -e 'const { chromium } = require("playwright"); process.exit(require("node:fs").existsSync(chromium.executablePath()) ? 0 : 1)'; then
+  run 'install Chromium' npx playwright install chromium
+fi
+unset OPENAI_API_KEY ANTHROPIC_API_KEY GROQ_API_KEY XAI_API_KEY CURSOR_API_KEY
+export BAO_HEAL_CURSOR_ACCOUNT=0
+
+# Use the same manifest and runner as CI, including any groups added later.
+groups=$(node -e 'console.log(Object.keys(require("./test/essential.json")).join(" "))') || exit 1
+for group in $groups; do
+  if [ "$(node -e 'console.log(!!require("./test/essential.json")[process.argv[1]].ffmpeg)' "$group")" = true ] && ! command -v ffmpeg >/dev/null 2>&1; then
+    echo "verify: FAIL at essential: $group (ffmpeg required by manifest, $(( $(date +%s) - start ))s)"
+    exit 1
+  fi
+  if [ "$group" = experian ]; then
+    run 'stage pinned agent-browser' node desktop/packaging/stage-agent-browser.mjs "$scratch/agent-browser"
+    export AGENT_BROWSER_PROXY_BINARY="$scratch/agent-browser/agent-browser"
+  fi
+  mkdir "$scratch/$group" || exit 1
+  printf 'verify: running essential: %s\n' "$group"
+  if ! HOME="$scratch/$group" node scripts/test-essential.mjs "$group" >"$log" 2>&1; then
+    tail -40 "$log"
+    echo "verify: FAIL at essential: $group ($(( $(date +%s) - start ))s)"
+    exit 1
+  fi
+  unset AGENT_BROWSER_PROXY_BINARY
+done
+
+base=$(git merge-base HEAD origin/main 2>"$log") || { tail -40 "$log"; echo "verify: FAIL at merge base ($(( $(date +%s) - start ))s)"; exit 1; }
+run 'git diff --check' git diff --check "$base"
+echo "verify: PASS ($(( $(date +%s) - start ))s)"
