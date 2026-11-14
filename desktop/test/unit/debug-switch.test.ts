@@ -14,9 +14,9 @@ import {
   claimOwned,
   clearClaim,
   finishOwnedSwitch,
-  productionTurnOff,
   readClaim,
   setSwitchByAx,
+  turnSwitchOff,
   writeClaim,
 } from "../../src/cdp-live/debug-switch";
 import { REMOTE_CHECKBOX } from "../../src/cdp-live/consent";
@@ -111,7 +111,7 @@ test("the switch moves by pid through the checkbox, and a dead pid is not a succ
 });
 
 test("a test process refuses to change the switch before any platform return", async () => {
-  await assert.rejects(productionTurnOff("/tmp/DevToolsActivePort", "/tmp/ax.jsonl"), /tests never change/);
+  await assert.rejects(turnSwitchOff(1, "/tmp/ax.jsonl"), /tests never change/);
   await settleDebugSwitch();
 });
 

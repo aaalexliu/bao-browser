@@ -194,9 +194,3 @@ export async function turnSwitchOff(
   return setSwitchByAx(helper ?? chromeHelper(), pid, false, axLog);
 }
 
-/** Kept so a test process still throws before any platform return. The hold uses turnSwitchOff. */
-export async function productionTurnOff(_portFile: string, _axLog: string): Promise<void> {
-  if (testProcess()) throw new Error("tests never change Chrome's debugging switch");
-  if (process.platform !== "darwin") return;
-  throw new Error("the hold turns the debugging switch off by pid");
-}
