@@ -342,27 +342,31 @@ export async function downloadByClick(cdp: CdpSocket, agentTab: string, saved: s
     }
     if (clicked.exitCode !== 0) return { result: clicked };
     if (href && !started) {
+      let kind: "file" | "page" | undefined;
+      let http = false;
       try {
-        const kind = await fetchLink(cdp, agentTab, saved, href, named);
-        if (kind === "file") {
-          await closeOpened(cdp, agentTab, before);
-          return linkSaved(saved, href);
-        }
-        if (!started) return { result: failed(`The link returned a page, not a file (${href}).`) };
+        kind = await fetchLink(cdp, agentTab, saved, href, named);
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        if (!started && /HTTP \d+/.test(message)) return { result: failed(`Bao could not fetch the link (${href}).`) };
-        if (!started && !contextId) return { result: failed(`Bao could not open the link in this tab's Chrome profile (${href}).`) };
-        if (!started && contextId) {
-          const background = await openBackground(cdp, href, contextId);
-          if (!background) return { result: failed(`Bao could not open the link in this tab's Chrome profile (${href}).`) };
-          try {
-            const outcome = await saveBackground(cdp, background, saved, href, () => ({ guid: started, url }), states);
-            if (outcome) return outcome;
-            return { result: failed(`The link started no download and showed no PDF within ${START_MS / 1000} s (${href}).`) };
-          } finally {
-            await cdp.send("Target.closeTarget", { targetId: background }, undefined, 5000).catch(() => undefined);
-          }
+        http = /HTTP \d+/.test(error instanceof Error ? error.message : String(error));
+      }
+      if (kind === "file") {
+        await closeOpened(cdp, agentTab, before);
+        return linkSaved(saved, href);
+      }
+      let cross = false;
+      try { cross = new URL(href).origin !== new URL(before.url).origin; } catch { cross = false; }
+      if (!started && !cross && kind === "page") return { result: failed(`The link returned a page, not a file (${href}).`) };
+      if (!started && !cross && http) return { result: failed(`Bao could not fetch the link (${href}).`) };
+      if (!started && !contextId) return { result: failed(`Bao could not open the link in this tab's Chrome profile (${href}).`) };
+      if (!started && contextId) {
+        const background = await openBackground(cdp, href, contextId);
+        if (!background) return { result: failed(`Bao could not open the link in this tab's Chrome profile (${href}).`) };
+        try {
+          const outcome = await saveBackground(cdp, background, saved, href, () => ({ guid: started, url }), states);
+          if (outcome) return outcome;
+          return { result: failed(`The link started no download and showed no PDF within ${START_MS / 1000} s (${href}).`) };
+        } finally {
+          await cdp.send("Target.closeTarget", { targetId: background }, undefined, 5000).catch(() => undefined);
         }
       }
     }

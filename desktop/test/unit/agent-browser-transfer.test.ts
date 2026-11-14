@@ -123,13 +123,14 @@ test("a failed background navigation closes the tab and does not save", async ()
   }
 });
 
-test("a download saves the handler's file, captures window.open, and falls back in that tab's browser context", { timeout: scaledMs(120_000) }, async () => {
+test("a download saves the handler's file, captures window.open, and falls back in that tab's browser context", { timeout: scaledMs(180_000) }, async () => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-transfer-click-"));
   const page = `<!doctype html><title>Statements</title>
 <base href="/statements/october/">
 <a id=plain href=/october.pdf>October</a>
 <a id=based href=/gate>Based</a>
 <a id=foreign download>Foreign</a>
+<a id=lax>Lax</a>
 <a id=report href=/report.html download>Report</a>
 <a id=month href=/january.pdf>Month</a>
 <a id=popup href=/gate target=_blank>Popup</a>
@@ -194,8 +195,19 @@ halt.addEventListener("submit", (event) => event.preventDefault());
     response.writeHead(404);
     response.end();
   });
+  const laxSite = createServer((request, response) => {
+    if (request.url === "/statement.pdf" && (request.headers.cookie ?? "").includes("session=lax")) {
+      response.setHeader("content-type", "application/pdf");
+      response.end(OCTOBER);
+      return;
+    }
+    response.writeHead(401, { "content-type": "text/html" });
+    response.end("<!doctype html><title>Sign in</title>");
+  });
   const base = await listen(site);
   const crossBase = await listen(cross);
+  const laxListen = await listen(laxSite);
+  const laxUrl = `http://localhost:${new URL(laxListen).port}/statement.pdf`;
   const chrome = await launchOwnedChromeEndpoint({ userDataDir: path.join(root, "chrome"), headless: true, args: ["--no-startup-window"] });
   const endpoint = await readDevToolsActivePort(chrome.portFile);
   const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
@@ -227,7 +239,8 @@ halt.addEventListener("submit", (event) => event.preventDefault());
       while (await evaluate(cdp, tab, "document.readyState") !== "complete") await new Promise((resolve) => setTimeout(resolve, 20));
       await evaluate(cdp, tab, `document.querySelector("#cross").href = ${JSON.stringify(`${crossBase}/statement.pdf`)};
         document.querySelector("#attach").href = ${JSON.stringify(`${crossBase}/statement.bin`)};
-        document.querySelector("#foreign").href = ${JSON.stringify(`${crossBase}/foreign.html`)};`);
+        document.querySelector("#foreign").href = ${JSON.stringify(`${crossBase}/foreign.html`)};
+        document.querySelector("#lax").href = ${JSON.stringify(laxUrl)};`);
     }
     const setCookie = async (targetId: string, value: string) => {
       const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true });
@@ -239,6 +252,12 @@ halt.addEventListener("submit", (event) => event.preventDefault());
     };
     await setCookie(workTab, "work");
     await setCookie(personalTab, "personal");
+    const { sessionId: laxSession } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId: workTab, flatten: true });
+    try {
+      await cdp.send("Network.setCookie", { name: "session", value: "lax", url: `http://localhost:${new URL(laxListen).port}/`, path: "/", sameSite: "Lax" }, laxSession);
+    } finally {
+      await cdp.send("Target.detachFromTarget", { sessionId: laxSession }).catch(() => undefined);
+    }
 
     const click = (targetId: string, selector: string) => async () => {
       await evaluate(cdp, targetId, `document.querySelector(${JSON.stringify(selector)}).click()`);
@@ -268,10 +287,10 @@ halt.addEventListener("submit", (event) => event.preventDefault());
     const foreignBefore = born.length;
     const foreign = await downloadByClick(cdp, workTab, path.join(root, "foreign.html"), click(workTab, "#foreign"));
     assert.equal(foreign.result.exitCode, 1);
-    assert.match(foreign.result.stderr, /returned a page, not a file/);
+    assert.match(foreign.result.stderr, /started no download and showed no PDF/);
     await assert.rejects(readFile(path.join(root, "foreign.html")));
     const foreignContexts = (await Promise.all(born.slice(foreignBefore))).filter((id): id is string => typeof id === "string");
-    assert.deepEqual(foreignContexts, [], "a cross-origin download attribute opens no tab");
+    assert.deepEqual([...new Set(foreignContexts)], [work], "a cross-origin HTML fetch stays in this tab's browser context");
 
     const month = await save(workTab, "#month", "month.pdf");
     assert.equal(month.text, OCTOBER);
@@ -328,6 +347,12 @@ halt.addEventListener("submit", (event) => event.preventDefault());
     assert.doesNotMatch(attached.text, /personal/);
     assert.match(attached.outcome.result.stdout, /background tab/);
     assert.deepEqual([...new Set(attached.contexts)], [work], "an attachment download stays in the agent tab's browser context");
+
+    const laxFile = await save(workTab, "#lax", "lax.pdf");
+    assert.equal(laxFile.text, OCTOBER);
+    assert.doesNotMatch(laxFile.text, /Sign in/);
+    assert.match(laxFile.outcome.result.stdout, /background tab/);
+    assert.deepEqual([...new Set(laxFile.contexts)], [work], "a Lax-cookie statement stays in the agent tab's browser context");
     assert.deepEqual(await ownerState(), { visibility: "visible", events: [] }, "none of these downloads switch the owner's tab");
   } finally {
     stopBorn();
@@ -335,6 +360,7 @@ halt.addEventListener("submit", (event) => event.preventDefault());
     await chrome.close();
     site.close();
     cross.close();
+    laxSite.close();
     await rm(root, { recursive: true, force: true });
   }
 });
