@@ -4,7 +4,7 @@ The default [agent-browser pass-through](agent-browser-engine.md#pick-an-engine-
 
 ## Files & Folders > Google Chrome
 
-macOS 27 and later let a process read `~/Library/Application Support/Google/Chrome` only when System Settings > Privacy & Security > Files & Folders turns on Google Chrome for the app responsible for that process. There is no prompt: `stat` works, and opening or listing fails with `EPERM`. macOS 26 and earlier have no such rule. Bao reads that folder to list Chrome profiles, to import a site's sign-in into its own profile, to copy a profile for `browser: "copy"`, and for **Import a login**. Running Chrome reads `DevToolsActivePort` there when that file is readable.
+macOS 27 and later let a process read `~/Library/Application Support/Google/Chrome` only when System Settings > Privacy & Security > Files & Folders turns on Google Chrome for the app responsible for that process. There is no prompt: `stat` works, and opening or listing fails with `EPERM`. macOS 26 and earlier have no such rule. Bao reads that folder to list Chrome profiles, to match an unnamed `agent_browser` open to a profile from each profile's newest `Sessions/Session_*` file ([Choose the Chrome profile](agent-browser-engine.md#choose-the-chrome-profile)), to import a site's sign-in into its own profile, to copy a profile for `browser: "copy"`, and for **Import a login**. Running Chrome reads `DevToolsActivePort` there when that file is readable.
 
 Which app needs the switch:
 
