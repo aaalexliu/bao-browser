@@ -40,10 +40,10 @@ test("entries follow the step that had already started", () => {
 test("one HAR is copied as bytes and a second is concatenated", async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-step-har-"));
   try {
-    const first = Buffer.from(JSON.stringify({ log: { version: "1.2", creator: { name: "agent-browser", version: "0.41.0" }, entries: [{ startedDateTime: "2026-11-14T00:00:00.000Z", url: "a" }] } }));
+    const first = Buffer.from(JSON.stringify({ log: { version: "1.2", creator: { name: "agent-browser", version: "0.41.2" }, entries: [{ startedDateTime: "2026-11-14T00:00:00.000Z", url: "a" }] } }));
     await writeRunHar(home, "run-1", [{ raw: first, har: parseHar(first) }]);
     assert.deepEqual(await readFile(runHarPath(home, "run-1")), first);
-    const second = parseHar(Buffer.from(JSON.stringify({ log: { version: "1.2", creator: { name: "agent-browser", version: "0.41.0" }, entries: [{ url: "b" }] } })));
+    const second = parseHar(Buffer.from(JSON.stringify({ log: { version: "1.2", creator: { name: "agent-browser", version: "0.41.2" }, entries: [{ url: "b" }] } })));
     await writeRunHar(home, "run-1", [{ raw: first, har: parseHar(first) }, { raw: Buffer.from("{}"), har: second }]);
     const merged = JSON.parse((await readFile(runHarPath(home, "run-1"))).toString("utf8")) as HarLog;
     assert.equal(merged.log.creator.name, "agent-browser");
@@ -85,7 +85,7 @@ test("fifty step records and one HAR stay small", async () => {
     request: { method: "GET", url: `http://127.0.0.1/api/${index}` },
     response: { status: 200, content: { mimeType: "application/json", text: body } },
   }));
-  const raw = Buffer.from(JSON.stringify({ log: { version: "1.2", creator: { name: "agent-browser", version: "0.41.0" }, entries } }));
+  const raw = Buffer.from(JSON.stringify({ log: { version: "1.2", creator: { name: "agent-browser", version: "0.41.2" }, entries } }));
   const started = performance.now();
   try {
     await writeRunHar(home, "run-50", [{ raw, har: parseHar(raw) }]);

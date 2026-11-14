@@ -2,7 +2,7 @@
 
 import { GLOBAL_BOOL_FLAGS, GLOBAL_VALUE_FLAGS } from "./tab-command";
 
-/** Indexes of the words that are not global flags or their values, as pinned agent-browser 0.41.0 reads them. */
+/** Indexes of the words that are not global flags or their values, as pinned agent-browser 0.41.2 reads them. */
 export function operandIndexes(args: readonly string[]): number[] {
   const at: number[] = [];
   for (let i = 0; i < args.length; i++) {

@@ -1,11 +1,11 @@
 {
-  "version": "0.41.0",
-  "url": "https://registry.npmjs.org/agent-browser/-/agent-browser-0.41.0.tgz",
-  "archiveSha256": "682d11796d6dd39f010584f6e5e6a885f3d7bab3e6172ff26363477bcfc9515c",
+  "version": "0.41.2",
+  "url": "https://registry.npmjs.org/agent-browser/-/agent-browser-0.41.2.tgz",
+  "archiveSha256": "f0d26595c766e54eedcd44324b67fb93b73fd003bd05237414b2513e75444bb0",
   "binaries": {
-    "darwin-arm64": "a402fef2489c221b17522aa21f103ca5dc47f00ff5879d4a72c39881544730ab",
-    "darwin-x64": "f108d4aa02f41eee05d6b1b05817475fd5d576d802826783ef80800da16f33e2",
-    "linux-arm64": "e196e9cabe6cb1b01bd5912973628361b9f40a332683a12426abad007f0d3589",
-    "linux-x64": "399c7e9f06bd29aa933fdf25c0bd958eea06927fc0ce6f536ba6347aabd64628"
+    "darwin-arm64": "19680f06cf87d0095c318a2e80bea6b71523d95d3b651cd18d81885cd182477a",
+    "darwin-x64": "fc55608c2222650e6e0d0154f9edebd203b63bf853b85d22240bfbddbb006ea1",
+    "linux-arm64": "00d291f45e1c4d527b3aa08c70c54c7c3030fde0794f8d4575aaa3ca1680f728",
+    "linux-x64": "c4351f3802ffa5254d8c69f20a52e2fcf56925c6016fcf4203db25a07d811379"
   }
 }

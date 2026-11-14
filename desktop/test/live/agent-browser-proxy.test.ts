@@ -100,7 +100,7 @@ test("Bao MCP and raw native agent-browser return the same output for the same l
   const nativeState = await mkdtemp(path.join(tmpdir(), "ab-"));
   const config = path.join(nativeState, "config.json");
   await writeFile(config, "{}");
-  const rawEnv = { HOME: nativeState, PATH: "/usr/bin:/bin", TMPDIR: nativeState, LANG: "en_US.UTF-8", AGENT_BROWSER_SOCKET_DIR: nativeState, AGENT_BROWSER_AUTOSAVE_INTERVAL_MS: "0", DISPLAY: process.env.DISPLAY };
+  const rawEnv = { HOME: nativeState, PATH: "/usr/bin:/bin", TMPDIR: nativeState, LANG: "en_US.UTF-8", AGENT_BROWSER_SOCKET_DIR: nativeState, AGENT_BROWSER_AUTOSAVE_INTERVAL_MS: "0", AGENT_BROWSER_NO_VERSION_CHECK: "1", DISPLAY: process.env.DISPLAY };
   const flags = ["--session", "bao", "--config", config, "--cdp", `ws://127.0.0.1:${rawEndpoint.port}${rawEndpoint.browserPath}`, "--idle-timeout", "0"];
   const native = (command: string, args: string[]) => run(binary!, [...flags, command, ...args], { cwd: nativeState, env: rawEnv, maxBuffer: 16 * 1024 * 1024 });
   const server = createServer((req, res) => res.end(req.url?.includes("?static") ? '<!doctype html><title>Static fixture</title><h1>Stable screenshot</h1>' : `<!doctype html><title>Proxy fixture</title>

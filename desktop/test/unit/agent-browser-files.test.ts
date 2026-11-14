@@ -77,5 +77,6 @@ test("an upload refuses a relative path, a name this run did not download, and n
 
 test("file operands skip global flags and their values", () => {
   assert.deepEqual(fileOperands(["--json", "#f", "--max-output", "9", "a.pdf", "b.pdf"]), { selector: "#f", files: ["a.pdf", "b.pdf"] });
+  assert.deepEqual(fileOperands(["#f", "--cdp-headers", "{\"Authorization\":\"Bearer t\"}", "a.pdf"]), { selector: "#f", files: ["a.pdf"] });
   assert.deepEqual(fileOperands([]), { files: [] });
 });

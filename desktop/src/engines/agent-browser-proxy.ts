@@ -165,7 +165,7 @@ interface SessionData {
 
 interface ParsedTab { action: "list" | "new" | "close" | "switch"; ref?: string; json: boolean; flags: string[]; forwarded: string[] }
 
-/** Global flags pinned agent-browser 0.41.0 accepts on any command, in the caller's order, including each flag's value. */
+/** Global flags pinned agent-browser 0.41.2 accepts on any command, in the caller's order, including each flag's value. */
 function acceptedCliFlags(args: readonly string[]): string[] {
   const flags: string[] = [];
   for (let i = 0; i < args.length; i++) {
@@ -1246,7 +1246,7 @@ export class AgentBrowserProxy {
         flags: ["--session", "bao", "--config", config, ...pin, "--cdp", `ws://127.0.0.1:${endpoint.port}${endpoint.browserPath}${behind}`, "--idle-timeout", "0"],
         env: {
           HOME: stateDir, TMPDIR: stateDir, PATH: "/usr/bin:/bin", LANG: "en_US.UTF-8",
-          AGENT_BROWSER_SOCKET_DIR: stateDir, AGENT_BROWSER_AUTOSAVE_INTERVAL_MS: "0", BAO_HEAL_CURSOR_ACCOUNT: "0",
+          AGENT_BROWSER_SOCKET_DIR: stateDir, AGENT_BROWSER_AUTOSAVE_INTERVAL_MS: "0", AGENT_BROWSER_NO_VERSION_CHECK: "1", BAO_HEAL_CURSOR_ACCOUNT: "0",
           ...(process.env.DISPLAY ? { DISPLAY: process.env.DISPLAY } : {}),
         },
       };
