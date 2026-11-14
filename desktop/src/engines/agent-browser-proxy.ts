@@ -89,13 +89,6 @@ class ActiveTargetMiss extends Error {
   }
 }
 
-class DelegatedOpenFailed extends Error {
-  constructor(cause: unknown, readonly result?: AgentBrowserCommandResult) {
-    super(cause instanceof Error ? cause.message : String(cause), { cause });
-    this.name = "DelegatedOpenFailed";
-  }
-}
-
 /** The pinned task tab is gone and no Bao task tab remains to take its place. */
 class TaskTabClosed extends Error {
   constructor() {
@@ -132,7 +125,12 @@ function openedChoice(pick: BrowserPick): AgentBrowser {
 }
 
 /** A command's move to the owner's running Chrome: the line that says so, and the new pick and opened page when it worked. */
-type Moved = { line: string; pick?: BrowserPick; site?: string };
+type Moved = {
+  line: string;
+  pick?: BrowserPick;
+  site?: string;
+  failed?: { result?: AgentBrowserCommandResult; error: unknown; cleanup?: boolean };
+};
 
 interface SessionData {
   browser: AgentBrowser;
@@ -999,19 +997,17 @@ export class AgentBrowserProxy {
         if (!agentClosedTab) failure = new Error("Bao's task tab was closed");
         return results;
       }
-      if (error instanceof DelegatedOpenFailed) {
-        failure = error.cause instanceof Error ? error.cause : error;
-        results.splice(0, results.length, error.result ?? { stdout: "", stderr: error.message, exitCode: 1 });
-        return results;
-      }
-      failure = error;
+      const kept = this.moved?.failed;
+      failure = kept?.cleanup && step?.native.command === "open" ? kept.error : error;
       session.workflow.unavailable("a browser command was interrupted", step ? { id: step.id, command: step.native.command } : undefined);
       throw error;
     } finally {
       try {
         if (step && step.endedAt === undefined) {
           try {
-            await session.recording.complete(step, results, session.stateDir, () => this.screenshot(session, step!.native.command, visual), failure,
+            const keptOpen = step.native.command === "open" ? this.moved?.failed : undefined;
+            const ownFailure = failure !== undefined && failure !== keptOpen?.error;
+            await session.recording.complete(step, !ownFailure && keptOpen?.result ? [...results, keptOpen.result] : results, session.stateDir, () => this.screenshot(session, step!.native.command, visual), ownFailure || !keptOpen ? failure : keptOpen.error,
               this.waitOf(session) !== "off" || command === "wait_for_owner", { ...context, page: session.page, owner: this.ownerPage, current: session.kind === "current",
                 ...this.moved?.pick ? { moved: this.moved.line } : {} });
           } catch (completeError) {
@@ -1377,7 +1373,8 @@ export class AgentBrowserProxy {
       const next = copy
         ? `The page stays in the Chrome copy, without this site's sign-in. To try your running Chrome yourself, call agent_browser with ${JSON.stringify({ command: "close", run_id: session.recording.id })}, then with ${JSON.stringify(open)}.`
         : "The session stays in Bao's window; Bao tries again on the next wait_for_owner.";
-      this.moved = { line: `${stopped}. Bao could not continue in your running Chrome over remote debugging: ${session.moveError}. ${next}` };
+      const failed = this.moved?.failed;
+      this.moved = { line: `${stopped}. Bao could not continue in your running Chrome over remote debugging: ${session.moveError}. ${next}`, ...failed ? { failed: { ...failed, cleanup: false } } : {} };
       return undefined;
     };
     if (!profile) return fail("Bao could not read Chrome's profiles, so it does not know which Chrome profile to use");
@@ -1402,16 +1399,16 @@ export class AgentBrowserProxy {
         if (opened.exitCode !== 0) throw new Error(`the open in Bao's task tab failed: ${opened.stderr || opened.stdout || `exit ${opened.exitCode}`}`);
       } catch (error) {
         failure = error;
+        if (!routeOpen && nativeOpen) {
+          fail(error);
+          this.moved = { ...this.moved!, failed: { error, cleanup: true, ...opened ? { result: opened } : {} } };
+        }
         try { if (moving) await this.flushHar(moving); }
         catch (flushError) { process.stderr.write(`Bao step record: network har stop failed: ${flushError instanceof Error ? flushError.message : String(flushError)}\n`); }
         try { if (wired) await this.stopDaemon(wired.stateDir); }
         finally {
           if (wired) await rm(wired.stateDir, { recursive: true, force: true });
           await this.discard(next);
-        }
-        if (!routeOpen && nativeOpen) {
-          fail(error);
-          throw new DelegatedOpenFailed(error, opened);
         }
         return fail(error);
       }

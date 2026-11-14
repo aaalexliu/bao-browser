@@ -400,28 +400,32 @@ test("an open that lands on a sign-in URL in a Bao profile continues in the owne
   assert.ok(await baoClosed(h.baoDir));
 });
 
-test("an open of a sign-in wall records the running Chrome timeout on that open", { timeout: scaledMs(60_000) }, async (t) => {
+test("an open of a sign-in wall records the running Chrome timeout and still returns the halted fallback", { timeout: scaledMs(60_000) }, async (t) => {
   const h = await harness(t, "works");
   await h.failOwnerOpen("navigation timed out");
   const [result] = await h.proxy.execute("open", [`${h.site}/gate`], "bao");
-  assert.equal(result!.exitCode, 1);
+  const reply = JSON.parse(result!.stdout) as { outcome: string; instruction: string };
+  assert.equal(result!.exitCode, 0);
+  assert.equal(reply.outcome, "halted");
+  assert.match(reply.instruction, /owner's running Chrome/);
   await h.proxy.close();
   const run = new Library(h.home).listRuns()[0]!;
-  const opens = (run.steps as RecordedAgentBrowserCommand[]).filter((step) => step.native.command === "open");
-  assert.equal(opens.length, 1);
-  assert.equal(opens[0]!.id, "command-1");
-  assert.equal(opens[0]!.status, "failed");
-  assert.match(opens[0]!.reason ?? "", /navigation timed out/);
-  assert.match((await readStepRecord(h.home, run.id, opens[0]!.id)).error ?? "", /navigation timed out/);
+  const open = (run.steps as RecordedAgentBrowserCommand[])[0]!;
+  assert.equal(open.id, "command-1");
+  assert.equal(open.native.command, "open");
+  assert.equal(open.status, "failed");
+  assert.match(open.reason ?? "", /navigation timed out/);
+  assert.match((await readStepRecord(h.home, run.id, open.id)).error ?? "", /navigation timed out/);
   assert.notEqual(run.status, "passed");
 });
 
-test("a later open of a bound site records the running Chrome timeout on that open", { timeout: scaledMs(60_000) }, async (t) => {
+test("a later open of a bound site records the running Chrome timeout and still returns Bao's open", { timeout: scaledMs(60_000) }, async (t) => {
   const h = await harness(t, "works");
   assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "bao"))[0]!.exitCode, 0);
   await h.failOwnerOpen("navigation timed out");
-  const [result] = await h.proxy.execute("open", ["https://www.nytimes.com/"], undefined, false, undefined, {}, h.proxy.activeRunId);
-  assert.equal(result!.exitCode, 1);
+  const [opened, tabs] = await h.proxy.execute("open", ["https://www.nytimes.com/"], undefined, false, undefined, {}, h.proxy.activeRunId);
+  assert.equal(opened!.exitCode, 0);
+  assert.equal(tabs!.exitCode, 0);
   await h.proxy.close();
   const run = new Library(h.home).listRuns()[0]!;
   const opens = (run.steps as RecordedAgentBrowserCommand[]).filter((step) => step.native.command === "open");
@@ -430,6 +434,23 @@ test("a later open of a bound site records the running Chrome timeout on that op
   assert.match(opens[1]!.native.args[0] ?? "", /nytimes\.com/);
   assert.match(opens[1]!.reason ?? "", /navigation timed out/);
   assert.match((await readStepRecord(h.home, run.id, opens[1]!.id)).error ?? "", /navigation timed out/);
+  assert.notEqual(run.status, "passed");
+});
+
+test("a pending open still records the running Chrome timeout when move cleanup throws", { timeout: scaledMs(60_000) }, async (t) => {
+  const h = await harness(t, "works");
+  await h.failOwnerOpen("navigation timed out");
+  await h.breakOwnerDaemonPid();
+  await assert.rejects(h.proxy.execute("open", [`${h.site}/gate`], "bao"), /EISDIR/);
+  await h.proxy.close();
+  const run = new Library(h.home).listRuns()[0]!;
+  const open = (run.steps as RecordedAgentBrowserCommand[]).find((step) => step.id === "command-1")!;
+  assert.equal(open.native.command, "open");
+  assert.equal(open.status, "failed");
+  assert.match(open.reason ?? "", /navigation timed out/);
+  assert.doesNotMatch(open.reason ?? "", /EISDIR/);
+  assert.match((await readStepRecord(h.home, run.id, open.id)).error ?? "", /navigation timed out/);
+  assert.doesNotMatch((await readStepRecord(h.home, run.id, open.id)).error ?? "", /EISDIR/);
   assert.notEqual(run.status, "passed");
 });
 
