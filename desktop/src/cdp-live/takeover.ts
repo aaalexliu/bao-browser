@@ -32,6 +32,7 @@ interface BoundPage {
   contextId?: number;
   objectId?: string;
   identifier?: string;
+  frameId?: string;
 }
 
 const WORLD = "bao-takeover";
@@ -147,13 +148,13 @@ export class Takeover {
   }
 
   /** Lowers the shield for one command, then raises it. A hold taken before the command does not lower the shield and does not run. */
-  async bracket<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T | typeof HELD_SKIP> {
+  async bracket<T>(fn: () => Promise<T>, signal?: AbortSignal, skip?: () => boolean): Promise<T | typeof HELD_SKIP> {
     if (this.confirmOpen) await this.waitConfirm(signal ?? AbortSignal.timeout(12_000));
     if (signal?.aborted) throw Object.assign(new Error("aborted"), { name: "AbortError" });
-    if (this.held) return HELD_SKIP;
+    if (this.held || skip?.()) return HELD_SKIP;
     await this.lowerShield();
     try {
-      if (this.held) return HELD_SKIP;
+      if (this.held || skip?.()) return HELD_SKIP;
       return await fn();
     } finally {
       await this.raiseShield();
@@ -222,6 +223,7 @@ export class Takeover {
 
   async follow(targetId: string | undefined): Promise<void> {
     if (!targetId || targetId === this.targetId || !this.cdp) return;
+    this.releaseConfirm();
     await this.detachPage().catch(() => undefined);
     await this.attachTarget(targetId);
   }
@@ -289,16 +291,20 @@ export class Takeover {
   }
 
   private releaseConfirm(): void {
+    const open = this.confirmOpen || this.confirmWait !== undefined;
     this.confirmOpen = false;
-    this.confirmWait?.();
+    const waiting = this.confirmWait;
     this.confirmWait = undefined;
+    waiting?.();
+    if (open) this.options.onConfirm?.(false);
   }
 
   private async onEvent(event: { type: string; open?: boolean }): Promise<void> {
     if (event.type === "confirm") {
-      this.confirmOpen = event.open === true;
-      if (!this.confirmOpen) this.releaseConfirm();
-      this.options.onConfirm?.(this.confirmOpen);
+      if (event.open === true) {
+        this.confirmOpen = true;
+        this.options.onConfirm?.(true);
+      } else this.releaseConfirm();
       return;
     }
     if (event.type === "takeControl") {
@@ -353,7 +359,17 @@ export class Takeover {
     this.targetId = id;
     const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId: id, flatten: true });
     this.page = { sessionId };
-    this.unlisten.push(cdp.on("Runtime.executionContextCreated", sessionId, () => { void this.rebind(); }));
+    this.unlisten.push(cdp.on("Runtime.executionContextCreated", sessionId, (params) => {
+      const context = params.context;
+      if (!context || typeof context !== "object") return;
+      if ("name" in context && context.name === WORLD) return;
+      const aux = "auxData" in context ? context.auxData : undefined;
+      const frameId = aux && typeof aux === "object" && "frameId" in aux ? aux.frameId : undefined;
+      const type = aux && typeof aux === "object" && "type" in aux ? aux.type : undefined;
+      if (type !== undefined && type !== "default") return;
+      if (typeof frameId !== "string" || (this.page.frameId && frameId !== this.page.frameId)) return;
+      void this.rebind(true);
+    }));
     await this.install();
   }
 
@@ -381,6 +397,7 @@ export class Takeover {
     await this.send("Page.enable", {}, sessionId);
     await this.send("Runtime.enable", {}, sessionId);
     const { frameTree } = await this.send<{ frameTree: { frame: { id: string } } }>("Page.getFrameTree", {}, sessionId);
+    this.page.frameId = frameTree.frame.id;
     const { identifier } = await this.send<{ identifier: string }>("Page.addScriptToEvaluateOnNewDocument", { source: this.source, worldName: WORLD }, sessionId);
     this.page.identifier = identifier;
     const world = await this.send<{ executionContextId: number }>("Page.createIsolatedWorld", { frameId: frameTree.frame.id, worldName: WORLD }, sessionId);
@@ -399,19 +416,23 @@ export class Takeover {
     this.page.contextId = contextId;
   }
 
-  private async rebind(): Promise<void> {
+  private async rebind(replaced = false): Promise<void> {
     if (this.disposed) return;
     const sessionId = this.page.sessionId;
+    const previous = this.page.objectId;
     const { frameTree } = await this.send<{ frameTree: { frame: { id: string } } }>("Page.getFrameTree", {}, sessionId);
+    this.page.frameId = frameTree.frame.id;
     const world = await this.send<{ executionContextId: number }>("Page.createIsolatedWorld", { frameId: frameTree.frame.id, worldName: WORLD }, sessionId);
     const found = await this.send<{ result: { objectId?: string } }>("Runtime.evaluate", {
       expression: "globalThis.__baoTakeover",
       contextId: world.executionContextId,
       returnByValue: false,
     }, sessionId);
-    if (!found.result.objectId) await this.bind(world.executionContextId);
+    const foundId = found.result.objectId;
+    if (replaced || !foundId || (previous !== undefined && foundId !== previous)) this.releaseConfirm();
+    if (!foundId) await this.bind(world.executionContextId);
     else {
-      this.page.objectId = found.result.objectId;
+      this.page.objectId = foundId;
       this.page.contextId = world.executionContextId;
     }
     await this.push().catch(() => undefined);

@@ -30,7 +30,7 @@ import { BROWSER_CHOICES, DEFAULT_BROWSER } from "../browser-choice";
 import { commandSentence, targetBox } from "../v1/caption";
 import { HELD_SKIP, Takeover } from "../cdp-live/takeover";
 import { AdmittedTakeover } from "../cdp-live/takeover-hold";
-import { askLine, HANDED_BACK, holdCommand, isActing, OWNER_IN_CONTROL } from "../../../shared/takeover-overlay";
+import { askLine, handedBack, HANDED_BACK, holdCommand, isActing, OWNER_IN_CONTROL, staleHold } from "../../../shared/takeover-overlay";
 import { GLOBAL_BOOL_FLAGS, GLOBAL_VALUE_FLAGS, stripGlobalFlags, tabCommandAction } from "../v1/tab-command";
 import { diffView, findView, snapshotView } from "./snapshot-view";
 import { AGENT_DISCONNECTED, AGENT_IDLE_REASON, NEWER_TASK_REASON } from "../v1/stop-copy";
@@ -463,6 +463,8 @@ export class AgentBrowserProxy {
   private takeoverReady: Promise<void> = Promise.resolve();
   private ownerTimeout?: Session;
   private askReleased = false;
+  private askClear: Promise<void> = Promise.resolve();
+  private takenDuringCommand = false;
   private passing = false;
   private shotDepth = 0;
   private readonly cleanups = new WeakMap<Session, Promise<void>>();
@@ -828,6 +830,7 @@ export class AgentBrowserProxy {
     const results: AgentBrowserCommandResult[] = [];
     const context: StepContext = {};
     let failure: unknown;
+    this.takenDuringCommand = false;
     try {
       if (this.gone()) throw new Error(AGENT_DISCONNECTED);
       if (session.pick.route === "current" && !session.pick.background && opensTab(command as string, args)) {
@@ -850,13 +853,17 @@ export class AgentBrowserProxy {
         return results;
       }
       if (continuing) {
-        const blocked = await this.heldGate(session, command as string, args);
+        const blocked = await this.holdMutation(session, command as string, args);
         if (blocked) {
           results.push(blocked);
           return results;
         }
       }
-      const releasedAsk = command !== "wait_for_owner" && this.takeAskRelease();
+      const releasedAsk = await this.takeAskRelease();
+      if (releasedAsk && command === "wait_for_owner") {
+        results.push(...await this.finishAsk(session));
+        return results;
+      }
       if (!releasedAsk && continuing && command !== "close" && command !== "wait_for_owner") {
         await this.noteWall(session);
         const opened = await this.settleWall(session);
@@ -958,6 +965,11 @@ export class AgentBrowserProxy {
       if (command === "open") {
         const site = webSite(args[0]);
         if (continuing && site && this.bound(session, site)) {
+          const blocked = await this.holdMutation(session, command as string, args);
+          if (blocked) {
+            results.push(blocked);
+            return results;
+          }
           const opened = await this.moveAway(session, BOUND_REASON, site, true);
           if (opened) {
             await this.settleWall(session);
@@ -982,12 +994,18 @@ export class AgentBrowserProxy {
         }
       }
       let inPage = false;
+      const blocked = await this.holdMutation(session, command as string, nativeArgs);
+      if (blocked) {
+        results.push(blocked);
+        return results;
+      }
       await session.workflow.record(command as string, nativeArgs, step.id, async () => {
         const result = command === "close" && (session.kind === "current" || session.chrome.isClosed())
           ? { stdout: session.kind === "current" ? "Disconnected from the owner's own Chrome. Only Bao's task tabs close; the owner's tabs and windows stay open." : "", stderr: "", exitCode: 0 }
           : files ? await this.transfer(session, command as FileCommand, files).then((done) => { context.transfer = done.transfer; return done.result; })
             : await this.runNative(session, command as string, nativeArgs);
         results.push(result);
+        if (handedBack(result)) return result;
         if (files?.saved && result.exitCode === 0) this.saved = files.saved;
         if (command !== "close" && result.exitCode === 0) await this.noteWall(session, command === "open" ? webSite(args[0]) : undefined);
         return result;
@@ -1050,6 +1068,7 @@ export class AgentBrowserProxy {
         }
       } finally {
         commandDone();
+        this.takenDuringCommand = false;
         const timedOut = this.ownerTimeout === session;
         if (timedOut) this.ownerTimeout = undefined;
         if (timedOut || command === "close" || session.kind === "current" && session.abort.signal.aborted && !this.removingOf(session) && !this.gone()) {
@@ -1625,21 +1644,28 @@ export class AgentBrowserProxy {
   private async transfer(session: Session, command: FileCommand, files: FileArgs): Promise<{ result: AgentBrowserCommandResult; transfer?: FileTransfer }> {
     if (command === "upload") {
       const native = await this.runNative(session, "upload", files.forwarded);
+      if (handedBack(native)) return { result: native };
       if (native.exitCode === 0) return { result: native, transfer: { command, source: "file-input", files: await fileFacts(files.files) } };
       if (!NOT_FILE_INPUT.test(native.stderr)) return { result: native };
     }
+    const skipped = await this.holdMutation(session, "click", files.click);
+    if (skipped) return { result: skipped };
     const active = await this.activePage(session);
     if (!active) throw new Error("no active Bao page metadata");
     const cdp = await this.connectSession(session, { timeoutMs: 5000, signal: session.abort.signal });
     const click = () => this.runNative(session, "click", files.click);
+    this.passing = true;
     try {
       if (command === "upload") {
         const result = await uploadThroughChooser(cdp, active.targetId, files.files, click);
-        return { result, ...result.exitCode === 0 ? { transfer: { command, source: "file-chooser" as const, files: await fileFacts(files.files) } } : {} };
+        if (handedBack(result) || result.exitCode !== 0) return { result };
+        return { result, transfer: { command, source: "file-chooser" as const, files: await fileFacts(files.files) } };
       }
       const { result, from } = await downloadByClick(cdp, active.targetId, files.saved!, click);
-      return { result, ...from ? { transfer: { command, ...from, files: await fileFacts([files.saved!]) } } : {} };
+      if (handedBack(result) || !from) return { result };
+      return { result, transfer: { command, ...from, files: await fileFacts([files.saved!]) } };
     } finally {
+      this.passing = false;
       if (session.kind === "copy") cdp.close();
     }
   }
@@ -1713,7 +1739,7 @@ export class AgentBrowserProxy {
     }
     const forwarded = parsed.action === "list" ? parsed.forwarded : parsed.action === "close" ? [...(named?.tabId ? ["close", named.tabId] : ["close"]), ...parsed.flags] : [named?.tabId ?? "", ...parsed.flags];
     const result = await this.run(session, command, forwarded);
-    if (result.exitCode !== 0) return result;
+    if (handedBack(result) || result.exitCode !== 0) return result;
     if (parsed.action === "close" && named?.targetId && session.taskTabs.has(named.targetId)) {
       session.taskTabs.delete(named.targetId);
       session.justClosed = named.targetId;
@@ -2000,7 +2026,7 @@ export class AgentBrowserProxy {
   }
 
   private async waitForOwner(session: Session, deadline: number): Promise<AgentBrowserCommandResult[]> {
-    if (this.takeAskRelease()) return this.finishAsk(session);
+    if (await this.takeAskRelease()) return this.finishAsk(session);
     if (session.abort.signal.aborted) return this.ownerClosed(session);
     if (this.waitOf(session) === "off") {
       session.ownerSince = session.ownerTouched = Date.now();
@@ -2014,7 +2040,7 @@ export class AgentBrowserProxy {
     try {
       while (Date.now() < deadline) {
         if (session.abort.signal.aborted || cdp && !cdp.isOpen) return this.ownerClosed(session);
-        if (this.takeAskRelease()) return this.finishAsk(session);
+        if (await this.takeAskRelease()) return this.finishAsk(session);
         try {
           const waiting = this.wallOf(session);
           if (!waiting) return this.ownerClosed(session);
@@ -2218,11 +2244,14 @@ export class AgentBrowserProxy {
   }
 
   private async run(session: Session, command: string, args: string[], readTimeoutMs?: number, bound?: AbortSignal): Promise<AgentBrowserCommandResult> {
+    const skip = () => staleHold(this.takenDuringCommand, this.takeover?.held === true, command, args) !== "run";
+    if (this.passing && skip()) return this.handbackLine();
     if (!this.passing && this.overlayOn(session) && this.takeover) {
       if ("syncHeld" in this.takeover) await this.takeover.syncHeld().catch(() => undefined);
+      if (this.takeover.held) this.takenDuringCommand = true;
       await this.takeover.waitConfirm(session.abort.signal);
       if (session.abort.signal.aborted || this.takeover.stoppedByOwner) return this.ownerResult("closed", session)[0]!;
-      const blocked = await this.heldGate(session, command, args);
+      const blocked = await this.holdMutation(session, command, args);
       if (blocked) return blocked;
     }
     if (!this.passing && this.overlayOn(session) && this.takeover && (isActing(command) || command === "screenshot")) {
@@ -2230,12 +2259,14 @@ export class AgentBrowserProxy {
       try {
         if (command === "screenshot") return await this.takeover.hideForShot(() => this.run(session, command, args, readTimeoutMs, bound));
         await this.takeover.activityLine(commandSentence(command, args, [...session.snapshots.values()].at(-1)).text);
+        const before = await this.holdMutation(session, command, args);
+        if (before) return before;
         const ran = await this.takeover.bracket(async () => {
           await this.pointCursor(session, command, args);
           return this.run(session, command, args, readTimeoutMs, bound);
-        }, session.abort.signal);
+        }, session.abort.signal, skip);
         if (ran === HELD_SKIP) {
-          const blocked = await this.heldGate(session, command, args);
+          const blocked = await this.holdMutation(session, command, args);
           if (blocked) return blocked;
           return this.run(session, command, args, readTimeoutMs, bound);
         }
@@ -2493,19 +2524,22 @@ export class AgentBrowserProxy {
       this.setWait(session, "off");
       session.recording.ownerWaiting(false);
     }
+    this.askClear = this.takeover?.clearAsk().then(() => undefined).catch(() => undefined) ?? Promise.resolve();
     if (!this.removingOf(session)) this.armIdle(session);
   }
 
-  private takeAskRelease(): boolean {
+  private async takeAskRelease(): Promise<boolean> {
     const released = this.askReleased;
     this.askReleased = false;
+    if (released) await this.askClear;
     return released;
   }
 
-  private finishAsk(session: Session): AgentBrowserCommandResult[] {
+  private async finishAsk(session: Session): Promise<AgentBrowserCommandResult[]> {
     const result = this.ownerResult("recording", session);
     this.setWait(session, "off");
     session.recording.ownerWaiting(false);
+    await this.takeover?.clearAsk().catch(() => undefined);
     return result;
   }
 
@@ -2515,11 +2549,18 @@ export class AgentBrowserProxy {
     this.ownerTimeout = session;
   }
 
-  private async heldGate(session: Session, command: string, args: readonly string[]): Promise<AgentBrowserCommandResult | undefined> {
-    const gate = await holdCommand(this.takeover?.held === true, command, async () => undefined, () => this.takeover!.waitHandback(session.abort.signal, OWNER_WAIT_LIMIT_MS), args);
-    if (!gate.held) return undefined;
-    if (gate.outcome === "done") return { stdout: `${HANDED_BACK}\n`, stderr: "", exitCode: 0 };
-    if (gate.outcome !== "disconnect") this.markOwnerTimeout(session);
+  private handbackLine(): AgentBrowserCommandResult {
+    return { stdout: `${HANDED_BACK}\n`, stderr: "", exitCode: 0 };
+  }
+
+  private async holdMutation(session: Session, command: string, args: readonly string[]): Promise<AgentBrowserCommandResult | undefined> {
+    const decision = staleHold(this.takenDuringCommand, this.takeover?.held === true, command, args);
+    if (decision === "run") return undefined;
+    if (decision === "handback") return this.handbackLine();
+    this.takenDuringCommand = true;
+    const gate = await holdCommand(true, command, async () => undefined, () => this.takeover!.waitHandback(session.abort.signal, OWNER_WAIT_LIMIT_MS), args);
+    if (gate.held && gate.outcome === "done") return this.handbackLine();
+    if (gate.held && gate.outcome !== "disconnect") this.markOwnerTimeout(session);
     return this.ownerResult("closed", session)[0];
   }
 
@@ -2549,7 +2590,8 @@ export class AgentBrowserProxy {
       },
       onHandoff: (startedAt: number, endedAt: number) => session.recording.noteHandoff(startedAt, endedAt),
       onAskDone: () => { this.completeAsk(session); },
-      onHeld: () => {
+      onHeld: (held: boolean) => {
+        if (held) this.takenDuringCommand = true;
         if (this.session === session && !this.removingOf(session)) this.armIdle(session);
       },
     };

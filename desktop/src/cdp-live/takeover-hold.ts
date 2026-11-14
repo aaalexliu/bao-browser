@@ -289,14 +289,22 @@ export class AdmittedTakeover {
     this.apply(await this.call("cursor", { x, y }));
   }
 
-  async bracket<T>(fn: () => Promise<T>, signal?: AbortSignal, depth = 0): Promise<T | typeof HELD_SKIP> {
-    if (this.held) return HELD_SKIP;
+  async bracket<T>(fn: () => Promise<T>, signal?: AbortSignal, skip?: () => boolean): Promise<T | typeof HELD_SKIP> {
+    return this.lowerAndRun(fn, signal, skip, 0);
+  }
+
+  private async lowerAndRun<T>(fn: () => Promise<T>, signal: AbortSignal | undefined, skip: (() => boolean) | undefined, depth: number): Promise<T | typeof HELD_SKIP> {
+    if (this.held || skip?.()) return HELD_SKIP;
     const reply = await this.call("lower", {}, 15_000);
     this.apply(reply);
+    if (skip?.()) {
+      if (!reply.skipped) await this.call("raise").catch(() => undefined);
+      return HELD_SKIP;
+    }
     if (this.confirming && !this.held && depth < 2) {
       await this.waitConfirm(signal ?? AbortSignal.timeout(12_000));
       if (signal?.aborted) throw Object.assign(new Error("aborted"), { name: "AbortError" });
-      return this.bracket(fn, signal, depth + 1);
+      return this.lowerAndRun(fn, signal, skip, depth + 1);
     }
     if (reply.skipped || this.held) return HELD_SKIP;
     try {

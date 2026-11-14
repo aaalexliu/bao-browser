@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { controlState, doneAsk, HANDED_BACK, holdCommand, stepControl } from "../../../shared/takeover-overlay";
+import { controlState, doneAsk, handedBack, HANDED_BACK, holdCommand, staleHold, stepControl } from "../../../shared/takeover-overlay";
 
 test("an acting command while the owner holds the tab waits and does not run", async () => {
   let ran = false;
@@ -56,6 +56,20 @@ test("control moves agent, taking, owner, releasing, and back", () => {
   assert.equal(releasing.endedAt, 20);
   assert.equal(stepControl(releasing, { type: "resume" }).phase, "agent");
   assert.equal(stepControl(controlState(), { type: "done", at: 1 }).phase, "agent");
+});
+
+test("a take during prep skips the command after Done, and a tab that is still held waits", () => {
+  assert.equal(staleHold(true, false, "click"), "handback");
+  assert.equal(staleHold(true, false, "open", ["https://shop.example"]), "handback");
+  assert.equal(staleHold(true, false, "tab", ["close"]), "handback");
+  assert.equal(staleHold(true, true, "click"), "wait");
+  assert.equal(staleHold(false, true, "press", ["Enter"]), "wait");
+  assert.equal(staleHold(false, false, "click"), "run");
+  assert.equal(staleHold(true, false, "snapshot"), "run");
+  assert.equal(staleHold(true, false, "close"), "run");
+  assert.equal(handedBack({ stdout: `${HANDED_BACK}\n`, exitCode: 0 }), true);
+  assert.equal(handedBack({ stdout: "\u2713 Done\n", exitCode: 0 }), false);
+  assert.equal(handedBack({ stdout: `${HANDED_BACK}\n`, exitCode: 1 }), false);
 });
 
 test("an ask goes straight to the in-control pill", () => {

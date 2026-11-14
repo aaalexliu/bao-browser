@@ -4,6 +4,7 @@ import { rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import type { CdpSocket } from "../cdp-live/socket";
+import { handedBack } from "../../../shared/takeover-overlay";
 import type { AgentBrowserCommandResult } from "./agent-browser-proxy";
 
 /** A download's result, and where its file came from when it saved one. */
@@ -34,7 +35,7 @@ export async function uploadThroughChooser(cdp: CdpSocket, targetId: string, fil
     await cdp.send("Page.enable", {}, sessionId, 5000);
     await cdp.send("Page.setInterceptFileChooserDialog", { enabled: true }, sessionId, 5000);
     const clicked = await click();
-    if (clicked.exitCode !== 0) return clicked;
+    if (clicked.exitCode !== 0 || handedBack(clicked)) return clicked;
     const backendNodeId = await Promise.race([chooser, delay(CHOOSER_MS, null)]);
     if (backendNodeId === null) return failed(`The click opened no file chooser within ${CHOOSER_MS / 1000} s. Target the upload button, its label, or the file input.`);
     if (typeof backendNodeId !== "number") return failed("Chrome's file chooser named no file input.");
@@ -372,19 +373,12 @@ export async function downloadByClick(cdp: CdpSocket, agentTab: string, saved: s
     } catch {
       return { result: failed("Bao could not keep this download from opening a tab.") };
     }
-    let clicked: AgentBrowserCommandResult;
-    let href = "";
-    let named = false;
-    let policy = "strict-origin-when-cross-origin";
-    try {
-      clicked = await click();
-    } finally {
-      const captured = capturedClick(await inPage(cdp, agentTab, TAKE_CLICK).catch(() => undefined));
-      href = captured.url;
-      named = captured.download;
-      policy = captured.policy;
-    }
-    if (clicked.exitCode !== 0) return { result: clicked };
+    const clicked = await click();
+    if (clicked.exitCode !== 0 || handedBack(clicked)) return { result: clicked };
+    const captured = capturedClick(await inPage(cdp, agentTab, TAKE_CLICK).catch(() => undefined));
+    const href = captured.url;
+    const named = captured.download;
+    const policy = captured.policy;
     if (href && !started) {
       let fetched: { kind: "file" } | { kind: "page" | "http"; url: string } | undefined;
       try {

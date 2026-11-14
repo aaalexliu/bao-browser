@@ -10,6 +10,7 @@ import { AGENT_CLOSED_ASK, AGENT_STEP_FAILED, AGENT_WAIT_ENDED } from "../v1/sto
 import { RUN_SCHEMA_ID, stepTitle, type StepCaption } from "../v1/schema";
 import { Library, type StoredRun } from "../v1/store";
 import { shotFile, shotFormat, type ShotBox } from "../v1/shots";
+import { handedBack } from "../../../shared/takeover-overlay";
 import { describeStep, landmarkKeys, ownerReply, TASK_TAB_CLOSED, type OwnerWaitPage, type StepSummary } from "./agent-browser-describe";
 import type { AgentBrowserCommandResult } from "./agent-browser-proxy";
 import type { FileTransfer } from "./agent-browser-files";
@@ -213,7 +214,7 @@ export class AgentBrowserRun {
       snapshot: this.snapshot, seen: this.seenOn(context.page?.url), page: context.page, previousPage: context.previousPage, owner: context.owner, current: context.current, at: step.endedAt,
     });
     step.summary = context.moved ? { ...summary, parts: [`${context.moved} `, ...summary.parts], text: `${context.moved} ${summary.text}` } : summary;
-    if (step.native.command === "open" && !step.native.isError) this.landmarks.clear();
+    if (step.native.command === "open" && !step.native.isError && !results.some(handedBack)) this.landmarks.clear();
     const output = step.native.command === "snapshot" && !step.native.isError ? results.find((result) => result.exitCode === 0)?.stdout : undefined;
     const read = output === undefined ? undefined : snapshotText(output);
     if (read) {

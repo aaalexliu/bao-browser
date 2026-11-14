@@ -36,6 +36,22 @@ export function doneAsk(instruction: string): string {
   return `${swapped.replace(/[.]+$/, "")}, then click Done`;
 }
 
+/** A result that skipped the command because the owner held the tab. Success bookkeeping must not treat it as done. */
+export function handedBack(result: { stdout: string; exitCode: number }): boolean {
+  return result.exitCode === 0 && result.stdout.includes(HANDED_BACK);
+}
+
+/**
+ * A mutation admitted before a take does not run after that take, even if Done already returned the tab.
+ * A mutation that is held now waits. Anything else runs.
+ */
+export function staleHold(takenDuringPrep: boolean, heldNow: boolean, command: string, args: readonly string[] = []): "run" | "handback" | "wait" {
+  if (!isHeldMutation(command, args)) return "run";
+  if (heldNow) return "wait";
+  if (takenDuringPrep) return "handback";
+  return "run";
+}
+
 /** A mutation of the held tab does not run. The caller waits, then returns the one line. */
 export async function holdCommand<T>(
   held: boolean,
