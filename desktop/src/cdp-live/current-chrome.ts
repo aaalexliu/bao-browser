@@ -13,10 +13,10 @@ import { chromeProfilesRoot } from "../engines/chrome-profile-copy";
 import { killCommandToken, LAUNCH_SERVICES_RESTART, launchServicesStalled, processesNaming } from "../launch";
 import * as chromeAx from "./ax";
 import { chromeHelper, CHROME_BUNDLE, helperBin, INSPECT_URL, logAx, type ChromeAx } from "./ax";
-import { checkboxOn, REMOTE_CHECKBOX } from "./consent";
+import { REMOTE_CHECKBOX } from "./consent";
 import type { AxNode } from "../proxy/os-macos";
 import { endpointOnPid, listenPid, listenPorts, probeDevToolsVersion, readDevToolsActivePort, type DevToolsEndpoint, type VersionProbe } from "./endpoint";
-import { CHROME_APP_EXE, dailyChromePids, pathKeys } from "./remote-debugging";
+import { checkboxKnown, CHROME_APP_EXE, dailyChromePids, pathKeys } from "./remote-debugging";
 import { claimForEnable, readClaim, writeClaim } from "./debug-switch";
 import { holdDir, holdFixtureEndpoint, joinLiveHold, joinOrStartHold } from "./chrome-hold";
 import { shareConnection } from "./shared-connection";
@@ -332,7 +332,9 @@ export async function connectOwnedChrome(options: {
         if (Date.now() >= deadline) throw new Error("Chrome's remote-debugging checkbox did not appear");
         const box = await helper.exec(["checkbox-read", "--pid", String(pid), "--name", REMOTE_CHECKBOX], 30_000);
         if (box.found) {
-          readOn = checkboxOn(String(box.value ?? ""));
+          const known = checkboxKnown(String(box.value ?? ""));
+          if (known === null) throw new Error("Chrome's remote-debugging checkbox value was not read");
+          readOn = known;
           break;
         }
         await new Promise((resolve) => setTimeout(resolve, 250));

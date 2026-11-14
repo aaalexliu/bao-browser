@@ -4,7 +4,8 @@
 import { closeSync, constants, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeSync } from "node:fs";
 import path from "node:path";
 import { logAx, type ChromeAx } from "./ax";
-import { checkboxOn, REMOTE_CHECKBOX } from "./consent";
+import { REMOTE_CHECKBOX } from "./consent";
+import { checkboxKnown } from "./remote-debugging";
 
 const CLAIM = "switch.json";
 
@@ -137,6 +138,10 @@ export async function setSwitchByAx(
     }
     if (box.found) {
       value = String(box.value ?? "");
+      if (checkboxKnown(value) === null) {
+        await closeInspect(helper, pid);
+        return "failed";
+      }
       break;
     }
     if (Date.now() >= deadline) {
@@ -145,7 +150,7 @@ export async function setSwitchByAx(
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  if (checkboxOn(value) === on) {
+  if (checkboxKnown(value) === on) {
     await closeInspect(helper, pid);
     return "done";
   }
@@ -175,7 +180,9 @@ export async function setSwitchByAx(
     const after = await helper.exec(["checkbox-read", "--pid", String(pid), "--name", REMOTE_CHECKBOX], 30_000);
     await closeInspect(helper, pid);
     if (!after.found) return "failed";
-    return checkboxOn(String(after.value ?? "")) === on ? "done" : "failed";
+    const known = checkboxKnown(String(after.value ?? ""));
+    if (known === null) return "failed";
+    return known === on ? "done" : "failed";
   } catch {
     await closeInspect(helper, pid);
     return alive(pid) ? "failed" : "unavailable";

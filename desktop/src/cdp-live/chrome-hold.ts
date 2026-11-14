@@ -425,6 +425,12 @@ async function waitForPublished(
   return undefined;
 }
 
+/** The opener we are waiting on failed. A published hold is not that failure. */
+async function openerFailure(dir: string, root: string): Promise<string | undefined> {
+  if (await readLive(dir, root)) return undefined;
+  return readErr(dir);
+}
+
 /** Joins the hold for this user-data-dir, starting it when Chrome has none. A second call does not open a second Chrome socket. */
 export async function joinOrStartHold(options: HoldOptions): Promise<CurrentChrome> {
   const root = chromeDataPath(options.root);
@@ -432,6 +438,7 @@ export async function joinOrStartHold(options: HoldOptions): Promise<CurrentChro
   await prepareHoldDir(dir);
   const deadline = Date.now() + HOLD_WAIT_MS;
   let spawned: SpawnedHold | undefined;
+  let boundTo: number | undefined;
   let lastError: Error | undefined;
   try {
     while (Date.now() < deadline) {
@@ -449,6 +456,7 @@ export async function joinOrStartHold(options: HoldOptions): Promise<CurrentChro
         }
       }
       const starting = await readStarting(dir);
+      if (starting && pidAlive(starting.holderPid)) boundTo = starting.holderPid;
       if (starting && pidAlive(starting.holderPid) && !starting.sessionPort) {
         await sleep(20);
         continue;
@@ -460,6 +468,8 @@ export async function joinOrStartHold(options: HoldOptions): Promise<CurrentChro
             const published = await waitForPublished(dir, root, starting.holderPid, socket, options.signal, deadline);
             if (!published) {
               socket.destroy();
+              const failed = await openerFailure(dir, root);
+              if (failed) throw new Error(failed);
               await sleep(20);
               continue;
             }
@@ -475,12 +485,25 @@ export async function joinOrStartHold(options: HoldOptions): Promise<CurrentChro
           }
         } catch (error) {
           if (options.signal?.aborted) throw error;
+          const failed = await openerFailure(dir, root);
+          if (failed) throw new Error(failed);
           lastError = error instanceof Error ? error : new Error(String(error));
           await sleep(20);
           continue;
         }
       }
-      if (!spawned || !pidAlive(spawned.pid)) spawned = spawnHolder(options);
+      if (boundTo) {
+        const failed = await openerFailure(dir, root);
+        if (failed) throw new Error(failed);
+        if (pidAlive(boundTo)) {
+          await sleep(20);
+          continue;
+        }
+      }
+      if (!spawned || !pidAlive(spawned.pid)) {
+        spawned = spawnHolder(options);
+        boundTo = spawned.pid;
+      }
       await sleep(20);
     }
   } finally {

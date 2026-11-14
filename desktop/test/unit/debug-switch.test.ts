@@ -239,3 +239,92 @@ test("a listener that is already up is not claimed when Bao has no prior claim",
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("an empty checkbox value does not finish the off or clear the claim", async () => {
+  const dir = await scratchDir("bao-switch-empty-off-");
+  const axLog = path.join(dir, "ax.jsonl");
+  writeClaim(dir, true);
+  const calls: string[] = [];
+  const helper = {
+    async exec(args: string[]) {
+      calls.push(args[0] ?? "");
+      if (args[0] === "checkbox-read") return { ok: true, found: true, value: "" };
+      if (args[0] === "checkbox-set") return { ok: true, found: true, pressed: true };
+      return { ok: true, found: false, nodes: [] };
+    },
+  };
+  try {
+    await finishOwnedSwitch(dir, () => setSwitchByAx(helper, 7, false, axLog, () => true));
+    assert.equal(calls.includes("checkbox-set"), false);
+    assert.equal(claimOwned(dir), true);
+    calls.length = 0;
+    let reads = 0;
+    const afterEmpty = {
+      async exec(args: string[]) {
+        calls.push(args[0] ?? "");
+        if (args[0] === "checkbox-read") {
+          reads += 1;
+          return { ok: true, found: true, value: reads === 1 ? "1" : "" };
+        }
+        if (args[0] === "checkbox-set") return { ok: true, found: true, pressed: true };
+        return { ok: true, found: false, nodes: [] };
+      },
+    };
+    await finishOwnedSwitch(dir, () => setSwitchByAx(afterEmpty, 7, false, axLog, () => true));
+    assert.equal(calls.includes("checkbox-set"), true);
+    assert.equal(claimOwned(dir), true);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("an empty checkbox value does not claim the switch or press it on", async () => {
+  const root = await scratchDir("bao-switch-empty-on-");
+  const dir = holdDir(root);
+  const axLog = path.join(root, "ax.jsonl");
+  writeClaim(dir, true);
+  try {
+    const calls: string[] = [];
+    const helper = {
+      async permissions() { return { ok: true, accessibility: true }; },
+      async screenLocked() { return false; },
+      async exec(args: string[]) {
+        calls.push(args[0] ?? "");
+        if (args[0] === "checkbox-read") return { ok: true, found: true, value: "" };
+        if (args[0] === "checkbox-set") return { ok: true, found: true, pressed: true };
+        return { ok: true, found: false };
+      },
+    };
+    await assert.rejects(connectOwnedChrome({ root, axLog, recordClaim: true }, {
+      helper,
+      findChrome: async () => [7],
+      startChrome: async () => false,
+      executable: () => "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+      readPort: async () => { throw new Error("missing"); },
+      listener: async () => undefined,
+      listenPorts: async () => [],
+      probeVersion: async () => undefined,
+      connect: async () => { throw new Error("must not connect"); },
+    }), /checkbox value was not read/);
+    assert.equal(calls.includes("checkbox-set"), false);
+    assert.equal(claimOwned(dir), true);
+    clearClaim(dir);
+    calls.length = 0;
+    await assert.rejects(connectOwnedChrome({ root, axLog, recordClaim: true }, {
+      helper,
+      findChrome: async () => [7],
+      startChrome: async () => false,
+      executable: () => "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+      readPort: async () => { throw new Error("missing"); },
+      listener: async () => undefined,
+      listenPorts: async () => [],
+      probeVersion: async () => undefined,
+      connect: async () => { throw new Error("must not connect"); },
+    }), /checkbox value was not read/);
+    assert.equal(calls.includes("checkbox-set"), false);
+    assert.equal(readClaim(dir), undefined);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true });
+  }
+});

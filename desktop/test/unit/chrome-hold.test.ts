@@ -764,3 +764,37 @@ test("a starter that exits before it connects does not enable debugging", { time
   assert.equal(existsSync(path.join(dir, "hold.json")), false);
   assert.equal(existsSync(path.join(dir, "starting.json")), false);
 });
+
+test("a listen-only profile read returns the opener error when the switch is off", { timeout: scaledMs(15_000) }, async (t) => {
+  const scratch = await mkdtemp(path.join(tmpdir(), "bao-chrome-hold-silent-"));
+  const root = await realpath(scratch);
+  const axLog = path.join(scratch, "ax.jsonl");
+  const dir = holdDir(root);
+  const script = `
+    const { holdMain } = require(${JSON.stringify(path.resolve(__dirname, "../../src/cdp-live/chrome-hold.js"))});
+    holdMain(${JSON.stringify(["--root", root, "--ax-log", axLog, "--listen-only", "--initiator-fd", "3"])}, async () => {
+      throw new Error("Chrome is not listening");
+    }).catch((error) => {
+      process.stderr.write(error && error.stack ? error.stack : String(error));
+      process.exit(1);
+    });
+  `;
+  let errText = "";
+  const child = spawn(process.execPath, ["-e", script], { stdio: ["ignore", "pipe", "pipe", "pipe"] });
+  child.stderr?.on("data", (chunk: Buffer) => { errText += chunk.toString("utf8"); });
+  t.after(() => { if (child.pid && pidAlive(child.pid)) child.kill("SIGKILL"); });
+  t.after(async () => {
+    await rm(dir, { recursive: true, force: true });
+    await rm(scratch, { recursive: true, force: true });
+  });
+  const started = Date.now() + scaledMs(8_000);
+  while (!existsSync(path.join(dir, "starting.json"))) {
+    if (Date.now() >= started) throw new Error(`the holder did not start: ${errText}`);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  const began = Date.now();
+  await assert.rejects(joinOrStartHold({ root, axLog, listenOnly: true }), /Chrome is not listening/);
+  assert.ok(Date.now() - began < 5_000, "the profile read waited out the hold deadline");
+  const pipe = child.stdio[3];
+  if (pipe && typeof pipe !== "number") pipe.destroy();
+});
