@@ -2282,8 +2282,8 @@ export class AgentBrowserProxy {
     if (!this.passing && this.overlayOn(session) && this.takeover && (isActing(command) || command === "screenshot")) {
       this.passing = true;
       try {
+        await this.announceStep(session, command, args);
         if (command === "screenshot") return await this.takeover.hideForShot(() => this.run(session, command, args, readTimeoutMs, bound));
-        await this.takeover.activityLine(commandSentence(command, args, [...session.snapshots.values()].at(-1)).text);
         const before = await this.holdMutation(session, command, args);
         if (before) return before;
         const ran = await this.takeover.bracket(async () => {
@@ -2299,7 +2299,7 @@ export class AgentBrowserProxy {
       } finally { this.passing = false; }
     }
     if (!this.passing && this.overlayOn(session) && this.takeover && command !== "get") {
-      await this.takeover.activityLine(commandSentence(command, args, [...session.snapshots.values()].at(-1)).text).catch(() => undefined);
+      await this.announceStep(session, command, args);
     }
     if (this.gone()) throw new Error(AGENT_DISCONNECTED);
     await this.ensureHar(session);
@@ -2538,6 +2538,13 @@ export class AgentBrowserProxy {
   private overlayOn(session: Session): boolean {
     if (session.kind === "copy") return true;
     return session.kind === "current" && !session.relay;
+  }
+
+  /** The notch names the command the owner asked for. A tab list taken for a picture or for tracking is not that command. */
+  private async announceStep(session: Session, command: string, args: string[]): Promise<void> {
+    if (this.shown?.command !== command || !this.takeover) return;
+    const text = commandSentence(command, args, [...session.snapshots.values()].at(-1)).text || "Working…";
+    await this.takeover.activityLine(text).catch(() => undefined);
   }
 
   private async syncOwned(session: Session): Promise<void> {
