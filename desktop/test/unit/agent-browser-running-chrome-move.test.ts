@@ -400,6 +400,39 @@ test("an open that lands on a sign-in URL in a Bao profile continues in the owne
   assert.ok(await baoClosed(h.baoDir));
 });
 
+test("an open of a sign-in wall records the running Chrome timeout on that open", { timeout: scaledMs(60_000) }, async (t) => {
+  const h = await harness(t, "works");
+  await h.failOwnerOpen("navigation timed out");
+  const [result] = await h.proxy.execute("open", [`${h.site}/gate`], "bao");
+  assert.equal(result!.exitCode, 1);
+  await h.proxy.close();
+  const run = new Library(h.home).listRuns()[0]!;
+  const opens = (run.steps as RecordedAgentBrowserCommand[]).filter((step) => step.native.command === "open");
+  assert.equal(opens.length, 1);
+  assert.equal(opens[0]!.id, "command-1");
+  assert.equal(opens[0]!.status, "failed");
+  assert.match(opens[0]!.reason ?? "", /navigation timed out/);
+  assert.match((await readStepRecord(h.home, run.id, opens[0]!.id)).error ?? "", /navigation timed out/);
+  assert.notEqual(run.status, "passed");
+});
+
+test("a later open of a bound site records the running Chrome timeout on that open", { timeout: scaledMs(60_000) }, async (t) => {
+  const h = await harness(t, "works");
+  assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "bao"))[0]!.exitCode, 0);
+  await h.failOwnerOpen("navigation timed out");
+  const [result] = await h.proxy.execute("open", ["https://www.nytimes.com/"], undefined, false, undefined, {}, h.proxy.activeRunId);
+  assert.equal(result!.exitCode, 1);
+  await h.proxy.close();
+  const run = new Library(h.home).listRuns()[0]!;
+  const opens = (run.steps as RecordedAgentBrowserCommand[]).filter((step) => step.native.command === "open");
+  assert.equal(opens.length, 2);
+  assert.equal(opens[1]!.status, "failed");
+  assert.match(opens[1]!.native.args[0] ?? "", /nytimes\.com/);
+  assert.match(opens[1]!.reason ?? "", /navigation timed out/);
+  assert.match((await readStepRecord(h.home, run.id, opens[1]!.id)).error ?? "", /navigation timed out/);
+  assert.notEqual(run.status, "passed");
+});
+
 test("a route move whose native open times out leaves a failed open and the run is not passed", { timeout: scaledMs(60_000) }, async (t) => {
   const h = await harness(t, "works");
   assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "bao"))[0]!.exitCode, 0);

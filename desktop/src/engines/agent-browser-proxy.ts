@@ -89,6 +89,13 @@ class ActiveTargetMiss extends Error {
   }
 }
 
+class DelegatedOpenFailed extends Error {
+  constructor(cause: unknown, readonly result?: AgentBrowserCommandResult) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+    this.name = "DelegatedOpenFailed";
+  }
+}
+
 /** The pinned task tab is gone and no Bao task tab remains to take its place. */
 class TaskTabClosed extends Error {
   constructor() {
@@ -992,6 +999,11 @@ export class AgentBrowserProxy {
         if (!agentClosedTab) failure = new Error("Bao's task tab was closed");
         return results;
       }
+      if (error instanceof DelegatedOpenFailed) {
+        failure = error.cause instanceof Error ? error.cause : error;
+        results.splice(0, results.length, error.result ?? { stdout: "", stderr: error.message, exitCode: 1 });
+        return results;
+      }
       failure = error;
       session.workflow.unavailable("a browser command was interrupted", step ? { id: step.id, command: step.native.command } : undefined);
       throw error;
@@ -1378,12 +1390,14 @@ export class AgentBrowserProxy {
     let moving: Session | undefined;
     let routeOpen: RecordedAgentBrowserCommand | undefined;
     let failure: unknown;
+    let nativeOpen = false;
     try {
       try {
         wired = await this.wire(next);
         moving = { ...session, ...next, ...wired };
         routeOpen = session.recording.prepareRouteOpen(site);
         await this.flushHar(session);
+        nativeOpen = true;
         opened = await this.runNative(moving, "open", [site]);
         if (opened.exitCode !== 0) throw new Error(`the open in Bao's task tab failed: ${opened.stderr || opened.stdout || `exit ${opened.exitCode}`}`);
       } catch (error) {
@@ -1394,6 +1408,10 @@ export class AgentBrowserProxy {
         finally {
           if (wired) await rm(wired.stateDir, { recursive: true, force: true });
           await this.discard(next);
+        }
+        if (!routeOpen && nativeOpen) {
+          fail(error);
+          throw new DelegatedOpenFailed(error, opened);
         }
         return fail(error);
       }
