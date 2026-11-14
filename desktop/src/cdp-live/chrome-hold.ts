@@ -21,6 +21,7 @@ import { REMOTE_CHECKBOX } from "./consent";
 import { claimOwned, finishOwnedSwitch, testProcess, turnSwitchOff, writeClaim } from "./debug-switch";
 import { shareConnection } from "./shared-connection";
 import { connectCdp } from "./socket";
+import { serveTakeoverHold, type TakeoverHold } from "./takeover-hold";
 
 const HOLD_WAIT_MS = 120_000;
 const ADMITTED = 0x31;
@@ -321,8 +322,8 @@ export interface HoldSessions {
   close(): void;
 }
 
-/** Loopback sockets the hold counts as sessions. A drain closes a new socket without confirming it. */
-export function bindHoldSessions(): Promise<HoldSessions> {
+/** Loopback sockets the hold counts as sessions. A drain closes a new socket without confirming it. `onAdmit` runs after the session is counted. */
+export function bindHoldSessions(onAdmit?: (socket: net.Socket) => void): Promise<HoldSessions> {
   let count = 0;
   let draining = false;
   let waiters: (() => void)[] = [];
@@ -339,6 +340,7 @@ export function bindHoldSessions(): Promise<HoldSessions> {
     count += 1;
     changed();
     socket.write(Buffer.from([ADMITTED]));
+    onAdmit?.(socket);
     const down = () => {
       count = Math.max(0, count - 1);
       changed();
@@ -399,6 +401,7 @@ function admitSession(port: number, signal?: AbortSignal): Promise<net.Socket> {
 function bindSession(chrome: CurrentChrome, socket: net.Socket): CurrentChrome {
   const detach = chrome.detach.bind(chrome);
   let released = false;
+  chrome.admitted = socket;
   chrome.detach = () => {
     if (!released) {
       released = true;
@@ -863,7 +866,10 @@ export async function holdMain(
       finally { await removeOwnStarting(dir); }
     } else {
       await clearForeign(dir);
-      const sessions = await bindHoldSessions();
+      const queued: net.Socket[] = [];
+      let onAdmit = (socket: net.Socket) => { queued.push(socket); };
+      let overlays: TakeoverHold | undefined;
+      const sessions = await bindHoldSessions((socket) => onAdmit(socket));
       const stopping = new AbortController();
       try {
         writePrivate(path.join(dir, "starting.json"), JSON.stringify({
@@ -909,6 +915,9 @@ export async function holdMain(
             await removeOwnStarting(dir);
           } else if (chrome) {
             opening = false;
+            overlays = serveTakeoverHold(chrome.cdp);
+            onAdmit = (socket) => overlays?.attach(socket);
+            for (const socket of queued) overlays.attach(socket);
             const serving = serveHold(chrome, stopping.signal, { sessionPort: sessions.port });
             const reason = await Promise.race([
               watchSessions(sessions, chrome, stopping.signal, dir),
@@ -917,12 +926,14 @@ export async function holdMain(
             markStopping(dir, sessions.port);
             await unpublish(dir);
             if (reason === "turn-off" || claimOwned(dir)) await ownedOff(dir, root, axLog);
+            await overlays.close();
             stopping.abort();
             await serving.catch(() => undefined);
             await removeOwnStarting(dir);
           }
         }
       } finally {
+        await overlays?.close();
         sessions.close();
       }
     }

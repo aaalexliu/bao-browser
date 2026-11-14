@@ -16,8 +16,14 @@ import { armBrowserDownloads, inspectDatePicker, readCalendarSelection, waitForD
 import type { FileArg, Identity, StepLocator } from "./schema";
 import { paddedClip, type ShotBox } from "./shots";
 import { ownerStopText } from "./stop-copy";
+import { Takeover, type CdpSend } from "../cdp-live/takeover";
+import { askLine } from "../../../shared/takeover-overlay";
 
 const dialogHandlers = new WeakMap<Page, (dialog: Dialog) => void>();
+
+function playwrightSend(client: { send(method: string, params?: Record<string, unknown>): Promise<unknown> }): CdpSend {
+  return { send: (method, params) => client.send(method, params) as Promise<never> };
+}
 
 function samePath(before: string, after: string): boolean {
   try {
@@ -586,11 +592,11 @@ export class BrowserDriver implements Driver {
   }
 
   loginContinued(): boolean {
-    return this.prompts?.loginContinued?.() ?? false;
+    return this.handedBack || (this.prompts?.loginContinued?.() ?? false);
   }
 
   ownerContinued(): boolean {
-    return this.prompts?.ownerContinued?.() ?? false;
+    return this.handedBack || (this.prompts?.ownerContinued?.() ?? false);
   }
 
   pauseCapture(): void {
@@ -603,39 +609,40 @@ export class BrowserDriver implements Driver {
 
   async showAsk(ask: HumanAsk): Promise<void> {
     this.prompts?.showAsk?.(ask);
-    const text = ask.kind === "confirm"
-      ? `needs you. You're in control. ${ask.instruction}`
-      : ask.kind === "wall"
-        ? ask.instruction
-        : "You're in control. Sign in on this page. Continue when you're ready.";
-    await this.injectStrip(ask.kind, text);
+    this.handedBack = false;
+    const text = ask.kind === "login" ? "Sign in, then click Done"
+      : ask.kind === "confirm" ? askLine("finish this step")
+      : askLine("finish the check");
+    await this.showControl(text);
   }
 
-  private async injectStrip(kind: HumanAsk["kind"], text: string): Promise<void> {
-    await this.page.evaluate(({ kind, text }) => {
-      document.getElementById("bao-control-strip")?.remove();
-      const bar = document.createElement("div");
-      bar.id = "bao-control-strip";
-      bar.setAttribute("data-bao-strip", kind);
-      bar.style.cssText = "position:fixed;z-index:2147483646;left:0;right:0;top:0;background:#1d1d1f;color:#fff;font:13px/1.3 -apple-system,BlinkMacSystemFont,sans-serif;padding:8px 12px;display:flex;gap:12px;align-items:center";
-      const note = document.createElement("p");
-      note.textContent = text;
-      note.style.margin = "0";
-      bar.appendChild(note);
-      if (kind === "login" || kind === "wall") {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.id = "bao-continue";
-        button.textContent = kind === "wall" ? "Continue" : "I'm signed in, continue";
-        button.onclick = () => { void fetch("/api/prompt/continue", { method: "POST" }); };
-        bar.appendChild(button);
-      }
-      document.documentElement.appendChild(bar);
-    }, { kind, text }).catch(() => undefined);
+  private handedBack = false;
+  private overlay?: Takeover;
+  private overlayClient?: { detach(): Promise<void> };
+
+  private async showControl(text: string): Promise<void> {
+    await this.clearStrip();
+    const client = await this.page.context().newCDPSession(this.page);
+    const overlay = new Takeover({ onAskDone: () => { this.handedBack = true; } });
+    try {
+      await overlay.attachPage(playwrightSend(client));
+      await overlay.showAsk(text);
+      this.overlay = overlay;
+      this.overlayClient = client;
+    } catch {
+      await overlay.dispose().catch(() => undefined);
+      await client.detach().catch(() => undefined);
+    }
   }
 
   private async clearStrip(): Promise<void> {
     await this.page.evaluate(() => { document.getElementById("bao-control-strip")?.remove(); }).catch(() => undefined);
+    const overlay = this.overlay;
+    const client = this.overlayClient;
+    this.overlay = undefined;
+    this.overlayClient = undefined;
+    await overlay?.dispose().catch(() => undefined);
+    await client?.detach().catch(() => undefined);
   }
 
   async notify(notice: HealNotice): Promise<void> {

@@ -5,6 +5,7 @@ import type { OwnerPage } from "../cdp-live/owner-wait";
 import type { CdpSocket } from "../cdp-live/socket";
 import { commandSentence, refIdentity } from "../v1/caption";
 import { fileOperands } from "../v1/file-operands";
+import { formatClock } from "../v1/time";
 import { AGENT_CLOSED_ASK, AGENT_STEP_FAILED, AGENT_WAIT_ENDED } from "../v1/stop-copy";
 import { RUN_SCHEMA_ID, stepTitle, type StepCaption } from "../v1/schema";
 import { Library, type StoredRun } from "../v1/store";
@@ -386,6 +387,29 @@ export class AgentBrowserRun {
   /** The session's cleanup failed after its outcome was recorded. */
   cleanupFailed(error: string): void {
     this.run.cleanupError = error;
+    this.persist();
+  }
+
+  /** A take-over the receipt already knows how to show: start, end, and the clock. */
+  noteHandoff(startedAt: number, endedAt: number): void {
+    const text = "You took control of this tab and handed it back.";
+    const step: RecordedAgentBrowserCommand = {
+      id: `handoff-${this.run.steps.length + 1}`,
+      label: "You took control",
+      caption: { text: "You took control" },
+      status: "passed",
+      startedAt,
+      endedAt,
+      summary: { parts: ["You took control of this tab and handed it back"], text },
+      native: { command: "handoff", args: [], results: [{ stdout: text, stderr: "", exitCode: 0 }], isError: false, screenshots: [] },
+    };
+    this.run.steps.push(step);
+    const trail = Array.isArray(this.run.trail) ? this.run.trail : [];
+    this.run.trail = [
+      ...trail,
+      { kind: "handoff", phase: "start", ts: startedAt, text: `Handoff started ${formatClock(startedAt)}`, stepId: step.id },
+      { kind: "handoff", phase: "end", ts: endedAt, text: `Handoff ended ${formatClock(endedAt)}`, stepId: step.id },
+    ];
     this.persist();
   }
 

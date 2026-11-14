@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -27,7 +27,10 @@ import { BOUND_REASON, boundSite, purgeBoundSites } from "./bound-sign-in";
 import { OWNER_WAIT_LIMIT_MS, ownerWall, ownerWallOnAddress, ownerCanResume, ownerTask, ownerWaitTimeout, ownerWaitInstruction, type OwnerPage } from "../cdp-live/owner-wait";
 import { pageWall } from "../cdp-live/page-wall";
 import { BROWSER_CHOICES, DEFAULT_BROWSER } from "../browser-choice";
-import { targetBox } from "../v1/caption";
+import { commandSentence, targetBox } from "../v1/caption";
+import { Takeover } from "../cdp-live/takeover";
+import { AdmittedTakeover } from "../cdp-live/takeover-hold";
+import { askLine, HANDED_BACK, holdCommand, isActing, OWNER_IN_CONTROL } from "../../../shared/takeover-overlay";
 import { GLOBAL_BOOL_FLAGS, GLOBAL_VALUE_FLAGS, stripGlobalFlags, tabCommandAction } from "../v1/tab-command";
 import { diffView, findView, snapshotView } from "./snapshot-view";
 import { AGENT_DISCONNECTED, AGENT_IDLE_REASON, NEWER_TASK_REASON } from "../v1/stop-copy";
@@ -456,6 +459,10 @@ export class AgentBrowserProxy {
   private seat: ProxySeat = { phase: "ended", reason: "closed" };
   /** Close commands already queued. A close can arrive before the session it closes. */
   private pendingCloses = 0;
+  private takeover?: Takeover | AdmittedTakeover;
+  private takeoverReady: Promise<void> = Promise.resolve();
+  private passing = false;
+  private shotDepth = 0;
   private readonly cleanups = new WeakMap<Session, Promise<void>>();
   private latest: { runId: string; step: RecordedAgentBrowserCommand; steps: readonly RecordedAgentBrowserCommand[]; lastPicture?: AgentBrowserRun["lastPicture"] } | undefined;
   private workflowOutcome: string | undefined;
@@ -619,6 +626,7 @@ export class AgentBrowserProxy {
       return;
     }
     this.seat = { phase: "live", session, ownerWait: "off" };
+    this.armTakeover(session);
   }
 
   private drop(session: Session, reason: "closed" | "current-ended" = "closed"): void {
@@ -827,6 +835,22 @@ export class AgentBrowserProxy {
         files = await fileArgs(command, args, session.recording.downloadsDir);
         nativeArgs = files.forwarded;
         if (step) step.native.args = [...nativeArgs];
+      }
+      await this.takeoverReady;
+      if (this.overlayOn(session)) {
+        const tab = session.kind === "current" ? (session.agentTarget ?? session.targetId) : session.agentTarget;
+        await this.takeover?.follow(tab).catch(() => undefined);
+      }
+      if (this.takeover && "syncHeld" in this.takeover) await this.takeover.syncHeld();
+      const gate = await holdCommand(continuing && this.takeover?.held === true, command as string, async () => "run" as const, () => this.takeover!.waitHandback(session.abort.signal, OWNER_WAIT_LIMIT_MS));
+      if (gate.held) {
+        if (gate.outcome === "done") {
+          results.push({ stdout: `${HANDED_BACK}\n`, stderr: "", exitCode: 0 });
+          return results;
+        }
+        if (gate.outcome !== "disconnect") await this.endOwnerWait(session, "nobody handed the tab back");
+        results.push(...this.ownerResult("closed", session));
+        return results;
       }
       if (continuing && command !== "close" && command !== "wait_for_owner") {
         await this.noteWall(session);
@@ -1905,7 +1929,11 @@ export class AgentBrowserProxy {
     const raise = options?.raise !== false;
     if (waiting && raise) session.raised = false;
     const text = this.bannerText(session);
-    if (waiting) await this.armReloadBanner(session, targetId, text).catch(() => undefined);
+    const takeover = this.overlayOn(session) ? this.takeover : undefined;
+    if (takeover) {
+      if (waiting) await takeover.showAsk(askLine(ownerTask(ownerWaitPage(this.waitOf(session), session.ownerPage))));
+      else await takeover.clearAsk();
+    } else if (waiting) await this.armReloadBanner(session, targetId, text).catch(() => undefined);
     else await this.disarmReloadBanner();
     const cdp = await this.connectSession(session, { timeoutMs: 2000, signal: session.abort.signal });
     let attached: string | undefined;
@@ -1929,8 +1957,10 @@ export class AgentBrowserProxy {
       }
       const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true }, undefined, 2000);
       attached = sessionId;
-      const expression = waiting ? ownerBannerScript(text) : ownerBannerGone();
-      await cdp.send("Runtime.evaluate", { expression, returnByValue: true }, sessionId, 2000);
+      if (!takeover) {
+        const expression = waiting ? ownerBannerScript(text) : ownerBannerGone();
+        await cdp.send("Runtime.evaluate", { expression, returnByValue: true }, sessionId, 2000);
+      }
     } catch {
       // The durable Library notice remains visible if the page rejects the banner or closes.
     } finally {
@@ -1972,6 +2002,12 @@ export class AgentBrowserProxy {
     try {
       while (Date.now() < deadline) {
         if (session.abort.signal.aborted || cdp && !cdp.isOpen) return this.ownerClosed(session);
+        if (this.takeover?.releasedAsk()) {
+          const result = this.ownerResult("recording", session);
+          this.setWait(session, "off");
+          session.recording.ownerWaiting(false);
+          return result;
+        }
         try {
           const waiting = this.wallOf(session);
           if (!waiting) return this.ownerClosed(session);
@@ -2131,6 +2167,11 @@ export class AgentBrowserProxy {
   }
 
   private async captureFrame(session: Session, targetId: string, visual: boolean): Promise<{ bytes: Buffer; viewport?: { width: number; height: number } }> {
+    if (this.shotDepth === 0 && this.overlayOn(session) && this.takeover) {
+      this.shotDepth += 1;
+      try { return await this.takeover.hideForShot(() => this.captureFrame(session, targetId, visual)); }
+      finally { this.shotDepth -= 1; }
+    }
     const deadline = Date.now() + 3000;
     const remaining = () => Math.max(1, deadline - Date.now());
     const signal = AbortSignal.any([session.abort.signal, AbortSignal.timeout(3000)]);
@@ -2170,6 +2211,20 @@ export class AgentBrowserProxy {
   }
 
   private async run(session: Session, command: string, args: string[], readTimeoutMs?: number, bound?: AbortSignal): Promise<AgentBrowserCommandResult> {
+    if (!this.passing && this.overlayOn(session) && this.takeover && (isActing(command) || command === "screenshot")) {
+      this.passing = true;
+      try {
+        if (command === "screenshot") return await this.takeover.hideForShot(() => this.run(session, command, args, readTimeoutMs, bound));
+        await this.takeover.activityLine(commandSentence(command, args, [...session.snapshots.values()].at(-1)).text);
+        return await this.takeover.bracket(async () => {
+          await this.pointCursor(session, command, args);
+          return this.run(session, command, args, readTimeoutMs, bound);
+        });
+      } finally { this.passing = false; }
+    }
+    if (!this.passing && this.overlayOn(session) && this.takeover && command !== "get") {
+      await this.takeover.activityLine(commandSentence(command, args, [...session.snapshots.values()].at(-1)).text).catch(() => undefined);
+    }
     if (this.gone()) throw new Error(AGENT_DISCONNECTED);
     await this.ensureHar(session);
     if (command === "close") await this.flushHar(session);
@@ -2193,6 +2248,9 @@ export class AgentBrowserProxy {
       } catch (error) {
         process.stderr.write(`Bao task tab tracking unavailable: ${error instanceof Error ? error.message : String(error)}\n`);
       }
+    }
+    if (command === "snapshot" && this.takeover?.held && result.exitCode === 0) {
+      result.stdout += (result.stdout.endsWith("\n") ? "" : "\n") + OWNER_IN_CONTROL + "\n";
     }
     return result;
   }
@@ -2297,10 +2355,11 @@ export class AgentBrowserProxy {
     clearTimeout(session.idleTimer);
     if (this.session !== session || this.removingOf(session) || this.gone()) return;
     // A closed wait still names its page, but the session expires on the idle timer.
-    if (this.waitOf(session) !== "off" && !session.abort.signal.aborted) {
+    if ((this.waitOf(session) !== "off" || this.takeover?.held) && !session.abort.signal.aborted) {
+      const since = this.takeover?.held ? (this.takeover.heldSince ?? Date.now()) : (session.ownerTouched ?? Date.now());
       session.idleTimer = setTimeout(() => {
-        void this.endOwnerWait(session).catch((error: unknown) => process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`));
-      }, Math.max(0, (session.ownerTouched ?? Date.now()) + OWNER_WAIT_LIMIT_MS - Date.now()));
+        void this.endOwnerWait(session, this.takeover?.held ? "nobody handed the tab back" : undefined).catch((error: unknown) => process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`));
+      }, Math.max(0, since + OWNER_WAIT_LIMIT_MS - Date.now()));
       session.idleTimer.unref();
       return;
     }
@@ -2400,7 +2459,74 @@ export class AgentBrowserProxy {
     }
   }
 
+  private overlayOn(session: Session): boolean {
+    if (session.kind === "copy") return true;
+    return session.kind === "current" && !session.relay;
+  }
+
+  private armTakeover(session: Session): void {
+    if (!this.overlayOn(session)) return;
+    this.takeoverReady = this.startTakeover(session);
+  }
+
+  private async startTakeover(session: Session): Promise<void> {
+    await this.takeover?.dispose().catch(() => undefined);
+    const admitted = session.kind === "current" && !session.relay ? session.chrome.admitted : undefined;
+    let takeover: Takeover | AdmittedTakeover | undefined;
+    const options = {
+      finishHoldMs: process.env.BAO_LANE ? 0 : 4000,
+      onDisconnect: () => {
+        if (takeover?.waiting) return;
+        this.ownerDisconnected(session);
+      },
+      onOpen: () => {
+        const child = spawn("open", [`bao://receipt/${session.recording.id}`], { stdio: "ignore" });
+        child.unref();
+      },
+      onHandoff: (startedAt: number, endedAt: number) => session.recording.noteHandoff(startedAt, endedAt),
+    };
+    try {
+      if (admitted) {
+        const remote = new AdmittedTakeover(admitted, options);
+        takeover = remote;
+        this.takeover = remote;
+        await remote.attach(session.agentTarget ?? session.targetId);
+      } else if (session.kind === "copy") {
+        const local = new Takeover(options);
+        takeover = local;
+        this.takeover = local;
+        await local.attachPort(session.chrome.target.portFile, session.agentTarget ?? session.targetId);
+      }
+    } catch (error) {
+      process.stderr.write(`Bao takeover overlay unavailable: ${error instanceof Error ? error.message : String(error)}\n`);
+      await takeover?.dispose().catch(() => undefined);
+      if (takeover && this.takeover === takeover) this.takeover = undefined;
+    }
+  }
+
+  private ownerDisconnected(session: Session): void {
+    if (this.session !== session || this.removingOf(session)) return;
+    session.outcome = { outcome: "failed", reason: "The owner disconnected Bao from this tab." };
+    session.workflow.unavailable(session.outcome.reason);
+    session.abort.abort();
+    void this.remove(session, false, true);
+  }
+
+  private async pointCursor(session: Session, command: string, args: string[]): Promise<void> {
+    if (!this.takeover || (command !== "click" && command !== "fill") || !args[0]) return;
+    const boxed = await this.box(session, args[0]).catch(() => undefined);
+    if (!boxed) return;
+    await this.takeover.cursor(boxed.x + boxed.width / 2, boxed.y + boxed.height / 2);
+  }
+
   private async cleanupBody(session: Session, keepOpen: boolean, closeTaskTabs: boolean): Promise<void> {
+    const overlay = this.takeover;
+    if (overlay && this.takeover === overlay) {
+      const outcome = overlay.stoppedByOwner ? "stopped" : session.outcome?.outcome === "failed" ? "failed" : "finished";
+      await overlay.finish(outcome).catch(() => undefined);
+      await overlay.dispose().catch(() => undefined);
+      if (this.takeover === overlay) this.takeover = undefined;
+    }
     await this.disarmReloadBanner();
     session.abort.abort();
     await session.commandDone;

@@ -5,6 +5,7 @@
 
 import { execFile, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import type { Socket } from "node:net";
 import { existsSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import path from "node:path";
@@ -49,6 +50,8 @@ export interface CurrentChrome {
   endpoint: DevToolsEndpoint;
   /** This session's browser session on the shared connection. Closing it leaves the connection up. */
   cdp: CdpSocket;
+  /** The counted session. Overlay commands travel here. detach closes it. */
+  admitted?: Socket;
   closed: Promise<void>;
   isClosed(): boolean;
   detach(): void;

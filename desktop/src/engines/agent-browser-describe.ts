@@ -318,6 +318,7 @@ export function describeStep(facts: StepFacts): StepSummary {
       const closed = facts.current ? "Closed Bao's task tab in your Chrome" : "Closed the Bao browser window";
       return { parts: [closed], text: `${closed}.` };
     }
+    case "handoff": return done(["You took control of this tab and handed it back"]);
     default: return done([`Ran ${command}`]);
   }
 }
