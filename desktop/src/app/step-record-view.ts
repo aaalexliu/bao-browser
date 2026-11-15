@@ -144,12 +144,13 @@ interface SnapshotNodes {
   nodeName?: number[];
   nodeValue?: number[];
   attributes?: number[][];
+  textValue?: { index: number[]; value: number[] };
   inputValue?: { index: number[]; value: number[] };
   inputChecked?: { index: number[] };
   optionSelected?: { index: number[] };
 }
 
-interface SnapshotDocument { documentURL?: number; nodes?: SnapshotNodes }
+interface SnapshotDocument { documentURL?: number; baseURL?: number; nodes?: SnapshotNodes }
 
 const BUTTON_INPUTS = new Set(["submit", "button", "reset", "image"]);
 
@@ -163,8 +164,9 @@ export function pageMap(dom: unknown, phase: Phase): PageMap {
     const nodes = doc.nodes ?? {};
     const names = nodes.nodeName ?? [];
     const count = names.length;
-    const frame = docIndex === 0 ? undefined : text(doc.documentURL) || undefined;
-    const base = text(doc.documentURL);
+    const documentURL = text(doc.documentURL);
+    const frame = docIndex === 0 ? undefined : documentURL || undefined;
+    const base = text(doc.baseURL) || documentURL;
     const children: number[][] = Array.from({ length: count }, () => []);
     (nodes.parentIndex ?? []).forEach((parent, child) => { if (parent >= 0 && parent < count) children[parent]!.push(child); });
     const attrs = (node: number) => {
@@ -173,7 +175,9 @@ export function pageMap(dom: unknown, phase: Phase): PageMap {
       for (let i = 0; i + 1 < flat.length; i += 2) out[text(flat[i]).toLowerCase()] = text(flat[i + 1]);
       return out;
     };
-    const values = new Map((nodes.inputValue?.index ?? []).map((node, i) => [node, text(nodes.inputValue!.value[i])]));
+    const rareText = (data: { index: number[]; value: number[] } | undefined) => new Map((data?.index ?? []).map((node, i) => [node, text(data!.value[i])]));
+    const values = rareText(nodes.inputValue);
+    const textValues = rareText(nodes.textValue);
     const checked = new Set(nodes.inputChecked?.index ?? []);
     const selected = new Set(nodes.optionSelected?.index ?? []);
     const tag = (node: number) => text(names[node]).toUpperCase();
@@ -190,46 +194,52 @@ export function pageMap(dom: unknown, phase: Phase): PageMap {
     };
     const optionsOf = (select: number) => children[select]!.flatMap((child) => tag(child) === "OPTGROUP" ? children[child]! : [child]).filter((child) => tag(child) === "OPTION");
     const resolve = (href: string) => { try { return new URL(href, base).href; } catch { return href; } };
+    const optionValue = (option: number) => attrs(option).value ?? innerText(option);
     const field = (node: number): FieldRow | undefined => {
       const name = tag(node);
       const a = attrs(node);
       if (name === "SELECT") {
-        const pick = optionsOf(node).find((option) => selected.has(option));
-        return { name: a.name || a.id || "", type: "select", value: pick === undefined ? "" : attrs(pick).value ?? innerText(pick) };
+        const picks = optionsOf(node).filter((option) => selected.has(option)).map(optionValue);
+        return { name: a.name || a.id || "", type: "select", value: picks.join(", ") };
       }
-      if (name === "TEXTAREA") return { name: a.name || a.id || "", type: "textarea", value: values.get(node) ?? "" };
+      if (name === "TEXTAREA") return { name: a.name || a.id || "", type: "textarea", value: textValues.get(node) ?? "" };
       if (name !== "INPUT") return undefined;
       const type = (a.type || "text").toLowerCase();
       if (BUTTON_INPUTS.has(type)) return undefined;
       if (type === "checkbox" || type === "radio") return { name: a.name || a.id || "", type, value: `${a.value ?? "on"}${checked.has(node) ? " (checked)" : ""}` };
       return { name: a.name || a.id || "", type, value: type === "password" && (values.get(node) ?? "") ? "Hidden" : values.get(node) ?? a.value ?? "" };
     };
+    const firstById = new Map<string, FormRow | null>();
+    const placed: { row: FieldRow; owner?: FormRow; formId?: string }[] = [];
     const visit = (node: number, form: FormRow | undefined) => {
       const name = tag(node);
       const a = attrs(node);
       let inside = form;
       if (name === "FORM") {
-        inside = { action: resolve(a.action || base), method: (a.method || "get").toUpperCase(), ...(frame ? { frame } : {}), fields: [] };
+        inside = { action: a.action ? resolve(a.action) : documentURL, method: (a.method || "get").toUpperCase(), ...(frame ? { frame } : {}), fields: [] };
         map.forms.push(inside);
       } else if ((name === "A" || name === "AREA") && a.href !== undefined) {
         map.links.push({ text: innerText(node) || a["aria-label"] || a.title || "", href: resolve(a.href), ...(frame ? { frame } : {}) });
       } else if (name === "BUTTON" || (name === "INPUT" && BUTTON_INPUTS.has((a.type || "").toLowerCase())) || a.role === "button") {
         map.buttons.push({ text: innerText(node) || a.value || a["aria-label"] || a.title || "", ...(frame ? { frame } : {}) });
       }
+      if (a.id && !firstById.has(a.id)) firstById.set(a.id, name === "FORM" ? inside! : null);
       const row = field(node);
-      if (row) {
-        if (inside) inside.fields.push(row);
-        else map.loose.push({ ...row, ...(frame ? { frame } : {}) });
-      }
+      if (row) placed.push("form" in a ? { row, formId: a.form } : inside ? { row, owner: inside } : { row });
       if (name === "SELECT") {
         map.selects.push({
           name: a.name || a.id || "", ...(frame ? { frame } : {}),
-          options: optionsOf(node).map((option) => ({ text: innerText(option), value: attrs(option).value ?? innerText(option), selected: selected.has(option) })),
+          options: optionsOf(node).map((option) => ({ text: innerText(option), value: optionValue(option), selected: selected.has(option) })),
         });
       }
       for (const child of children[node]!) visit(child, inside);
     };
     (nodes.parentIndex ?? []).forEach((parent, node) => { if (parent < 0) visit(node, undefined); });
+    for (const item of placed) {
+      const owner = item.formId !== undefined ? firstById.get(item.formId) || undefined : item.owner;
+      if (owner) owner.fields.push(item.row);
+      else map.loose.push({ ...item.row, ...(frame ? { frame } : {}) });
+    }
   });
   return map;
 }

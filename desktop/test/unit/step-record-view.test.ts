@@ -138,6 +138,111 @@ test("the link and form map comes from the stored DOM snapshot, shadow roots and
   assert.deepEqual(map.selects, [{ name: "year", options: [{ text: "2025", value: "2025", selected: false }, { text: "2026", value: "2026", selected: true }] }]);
 });
 
+/** A DOMSnapshot.captureSnapshot result. Rare string values are indexes into `strings`, as CDP stores them. */
+function captured(documents: { url: string; base?: string; rows: [parent: number, type: number, name: string, attrs: string[], value?: string][] }[]): { strings: string[]; documents: { nodes: Record<string, unknown> }[] } {
+  const strings: string[] = [];
+  const s = (value: string) => { const at = strings.indexOf(value); if (at >= 0) return at; strings.push(value); return strings.length - 1; };
+  return {
+    strings,
+    documents: documents.map((document) => ({
+      documentURL: s(document.url),
+      ...(document.base === undefined ? {} : { baseURL: s(document.base) }),
+      nodes: {
+        parentIndex: document.rows.map((row) => row[0]),
+        nodeType: document.rows.map((row) => row[1]),
+        nodeName: document.rows.map((row) => s(row[2])),
+        nodeValue: document.rows.map((row) => row[4] === undefined ? -1 : s(row[4])),
+        attributes: document.rows.map((row) => row[3].map(s)),
+      },
+    })),
+  };
+}
+
+test("page map keeps textarea text, every selected option, the document base URL, and the form a control names", () => {
+  const note = "October statement attached";
+  const dom = captured([
+    {
+      url: "https://example.test/account",
+      base: "https://files.example.test/archive/",
+      rows: [
+        [-1, 9, "#document", []],
+        [0, 1, "HTML", []],
+        [1, 1, "A", ["href", "october.pdf"]],
+        [2, 3, "#text", [], "October"],
+        [1, 1, "INPUT", ["form", "upload", "name", "early", "value", "first"]],
+        [1, 1, "FORM", ["id", "upload", "action", "/submit", "method", "post"]],
+        [5, 1, "INPUT", ["name", "member", "value", "attr"]],
+        [5, 1, "INPUT", ["name", "stray", "form", "missing", "value", "nope"]],
+        [1, 1, "FORM", ["id", "local", "action", ""]],
+        [8, 1, "TEXTAREA", ["name", "note", "form", "upload"]],
+        [9, 3, "#text", [], "stale default"],
+        [8, 1, "SELECT", ["name", "years", "form", "upload", "multiple", "multiple"]],
+        [11, 1, "OPTGROUP", ["label", "Years"]],
+        [12, 1, "OPTION", ["value", "2025"]],
+        [13, 3, "#text", [], "Y2025"],
+        [12, 1, "OPTION", ["value", "2026"]],
+        [15, 3, "#text", [], "Y2026"],
+        [11, 1, "OPTION", []],
+        [17, 3, "#text", [], "All"],
+        [8, 1, "INPUT", ["name", "kept", "value", "inside"]],
+        [1, 1, "INPUT", ["form", "upload", "name", "account", "value", "brokerage"]],
+        [1, 1, "DIV", ["id", "taken"]],
+        [1, 1, "FORM", ["id", "taken"]],
+        [1, 1, "INPUT", ["form", "taken", "name", "blocked", "value", "x"]],
+        [1, 1, "AREA", ["href", "map.pdf", "title", "Map"]],
+      ],
+    },
+    {
+      url: "https://help.example/frame",
+      base: "https://cdn.example/files/",
+      rows: [
+        [-1, 9, "#document", []],
+        [0, 1, "A", ["href", "guide.html"]],
+        [1, 3, "#text", [], "Guide"],
+        [0, 1, "FORM", ["id", "upload", "action", "/frame-submit"]],
+        [0, 1, "INPUT", ["form", "upload", "name", "framefield", "value", "yes"]],
+      ],
+    },
+  ]);
+  const s = (value: string) => { const at = dom.strings.indexOf(value); if (at >= 0) return at; dom.strings.push(value); return dom.strings.length - 1; };
+  dom.documents[0]!.nodes.textValue = { index: [9], value: [s(note)] };
+  dom.documents[0]!.nodes.inputValue = { index: [6, 9, 19, 20], value: [s("owner-now"), s("wrong-input-value"), s("inside"), s("brokerage")] };
+  dom.documents[0]!.nodes.optionSelected = { index: [17, 15, 13] };
+  const map = pageMap(dom, "after");
+  assert.deepEqual(map.links, [
+    { text: "October", href: "https://files.example.test/archive/october.pdf" },
+    { text: "Map", href: "https://files.example.test/archive/map.pdf" },
+    { text: "Guide", href: "https://cdn.example/files/guide.html", frame: "https://help.example/frame" },
+  ]);
+  assert.deepEqual(map.forms, [
+    { action: "https://files.example.test/submit", method: "POST", fields: [
+      { name: "early", type: "text", value: "first" },
+      { name: "member", type: "text", value: "owner-now" },
+      { name: "note", type: "textarea", value: note },
+      { name: "years", type: "select", value: "2025, 2026, All" },
+      { name: "account", type: "text", value: "brokerage" },
+    ] },
+    { action: "https://example.test/account", method: "GET", fields: [{ name: "kept", type: "text", value: "inside" }] },
+    { action: "https://example.test/account", method: "GET", fields: [] },
+    { action: "https://cdn.example/frame-submit", method: "GET", frame: "https://help.example/frame", fields: [{ name: "framefield", type: "text", value: "yes" }] },
+  ]);
+  assert.deepEqual(map.loose, [
+    { name: "stray", type: "text", value: "nope" },
+    { name: "blocked", type: "text", value: "x" },
+  ]);
+  assert.equal(map.selects[0]?.options.filter((option) => option.selected).map((option) => option.value).join(", "), "2025, 2026, All");
+  const html = stepRecordBody("run-1", "step-1", {
+    id: "step-1", waits: [], network: { total: 0, work: [], static: [], analytics: [] }, pages: {}, console: [], errors: [], map,
+  });
+  assert.match(html, /October statement attached/);
+  assert.match(html, /https:\/\/files\.example\.test\/archive\/october\.pdf/);
+  assert.match(html, /2025, 2026, All/);
+  assert.match(html, /Fields outside a form/);
+  assert.match(html, /account = brokerage/);
+  assert.match(html, /No requests recorded for this step\./);
+  assert.match(html, /No console messages, page errors, or failed loads recorded\./);
+});
+
 test("a step view reads the stored record and page files, and the raw files download as the tools wrote them", async (t) => {
   const home = await fixture(t);
   const index = await runRecordIndex(home, RUN);
@@ -215,7 +320,9 @@ test("a step section lists real work first, files the rest behind counts, and li
   assert.match(html, /Load 404/);
   assert.match(html, /No response/);
   const empty = stepRecordBody(RUN, "command-1", (await stepRecordView(home, RUN, "command-1"))!);
-  assert.match(empty, /No requests in this step\./);
+  assert.match(empty, /No requests recorded for this step\./);
+  assert.doesNotMatch(html, /No requests recorded for this step/);
+  assert.doesNotMatch(html, /No console messages, page errors, or failed loads recorded/);
   assert.doesNotMatch(empty, /network\.har/);
   assert.match(empty, /Bao did not read the page for this step\./);
 });

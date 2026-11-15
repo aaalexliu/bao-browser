@@ -44,7 +44,7 @@ function networkHtml(runId: string, view: StepRecordView): string {
   const filed = network.static.length + network.analytics.length;
   const count = network.total
     ? `${plural(network.total, "request")}. ${network.work.length} did real work${filed ? `; ${[network.static.length ? plural(network.static.length, "static file") : "", network.analytics.length ? plural(network.analytics.length, "analytics request") : ""].filter(Boolean).join(" and ")} are filed below them` : ""}.`
-    : "No requests in this step.";
+    : "No requests recorded for this step.";
   const work = network.work.map(requestRow);
   const shown = work.length > SHOWN_REQUESTS + 2 ? work.slice(0, SHOWN_REQUESTS) : work;
   const more = work.slice(shown.length);
@@ -108,7 +108,7 @@ function consoleHtml(view: StepRecordView): string {
     ...view.errors.map((line) => `<div class="record-row failed"><span class="record-key">Page error</span><span class="record-value">${esc(line.text)}</span></div>`),
     ...loads.map((row) => `<div class="record-row failed"><span class="record-key">${esc(row.status ? `Load ${row.status}` : "No response")}</span><span class="record-value">${esc(row.url)}</span></div>`),
   ];
-  return `<section class="record-part" aria-label="Console and errors"><h4>Console and errors</h4>${rows.length > SHOWN_REQUESTS + 2 ? collapsed("Messages", rows) : rows.length ? `<div class="record-rows">${rows.join("")}</div>` : "<p>No console messages, page errors, or failed loads.</p>"}</section>`;
+  return `<section class="record-part" aria-label="Console and errors"><h4>Console and errors</h4>${rows.length > SHOWN_REQUESTS + 2 ? collapsed("Messages", rows) : rows.length ? `<div class="record-rows">${rows.join("")}</div>` : "<p>No console messages, page errors, or failed loads recorded.</p>"}</section>`;
 }
 
 /** The body of a step's "Network, page, and console" section. */
