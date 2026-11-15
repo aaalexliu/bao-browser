@@ -1,6 +1,6 @@
 {
   "name": "bao-browser-m0",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "private": true,
   "description": "Bao desktop browser control and native-messaging extension.",
   "engines": {
