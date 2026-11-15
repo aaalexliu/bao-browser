@@ -193,7 +193,7 @@ export class AgentBrowserRun {
     step.native.results = results;
     if (context.transfer) step.transfer = context.transfer;
     const snap = step.native.command === "snapshot"
-      ? results.find((result) => result.stdout.includes("[ref="))?.stdout || results.find((result) => result.stderr.includes("[ref="))?.stderr
+      ? results.map((result) => snapshotText(result.stdout)).find((text) => text.includes("[ref=")) || results.find((result) => result.stderr.includes("[ref="))?.stderr
       : undefined;
     if (snap) this.lastSnapshot = snap;
     step.native.isError = results.some((result) => result.exitCode !== 0) || error !== undefined;
@@ -213,7 +213,8 @@ export class AgentBrowserRun {
     });
     step.summary = context.moved ? { ...summary, parts: [`${context.moved} `, ...summary.parts], text: `${context.moved} ${summary.text}` } : summary;
     if (step.native.command === "open" && !step.native.isError) this.landmarks.clear();
-    const read = step.native.command === "snapshot" && !step.native.isError ? results.find((result) => result.exitCode === 0)?.stdout : undefined;
+    const output = step.native.command === "snapshot" && !step.native.isError ? results.find((result) => result.exitCode === 0)?.stdout : undefined;
+    const read = output === undefined ? undefined : snapshotText(output);
     if (read) {
       this.snapshot = read;
       if (context.page?.url) {
@@ -546,10 +547,19 @@ function latestSnapshot(steps: RecordedAgentBrowserCommand[]): string | undefine
   for (let i = steps.length - 1; i >= 0; i--) {
     const step = steps[i]!;
     if (step.native.command !== "snapshot") continue;
-    const text = step.native.results.find((result) => result.exitCode === 0 && result.stdout.includes("[ref="))?.stdout;
+    const text = step.native.results.map((result) => result.exitCode === 0 ? snapshotText(result.stdout) : "").find((item) => item.includes("[ref="));
     if (text) return text;
   }
   return undefined;
+}
+
+/** The snapshot tree in agent-browser's output: the text itself, or `data.snapshot` of `snapshot --json`. */
+function snapshotText(stdout: string): string {
+  try {
+    const parsed = JSON.parse(stdout) as { data?: { snapshot?: unknown } } | null;
+    if (typeof parsed?.data?.snapshot === "string") return parsed.data.snapshot;
+  } catch {}
+  return stdout;
 }
 
 function screenshotPath(stdout: string): string | undefined {

@@ -1009,20 +1009,14 @@ export class AgentBrowserProxy {
     } finally {
       try {
         if (step && step.endedAt === undefined) {
-          const privatePage = this.waitOf(session) !== "off" || command === "wait_for_owner";
-          if (results.length && command !== "close" && command !== "wait_for_owner" && this.waitOf(session) === "off") await this.readPageLog(session, step);
-          try {
-            const kept = step.native.command === "open" ? this.moved?.failed : undefined;
-            await session.recording.complete(step, kept?.result ? [...results, kept.result] : results, session.stateDir, () => this.screenshot(session, step!.native.command, visual), failure ?? kept?.error,
-              privatePage, { ...context, page: session.page, owner: this.ownerPage, current: session.kind === "current",
-                ...this.moved?.pick ? { moved: this.moved.line } : {} });
-          } catch (completeError) {
-            // A hung command already failed with AbortError. The completion
-            // screenshot throws page closed after disconnect and must not replace it.
-            if (failure === undefined) throw completeError;
-          }
-          if (before) await session.recording.savePage(step, "before", before);
-          if (!privatePage && command !== "close") await session.recording.savePage(step, "after", await this.capturePage(session, "after"));
+          const kept = step.native.command === "open" ? this.moved?.failed : undefined;
+          await this.completeStep(session, step, kept?.result ? [...results, kept.result] : results, failure ?? kept?.error, {
+            readLog: results.length > 0 && command !== "close" && command !== "wait_for_owner" && this.waitOf(session) === "off",
+            privatePage: this.waitOf(session) !== "off" || command === "wait_for_owner",
+            screenshot: () => this.screenshot(session, step!.native.command, visual),
+            context: { ...context, page: session.page, owner: this.ownerPage, current: session.kind === "current", ...this.moved?.pick ? { moved: this.moved.line } : {} },
+            before,
+          });
           if (command === "close") this.latest = { runId: recording.id, step, steps: recording.steps, lastPicture: recording.lastPicture };
         }
       } finally {
@@ -1394,14 +1388,16 @@ export class AgentBrowserProxy {
     let opened: AgentBrowserCommandResult | undefined;
     let moving: Session | undefined;
     let routeOpen: RecordedAgentBrowserCommand | undefined;
+    let before: PageCapture | undefined;
     let failure: unknown;
     let nativeOpen = false;
     try {
       try {
         wired = await this.wire(next);
-        moving = { ...session, ...next, ...wired };
+        moving = { ...session, ...next, ...wired, agentTarget: next.targetId };
         routeOpen = session.recording.prepareRouteOpen(site);
         await this.flushHar(session);
+        if (routeOpen) before = await this.capturePage(moving, "before");
         nativeOpen = true;
         opened = await this.runNative(moving, "open", [site]);
         if (opened.exitCode !== 0) throw new Error(`the open in Bao's task tab failed: ${opened.stderr || opened.stdout || `exit ${opened.exitCode}`}`);
@@ -1411,6 +1407,7 @@ export class AgentBrowserProxy {
           fail(error);
           this.moved = { ...this.moved!, failed: { error, ...opened ? { result: opened } : {} } };
         }
+        if (routeOpen && moving) await this.completeRouteOpen(moving, routeOpen, opened, failure, before);
         try { if (moving) await this.flushHar(moving); }
         catch (flushError) { process.stderr.write(`Bao step record: network har stop failed: ${flushError instanceof Error ? flushError.message : String(flushError)}\n`); }
         try { if (wired) await this.stopDaemon(wired.stateDir); }
@@ -1442,11 +1439,39 @@ export class AgentBrowserProxy {
       failure ??= error;
       throw error;
     } finally {
-      if (routeOpen) {
-        await session.recording.complete(routeOpen, opened ? [opened] : [], session.stateDir, async () => { throw failure ?? new Error("page closed"); }, failure,
-          false, failure === undefined ? { moved: this.moved!.line } : {});
-      }
+      if (routeOpen && routeOpen.endedAt === undefined) await this.completeRouteOpen(session, routeOpen, opened, failure, before);
     }
+  }
+
+  /** Ends a step with the reads every step gets: console and errors, the page picture, then the page state before and after it. */
+  private async completeStep(session: Session, step: RecordedAgentBrowserCommand, results: AgentBrowserCommandResult[], failure: unknown, options: {
+    readLog: boolean; privatePage: boolean; screenshot: () => Promise<Buffer | { bytes: Buffer; viewport?: { width: number; height: number }; note?: string }>;
+    context: StepContext; before?: PageCapture;
+  }): Promise<void> {
+    if (options.readLog) await this.readPageLog(session, step);
+    try {
+      await session.recording.complete(step, results, session.stateDir, options.screenshot, failure, options.privatePage, options.context);
+    } catch (completeError) {
+      // A hung command already failed with AbortError. The completion
+      // screenshot throws page closed after disconnect and must not replace it.
+      if (failure === undefined) throw completeError;
+    }
+    if (options.before) await session.recording.savePage(step, "before", options.before);
+    if (!options.privatePage && step.native.command !== "close") await session.recording.savePage(step, "after", await this.capturePage(session, "after"));
+  }
+
+  /**
+   * Ends the open a route move began, read from the browser it opened in: the moving session before a failed move tears it
+   * down, or the moved session. A failed open keeps its error as the picture's.
+   */
+  private async completeRouteOpen(session: Session, step: RecordedAgentBrowserCommand, opened: AgentBrowserCommandResult | undefined, failure: unknown, before?: PageCapture): Promise<void> {
+    await this.completeStep(session, step, opened ? [opened] : [], failure, {
+      readLog: true,
+      privatePage: failure === undefined && this.waitOf(session) !== "off",
+      screenshot: failure === undefined ? () => this.screenshot(session, "open") : async () => { throw failure; },
+      context: failure === undefined ? { moved: this.moved!.line } : {},
+      before,
+    });
   }
 
   private async connectSession(session: Session, options: { timeoutMs: number; signal?: AbortSignal }): Promise<CdpSocket> {
