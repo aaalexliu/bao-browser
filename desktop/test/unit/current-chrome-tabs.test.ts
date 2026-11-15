@@ -898,7 +898,6 @@ test("a snapshot while the owner holds a sign-in tab says so and keeps the takeo
   const asks: string[] = [];
   const takeover = {
     held: true,
-    heldSince: 1,
     stoppedByOwner: false,
     async follow() {},
     async noteOwned() {},
