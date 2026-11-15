@@ -19,10 +19,13 @@ Install lockfile dependencies with one root `npm ci` only if `node_modules`
 or `web/node_modules` is missing. That command installs both trees. Never
 reinstall dependencies that already exist. `npm ci --ignore-scripts` skips
 the web install.
-Use the Node version in `.nvmrc`. Run `npm run check:static` and the focused
-tests for your change. [Testing](docs/TESTING.md) describes safe browser and
-Library isolation. Never run a full local suite; use focused test files locally
-and the PR `full-suite` label for the full run.
+Use the Node version in `.nvmrc`. Run `.agents/verify` before review: it runs
+the same static gates as Guardrails' required `static` jobs (types, lint,
+architecture), then checks the diff against `origin/main` for whitespace
+errors. It takes about 30 seconds. The `test/essential.json` groups and the
+full suite run in CI. [Testing](docs/TESTING.md) describes safe browser and Library isolation.
+Use focused test files while working and the PR `full-suite` label for the
+full run.
 
 For a packaging change, build desktop and extension, then build Bao.app using
 [Mac build](docs/mac-build.md). Reuse the signed helper; do not rebuild it or

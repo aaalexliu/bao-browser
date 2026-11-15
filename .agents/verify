@@ -1,0 +1,33 @@
+#!/bin/sh
+# Fast local gate before review: the same static gates as Guardrails' required
+# `static` jobs, then a whitespace check. The essential test groups and the full
+# suite run in CI, which the merge waits on.
+cd "$(dirname "$0")/.." || exit 1
+start=$(date +%s)
+log=$(mktemp) || exit 1
+trap 'rm -f "$log"' 0
+
+run() {
+  step=$1
+  shift
+  printf 'verify: running %s\n' "$step"
+  if ! "$@" >"$log" 2>&1; then
+    tail -40 "$log"
+    echo "verify: FAIL at $step ($(( $(date +%s) - start ))s)"
+    exit 1
+  fi
+}
+
+if [ ! -d node_modules ] || [ ! -d web/node_modules ]; then
+  run 'npm ci' npm ci
+fi
+run 'types' npm run typecheck
+run 'lint' npm run lint
+run 'architecture: baselines' npm run baselines:check
+run 'architecture: imports' npm run arch:check
+run 'architecture: guardrails' npm run test:guardrails
+run 'architecture: manifest' node scripts/run-node-test.mjs test/essential-manifest.test.mjs
+
+base=$(git merge-base HEAD origin/main 2>"$log") || { tail -40 "$log"; echo "verify: FAIL at merge base ($(( $(date +%s) - start ))s)"; exit 1; }
+run 'git diff --check' git diff --check "$base"
+echo "verify: PASS ($(( $(date +%s) - start ))s)"
