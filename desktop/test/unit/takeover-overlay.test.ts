@@ -126,6 +126,38 @@ test("the shield blocks a click, and the watchdog gives the page back", async ()
   }
 });
 
+test("an acting click lands on the page under the notch", async () => {
+  const open = await page();
+  const takeover = new Takeover({ quiet: true });
+  try {
+    await open.cdp.send("Runtime.evaluate", {
+      expression: "document.body.insertAdjacentHTML('beforeend', '<div id=\"bar\" style=\"position:fixed;left:0;top:0;width:100%;height:36px\">Store</div>');",
+      returnByValue: true,
+    }, open.sessionId);
+    await takeover.attachPort(open.portFile, open.targetId);
+    const hit = async () => {
+      const read = await open.cdp.send<{ result: { value: string } }>("Runtime.evaluate", {
+        expression: `(() => {
+          const bar = document.getElementById("bar");
+          const rect = bar.getBoundingClientRect();
+          const node = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+          return node === bar ? "page" : (node && node.tagName || "none").toLowerCase();
+        })()`,
+        returnByValue: true,
+      }, open.sessionId);
+      return read.result.value;
+    };
+    assert.notEqual(await hit(), "page", "the notch covers the top-center point until the agent acts");
+    await takeover.bracket(async () => {
+      assert.equal(await hit(), "page", "the agent's click point must be the page, not the overlay host");
+    });
+    assert.notEqual(await hit(), "page", "the notch takes owner clicks again after the action");
+  } finally {
+    await takeover.dispose();
+    await open.close();
+  }
+});
+
 test("the overlay is absent from the snapshot and from a step picture", async () => {
   const open = await page();
   const takeover = new Takeover({ quiet: true });

@@ -236,6 +236,7 @@ export function takeoverOverlaySource(watchdogMs = WATCHDOG_MS): string {
     armed = phase === "working" && !acting;
     shield.hidden = !armed;
     shield.style.pointerEvents = armed ? "auto" : "none";
+    root.classList.toggle("acting", acting);
   }
   function hideHint() { hint.hidden = true; clearTimeout(hoverTimer); clearTimeout(hintTimer); }
   function showHint(x, y) {
@@ -427,9 +428,10 @@ function overlayHtml(mark: string): string {
 
 function overlayCss(): string {
   return `
-    :host { all: initial; }
+    :host { all: initial; position: fixed !important; inset: 0 auto auto 0 !important; width: 0 !important; height: 0 !important; margin: 0 !important; border: 0 !important; padding: 0 !important; background: transparent !important; overflow: visible !important; pointer-events: none !important; }
     [hidden] { display: none !important; }
     .root { position: fixed; inset: 0; pointer-events: none; z-index: 2147483646; }
+    .root.acting, .root.acting * { pointer-events: none !important; }
     .frame { position: fixed; inset: 0; pointer-events: none; border-radius: 14px; box-shadow: inset 6px 0 0 #5A3014, inset -6px 0 0 #5A3014, inset 0 -5px 0 #5A3014, inset 0 0 28px rgba(232,129,58,.5); }
     .band { position: absolute; top: 0; left: 0; right: 0; height: 32px; border-radius: 0 0 16px 16px; background: linear-gradient(180deg, #7E441C 0%, #5A3014 45%, #46240C 100%); }
     .shield { position: fixed; inset: 0; background: transparent; }
