@@ -106,6 +106,8 @@ export interface Driver {
   shouldStop?(): boolean;
   loginContinued?(): boolean;
   ownerContinued?(): boolean;
+  /** Overlay Done. Distinct from the app continue flag, which does not skip a site check. */
+  handedBack?(): boolean;
   /** The ask overlay outlived this replay. Done ends it instead of resuming. */
   askUnwatched?(): void;
   /** Page PNG or JPEG of the target. Unit-test drivers omit this. */
@@ -1273,14 +1275,15 @@ async function waitForOwner(step: WorkflowStep, args: ReplayArgs, driver: Driver
   const timeout = actWaitMs(step.timeoutMs, gate.actTimeoutMs);
   const start = Date.now();
   const check = step.action === "handoff" && step.check && step.check.kind !== "settled" ? step.check : undefined;
+  const released = (): boolean => driver.handedBack?.() === true || (!check && ownerReleased(driver));
   while (Date.now() - start < timeout) {
-    if (ownerReleased(driver)) return true;
+    if (released()) return true;
     if (driver.shouldStop?.()) return false;
     const tree = await driver.tree();
     if (check && checkHolds(check, tree, args)) return true;
     await (driver.sleep ? driver.sleep(100) : sleep(100));
   }
-  if (ownerReleased(driver)) return true;
+  if (released()) return true;
   const tree = await driver.tree();
   return !!check && checkHolds(check, tree, args);
 }

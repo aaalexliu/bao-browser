@@ -592,11 +592,15 @@ export class BrowserDriver implements Driver {
   }
 
   loginContinued(): boolean {
-    return this.handedBack || (this.prompts?.loginContinued?.() ?? false);
+    return this.handed || (this.prompts?.loginContinued?.() ?? false);
   }
 
   ownerContinued(): boolean {
-    return this.handedBack || (this.prompts?.ownerContinued?.() ?? false);
+    return this.handed || (this.prompts?.ownerContinued?.() ?? false);
+  }
+
+  handedBack(): boolean {
+    return this.handed;
   }
 
   askUnwatched(): void {
@@ -613,18 +617,18 @@ export class BrowserDriver implements Driver {
 
   async showAsk(ask: HumanAsk): Promise<void> {
     this.prompts?.showAsk?.(ask);
-    this.handedBack = false;
+    this.handed = false;
     await this.showControl(doneAsk(ask.instruction));
   }
 
-  private handedBack = false;
+  private handed = false;
   private overlay?: Takeover;
   private overlayClient?: { detach(): Promise<void> };
 
   private async showControl(text: string): Promise<void> {
     await this.clearStrip();
     const client = await this.page.context().newCDPSession(this.page);
-    const overlay = new Takeover({ onAskDone: () => { this.handedBack = true; } });
+    const overlay = new Takeover({ onAskDone: () => { this.handed = true; } });
     try {
       await overlay.attachPage(playwrightSend(client));
       await overlay.showAsk(text);

@@ -122,6 +122,7 @@ test("a live owner-press handoff returns to working and continues", async () => 
       await overlay.showAsk("Confirm, then click Done");
     },
     ownerContinued: () => handedBack,
+    handedBack: () => handedBack,
     askUnwatched: () => overlay?.noteAskReturned(),
   };
   const doc = testWorkflow({
