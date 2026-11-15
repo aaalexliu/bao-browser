@@ -191,11 +191,41 @@ function signature(app) {
   return /^Authority=(.+)$/m.exec(details)?.[1] || "unsigned";
 }
 
+function designated(bundle) {
+  const result = spawnSync(CODESIGN, ["-d", "-r-", bundle], { encoding: "utf8" });
+  return /designated => (.*)$/m.exec(`${result.stdout || ""}${result.stderr || ""}`)?.[1]?.trim() || "";
+}
+
+function helperOf(app) {
+  return path.join(app, "Contents", "Resources", "BaoOSHelper.app");
+}
+
 /** The designated requirement macOS keys a helper grant to: the helper's when the app carries one, else the app's. */
 function requirement(app) {
-  const helper = path.join(app, "Contents", "Resources", "BaoOSHelper.app");
-  const result = spawnSync(CODESIGN, ["-d", "-r-", existsSync(helper) ? helper : app], { encoding: "utf8" });
-  return /designated => (.*)$/m.exec(`${result.stdout || ""}${result.stderr || ""}`)?.[1]?.trim() || "";
+  return designated(existsSync(helperOf(app)) ? helperOf(app) : app);
+}
+
+/** The tccutil that clears grants. Tests point BAO_INSTALLER_TCCUTIL at a stand-in that logs its calls. */
+const TCCUTIL = process.env.BAO_INSTALLER_TCCUTIL || "/usr/bin/tccutil";
+
+function bundleId(bundle) {
+  const result = spawnSync("/usr/bin/plutil", ["-extract", "CFBundleIdentifier", "raw", "-o", "-", path.join(bundle, "Contents", "Info.plist")], { encoding: "utf8" });
+  return result.status === 0 ? result.stdout.trim() : "";
+}
+
+/**
+ * The bundle ids whose macOS grants the old app leaves behind when the new app has a different designated requirement.
+ * macOS keeps each grant with the requirement it was made for. An ad-hoc requirement names one build's cdhash,
+ * so after the swap those rows still look on in System Settings but no longer match, and reads get EPERM.
+ */
+function staleGrants(old, staged) {
+  if (designated(old) === designated(staged)) return [];
+  return [bundleId(old), existsSync(helperOf(old)) ? bundleId(helperOf(old)) : ""].filter(Boolean);
+}
+
+/** Clears every grant for each bundle id, so the permission window asks fresh. Returns the ids tccutil could not clear. */
+function clearGrants(ids) {
+  return ids.filter((id) => spawnSync(TCCUTIL, ["reset", "All", id], { encoding: "utf8" }).status !== 0);
 }
 
 function signerOf(app) {
@@ -243,14 +273,18 @@ async function place(zip, dir, yes) {
     const staged = path.join(stage, "Bao.app");
     if (!existsSync(staged)) throw new InstallError(`${zip} has no Bao.app`);
     const signer = signerOf(staged);
+    let stale = [];
+    let was = "";
     if (existsSync(target)) {
       const old = signature(target);
       const certified = old !== "ad-hoc" && old !== "unsigned";
       if (certified && requirement(staged) !== requirement(target) && !(await replaceSigned(target, old, signer, yes))) return null;
+      stale = staleGrants(target, staged);
+      was = old;
       renameSync(target, path.join(stage, "previous-Bao.app"));
     }
     renameSync(staged, target);
-    return { app: target, signer };
+    return { app: target, signer, stale, was };
   } finally {
     rmSync(stage, { recursive: true, force: true });
   }
@@ -366,8 +400,14 @@ async function install(opts) {
   step(`Checked size and SHA-256 ${dim(asset.sha256.slice(0, 16))}`);
   const placed = await place(zip, dir, opts.yes);
   if (!placed) return 0;
-  const { app, signer } = placed;
+  const { app, signer, stale, was } = placed;
   step(`Installed ${app} ${dim(`(signed: ${signer})`)}`);
+  if (stale.length) {
+    const failed = clearGrants(stale);
+    const cleared = stale.filter((id) => !failed.includes(id));
+    if (cleared.length) step(`Cleared the macOS grants of the Bao it replaced (${cleared.join(", ")}). That Bao was ${was === "ad-hoc" ? "signed ad-hoc" : was === "unsigned" ? "unsigned" : `signed by ${was} with a different certificate`}, so they no longer matched. Bao's permission window asks again.`);
+    for (const id of failed) step(`Could not clear the old grants for ${id}. If a Bao switch in System Settings is on but Bao is still refused, run: tccutil reset All ${id}`);
+  }
   const linked = link(app);
   step(linked.note);
   step(`Took ${((Date.now() - started) / 1000).toFixed(1)} s. Now pick the agents that should use Bao.\n`);

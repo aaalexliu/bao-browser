@@ -5,7 +5,7 @@ import path from "node:path";
 import { PassThrough } from "node:stream";
 import test, { type TestContext } from "node:test";
 import { doctorChecks, signer } from "../../src/app/doctor";
-import { openPermissionWindow, PERMISSION_ALREADY_OPEN } from "../../src/app/mac-permissions";
+import { openPermissionWindow, PERMISSION_ALREADY_OPEN, PERMISSION_OPENED } from "../../src/app/mac-permissions";
 import { applyTarget, chosenByFlags, detectOthers, detectTargets, parseSetup, pickInTerminal, setupMain, type Probe, type SetupIo, type Target } from "../../src/app/setup";
 
 interface Lab {
@@ -163,7 +163,7 @@ test("with no terminal, setup lists a command for each agent it can set up, not 
   const io = { env: probe.env, out: (text: string) => out.push(text), err: (text: string) => out.push(text), stdin: { isTTY: false }, stdout: { isTTY: false } } as unknown as SetupIo;
   assert.equal(await setupMain(["--app", app], io, probe), 0);
   const bao = path.join(app, "Contents", "MacOS", "bao-cli");
-  assert.equal(out.join(""), `No terminal to ask in, so Bao changed no agent config. Run one of these:\n${["codex", "claude-desktop", "cursor"].map((id) => `  ${bao} setup --agents ${id}`).join("\n")}\n`);
+  assert.equal(out.join(""), `No terminal to ask in, so Bao changed no agent config. Run one of these:\n${["codex", "claude-desktop", "cursor"].map((id) => `  ${bao} setup --agents ${id}`).join("\n")}\n${PERMISSION_OPENED}\n`);
 });
 
 test("setup with --none names the command that runs setup from this shell", async (t) => {
@@ -175,18 +175,18 @@ test("setup with --none names the command that runs setup from this shell", asyn
     return out.join("");
   };
   const cli = path.join(app, "Contents", "MacOS", "bao-cli");
-  assert.equal(await said(), `No app was changed. Run \`${cli} setup\` any time to add Bao to an agent.\n`);
+  assert.equal(await said(), `No app was changed. Run \`${cli} setup\` any time to add Bao to an agent.\n${PERMISSION_OPENED}\n`);
   writeFileSync(cli, "#!/bin/sh\nexit 0\n");
   chmodSync(cli, 0o755);
   const link = path.join(probe.home, ".local", "bin", "bao");
   mkdirSync(path.dirname(link), { recursive: true });
   symlinkSync(cli, link);
-  assert.equal(await said(), `No app was changed. Run \`${link} setup\` any time to add Bao to an agent.\n`);
+  assert.equal(await said(), `No app was changed. Run \`${link} setup\` any time to add Bao to an agent.\n${PERMISSION_OPENED}\n`);
   tool(bin, "bao");
-  assert.equal(await said(), `No app was changed. Run \`${link} setup\` any time to add Bao to an agent.\n`);
+  assert.equal(await said(), `No app was changed. Run \`${link} setup\` any time to add Bao to an agent.\n${PERMISSION_OPENED}\n`);
   rmSync(path.join(bin, "bao"));
   symlinkSync(link, path.join(bin, "bao"));
-  assert.equal(await said(), "No app was changed. Run `bao setup` any time to add Bao to an agent.\n");
+  assert.equal(await said(), `No app was changed. Run \`bao setup\` any time to add Bao to an agent.\n${PERMISSION_OPENED}\n`);
 });
 
 test("doctor tells the owner what Claude Code is missing instead of a setup command that would fail", async (t) => {
@@ -217,8 +217,11 @@ test("setup opens the permission window instead of asking in the terminal, and a
   const opened = await run("");
   assert.deepEqual(calls, [app]);
   assert.doesNotMatch(opened, /Reply o|o opens System Settings/);
+  assert.ok(opened.endsWith(`${PERMISSION_OPENED}\n`), opened);
   const headless = "No screen here, so Bao did not open its permission window. On this Mac, run bao setup.";
-  assert.match(await run(headless), new RegExp(headless));
+  const noScreen = await run(headless);
+  assert.match(noScreen, new RegExp(headless));
+  assert.doesNotMatch(noScreen, /Bao opened its permission window/);
   assert.equal(calls.length, 2);
 });
 
