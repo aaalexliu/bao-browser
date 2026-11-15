@@ -426,10 +426,10 @@ export class AgentBrowserRun {
     if (changed) await this.saveStep(changed);
   }
 
-  /** Begins the open a route move runs, unless the agent's own open is still pending; its command completes that step. */
-  prepareRouteOpen(site: string): RecordedAgentBrowserCommand | undefined {
+  /** True while the agent's own open is pending: its command completes the open a route move runs, so the move begins no step. */
+  agentOpenPending(): boolean {
     const last = this.run.steps.at(-1);
-    return last?.status === "pending" && last.native.command === "open" ? undefined : this.begin("open", [site]);
+    return last?.status === "pending" && last.native.command === "open";
   }
 
   private cutOffOwnerWait(): RecordedAgentBrowserCommand | undefined {

@@ -155,6 +155,7 @@ async function harness(t: TestContext, initial: "works" | "refused") {
   let missed = 0;
   let baoReads = 0;
   let baoMissOn = 0;
+  let slowOwnerRead = 0;
   let duringRaise: (() => Promise<void>) | undefined;
   const realConnect = sockets.connectCdp;
   t.mock.method(sockets, "connectCdp", async (port: number, browserPath: string, opts?: Parameters<typeof connectCdp>[2]) => {
@@ -170,6 +171,11 @@ async function harness(t: TestContext, initial: "works" | "refused") {
           duringRaise = undefined;
           await run();
         }
+      }
+      if (method === "DOMSnapshot.captureSnapshot" && port === endpoint.port && slowOwnerRead > 0) {
+        const ms = slowOwnerRead;
+        slowOwnerRead = 0;
+        await new Promise((resolve) => setTimeout(resolve, ms));
       }
       return send(method, ...(args as []));
     });
@@ -284,7 +290,7 @@ const logLine=(text)=>fs.appendFileSync(pageLog,JSON.stringify({args:[],text,typ
   return { proxy, site, home, sourceRoot, baoDir, endpoint, ownerTabs, calls, pages, attaches: () => attaches, launched: () => [...launched],
     raises: () => raises, order: () => [...order],
     allow: () => { attach = "works"; }, slow: (ms: number) => { delay = ms; },
-    missNextRead: () => { misses += 1; }, missNextOwnerRead: () => { ownerMisses += 1; }, metadataMisses: () => missed,
+    missNextRead: () => { misses += 1; }, slowNextOwnerPageRead: (ms: number) => { slowOwnerRead = ms; }, missNextOwnerRead: () => { ownerMisses += 1; }, metadataMisses: () => missed,
     missBaoRead: (which: number) => { baoReads = 0; baoMissOn = which; },
     failOwnerOpen: (message: string) => writeFile(ownerOpenFail, message),
     breakOwnerDaemonPid: () => writeFile(ownerPidBroken, ""),
@@ -589,6 +595,24 @@ test("a route open made during a move keeps its own console, page state and pict
     const texts = consoleTexts(await readStepRecord(h.home, runId, step.id));
     assert.ok(!texts.some((text) => text.endsWith(` on ${h.endpoint.port}`)), `${step.id} ${step.native.command}: ${texts.join(" | ")}`);
   }
+});
+
+test("a route open made during a move waits only for the open, not for its before read", { timeout: scaledMs(60_000) }, async (t) => {
+  const h = await harness(t, "works");
+  assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "bao"))[0]!.exitCode, 0);
+  await navigateBao(h.baoDir, "/article", `${h.site}/login`);
+  const slow = scaledMs(5000);
+  h.slowNextOwnerPageRead(slow);
+  const runId = h.proxy.activeRunId!;
+  assert.equal((await h.proxy.execute("click", ["@e5"], undefined, false, undefined, {}, runId))[0]!.exitCode, 0);
+  const route = savedSteps(h.home).filter((step) => step.native.command === "open").at(-1)!;
+  assert.notEqual(route.id, "command-1");
+  const record = await readStepRecord(h.home, runId, route.id);
+  const before = record.page?.before;
+  assert.ok(before && "file" in before, JSON.stringify(before));
+  assert.ok(before.ms >= slow, `the before read took ${before.ms} ms`);
+  assert.equal(record.waits.length, 1);
+  assert.ok(record.waits[0]!.ms < slow, `the open waited ${record.waits[0]!.ms} ms`);
 });
 
 test("a failed route open during a move keeps its error, the destination's console and its page state", { timeout: scaledMs(60_000) }, async (t) => {
