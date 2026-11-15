@@ -582,9 +582,9 @@ export class BrowserDriver implements Driver {
     this.prompts?.showLoginWait?.(label);
   }
 
-  clearLoginWait(runId: string): void {
+  clearLoginWait(runId: string): Promise<void> {
     this.prompts?.clearLoginWait?.(runId);
-    void this.clearStrip();
+    return this.clearStrip();
   }
 
   shouldStop(): boolean {
