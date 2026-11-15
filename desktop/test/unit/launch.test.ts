@@ -547,6 +547,21 @@ test("Bao.app uses a native WebKit window and bundles Chromium only for tasks", 
   }
 });
 
+test("Bao.app ships its own icon, so System Settings and the drag tile show Bao, not a blank app", () => {
+  const plist = readFileSync(path.join(process.cwd(), "desktop/packaging/macos/Info.plist"), "utf8");
+  const script = readFileSync(path.join(process.cwd(), "desktop/packaging/macos/package-app.sh"), "utf8");
+  assert.match(plist, /<key>CFBundleIconFile<\/key><string>AppIcon<\/string>/);
+  assert.match(script, /cp desktop\/packaging\/macos\/AppIcon\.icns "\$APP\/Contents\/Resources\/AppIcon\.icns"/);
+  const icns = readFileSync(path.join(process.cwd(), "desktop/packaging/macos/AppIcon.icns"));
+  assert.equal(icns.subarray(0, 4).toString("latin1"), "icns");
+  assert.equal(icns.readUInt32BE(4), icns.length);
+  const types: string[] = [];
+  for (let at = 8; at < icns.length; at += icns.readUInt32BE(at + 4)) types.push(icns.subarray(at, at + 4).toString("latin1"));
+  // ic10 is the 1024 px image, ic07 the 128 px one Finder lists use.
+  assert.ok(types.includes("ic10"), types.join(" "));
+  assert.ok(types.includes("ic07"), types.join(" "));
+});
+
 test("package-app.sh stops before it builds an app when the helper is absent", () => {
   const dist = mkdtempSync(path.join(tmpdir(), "bao-dist-"));
   const helper = path.join(dist, "fixture", "BaoOSHelper.app");
