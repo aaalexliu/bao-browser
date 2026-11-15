@@ -46,7 +46,7 @@ function livePage(): { cdp: CdpSocket; window: { open: (...args: unknown[]) => u
       if (method === "Target.attachToTarget") return { sessionId: "page" };
       if (method === "Target.getTargets") return { targetInfos: [{ targetId: "tab", type: "page", url: "https://shop.example/" }] };
       if (method === "Target.getTargetInfo") return { targetInfo: {} };
-      if (method === "Runtime.evaluate" && params?.expression) return { result: { value: vm.runInContext(params.expression, context) } };
+      if (method === "Runtime.evaluate" && params?.expression) return { result: { value: vm.runInContext(params.expression, context) as unknown } };
       return {};
     },
     on: () => () => undefined,

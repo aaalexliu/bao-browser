@@ -108,7 +108,7 @@ export function stepControl(state: Control, event: ControlEvent): Control {
     case "releasing":
       if (event.type === "resume") return { phase: "agent" };
       return state;
-    default:
+    case "finished":
       return state;
   }
 }

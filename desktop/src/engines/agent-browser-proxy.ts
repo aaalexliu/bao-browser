@@ -1986,7 +1986,7 @@ export class AgentBrowserProxy {
     }
   }
 
-  /** Writes only Bao's status banner. Never reads the form, page text, or field values. */
+  /** Shows the owner-wait page notice: the overlay pill when it is installed, otherwise the status banner. Never reads the form, page text, or field values. */
   private async ownerBanner(session: Session, targetId: string, waiting: boolean, options?: { raise?: boolean }): Promise<void> {
     const raise = options?.raise !== false;
     if (waiting && raise) session.raised = false;

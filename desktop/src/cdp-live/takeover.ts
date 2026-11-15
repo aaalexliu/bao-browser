@@ -38,7 +38,7 @@ interface BoundPage {
 const WORLD = "bao-takeover";
 
 /**
- * One control chart for a run, drawn on the tab the owner is looking at.
+ * One control chart for a run.
  * Input.setIgnoreInputEvents on this connection also drops agent-browser's own dispatch, so the shield is the only block.
  * It is down for the one command the agent is running.
  */
