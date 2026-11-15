@@ -994,6 +994,24 @@ test("a take and Done during a click's page read hand the click back instead of 
   assert.equal(f.daemon.commands.some(entry => entry.command === "click"), false, "the stale click never reached the page");
 });
 
+test("a hold before a click, and Done during its page read, hand the click back instead of running it", async (t) => {
+  const { hold, admitted } = await fakeHold(t);
+  const f = await fixture(t, { admitted });
+  await f.proxy.execute("open", [MAPS], "current");
+  await f.proxy.execute("snapshot", ["-i"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  await hold.take();
+  let handedBack = false;
+  f.daemon.chromeCall = async (method) => {
+    if (method !== "DOMSnapshot.captureSnapshot" || handedBack) return;
+    handedBack = true;
+    await hold.done();
+  };
+  const [click] = await f.proxy.execute("click", ["@e1"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  assert.equal(handedBack, true, "the owner handed the tab back while Bao read the page");
+  assert.equal(click!.stdout, `${HANDED_BACK}\n`);
+  assert.equal(f.daemon.commands.some(entry => entry.command === "click"), false, "the stale click never reached the page");
+});
+
 test("a take and Done just before an open is sent hand the open back instead of running it", async (t) => {
   const { hold, admitted } = await fakeHold(t);
   const f = await fixture(t, { admitted });

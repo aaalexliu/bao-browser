@@ -820,8 +820,8 @@ export class AgentBrowserProxy {
     clearTimeout(session.idleTimer);
     let commandDone!: () => void;
     session.commandDone = new Promise<void>((resolve) => { commandDone = resolve; });
-    // A take from here on, even one the owner hands back before dispatch, skips this command.
-    this.takenDuringCommand = false;
+    // A hold already in place, or a take from here on, even one the owner hands back before dispatch, skips this command.
+    this.takenDuringCommand = this.takeover?.held === true;
     // Read before the step starts, so the page read is not counted in the step's own wait.
     const before = continuing && !ownerPrivate && command !== "wait_for_owner" ? await this.capturePage(session, "before") : undefined;
     if (continuing && !ownerPrivate) {
