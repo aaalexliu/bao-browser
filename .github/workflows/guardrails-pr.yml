@@ -59,7 +59,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [auth, password-slot, experian, storage, isolation, browser, core, web]
+        group: [auth, password-slot, experian, video-host, storage, isolation, browser, browser-mcp, core, web]
     env:
       BAO_HEAL_CURSOR_ACCOUNT: "0"
       PLAYWRIGHT_BROWSERS_PATH: /tmp/bao-playwright
@@ -104,7 +104,7 @@ jobs:
         if: steps.compiled.outputs.cache-hit != 'true'
         run: npm run build:desktop -- --noCheck
       - name: Stage pinned agent-browser for pass-through fixtures
-        if: matrix.group == 'experian'
+        if: matrix.group == 'experian' || matrix.group == 'video-host'
         run: |
           node desktop/packaging/stage-agent-browser.mjs "$RUNNER_TEMP/bao-agent-browser"
           echo "AGENT_BROWSER_PROXY_BINARY=$RUNNER_TEMP/bao-agent-browser/agent-browser" >> "$GITHUB_ENV"
@@ -117,7 +117,7 @@ jobs:
           HOME="$(mktemp -d)"
           export HOME
           trap 'rm -rf "$HOME"' EXIT
-          if [ "$GROUP" = browser ] || [ "$GROUP" = experian ]; then
+          if [ "$GROUP" = browser ] || [ "$GROUP" = browser-mcp ] || [ "$GROUP" = experian ] || [ "$GROUP" = video-host ]; then
             xvfb-run --auto-servernum node scripts/test-essential.mjs "$GROUP"
           else
             node scripts/test-essential.mjs "$GROUP"
