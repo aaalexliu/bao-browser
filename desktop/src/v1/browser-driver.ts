@@ -573,9 +573,9 @@ export class BrowserDriver implements Driver {
     this.prompts?.showConfirm?.(label);
   }
 
-  clearConfirm(runId: string): void {
+  async clearConfirm(runId: string): Promise<void> {
     this.prompts?.clearConfirm?.(runId);
-    void this.clearStrip();
+    await this.clearStrip();
   }
 
   showLoginWait(label: string): void {

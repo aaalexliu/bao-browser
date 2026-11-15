@@ -12,7 +12,15 @@ import { connectCdp, type CdpSocket } from "../../src/cdp-live/socket";
 import { holdDir, joinOrStartHold } from "../../src/cdp-live/chrome-hold";
 import { Takeover } from "../../src/cdp-live/takeover";
 import { AdmittedTakeover } from "../../src/cdp-live/takeover-hold";
+import { pageMap } from "../../src/app/step-record-view";
+import { readPage } from "../../src/engines/step-page";
 import { launchOwnedChromeEndpoint } from "../../src/launch";
+import { testChromium } from "../../src/test-browser.js";
+import { BrowserDriver } from "../../src/v1/browser-driver";
+import { replay } from "../../src/v1/replay";
+import type { Identity } from "../../src/v1/schema";
+import { OVERLAY_HOST_ATTRIBUTE } from "../../../shared/takeover-overlay";
+import { targetFor, testWorkflow } from "../support/workflow";
 
 const exec = promisify(execFile);
 const binary = process.env.AGENT_BROWSER_PROXY_BINARY;
@@ -192,6 +200,80 @@ test("the overlay is absent from the snapshot and from a step picture", async ()
   } finally {
     await takeover.dispose();
     await open.close();
+  }
+});
+
+test("the receipt's page map lists the site's buttons and leaves out the overlay's", async () => {
+  const open = await page();
+  const takeover = new Takeover({ quiet: true });
+  try {
+    await open.cdp.send("Runtime.evaluate", {
+      expression: `(() => {
+        const shop = document.createElement("div");
+        shop.attachShadow({ mode: "closed" }).innerHTML = "<button>Buy now</button>";
+        document.body.append(shop);
+      })()`,
+      returnByValue: true,
+    }, open.sessionId);
+    await takeover.attachPort(open.portFile, open.targetId);
+    await takeover.showAsk("Sign in, then click Done");
+    const read = await readPage(<T>(method: string, params?: Record<string, unknown>) => open.cdp.send<T>(method, params ?? {}, open.sessionId), () => false, false);
+    const buttons = pageMap(read.state.dom, "before").buttons.map((button) => button.text);
+    assert.deepEqual(buttons, ["Hit", "Buy now"]);
+  } finally {
+    await takeover.dispose();
+    await open.close();
+  }
+});
+
+test("a live handoff that times out takes its failure picture after the control pill is gone", async () => {
+  const shotDir = mkdtempSync(path.join(tmpdir(), "bao-handoff-shot-"));
+  const browser = await testChromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.setContent("<button>Save</button>");
+    // A busy page answers the overlay's removal late.
+    const context = page.context();
+    const newSession = context.newCDPSession.bind(context);
+    context.newCDPSession = async (target) => {
+      const client = await newSession(target);
+      const send = client.send.bind(client) as (method: string, params?: Record<string, unknown>) => Promise<unknown>;
+      Object.assign(client, {
+        send: async (method: string, params?: Record<string, unknown>) => {
+          if (method === "Runtime.callFunctionOn" && String(params?.functionDeclaration).includes("dispose")) await new Promise((resolve) => setTimeout(resolve, 300));
+          return send(method, params);
+        },
+      });
+      return client;
+    };
+    const driver = new BrowserDriver(page);
+    const overlayShown = () => page.evaluate((selector) => document.querySelector(selector) !== null, `[${OVERLAY_HOST_ATTRIBUTE}]`);
+    let pillSeen = false;
+    const tree = driver.tree.bind(driver);
+    driver.tree = async () => {
+      pillSeen ||= await overlayShown();
+      return tree();
+    };
+    const pictured: boolean[] = [];
+    const shot = driver.shot.bind(driver);
+    driver.shot = async (target) => {
+      pictured.push(await overlayShown());
+      return shot(target);
+    };
+    const save = { surface: "dom", role: "button", name: "Save", path: [] } as Identity;
+    const run = await replay(testWorkflow({
+      driver: "playwright",
+      steps: [{
+        id: "press", index: 0, timeoutMs: 400, caption: { text: "you press Save" }, action: "handoff", reason: "owner-press",
+        target: targetFor(save), check: { kind: "text", match: "Applied", timeoutMs: 400 },
+      }],
+    }), {}, driver, { settings: { heal: "never" }, shotDir });
+    assert.equal(run.status, "failed");
+    assert.equal(pillSeen, true, "the control pill showed while Bao waited for the owner");
+    assert.equal(pictured.at(-1), false, "the failure picture waits until the pill is gone");
+  } finally {
+    await browser.close();
+    rmSync(shotDir, { recursive: true, force: true });
   }
 });
 

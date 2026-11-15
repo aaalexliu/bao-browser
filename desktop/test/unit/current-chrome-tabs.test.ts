@@ -8,7 +8,7 @@ import { createHash } from "node:crypto";
 import childProcess from "node:child_process";
 import { EventEmitter } from "node:events";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { createServer, type AddressInfo } from "node:net";
+import { connect, createServer, type AddressInfo, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test, { type TestContext } from "node:test";
@@ -51,7 +51,7 @@ function canonicalTabId(ref: string | undefined): string | undefined {
   return id > 0 && id <= 0xffff_ffff ? `t${id}` : undefined;
 }
 
-async function fixture(t: TestContext) {
+async function fixture(t: TestContext, options: { admitted?: Socket } = {}) {
   const root = await chromeProfiles(await mkdtemp(path.join(tmpdir(), "bao-current-tabs-")));
   t.after(() => rm(root, { recursive: true, force: true }));
   fakeTaskTab(t);
@@ -79,7 +79,9 @@ async function fixture(t: TestContext) {
     /** Exit code of the next command that has no tab-specific reply. */
     exit: 0,
     /** Targets Chrome lists that this daemon has not numbered yet. */
-    untracked: new Set<string>() };
+    untracked: new Set<string>(),
+    /** Runs before Chrome answers a call on the shared connection. */
+    chromeCall: undefined as ((method: string) => Promise<void> | void) | undefined };
   // agent-browser's should_track_target lists page and webview targets, and skips chrome://, chrome-extension://, and devtools://.
   // It numbers them in the order it sees them. Before each command it takes in the targets Chrome reported since; without --pin-tab
   // it makes each new one current. A pinned daemon whose bound tab is gone marks no tab active (tab_gone).
@@ -105,6 +107,7 @@ async function fixture(t: TestContext) {
     close() { cdp.isOpen = false; },
     async send(method: string, params: Record<string, unknown> = {}) {
       sent.push({ method, params });
+      await daemon.chromeCall?.(method);
       const target = targets.find(item => item.targetId === params.targetId);
       if (method === "Target.createTarget") {
         targets.unshift({ targetId: "task", type: "page", url: "about:blank", title: "about:blank", inWindow: true });
@@ -136,7 +139,7 @@ async function fixture(t: TestContext) {
   await new Promise<void>(resolve => endpoint.listen(0, "127.0.0.1", resolve));
   t.after(() => new Promise<void>(resolve => endpoint.close(() => resolve())));
   t.mock.method(currentChrome, "openCurrentChrome", async () => ({ pid: 7, executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", root,
-    endpoint: { port: (endpoint.address() as AddressInfo).port, browserPath: "/devtools/browser/fake" }, cdp, closed: cdp.disconnected, isClosed: () => !cdp.isOpen, detach: () => cdp.close() }));
+    endpoint: { port: (endpoint.address() as AddressInfo).port, browserPath: "/devtools/browser/fake" }, cdp, admitted: options.admitted, closed: cdp.disconnected, isClosed: () => !cdp.isOpen, detach: () => cdp.close() }));
   t.mock.method(childProcess, "execFile", (_file: string, argv: string[], options: childProcess.ExecFileOptionsWithStringEncoding,
     callback: (error: childProcess.ExecFileException | null, stdout: string, stderr: string) => void) => {
     const at = argv.indexOf("--idle-timeout") + 2;
@@ -916,4 +919,139 @@ test("a snapshot while the owner holds a sign-in tab says so and keeps the takeo
   assert.match(shot!.stdout, new RegExp(OWNER_IN_CONTROL.replace(/[.]/g, "\\.")));
   assert.equal(shot!.stdout.includes('"outcome":"halted"'), false);
   assert.deepEqual(asks, []);
+});
+
+/** The chrome-hold end of the counted session: it answers overlay commands, and take and done stand for the owner's clicks. */
+async function fakeHold(t: TestContext) {
+  const server = createServer();
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  const accepted = new Promise<Socket>(resolve => server.once("connection", resolve));
+  const admitted = connect((server.address() as AddressInfo).port, "127.0.0.1");
+  await new Promise<void>(resolve => admitted.once("connect", () => resolve()));
+  const peer = await accepted;
+  t.after(() => {
+    admitted.destroy();
+    peer.destroy();
+    return new Promise<void>(resolve => server.close(() => resolve()));
+  });
+  let held = false;
+  let handback: (() => void) | undefined;
+  const settle = () => new Promise(resolve => setTimeout(resolve, 50));
+  const hold = {
+    ops: [] as { op: string; targetId?: string; text?: string }[],
+    /** Runs before the hold answers a command, the way an owner click can land while that command is in flight. */
+    beforeReply: undefined as ((request: { op: string; text?: string }) => Promise<void> | void) | undefined,
+    async take() {
+      held = true;
+      peer.write(`${JSON.stringify({ event: "held", held: true, heldSince: Date.now() })}\n`);
+      await settle();
+    },
+    async done() {
+      held = false;
+      peer.write(`${JSON.stringify({ event: "held", held: false })}\n`);
+      handback?.();
+      await settle();
+    },
+  };
+  const answer = async (request: { id: number; op: string; targetId?: string; text?: string }) => {
+    hold.ops.push({ op: request.op, ...request.targetId ? { targetId: request.targetId } : {}, ...request.text ? { text: request.text } : {} });
+    await hold.beforeReply?.(request);
+    const extra: Record<string, unknown> = {};
+    if (request.op === "lower" && held) extra.skipped = true;
+    if (request.op === "wait") {
+      if (held) await new Promise<void>(resolve => { handback = resolve; });
+      extra.outcome = "done";
+    }
+    peer.write(`${JSON.stringify({ id: request.id, ok: true, held, stopped: false, confirming: false, ...extra })}\n`);
+  };
+  let buffer = "";
+  peer.on("data", (chunk: Buffer) => {
+    buffer += chunk.toString("utf8");
+    for (let newline = buffer.indexOf("\n"); newline >= 0; newline = buffer.indexOf("\n")) {
+      const line = buffer.slice(0, newline);
+      buffer = buffer.slice(newline + 1);
+      if (line) void answer(JSON.parse(line) as { id: number; op: string });
+    }
+  });
+  return { hold, admitted };
+}
+
+test("a take and Done during a click's page read hand the click back instead of running it", async (t) => {
+  const { hold, admitted } = await fakeHold(t);
+  const f = await fixture(t, { admitted });
+  await f.proxy.execute("open", [MAPS], "current");
+  await f.proxy.execute("snapshot", ["-i"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  let owner = false;
+  f.daemon.chromeCall = async (method) => {
+    if (method !== "DOMSnapshot.captureSnapshot" || owner) return;
+    owner = true;
+    await hold.take();
+    await hold.done();
+  };
+  const [click] = await f.proxy.execute("click", ["@e1"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  assert.equal(owner, true, "the owner took the tab while Bao read the page");
+  assert.equal(click!.stdout, `${HANDED_BACK}\n`);
+  assert.equal(f.daemon.commands.some(entry => entry.command === "click"), false, "the stale click never reached the page");
+});
+
+test("a hold before a click, and Done during its page read, hand the click back instead of running it", async (t) => {
+  const { hold, admitted } = await fakeHold(t);
+  const f = await fixture(t, { admitted });
+  await f.proxy.execute("open", [MAPS], "current");
+  await f.proxy.execute("snapshot", ["-i"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  await hold.take();
+  let handedBack = false;
+  f.daemon.chromeCall = async (method) => {
+    if (method !== "DOMSnapshot.captureSnapshot" || handedBack) return;
+    handedBack = true;
+    await hold.done();
+  };
+  const [click] = await f.proxy.execute("click", ["@e1"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  assert.equal(handedBack, true, "the owner handed the tab back while Bao read the page");
+  assert.equal(click!.stdout, `${HANDED_BACK}\n`);
+  assert.equal(f.daemon.commands.some(entry => entry.command === "click"), false, "the stale click never reached the page");
+});
+
+test("a take and Done just before an open is sent hand the open back instead of running it", async (t) => {
+  const { hold, admitted } = await fakeHold(t);
+  const f = await fixture(t, { admitted });
+  await f.proxy.execute("open", [MAPS], "current");
+  let owner = false;
+  hold.beforeReply = async (request) => {
+    if (request.op !== "activity" || owner || !/example/i.test(request.text ?? "")) return;
+    owner = true;
+    await hold.take();
+    await hold.done();
+  };
+  const opened = await f.proxy.execute("open", ["https://example.com/next"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  assert.equal(owner, true, "the owner took the tab while the notch named the open");
+  assert.deepEqual(opened.map(result => result.stdout), [`${HANDED_BACK}\n`]);
+  assert.equal(f.daemon.commands.filter(entry => entry.command === "open").length, 1, "the stale open never reached the tab");
+});
+
+test("the notch names the element from the latest snapshot when snapshots with different args alternate", async (t) => {
+  const { hold, admitted } = await fakeHold(t);
+  const f = await fixture(t, { admitted });
+  await f.proxy.execute("open", [MAPS], "current");
+  const trees = ['- button "Old" [ref=e1]\n', '- button "Other" [ref=e1]\n', '- button "New" [ref=e1]\n'];
+  f.daemon.observe = (command) => { if (command === "snapshot") f.daemon.forced = trees.shift(); };
+  await f.proxy.execute("snapshot", ["-i"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  await f.proxy.execute("snapshot", [], undefined, false, undefined, {}, f.proxy.activeRunId);
+  await f.proxy.execute("snapshot", ["-i"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  f.daemon.observe = undefined;
+  await f.proxy.execute("click", ["@e1"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  assert.equal(hold.ops.filter(entry => entry.op === "activity").at(-1)?.text, "Click New");
+});
+
+test("the overlay moves to the agent's tab when tab new or a tab switch returns", async (t) => {
+  const { hold, admitted } = await fakeHold(t);
+  const f = await fixture(t, { admitted });
+  await f.proxy.execute("open", [MAPS], "current");
+  const followed = () => hold.ops.filter(entry => entry.op === "follow" || entry.op === "attach").at(-1)?.targetId;
+  assert.equal(followed(), "task");
+  assert.equal((await f.proxy.execute("tab", ["new"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.exitCode, 0);
+  assert.equal(followed(), "opened", "the new agent tab has the frame before the next command");
+  assert.equal(hold.ops.filter(entry => entry.op === "activity").at(-1)?.text, "Opened a new tab", "a tab list after the step does not rename it");
+  assert.equal((await f.proxy.execute("tab", ["t1"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.exitCode, 0);
+  assert.equal(followed(), "task", "a switch back moves the frame back");
 });

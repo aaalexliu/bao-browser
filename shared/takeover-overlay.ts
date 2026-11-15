@@ -4,6 +4,8 @@ export const ACTING_COMMANDS = ["click", "fill", "press", "scroll", "upload", "d
 export const HANDED_BACK = "The owner took control of this tab and handed it back. Take a fresh snapshot before acting.";
 export const OWNER_IN_CONTROL = "The owner is in control of this tab.";
 export const WATCHDOG_MS = 20_000;
+/** Marks the overlay's host element, so the receipt's page map can leave Bao's own controls out. */
+export const OVERLAY_HOST_ATTRIBUTE = "data-bao-overlay";
 
 const acting = new Set<string>(ACTING_COMMANDS);
 
@@ -151,6 +153,7 @@ export function takeoverOverlaySource(watchdogMs = WATCHDOG_MS): string {
   const host = document.createElement(tag);
   host.setAttribute("popover", "manual");
   host.setAttribute("aria-hidden", "true");
+  host.setAttribute(${JSON.stringify(OVERLAY_HOST_ATTRIBUTE)}, "");
   const shadow = host.attachShadow({ mode: "closed" });
   const style = document.createElement("style");
   style.textContent = ${JSON.stringify(overlayCss())};
