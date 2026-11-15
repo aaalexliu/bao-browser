@@ -1395,9 +1395,11 @@ export class AgentBrowserProxy {
       try {
         wired = await this.wire(next);
         moving = { ...session, ...next, ...wired, agentTarget: next.targetId };
-        routeOpen = session.recording.prepareRouteOpen(site);
+        if (!session.recording.agentOpenPending()) {
+          before = await this.capturePage(moving, "before");
+          routeOpen = session.recording.begin("open", [site]);
+        }
         await this.flushHar(session);
-        if (routeOpen) before = await this.capturePage(moving, "before");
         nativeOpen = true;
         opened = await this.runNative(moving, "open", [site]);
         if (opened.exitCode !== 0) throw new Error(`the open in Bao's task tab failed: ${opened.stderr || opened.stdout || `exit ${opened.exitCode}`}`);
