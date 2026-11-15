@@ -248,8 +248,19 @@ export class Takeover {
     this.disposed = true;
     this.calling = false;
     if (this.heart) clearInterval(this.heart);
+    const cdp = this.cdp;
+    const owned = this.ownedSocket;
+    if (owned) {
+      this.cdp = undefined;
+      this.sendApi = undefined;
+      cdp?.close();
+      for (const stop of this.unlisten) stop();
+      this.unlisten = [];
+      this.page = {};
+      this.targetId = undefined;
+      return;
+    }
     await this.detachPage().catch(() => undefined);
-    if (this.ownedSocket) this.cdp?.close();
     this.cdp = undefined;
     this.sendApi = undefined;
   }
@@ -379,7 +390,7 @@ export class Takeover {
       const type = aux && typeof aux === "object" && "type" in aux ? aux.type : undefined;
       if (type !== undefined && type !== "default") return;
       if (typeof frameId !== "string" || (this.page.frameId && frameId !== this.page.frameId)) return;
-      void this.rebind(true);
+      void this.rebind(true).catch(() => undefined);
     }));
     await this.install();
   }

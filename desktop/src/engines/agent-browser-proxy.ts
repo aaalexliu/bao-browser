@@ -1992,10 +1992,11 @@ export class AgentBrowserProxy {
     if (waiting && raise) session.raised = false;
     const text = this.bannerText(session);
     const takeover = this.overlayOn(session) ? this.takeover : undefined;
+    // A missing overlay must not skip the window raise. The ask is best-effort; the handoff is not.
     if (takeover) {
       await takeover.follow(targetId).catch(() => undefined);
-      if (!takeover.held && waiting) await takeover.showAsk(askLine(ownerTask(ownerWaitPage(this.waitOf(session), session.ownerPage))));
-      else if (!takeover.held) await takeover.clearAsk();
+      if (!takeover.held && waiting) await takeover.showAsk(askLine(ownerTask(ownerWaitPage(this.waitOf(session), session.ownerPage)))).catch(() => undefined);
+      else if (!takeover.held) await takeover.clearAsk().catch(() => undefined);
     } else if (waiting) await this.armReloadBanner(session, targetId, text).catch(() => undefined);
     else await this.disarmReloadBanner();
     const cdp = await this.connectSession(session, { timeoutMs: 2000, signal: session.abort.signal });
@@ -2439,7 +2440,8 @@ export class AgentBrowserProxy {
       return;
     }
     session.idleTimer = setTimeout(() => {
-      if (this.takeover?.held || this.waitOf(session) !== "off") { this.armIdle(session); return; }
+      // An aborted wait still names its page. That must not renew the idle timer, or the session never expires.
+      if ((this.takeover?.held || this.waitOf(session) !== "off") && !session.abort.signal.aborted) { this.armIdle(session); return; }
       if (this.options.hasHold?.()) { this.armIdle(session); return; }
       session.outcome = { outcome: "failed", reason: AGENT_IDLE_REASON };
       session.workflow.unavailable(session.outcome.reason);
@@ -2666,12 +2668,13 @@ export class AgentBrowserProxy {
 
   private async cleanupBody(session: Session, keepOpen: boolean, closeTaskTabs: boolean): Promise<void> {
     const overlay = this.takeover;
-    if (overlay && this.takeover === overlay) {
-      const outcome = overlay.stoppedByOwner ? "stopped" : session.outcome?.outcome === "failed" ? "failed" : "finished";
-      await overlay.finish(outcome).catch(() => undefined);
-      await overlay.dispose().catch(() => undefined);
-      if (this.takeover === overlay) this.takeover = undefined;
-    }
+    const keepWindow = keepOpen && !this.closingOf(session) && this.pendingCloses === 0 && !session.chrome.isClosed();
+    // The finished pill must not delay the lease or a close. A closing window cannot show it, and a dead browser must not sit in a CDP timeout.
+    const painting = overlay && this.takeover === overlay && keepWindow
+      ? overlay.finish(overlay.stoppedByOwner ? "stopped" : session.outcome?.outcome === "failed" ? "failed" : "finished").catch(() => undefined)
+      : undefined;
+    if (overlay && this.takeover === overlay && !keepWindow) await overlay.dispose().catch(() => undefined);
+    if (overlay && this.takeover === overlay) this.takeover = undefined;
     await this.disarmReloadBanner();
     session.abort.abort();
     await session.commandDone;
@@ -2698,9 +2701,11 @@ export class AgentBrowserProxy {
               }
             }
           } finally { session.chrome.detach(); }
-        } else if (keepOpen && !this.closingOf(session) && this.pendingCloses === 0 && !session.chrome.isClosed()) {
+        } else if (keepWindow) {
           await this.showAgentTab(session);
           await session.chrome.keepOpen();
+          await painting;
+          await overlay?.dispose().catch(() => undefined);
         } else await session.chrome.close();
       }
       await rm(session.stateDir, { recursive: true, force: true });
