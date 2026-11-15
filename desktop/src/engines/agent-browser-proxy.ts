@@ -1388,6 +1388,7 @@ export class AgentBrowserProxy {
     let opened: AgentBrowserCommandResult | undefined;
     let moving: Session | undefined;
     let routeOpen: RecordedAgentBrowserCommand | undefined;
+    let before: PageCapture | undefined;
     let failure: unknown;
     let nativeOpen = false;
     try {
@@ -1396,6 +1397,7 @@ export class AgentBrowserProxy {
         moving = { ...session, ...next, ...wired, agentTarget: next.targetId };
         routeOpen = session.recording.prepareRouteOpen(site);
         await this.flushHar(session);
+        if (routeOpen) before = await this.capturePage(moving, "before");
         nativeOpen = true;
         opened = await this.runNative(moving, "open", [site]);
         if (opened.exitCode !== 0) throw new Error(`the open in Bao's task tab failed: ${opened.stderr || opened.stdout || `exit ${opened.exitCode}`}`);
@@ -1405,7 +1407,7 @@ export class AgentBrowserProxy {
           fail(error);
           this.moved = { ...this.moved!, failed: { error, ...opened ? { result: opened } : {} } };
         }
-        if (routeOpen && moving) await this.completeRouteOpen(moving, routeOpen, opened, failure);
+        if (routeOpen && moving) await this.completeRouteOpen(moving, routeOpen, opened, failure, before);
         try { if (moving) await this.flushHar(moving); }
         catch (flushError) { process.stderr.write(`Bao step record: network har stop failed: ${flushError instanceof Error ? flushError.message : String(flushError)}\n`); }
         try { if (wired) await this.stopDaemon(wired.stateDir); }
@@ -1437,7 +1439,7 @@ export class AgentBrowserProxy {
       failure ??= error;
       throw error;
     } finally {
-      if (routeOpen && routeOpen.endedAt === undefined) await this.completeRouteOpen(session, routeOpen, opened, failure);
+      if (routeOpen && routeOpen.endedAt === undefined) await this.completeRouteOpen(session, routeOpen, opened, failure, before);
     }
   }
 
@@ -1462,12 +1464,13 @@ export class AgentBrowserProxy {
    * Ends the open a route move began, read from the browser it opened in: the moving session before a failed move tears it
    * down, or the moved session. A failed open keeps its error as the picture's.
    */
-  private async completeRouteOpen(session: Session, step: RecordedAgentBrowserCommand, opened: AgentBrowserCommandResult | undefined, failure: unknown): Promise<void> {
+  private async completeRouteOpen(session: Session, step: RecordedAgentBrowserCommand, opened: AgentBrowserCommandResult | undefined, failure: unknown, before?: PageCapture): Promise<void> {
     await this.completeStep(session, step, opened ? [opened] : [], failure, {
       readLog: true,
       privatePage: failure === undefined && this.waitOf(session) !== "off",
       screenshot: failure === undefined ? () => this.screenshot(session, "open") : async () => { throw failure; },
       context: failure === undefined ? { moved: this.moved!.line } : {},
+      before,
     });
   }
 

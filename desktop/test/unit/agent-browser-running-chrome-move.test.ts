@@ -563,9 +563,9 @@ test("a route open whose cleanup fails after a failed move still ends failed in 
 
 const consoleTexts = (record: StepNetworkRecord) => ((record.console as { result?: { messages?: { text: string }[] } } | undefined)?.result?.messages ?? []).map((message) => message.text);
 
-async function afterPage(home: string, runId: string, record: StepNetworkRecord): Promise<PageState> {
-  const entry = record.page?.after;
-  assert.ok(entry && "file" in entry, `after page read: ${entry && "error" in entry ? entry.error : "missing"}`);
+async function pageRead(home: string, runId: string, record: StepNetworkRecord, phase: "before" | "after"): Promise<PageState> {
+  const entry = record.page?.[phase];
+  assert.ok(entry && "file" in entry, `${phase} page read: ${entry && "error" in entry ? entry.error : "missing"}`);
   return JSON.parse(gunzipSync(await readFile(path.join(home, "runs", runId, entry.file))).toString("utf8")) as PageState;
 }
 
@@ -582,7 +582,8 @@ test("a route open made during a move keeps its own console, page state and pict
   const record = await readStepRecord(h.home, runId, route.id);
   assert.equal(record.status, "passed");
   assert.deepEqual(consoleTexts(record), [`opened ${h.site}/article on ${h.endpoint.port}`]);
-  assert.equal((await afterPage(h.home, runId, record)).url, `${h.site}/article`);
+  assert.equal((await pageRead(h.home, runId, record, "before")).url, "about:blank");
+  assert.equal((await pageRead(h.home, runId, record, "after")).url, `${h.site}/article`);
   assert.ok(route.afterShot, route.afterShotError);
   for (const step of steps.filter((item) => item.id !== route.id)) {
     const texts = consoleTexts(await readStepRecord(h.home, runId, step.id));
@@ -605,7 +606,8 @@ test("a failed route open during a move keeps its error, the destination's conso
   assert.equal(record.status, "failed");
   assert.match(record.error ?? "", /navigation timed out/);
   assert.deepEqual(consoleTexts(record), [`open failed on ${h.endpoint.port}`]);
-  assert.equal((await afterPage(h.home, runId, record)).url, "about:blank");
+  assert.equal((await pageRead(h.home, runId, record, "before")).url, "about:blank");
+  assert.equal((await pageRead(h.home, runId, record, "after")).url, "about:blank");
 });
 
 test("a wait retry keeps the wait and records a passed route open", { timeout: scaledMs(60_000) }, async (t) => {
