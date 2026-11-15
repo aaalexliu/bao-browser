@@ -3,6 +3,7 @@
 import { ownerAsk, ownerSite, ownerTask, type OwnerAsk, type OwnerPage } from "../cdp-live/owner-wait";
 import type { AgentBrowserCommandResult } from "./agent-browser-proxy";
 import { fileName, fileOperands } from "../v1/file-operands";
+import { handedBack, HANDED_BACK } from "../../../shared/takeover-overlay";
 
 /** A sentence piece. `cite` is text copied from the page; `value` is text the agent supplied. */
 export type SummaryPart = string | { cite: string } | { value: string };
@@ -234,6 +235,7 @@ function fileNames(command: string, args: readonly string[]): string | undefined
 /** Describe a finished pass-through step. Facts come from native output and Chrome's own page metadata. */
 export function describeStep(facts: StepFacts): StepSummary {
   const { command, args, results } = facts;
+  if (results.some(handedBack)) return { parts: [HANDED_BACK], text: HANDED_BACK };
   const reply = ownerReply(results);
   const outcome = reply?.outcome;
   const failed = facts.error !== undefined || results.some((result) => result.exitCode !== 0);
@@ -318,6 +320,7 @@ export function describeStep(facts: StepFacts): StepSummary {
       const closed = facts.current ? "Closed Bao's task tab in your Chrome" : "Closed the Bao browser window";
       return { parts: [closed], text: `${closed}.` };
     }
+    case "handoff": return done(["You took control of this tab and handed it back"]);
     default: return done([`Ran ${command}`]);
   }
 }

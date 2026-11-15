@@ -4,6 +4,7 @@ import { rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import type { CdpSocket } from "../cdp-live/socket";
+import { handedBack } from "../../../shared/takeover-overlay";
 import type { AgentBrowserCommandResult } from "./agent-browser-proxy";
 
 /** A download's result, and where its file came from when it saved one. */
@@ -34,7 +35,7 @@ export async function uploadThroughChooser(cdp: CdpSocket, targetId: string, fil
     await cdp.send("Page.enable", {}, sessionId, 5000);
     await cdp.send("Page.setInterceptFileChooserDialog", { enabled: true }, sessionId, 5000);
     const clicked = await click();
-    if (clicked.exitCode !== 0) return clicked;
+    if (clicked.exitCode !== 0 || handedBack(clicked)) return clicked;
     const backendNodeId = await Promise.race([chooser, delay(CHOOSER_MS, null)]);
     if (backendNodeId === null) return failed(`The click opened no file chooser within ${CHOOSER_MS / 1000} s. Target the upload button, its label, or the file input.`);
     if (typeof backendNodeId !== "number") return failed("Chrome's file chooser named no file input.");
@@ -133,7 +134,7 @@ async function savePdf(cdp: CdpSocket, targetId: string, file: string): Promise<
 
 /**
  * For this click only: page handlers run first. A bubble listener then cancels an http(s) link the handler left in place.
- * `window.open` is recorded and not called, so a handler popup does not open a tab. `TAKE_CLICK` restores both.
+ * `window.open` is recorded and not called, so a handler popup does not open a tab. `RESTORE_CLICK` puts both back.
  */
 const ARM_CLICK = `(() => {
   const policies = ["no-referrer", "no-referrer-when-downgrade", "origin", "origin-when-cross-origin", "same-origin", "strict-origin", "strict-origin-when-cross-origin", "unsafe-url"];
@@ -206,16 +207,20 @@ const ARM_CLICK = `(() => {
   window.addEventListener("submit", onSubmit, false);
 })()`;
 
-const TAKE_CLICK = `(() => {
+const READ_CLICK = `(() => {
+  const href = typeof window.__baoDownloadHref === "string" ? window.__baoDownloadHref : "";
+  const opened = typeof window.__baoOpened === "string" ? window.__baoOpened : "";
+  const download = window.__baoDownloadNamed === true;
+  const policy = opened ? window.__baoOpenPolicy : window.__baoHrefPolicy;
+  return { href: href, opened: opened, download: download, policy: typeof policy === "string" ? policy : "" };
+})()`;
+
+const RESTORE_CLICK = `(() => {
   const click = window.__baoDownloadClick;
   const submit = window.__baoDownloadSubmit;
   if (typeof click === "function") window.removeEventListener("click", click, false);
   if (typeof submit === "function") window.removeEventListener("submit", submit, false);
   if (typeof window.__baoPriorOpen === "function") window.open = window.__baoPriorOpen;
-  const href = typeof window.__baoDownloadHref === "string" ? window.__baoDownloadHref : "";
-  const opened = typeof window.__baoOpened === "string" ? window.__baoOpened : "";
-  const download = window.__baoDownloadNamed === true;
-  const policy = opened ? window.__baoOpenPolicy : window.__baoHrefPolicy;
   delete window.__baoDownloadHref;
   delete window.__baoOpened;
   delete window.__baoDownloadNamed;
@@ -224,7 +229,6 @@ const TAKE_CLICK = `(() => {
   delete window.__baoPriorOpen;
   delete window.__baoOpenPolicy;
   delete window.__baoHrefPolicy;
-  return { href: href, opened: opened, download: download, policy: typeof policy === "string" ? policy : "" };
 })()`;
 
 function capturedClick(value: unknown): { url: string; download: boolean; policy: string } {
@@ -373,18 +377,17 @@ export async function downloadByClick(cdp: CdpSocket, agentTab: string, saved: s
       return { result: failed("Bao could not keep this download from opening a tab.") };
     }
     let clicked: AgentBrowserCommandResult;
-    let href = "";
-    let named = false;
-    let policy = "strict-origin-when-cross-origin";
+    let captured = { url: "", download: false, policy: "strict-origin-when-cross-origin" };
     try {
       clicked = await click();
+      if (clicked.exitCode === 0 && !handedBack(clicked)) captured = capturedClick(await inPage(cdp, agentTab, READ_CLICK).catch(() => undefined));
     } finally {
-      const captured = capturedClick(await inPage(cdp, agentTab, TAKE_CLICK).catch(() => undefined));
-      href = captured.url;
-      named = captured.download;
-      policy = captured.policy;
+      await inPage(cdp, agentTab, RESTORE_CLICK).catch(() => undefined);
     }
-    if (clicked.exitCode !== 0) return { result: clicked };
+    if (clicked.exitCode !== 0 || handedBack(clicked)) return { result: clicked };
+    const href = captured.url;
+    const named = captured.download;
+    const policy = captured.policy;
     if (href && !started) {
       let fetched: { kind: "file" } | { kind: "page" | "http"; url: string } | undefined;
       try {

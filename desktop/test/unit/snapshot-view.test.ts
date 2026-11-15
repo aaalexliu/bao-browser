@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { diffView, findView, snapshotView } from "../../src/engines/snapshot-view";
+import { diffView, findView, ownerSnapshot, snapshotView } from "../../src/engines/snapshot-view";
+import { OWNER_IN_CONTROL } from "../../../shared/takeover-overlay";
 import { INSTRUCTIONS, TOOLS } from "../../src/mcp/server";
 
 const page = `- banner
@@ -31,6 +32,20 @@ test("find returns matching lines with their refs, the lines that hold them, and
   assert.doesNotMatch(findView(page, { text: "ref" }), /^\d+ of/, "refs and attributes are not searched");
   assert.equal(findView(page, { text: "Checkout", role: "link" }),
     "No snapshot line matches text \"Checkout\" and role link (14 lines on the page). Try a shorter text, another role, or a plain snapshot.");
+});
+
+test("find, an unchanged diff, and a plain snapshot keep the owner-control line after the view", () => {
+  const found = ownerSnapshot(page, { kind: "find", find: { text: "blueberries", role: "button" } }, undefined, true);
+  assert.match(found, /Kirkland Organic Blueberries/);
+  assert.equal(found.includes("- banner"), false);
+  assert.ok(found.endsWith(`${OWNER_IN_CONTROL}\n`));
+  const same = ownerSnapshot(page, { kind: "diff" }, page, true);
+  assert.match(same, /^No change since the last snapshot/);
+  assert.ok(same.endsWith(`${OWNER_IN_CONTROL}\n`));
+  const plain = ownerSnapshot(page, undefined, undefined, true);
+  assert.ok(plain.startsWith(page));
+  assert.ok(plain.endsWith(`${OWNER_IN_CONTROL}\n`));
+  assert.equal(ownerSnapshot(page, { kind: "diff" }, page, false), "No change since the last snapshot (14 lines).");
 });
 
 test("diff shows added and removed lines under the lines that hold them, and falls back to the full tree", () => {

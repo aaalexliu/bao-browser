@@ -106,6 +106,10 @@ export interface Driver {
   shouldStop?(): boolean;
   loginContinued?(): boolean;
   ownerContinued?(): boolean;
+  /** Overlay Done. Distinct from the app continue flag, which does not skip a site check. */
+  handedBack?(): boolean;
+  /** The ask overlay outlived this replay. Done ends it instead of resuming. */
+  askUnwatched?(): void;
   /** Page PNG or JPEG of the target. Unit-test drivers omit this. */
   shot?(target?: ShotTarget): Promise<Buffer | undefined>;
   /** Full viewport. Unit-test drivers omit this. */
@@ -419,7 +423,10 @@ export async function replay(
       stamp({ id: step.id, status: "paused", reason: decision.class === "login_wall" ? "sign in" : "bot check" });
       const paused = finish({ runId, status: "paused", steps, pausedStepId: step.id, pausedKind: "wall", ask });
       opts.onPause?.(structuredClone(paused));
-      if (!opts.holdForPerson) return { result: paused };
+      if (!opts.holdForPerson) {
+        driver.askUnwatched?.();
+        return { result: paused };
+      }
       const timeout = actWaitMs(undefined, settings.actTimeoutMs);
       const start = Date.now();
       while (Date.now() - start < timeout) {
@@ -1236,6 +1243,7 @@ async function runHandoff(
   if (gate.humanReady || gate.yieldHuman) {
     if (!gate.humanReady) await showOwnerAsk(driver, step, ask);
     beginHandoff(driver, gate, step.id);
+    driver.askUnwatched?.();
     return { ok: false, paused: "confirm", repairs: [], ask };
   }
   beginHandoff(driver, gate, step.id);
@@ -1243,6 +1251,7 @@ async function runHandoff(
   await showOwnerAsk(driver, step, ask);
   if (!real || step.timeoutMs === 0) {
     if (await ownerDone(step, args, driver)) return finishHandoff(driver, gate, step.id);
+    driver.askUnwatched?.();
     return { ok: false, paused: "confirm", repairs: [], ask };
   }
   const ok = await waitForOwner(step, args, driver, gate);
@@ -1252,8 +1261,12 @@ async function runHandoff(
   return { ok: false, repairs: [], failure: await fail(driver, step, "expect", "nothing applied", undefined, secrets) };
 }
 
+function ownerReleased(driver: Driver): boolean {
+  return driver.loginContinued?.() === true || driver.ownerContinued?.() === true;
+}
+
 async function ownerDone(step: WorkflowStep, args: ReplayArgs, driver: Driver): Promise<boolean> {
-  if (driver.loginContinued?.() || driver.ownerContinued?.()) return true;
+  if (ownerReleased(driver)) return true;
   const tree = await driver.tree().catch(() => undefined);
   return !!tree && step.action === "handoff" && !!step.check && step.check.kind !== "settled" && checkHolds(step.check, tree, args);
 }
@@ -1262,14 +1275,15 @@ async function waitForOwner(step: WorkflowStep, args: ReplayArgs, driver: Driver
   const timeout = actWaitMs(step.timeoutMs, gate.actTimeoutMs);
   const start = Date.now();
   const check = step.action === "handoff" && step.check && step.check.kind !== "settled" ? step.check : undefined;
+  const released = (): boolean => driver.handedBack?.() === true || (!check && ownerReleased(driver));
   while (Date.now() - start < timeout) {
-    if (!check && (driver.loginContinued?.() || driver.ownerContinued?.())) return true;
+    if (released()) return true;
     if (driver.shouldStop?.()) return false;
     const tree = await driver.tree();
     if (check && checkHolds(check, tree, args)) return true;
     await (driver.sleep ? driver.sleep(100) : sleep(100));
   }
-  if (!check && (driver.loginContinued?.() || driver.ownerContinued?.())) return true;
+  if (released()) return true;
   const tree = await driver.tree();
   return !!check && checkHolds(check, tree, args);
 }
@@ -1298,6 +1312,7 @@ async function runLogin(
       await driver.showLoginWait?.(stepTitle(step) || "Sign in on the site window");
     }
     beginHandoff(driver, gate, step.id);
+    driver.askUnwatched?.();
     return { ok: false, paused: "signin", repairs: [], ask };
   }
   const filled = await settleLogin(workflow, step, args, driver, gate, human);

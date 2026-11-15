@@ -241,7 +241,7 @@ The Mac app is headed unless `BAO_HEADED=0`. `--no-sandbox` is never added on ma
 
 Ordinary browser capture and replay share one directory, `<home>/chrome-profile`; the [copied-profile trial](agent-browser-engine.md#pick-an-engine-and-profile) has its own lifecycle. Stopping a capture does not delete it. A cookie set while capturing is still there for the next replay. Hermetic tests, evals, and a replay that was not given that directory still get a throwaway profile. The launch does not pass `--restore-last-session`. Saved tabs are removed before Chrome starts, the window is parked on `about:blank`, and the first capture or replay navigation is the one Bao issues.
 
-Bao does not spoof a fingerprint, patch `navigator`, or solve a check. It also does not pass the switches that advertise automation. A check that is still on the page stays the existing pause: complete the check in the Bao window, then press Continue. Replay continues in the same profile.
+Bao does not spoof a fingerprint, patch `navigator`, or solve a check. It also does not pass the switches that advertise automation. A check that is still on the page stays the existing pause: complete the check in the Bao window, then click Done. Replay continues in the same profile.
 
 ### 2026-10-22 — Read a failure before healing it
 

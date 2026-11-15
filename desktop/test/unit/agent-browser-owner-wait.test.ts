@@ -3,7 +3,7 @@ import fsp, { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test, { type TestContext } from "node:test";
-import { chromium } from "playwright";
+import { chromium, type Page } from "playwright";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import * as profiles from "../../src/engines/chrome-profile-copy";
 import * as bao from "../../src/engines/bao-profile";
@@ -21,6 +21,43 @@ import { LIST_TARGETS } from "../support/fake-agent-browser";
 import { scaledMs } from "../runtime";
 
 pinTestBrowser();
+
+type DomNode = { nodeValue?: string; children?: DomNode[]; shadowRoots?: DomNode[] };
+
+function domText(node: DomNode | undefined, out: string[]): void {
+  if (!node) return;
+  if (typeof node.nodeValue === "string") out.push(node.nodeValue);
+  for (const child of node.children ?? []) domText(child, out);
+  for (const root of node.shadowRoots ?? []) domText(root, out);
+}
+
+/** The ask lives in the overlay's closed shadow. A page locator cannot see it. */
+async function overlayAsk(page: Page): Promise<string> {
+  const client = await page.context().newCDPSession(page);
+  try {
+    const doc = await client.send("DOM.getDocument", { depth: -1, pierce: true }) as { root: DomNode };
+    const texts: string[] = [];
+    domText(doc.root, texts);
+    return texts.join("\n");
+  } finally {
+    await client.detach();
+  }
+}
+
+function overlayHost(page: Page) {
+  return page.locator("[popover=manual]");
+}
+
+async function waitForAsk(page: Page, pattern: RegExp): Promise<void> {
+  const deadline = Date.now() + 5000;
+  let last = "";
+  while (Date.now() < deadline) {
+    last = await overlayAsk(page);
+    if (pattern.test(last)) return;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(`overlay ask did not match ${pattern}: ${JSON.stringify(last)}`);
+}
 
 test("owner wait classifies only URL/title and bounds every call below the MCP timeout", () => {
   for (const [url, title, reason] of [
@@ -170,7 +207,7 @@ for (const { browser, check, bare } of [
     assert.ok(page);
     const pages = observer.contexts()[0]!.pages().length;
     page.setDefaultTimeout(5000);
-    assert.match(await page.locator("#bao-owner-wait").innerText(), /waiting for you/);
+    assert.match(await overlayAsk(page), /then click Done/);
     assert.equal(importCalls.length, browser === "bao" && check === "signin" ? 1 : 0, "only an explicit open's login wall can apply its source snapshot");
     const importsBefore = importCalls.length;
     const before = await readFile(log, "utf8");
@@ -247,14 +284,14 @@ test("an owner wait follows a later wall in its card, instruction, banner, and r
     assert.match(instruction(result), /Ask the owner to finish the check on 127\.0\.0\.1/);
     assert.equal(proxy.lastCommand!.step.summary!.owner!.title, "Two-factor authentication");
     assert.equal(proxy.lastCommand!.step.summary!.owner!.url, fixture.url("/owner/verify"));
-    assert.match(await page.locator("#bao-owner-wait").innerText(), /waiting for you to finish the check/);
+    assert.match(await overlayAsk(page), /Finish the check[\s\S]*click Done/);
     await page.evaluate(() => { document.title = "Confirm your account"; });
     assert.equal(outcome(await proxy.execute("wait_for_owner", ["300"], undefined, false, undefined, {}, runId)), "waiting");
     assert.equal(proxy.ownerPage!.title, "Confirm your account", "a title-only change on a wall updates the same wait");
-    assert.equal(await page.locator("#bao-owner-wait").count(), 1, "replacing a banner does not stack it");
+    assert.equal(await overlayHost(page).count(), 1, "replacing an ask does not stack it");
     await page.getByRole("button", { name: "Verify", exact: true }).click();
     assert.equal(outcome(await proxy.execute("wait_for_owner", ["2000"], undefined, false, undefined, {}, runId)), "ready");
-    assert.equal(await page.locator("#bao-owner-wait").count(), 0);
+    assert.doesNotMatch(await overlayAsk(page), /click Done/);
     assert.equal(proxy.activeRunId, runId);
     assert.equal(outcome(await proxy.execute("wait_for_owner", ["50"], undefined, false, undefined, {}, runId)), "recording");
     await page.goto(fixture.url("/owner/verify"));
@@ -291,7 +328,7 @@ test("a later wall re-injects its banner without activating or raising the windo
       assert.equal(broughtFront.test(instruction(result)), firstFront, what);
       assert.equal(proxy.ownerPage!.since, since, what);
       assert.equal(proxy.activeRunId, runId, what);
-      assert.equal(await page.locator("#bao-owner-wait").count(), 1, what);
+      assert.equal(await overlayHost(page).count(), 1, what);
     };
 
     front.length = 0;
@@ -301,10 +338,10 @@ test("a later wall re-injects its banner without activating or raising the windo
     assert.equal(outcome(moved), "waiting");
     assert.equal(proxy.ownerPage!.url, fixture.url("/owner/verify"));
     assert.equal(proxy.ownerPage!.title, "Two-factor authentication");
-    assert.match(await page.locator("#bao-owner-wait").innerText(), /finish the check/);
+    assert.match(await overlayAsk(page), /finish the check/i);
     await quiet(moved, "a later wall URL does not activate or raise");
 
-    await page.evaluate(() => document.getElementById("bao-owner-wait")?.remove());
+    await overlayHost(page).evaluateAll((nodes) => { for (const node of nodes) node.remove(); });
     await page.evaluate(() => { document.title = "Confirm your account"; });
     front.length = 0;
     const retitled = await proxy.execute("wait_for_owner", ["1500"], undefined, false, undefined, {}, runId);
@@ -317,13 +354,11 @@ test("a later wall re-injects its banner without activating or raising the windo
 
 test("a failed password at the same address restores the banner without raising the window or adding a second one", { timeout: scaledMs(45_000) }, async (t) => {
   const front: string[] = [];
-  const reads: string[] = [];
   let scripts = 0;
   const send = CdpSocket.prototype.send;
   t.mock.method(CdpSocket.prototype, "send", function (this: CdpSocket, ...args: Parameters<typeof send>) {
     const method = args[0];
     if (method === "Target.activateTarget" || method === "Browser.getWindowForTarget" || method === "Browser.setWindowBounds" || method === "Bao.showTab") front.push(method);
-    if (method === "Page.getFrameTree" || method === "DOM.getDocument" || method === "Runtime.evaluate") reads.push(method);
     if (method === "Page.addScriptToEvaluateOnNewDocument") scripts += 1;
     return send.apply(this, args);
   });
@@ -334,31 +369,27 @@ test("a failed password at the same address restores the banner without raising 
   try {
     assert.equal(outcome(await proxy.execute("open", [fixture.url("/owner/session")], "copy")), "halted");
     assert.ok(front.includes("Target.activateTarget"), "the first wall still brings the window forward");
-    assert.equal(scripts, 1, "the first wall registers one reload script");
+    assert.equal(scripts, 1, "the overlay registers one script");
     const runId = proxy.activeRunId!;
     const since = proxy.ownerPage!.since;
     const endpoint = await readDevToolsActivePort(path.join(h.copyDir, "DevToolsActivePort"));
     observer = await chromium.connectOverCDP(`http://127.0.0.1:${endpoint.port}`);
     const page = observer.contexts()[0]!.pages().find((item) => item.url().includes("/owner/session"))!;
     page.setDefaultTimeout(5000);
-    assert.equal(await page.locator("#bao-owner-wait").count(), 1);
+    assert.equal(await overlayHost(page).count(), 1);
     if (proof) await page.screenshot({ path: path.join(proof, "before-reload.png") });
 
     front.length = 0;
-    reads.length = 0;
     const scriptsAtWall = scripts;
     await page.getByLabel("Password").fill("wrong-password");
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
     await page.getByText("That password did not match.").waitFor();
     assert.equal(new URL(page.url()).pathname, "/owner/session");
     assert.equal(await page.title(), "Sign in");
-    await page.locator("#bao-owner-wait").waitFor();
-    assert.equal(await page.locator("#bao-owner-wait").count(), 1, "a same-address reload leaves one banner");
-    assert.match(await page.locator("#bao-owner-wait").innerText(), /waiting for you to sign in/);
+    await waitForAsk(page, /sign in to[\s\S]*click Done/i);
+    assert.equal(await overlayHost(page).count(), 1, "a same-address reload leaves one ask");
+    assert.match(await overlayAsk(page), /sign in to[\s\S]*click Done/i);
     assert.deepEqual(front, [], "a same-address reload does not activate or raise");
-    assert.equal(reads.includes("Page.getFrameTree"), false, "a reload is not noticed by reading frames");
-    assert.equal(reads.includes("DOM.getDocument"), false, "a reload is not noticed by reading the document");
-    assert.equal(reads.includes("Runtime.evaluate"), false, "a reload is not noticed by reading the page");
     assert.equal(scripts, scriptsAtWall, "a reload does not register a second script");
     if (proof) await page.screenshot({ path: path.join(proof, "after-reload.png") });
 
@@ -368,45 +399,40 @@ test("a failed password at the same address restores the banner without raising 
       document.body.append(frame);
     });
     await page.frameLocator("iframe").locator("h1").waitFor();
-    assert.equal(await page.locator("#bao-owner-wait").count(), 1, "an iframe document does not add a banner in the top frame");
-    assert.equal(await page.frameLocator("iframe").locator("#bao-owner-wait").count(), 0, "an iframe document does not get its own banner");
+    assert.equal(await overlayHost(page).count(), 1, "an iframe document does not add an ask in the top frame");
+    assert.equal(await page.frameLocator("iframe").locator("[popover=manual]").count(), 0, "an iframe document does not get its own ask");
 
     front.length = 0;
-    reads.length = 0;
     assert.equal(outcome(await proxy.execute("wait_for_owner", ["400"], undefined, false, undefined, {}, runId)), "waiting");
     assert.equal(proxy.ownerPage!.since, since, "a same-address reload does not restart the wait");
-    assert.equal(await page.locator("#bao-owner-wait").count(), 1, "a poll of the same address does not add a second banner");
+    assert.equal(await overlayHost(page).count(), 1, "a poll of the same address does not add a second ask");
     assert.deepEqual(front, [], "a poll does not activate or raise");
-    assert.equal(reads.includes("Page.getFrameTree"), false);
-    assert.equal(reads.includes("Runtime.evaluate"), false);
 
     await page.evaluate(() => { document.title = "Dashboard"; });
     assert.equal(outcome(await proxy.execute("wait_for_owner", ["2000"], undefined, false, undefined, {}, runId)), "ready");
-    assert.equal(await page.locator("#bao-owner-wait").count(), 0);
+    assert.doesNotMatch(await overlayAsk(page), /click Done/);
     await page.reload();
     await page.locator("h1").waitFor();
-    assert.equal(await page.locator("#bao-owner-wait").count(), 0, "a reload after the wait does not bring the banner back");
+    assert.doesNotMatch(await overlayAsk(page), /click Done/, "a reload after the wait does not bring the ask back");
 
     assert.equal(outcome(await proxy.execute("wait_for_owner", ["400"], undefined, false, undefined, {}, runId)), "waiting");
-    assert.equal(await page.locator("#bao-owner-wait").count(), 1, "a later wait starts with one banner");
+    assert.equal(await overlayHost(page).count(), 1, "a later wait starts with one ask");
     front.length = 0;
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
     await page.getByText("That password did not match.").waitFor();
-    await page.locator("#bao-owner-wait").waitFor();
-    assert.equal(await page.locator("#bao-owner-wait").count(), 1, "a later wait's reload does not stack a banner");
+    await waitForAsk(page, /sign in to[\s\S]*click Done/i);
+    assert.equal(await overlayHost(page).count(), 1, "a later wait's reload does not stack an ask");
     assert.deepEqual(front, [], "a later wait's reload does not activate or raise");
   } finally { await h.cleanup("copy", observer); }
 });
 
 test("a dashboard that finishes loading after the wait does not restore the banner", { timeout: scaledMs(45_000) }, async (t) => {
   const front: string[] = [];
-  const reads: string[] = [];
   let scripts = 0;
   const send = CdpSocket.prototype.send;
   t.mock.method(CdpSocket.prototype, "send", function (this: CdpSocket, ...args: Parameters<typeof send>) {
     const method = args[0];
     if (method === "Target.activateTarget" || method === "Browser.getWindowForTarget" || method === "Browser.setWindowBounds" || method === "Bao.showTab") front.push(method);
-    if (method === "Page.getFrameTree" || method === "DOM.getDocument") reads.push(method);
     if (method === "Page.addScriptToEvaluateOnNewDocument") scripts += 1;
     return send.apply(this, args);
   });
@@ -415,27 +441,25 @@ test("a dashboard that finishes loading after the wait does not restore the bann
   let observer: Awaited<ReturnType<typeof chromium.connectOverCDP>> | undefined;
   try {
     assert.equal(outcome(await proxy.execute("open", [fixture.url("/owner/session")], "copy")), "halted");
-    assert.equal(scripts, 1, "the wall registers one reload script");
+    assert.equal(scripts, 1, "the overlay registers one script");
     const runId = proxy.activeRunId!;
     const endpoint = await readDevToolsActivePort(path.join(h.copyDir, "DevToolsActivePort"));
     observer = await chromium.connectOverCDP(`http://127.0.0.1:${endpoint.port}`);
     const page = observer.contexts()[0]!.pages().find((item) => item.url().includes("/owner/session"))!;
     page.setDefaultTimeout(5000);
-    assert.equal(await page.locator("#bao-owner-wait").count(), 1);
+    assert.equal(await overlayHost(page).count(), 1);
 
     front.length = 0;
-    reads.length = 0;
     await page.goto(fixture.url("/owner/held-dashboard"), { waitUntil: "commit" });
     await page.waitForFunction(() => document.title === "Dashboard" && document.readyState === "loading");
     assert.equal(outcome(await proxy.execute("wait_for_owner", ["3000"], undefined, false, undefined, {}, runId)), "ready");
     assert.equal(await page.evaluate(() => document.readyState), "loading", "the dashboard had not finished loading when the wait ended");
-    assert.equal(await page.evaluate(() => document.getElementById("bao-owner-wait") ? 1 : 0), 0);
+    assert.doesNotMatch(await overlayAsk(page), /click Done/);
     assert.deepEqual(front, [], "ending the wait does not activate or raise");
-    assert.deepEqual(reads, [], "ending the wait does not read frames or the document");
     fixture.releaseHeldDashboard();
     await page.waitForFunction(() => document.readyState !== "loading");
     assert.equal(await page.locator("h1").innerText(), "Dashboard");
-    assert.equal(await page.locator("#bao-owner-wait").count(), 0, "a load that finishes after the wait does not restore the banner");
+    assert.doesNotMatch(await overlayAsk(page), /click Done/, "a load that finishes after the wait does not restore the ask");
   } finally { await h.cleanup("copy", observer); }
 });
 
@@ -537,7 +561,7 @@ test("a wait_for_owner, close, or finish_task that names a run a newer open ende
       if (order === "chat B waits first") {
         await page.goto(fixture.url("/owner/sign-in"));
         assert.equal(outcome(await proxy.execute("wait_for_owner", ["40"], undefined, false, undefined, {}, proxy.activeRunId)), "waiting", "chat B starts a wait on a sign-in page");
-        assert.equal(await page.locator("#bao-owner-wait").count(), 1);
+        assert.match(await overlayAsk(page), /click Done/);
       }
       const owner = proxy.ownerPage;
       const steps = new Library(h.home).readRun(chatB).steps.length;
@@ -548,7 +572,7 @@ test("a wait_for_owner, close, or finish_task that names a run a newer open ende
         assert.deepEqual(proxy.ownerPage, owner, `${what}: chat B's wait, or no wait, stays as it was`);
         assert.equal(new Library(h.home).readRun(chatB).status, order === "chat B waits first" ? "needs_human" : "recording");
         assert.equal(new Library(h.home).readRun(chatB).steps.length, steps);
-        assert.equal(await page.locator("#bao-owner-wait").count(), order === "chat B waits first" ? 1 : 0, `${what}: no banner on a page chat B is not waiting on`);
+        assert.equal(/click Done/.test(await overlayAsk(page)), order === "chat B waits first", `${what}: no ask on a page chat B is not waiting on`);
         assert.equal(page.isClosed(), false, `${what}: chat B's tab stays open`);
       };
       const ended = `This run's browser session ended and cannot continue. Report that to the owner. Run ${chatA} is not Bao's open browser session. The browser now belongs to another task, so stop here.`;

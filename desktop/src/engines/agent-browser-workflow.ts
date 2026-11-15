@@ -5,6 +5,7 @@ import { buildLocators, matchLocator } from "../v1/locators";
 import { leafTexts, smallestChange } from "../v1/recorder";
 import type { Identity, StepLocator } from "../v1/schema";
 import { Library } from "../v1/store";
+import { handedBack } from "../../../shared/takeover-overlay";
 import type { AgentBrowserCommandResult } from "./agent-browser-proxy";
 import { fileOperands } from "../v1/file-operands";
 
@@ -177,6 +178,7 @@ export class AgentBrowserWorkflow {
       }
 
       const result = await perform();
+      if (handedBack(result)) return result;
       if (action) this.failedStep = result.exitCode !== 0 ? named : undefined;
       if (result.exitCode !== 0 && (command === "snapshot" || command === "screenshot" || command === "tab" && args[0] === "list")) return result;
       if (this.reason || !page) return result;
