@@ -27,7 +27,7 @@ import { BOUND_REASON, boundSite, purgeBoundSites } from "./bound-sign-in";
 import { OWNER_WAIT_LIMIT_MS, ownerWall, ownerWallOnAddress, ownerCanResume, ownerTask, ownerWaitTimeout, ownerWaitInstruction, type OwnerPage } from "../cdp-live/owner-wait";
 import { pageWall } from "../cdp-live/page-wall";
 import { BROWSER_CHOICES, DEFAULT_BROWSER } from "../browser-choice";
-import { commandSentence, targetBox } from "../v1/caption";
+import { targetBox } from "../v1/caption";
 import { HELD_SKIP, Takeover } from "../cdp-live/takeover";
 import { AdmittedTakeover } from "../cdp-live/takeover-hold";
 import { askLine, handedBack, HANDED_BACK, holdCommand, isActing, staleHold } from "../../../shared/takeover-overlay";
@@ -820,6 +820,8 @@ export class AgentBrowserProxy {
     clearTimeout(session.idleTimer);
     let commandDone!: () => void;
     session.commandDone = new Promise<void>((resolve) => { commandDone = resolve; });
+    // A take from here on, even one the owner hands back before dispatch, skips this command.
+    this.takenDuringCommand = false;
     // Read before the step starts, so the page read is not counted in the step's own wait.
     const before = continuing && !ownerPrivate && command !== "wait_for_owner" ? await this.capturePage(session, "before") : undefined;
     if (continuing && !ownerPrivate) {
@@ -830,7 +832,6 @@ export class AgentBrowserProxy {
     const results: AgentBrowserCommandResult[] = [];
     const context: StepContext = {};
     let failure: unknown;
-    this.takenDuringCommand = false;
     try {
       if (this.gone()) throw new Error(AGENT_DISCONNECTED);
       if (session.pick.route === "current" && !session.pick.background && opensTab(command as string, args)) {
@@ -842,11 +843,7 @@ export class AgentBrowserProxy {
         if (step) step.native.args = [...nativeArgs];
       }
       await this.takeoverReady;
-      if (this.overlayOn(session)) {
-        const tab = session.kind === "current" ? (session.agentTarget ?? session.targetId) : session.agentTarget;
-        await this.takeover?.follow(tab).catch(() => undefined);
-        await this.syncOwned(session);
-      }
+      await this.followAgentTab(session);
       if (this.takeover && "syncHeld" in this.takeover) await this.takeover.syncHeld();
       await this.takeover?.waitConfirm(session.abort.signal);
       if (session.abort.signal.aborted || this.takeover?.stoppedByOwner) {
@@ -1011,6 +1008,7 @@ export class AgentBrowserProxy {
         if (command !== "close" && result.exitCode === 0) await this.noteWall(session, command === "open" ? webSite(args[0]) : undefined);
         return result;
       }, () => this.waitOf(session) !== "off");
+      if (command === "tab") await this.followAgentTab(session);
       if (command !== "close" && results[0]?.exitCode === 0) {
         inPage = this.waitOf(session) === "off" && command === "snapshot" && this.movable(session) && pageWall(results[0].stdout);
         if (inPage && session.page && session.agentTarget) {
@@ -1038,7 +1036,7 @@ export class AgentBrowserProxy {
         const held = this.takeover?.held === true;
         if (view || held) return [{ ...results[0], stdout: ownerSnapshot(native, view, before, held) }];
       }
-      if (command === "open" && results[0]!.exitCode === 0) {
+      if (command === "open" && results[0]!.exitCode === 0 && !handedBack(results[0]!)) {
         // A copy or Bao profile keeps the native list, including restored tabs. Running Chrome keeps only Bao's task tabs.
         results.push(await this.forward(session, "tab", ["list"]));
       }
@@ -2285,12 +2283,13 @@ export class AgentBrowserProxy {
     if (!this.passing && this.overlayOn(session) && this.takeover && (isActing(command) || command === "screenshot")) {
       this.passing = true;
       try {
-        await this.announceStep(session, command, args);
+        await this.announceStep(session, command);
         if (command === "screenshot") return await this.takeover.hideForShot(() => this.run(session, command, args, readTimeoutMs, bound));
         const before = await this.holdMutation(session, command, args);
         if (before) return before;
         const ran = await this.takeover.bracket(async () => {
           await this.pointCursor(session, command, args);
+          if (skip()) return HELD_SKIP;
           return this.run(session, command, args, readTimeoutMs, bound);
         }, session.abort.signal, skip);
         if (ran === HELD_SKIP) {
@@ -2302,11 +2301,15 @@ export class AgentBrowserProxy {
       } finally { this.passing = false; }
     }
     if (!this.passing && this.overlayOn(session) && this.takeover && command !== "get") {
-      await this.announceStep(session, command, args);
+      await this.announceStep(session, command);
     }
     if (this.gone()) throw new Error(AGENT_DISCONNECTED);
     await this.ensureHar(session);
     if (command === "close") await this.flushHar(session);
+    if (!this.passing && this.overlayOn(session) && this.takeover) {
+      const blocked = await this.holdMutation(session, command, args);
+      if (blocked) return blocked;
+    }
     // The session's first call starts the native daemon, which takes seconds on a copy that restores many tabs. Only the session's end bounds it.
     if (!session.daemonStarted) {
       readTimeoutMs = undefined;
@@ -2545,10 +2548,18 @@ export class AgentBrowserProxy {
   }
 
   /** The notch names the command the owner asked for. A tab list taken for a picture or for tracking is not that command. */
-  private async announceStep(session: Session, command: string, args: string[]): Promise<void> {
+  private async announceStep(session: Session, command: string): Promise<void> {
     if (this.shown?.command !== command || !this.takeover) return;
-    const text = commandSentence(command, args, [...session.snapshots.values()].at(-1)).text || "Working…";
-    await this.takeover.activityLine(text).catch(() => undefined);
+    const step = this.latest?.runId === session.recording.id ? this.latest.step : undefined;
+    if (!step || step.endedAt !== undefined || step.native.command !== command) return;
+    await this.takeover.activityLine(step.caption?.text || "Working…").catch(() => undefined);
+  }
+
+  private async followAgentTab(session: Session): Promise<void> {
+    if (!this.overlayOn(session)) return;
+    const tab = session.kind === "current" ? (session.agentTarget ?? session.targetId) : session.agentTarget;
+    await this.takeover?.follow(tab).catch(() => undefined);
+    await this.syncOwned(session);
   }
 
   private async syncOwned(session: Session): Promise<void> {

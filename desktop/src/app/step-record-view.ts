@@ -4,6 +4,7 @@ import { promisify } from "node:util";
 import { gunzip } from "node:zlib";
 import { STEP_RECORD_SCHEMA, readStepRecord, runHarPath, runRecordDir, type HarEntry, type StepNetworkRecord, type StepTarget, type StepWait } from "../engines/step-har";
 import type { PageState, PageStateEntry } from "../engines/step-page";
+import { OVERLAY_HOST_ATTRIBUTE } from "../../../shared/takeover-overlay";
 
 const gunzipAsync = promisify(gunzip);
 
@@ -214,6 +215,7 @@ export function pageMap(dom: unknown, phase: Phase): PageMap {
     const visit = (node: number, form: FormRow | undefined) => {
       const name = tag(node);
       const a = attrs(node);
+      if (OVERLAY_HOST_ATTRIBUTE in a) return;
       let inside = form;
       if (name === "FORM") {
         inside = { action: a.action ? resolve(a.action) : documentURL, method: (a.method || "get").toUpperCase(), ...(frame ? { frame } : {}), fields: [] };
