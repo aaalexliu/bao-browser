@@ -3,6 +3,8 @@
 
 import { spawn } from "node:child_process";
 import { inspectRunView } from "../mcp/run-view";
+import { runHarPath } from "../engines/step-har";
+import { runRecordIndex, stepRecordDownload, stepRecordView } from "./step-record-view";
 import { RETIRED_LIVE_TOOL } from "../mcp/version";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { appendFileSync, copyFileSync, createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
@@ -916,6 +918,29 @@ export async function startApp(opts: {
         const file = existsSync(frame) ? frame : newestRunShot(path.join(library.root, "shots", "runs", id));
         if (!file) return json(res, { error: "no picture" }, 404);
         return sendPicture(res, file);
+      }
+      const runRecord = req.method === "GET" ? /^\/api\/runs\/([^/]+)\/(record|run\.har)$/.exec(url.pathname) : null;
+      if (runRecord) {
+        const runId = decodeURIComponent(runRecord[1]!);
+        const index = await runRecordIndex(library.root, runId);
+        if (runRecord[2] === "record") return json(res, index);
+        if (index.harBytes === undefined) return json(res, { error: "no run.har" }, 404);
+        res.writeHead(200, { "content-type": "application/json", "content-length": index.harBytes, "content-disposition": `attachment; filename="${runId}.har"`, "cache-control": "no-store" });
+        createReadStream(runHarPath(library.root, runId)).pipe(res);
+        return;
+      }
+      const stepRecord = req.method === "GET" ? /^\/api\/runs\/([^/]+)\/steps\/([^/]+)\/([^/]+)$/.exec(url.pathname) : null;
+      if (stepRecord) {
+        const [runId, stepId, name] = stepRecord.slice(1).map((part) => decodeURIComponent(part));
+        if (name === "record") {
+          const view = await stepRecordView(library.root, runId!, stepId!);
+          return view ? json(res, view) : json(res, { error: "no step record" }, 404);
+        }
+        const file = await stepRecordDownload(library.root, runId!, stepId!, name!);
+        if (!file) return json(res, { error: "no such file" }, 404);
+        res.writeHead(200, { "content-type": file.type, "content-disposition": `attachment; filename="${file.filename}"`, "cache-control": "no-store" });
+        res.end(file.body);
+        return;
       }
       if (req.method === "GET" && url.pathname.startsWith("/api/runs/") && url.pathname.endsWith("/receipt")) {
         return json(res, inspectRunView(library, { run_id: decodeURIComponent(url.pathname.split("/")[3] || ""), step_offset: Number(url.searchParams.get("step_offset") || 0) }));
