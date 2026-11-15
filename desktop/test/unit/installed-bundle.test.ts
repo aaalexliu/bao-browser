@@ -11,6 +11,7 @@ const { acceptHelper, parseCodesign, helperCertHash, signingPlan, PINNED_CERT_HA
   acceptHelper: (report: {
     exists: boolean;
     isBundle: boolean;
+    runsUnderBao?: boolean;
     adhoc: boolean;
     identifier: string;
     authorities: string[];
@@ -33,7 +34,7 @@ const pinnedHash = "a522e15d431a2f36ace451dd575a02e9e877fbd1";
 const recordedRequirement = `designated => identifier "dev.bao.oshelper" and certificate leaf = H"${pinnedHash}"`;
 
 function fromCodesign(verifyText: string, requirementText: string) {
-  return { exists: true, isBundle: true, ...parseCodesign(verifyText, requirementText) };
+  return { exists: true, isBundle: true, runsUnderBao: true, ...parseCodesign(verifyText, requirementText) };
 }
 
 test("the recorded helper requirement passes and a different certificate hash fails", () => {
@@ -67,6 +68,47 @@ test("the recorded helper requirement passes and a different certificate hash fa
   assert.equal(helperCertHash({ BAO_HELPER_CERT_HASH: "A5:22:E1:5D:43:1A:2F:36:AC:E4:51:DD:57:5A:02:E9:E8:77:FB:D1" }), pinnedHash);
   assert.equal(helperCertHash({ BAO_HELPER_CERT_HASH: "not-a-hash" }), "");
   assert.equal(acceptHelper(other, identity, helperCertHash({ BAO_HELPER_CERT_HASH: otherHash })).ok, true);
+});
+
+test("a helper built before Bao ran it under its own identity is refused, whatever its signature", () => {
+  const signed = fromCodesign("Identifier=dev.bao.oshelper\nAuthority=bao dev signing\n", recordedRequirement);
+  const adhoc = fromCodesign("Identifier=dev.bao.oshelper\nSignature=adhoc\n", 'designated => cdhash H"bac5c56ac584bc325e0961999e028fdb87d74edd"\n');
+  for (const [report, signer] of [[signed, identity], [adhoc, "-"]] as const) {
+    assert.equal(acceptHelper(report, signer, pinnedHash).ok, true);
+    const old = acceptHelper({ ...report, runsUnderBao: false }, signer, pinnedHash);
+    assert.equal(old.ok, false);
+    assert.match(old.reason, /lacks BaoRunsUnderBao, so it may disclaim/);
+  }
+});
+
+test("package-app.sh's helper check refuses a signed helper whose Info.plist lacks BaoRunsUnderBao", {
+  skip: process.platform !== "darwin" ? "the helper check runs codesign" : false,
+}, () => {
+  const root = mkdtempSync(path.join(tmpdir(), "bao-helper-marker-"));
+  try {
+    const source = readFileSync(path.join(process.cwd(), "desktop/os-helper-macos/Info.plist"), "utf8");
+    assert.match(source, /<key>BaoRunsUnderBao<\/key>\s*<true\/>/);
+    const check = (name: string, plist: string) => {
+      const app = path.join(root, name, "BaoOSHelper.app");
+      mkdirSync(path.join(app, "Contents", "MacOS"), { recursive: true });
+      writeFileSync(path.join(app, "Contents", "Info.plist"), plist);
+      writeFileSync(path.join(app, "Contents", "MacOS", "BaoOSHelper"), "#!/bin/sh\n");
+      chmodSync(path.join(app, "Contents", "MacOS", "BaoOSHelper"), 0o755);
+      const signed = spawnSync("/usr/bin/codesign", ["--force", "--sign", "-", "--identifier", "dev.bao.oshelper", app], { encoding: "utf8" });
+      assert.equal(signed.status, 0, signed.stderr);
+      return spawnSync(process.execPath, [path.join(process.cwd(), "desktop/packaging/helper-identity.js"), app], {
+        encoding: "utf8",
+        env: { PATH: "/usr/bin:/bin", BAO_SIGN_IDENTITY: "-", BAO_HELPER_CERT_HASH: pinnedHash },
+      });
+    };
+    const current = check("current", source);
+    assert.equal(current.status, 0, current.stderr);
+    const old = check("old", source.replace(/\s*<!--[\s\S]*?-->\s*<key>BaoRunsUnderBao<\/key>\s*<true\/>/, ""));
+    assert.equal(old.status, 1);
+    assert.match(old.stderr, /package-app\.sh: helper is older than this Bao: its Info\.plist lacks BaoRunsUnderBao/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("an ad-hoc build accepts only an ad-hoc dev.bao.oshelper helper", () => {

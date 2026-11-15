@@ -1,7 +1,7 @@
 "use strict";
 
 const { spawnSync } = require("node:child_process");
-const { existsSync, statSync } = require("node:fs");
+const { existsSync, readFileSync, statSync } = require("node:fs");
 const path = require("node:path");
 
 const BUNDLE_ID = "dev.bao.oshelper";
@@ -63,9 +63,12 @@ function signingPlan(subject, issuer, teamId) {
   return { ok: true, pinHash: false, teamId: team, reason: "" };
 }
 
+const OLD_HELPER = "helper is older than this Bao: its Info.plist lacks BaoRunsUnderBao, so it may disclaim and leave macOS checking BaoOSHelper's own grant instead of Bao's. Rebuild it with desktop/os-helper-macos/package-app.sh; do not copy it out of an installed Bao.app.";
+
 function acceptHelper(report, identity, certHash, teamId) {
   if (!report.exists) return { ok: false, reason: "helper is absent" };
   if (!report.isBundle) return { ok: false, reason: "helper must be the signed BaoOSHelper.app bundle" };
+  if (!report.runsUnderBao) return { ok: false, reason: OLD_HELPER };
   const team = String(teamId || "").trim();
   // An ad-hoc build signs everything ad-hoc. macOS then keys Bao's grant to one build, so
   // Device Control and Data Access does not survive an update. Running Chrome uses that grant.
@@ -109,6 +112,15 @@ function parseCodesign(verifyText, requirementText) {
   return { identifier: identifier.trim(), authorities, adhoc, cdhash, designated };
 }
 
+/** True when the helper's Info.plist says it runs under Bao: <key>BaoRunsUnderBao</key><true/>. */
+function runsUnderBao(app) {
+  try {
+    return /<key>BaoRunsUnderBao<\/key>\s*<true\s*\/>/.test(readFileSync(path.join(app, "Contents", "Info.plist"), "utf8"));
+  } catch {
+    return false;
+  }
+}
+
 function readBundle(app) {
   const exe = path.join(app, "Contents", "MacOS", "BaoOSHelper");
   let exists = false;
@@ -120,7 +132,7 @@ function readBundle(app) {
     exists = false;
     isBundle = false;
   }
-  return { exists, isBundle };
+  return { exists, isBundle, runsUnderBao: isBundle && runsUnderBao(app) };
 }
 
 function main() {
