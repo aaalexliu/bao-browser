@@ -5,7 +5,7 @@ import path from "node:path";
 import { PassThrough } from "node:stream";
 import test, { type TestContext } from "node:test";
 import { doctorChecks, signer } from "../../src/app/doctor";
-import { openPermissionWindow } from "../../src/app/mac-permissions";
+import { openPermissionWindow, PERMISSION_ALREADY_OPEN } from "../../src/app/mac-permissions";
 import { applyTarget, chosenByFlags, detectOthers, detectTargets, parseSetup, pickInTerminal, setupMain, type Probe, type SetupIo, type Target } from "../../src/app/setup";
 
 interface Lab {
@@ -274,6 +274,17 @@ test("a headless permission process returns the line it prints", async (t) => {
   writeFileSync(bao, "#!/bin/sh\nprintf '%s\\n' 'headless-marker-no-window'\n");
   chmodSync(bao, 0o755);
   assert.deepEqual(await openPermissionWindow(app), { opened: false, line: "headless-marker-no-window" });
+});
+
+test("a second permission open that finds a window already open reports it open, not headless", async (t) => {
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), "bao-perm-again-")));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const app = path.join(root, "Bao.app");
+  const bao = path.join(app, "Contents/MacOS/bao");
+  mkdirSync(path.dirname(bao), { recursive: true });
+  writeFileSync(bao, `#!/bin/sh\nprintf '%s\\n' ${JSON.stringify(PERMISSION_ALREADY_OPEN)}\n`);
+  chmodSync(bao, 0o755);
+  assert.deepEqual(await openPermissionWindow(app), { opened: true, line: PERMISSION_ALREADY_OPEN });
 });
 
 test("a permission process that cannot start does not report the window as open", async (t) => {

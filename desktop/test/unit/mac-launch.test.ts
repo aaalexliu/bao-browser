@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { execFileSync, spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -82,6 +82,53 @@ test("the native window keeps navigation, reopen, editing, downloads and server 
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("a second permission window open brings the first one forward instead of opening another", { skip: launcherSkip(), timeout: scaledMs(90_000) }, async (t) => {
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), "bao-perm-window-")));
+  const bin = path.join(root, "bao-permissions-test");
+  const children: ChildProcess[] = [];
+  t.after(() => {
+    for (const child of children) child.kill("SIGKILL");
+    rmSync(root, { recursive: true, force: true });
+  });
+  execFileSync("cc", [
+    "-fobjc-arc", "-Wall", "-Wextra", "-Werror",
+    "-framework", "Foundation", "-framework", "AppKit", "-framework", "ApplicationServices",
+    path.join(MACOS, "bao-permissions-test.m"), "-o", bin,
+  ], { stdio: "inherit", timeout: scaledMs(60_000) });
+  // TMPDIR moves the window's lock file into this test's folder, away from a real Bao window.
+  const env: NodeJS.ProcessEnv = { ...process.env, HOME: root, CFFIXED_USER_HOME: root, TMPDIR: `${root}/`, BAO_HEAL_CURSOR_ACCOUNT: "0" };
+  const lock = path.join(root, "dev.bao.permissions.lock");
+  const start = (): { child: ChildProcess; output: () => string } => {
+    const child = spawn(bin, [], { env, stdio: ["ignore", "pipe", "pipe"] });
+    children.push(child);
+    let text = "";
+    child.stdout?.on("data", (chunk: Buffer) => { text += chunk.toString(); });
+    return { child, output: () => text };
+  };
+  const exited = (child: ChildProcess, ms: number): Promise<number | null | "running"> => new Promise((resolve) => {
+    if (child.exitCode !== null) return resolve(child.exitCode);
+    const timer = setTimeout(() => resolve("running"), ms);
+    child.once("exit", (code) => { clearTimeout(timer); resolve(code); });
+  });
+  const first = start();
+  const early = await exited(first.child, scaledMs(1_500));
+  if (early !== "running") {
+    assert.match(first.output(), /No screen here/);
+    t.skip("no window server");
+    return;
+  }
+  assert.ok(existsSync(lock), "the first window holds its lock file");
+  const second = start();
+  assert.equal(await exited(second.child, scaledMs(10_000)), 0);
+  assert.equal(second.output(), "Bao's permission window is already open, so Bao brought it to the front.\n");
+  assert.equal(first.child.exitCode, null, "the first window stays open");
+  first.child.kill("SIGKILL");
+  await exited(first.child, scaledMs(5_000));
+  const third = start();
+  assert.equal(await exited(third.child, scaledMs(1_500)), "running", "the lock went with the first window, so a new one opens");
+  assert.equal(third.output(), "");
 });
 
 /** Env for a launcher child: a temp HOME, no node on PATH, and this test's Node named in BAO_NODE. */
