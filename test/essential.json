@@ -43,7 +43,14 @@
       "desktop/test/unit/experian-proxy.test.ts",
       "desktop/test/unit/process-list.test.ts",
       "desktop/test/unit/running-chrome-background.test.ts",
-      "desktop/test/unit/running-chrome.test.ts",
+      "desktop/test/unit/running-chrome.test.ts"
+    ],
+    "ffmpeg": true
+  },
+  "video-host": {
+    "kind": "desktop",
+    "reason": "Safety: a host signal stops a pass-through session within its cap and the run still points at a playable video. Split from experian so each group stays well under the 4-minute job limit when a lockfile change misses the package cache.",
+    "tests": [
       "desktop/test/unit/video-host-stop.test.ts"
     ],
     "ffmpeg": true
@@ -94,18 +101,24 @@
   },
   "browser": {
     "kind": "desktop",
-    "reason": "Safety: pass-through sessions, browser grants, capture privacy, secret replay, human handoffs, short snapshot find and diff results, and the owner's Chrome keeping the agent in its task tab and out of Chrome's own panels.",
+    "reason": "Safety: browser grants, capture privacy, secret replay, human handoffs, short snapshot find and diff results, and the owner's Chrome keeping the agent in its task tab and out of Chrome's own panels.",
     "tests": [
-      "desktop/test/unit/mcp.test.ts",
       "desktop/test/unit/current-chrome-tabs.test.ts",
       "desktop/test/unit/snapshot-view.test.ts",
       "desktop/test/unit/mcp-viewer-client.test.ts",
       "desktop/test/unit/mcp-viewer-design.test.ts",
-      "desktop/test/unit/agent-browser-proxy.test.ts",
       "desktop/test/unit/background-cdp.test.ts",
       "desktop/test/unit/driver-fixes.test.ts",
       "desktop/test/unit/capture.test.ts",
       "desktop/test/unit/human-envelope.test.ts"
+    ]
+  },
+  "browser-mcp": {
+    "kind": "desktop",
+    "reason": "Safety: pass-through sessions through the MCP server and the agent-browser proxy. Split from browser so each group stays well under the 4-minute job limit when a lockfile change misses the package cache.",
+    "tests": [
+      "desktop/test/unit/mcp.test.ts",
+      "desktop/test/unit/agent-browser-proxy.test.ts"
     ]
   },
   "core": {
