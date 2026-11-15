@@ -1055,3 +1055,25 @@ test("the overlay moves to the agent's tab when tab new or a tab switch returns"
   assert.equal((await f.proxy.execute("tab", ["t1"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.exitCode, 0);
   assert.equal(followed(), "task", "a switch back moves the frame back");
 });
+
+test("the overlay moves to a tab the agent's click or press makes current, and back to a surviving task tab", async (t) => {
+  const { hold, admitted } = await fakeHold(t);
+  const f = await fixture(t, { admitted });
+  await f.proxy.execute("open", [MAPS], "current");
+  const followed = () => hold.ops.filter(entry => entry.op === "follow" || entry.op === "attach").at(-1)?.targetId;
+  f.daemon.clicked = () => f.targets.push({ targetId: "popup", type: "page", url: "https://example.com/popup", title: "Popup", openerId: "task", inWindow: true });
+  assert.equal((await f.proxy.execute("click", ["@e2"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.exitCode, 0);
+  assert.equal(followed(), "popup", "the popup the click opened has the frame before the next command");
+  f.daemon.pressed = () => f.targets.push({ targetId: "keyed", type: "page", url: "https://example.com/keyed", title: "Keyed", openerId: "popup", inWindow: true });
+  assert.equal((await f.proxy.execute("press", ["Enter"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.exitCode, 0);
+  assert.equal(followed(), "keyed", "the tab the press opened has the frame before the next command");
+  f.targets.splice(f.targets.findIndex(item => item.targetId === "keyed"), 1);
+  f.daemon.tabIds.delete("keyed");
+  f.daemon.active = "";
+  hold.ops.length = 0;
+  let framed: string | undefined;
+  f.daemon.observe = (command) => { if (command === "snapshot") framed = followed(); };
+  await f.proxy.execute("snapshot", ["-i"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  assert.equal(f.daemon.commands.at(-1)!.on, "popup");
+  assert.equal(framed, "popup", "the surviving task tab has the frame before the snapshot runs");
+});

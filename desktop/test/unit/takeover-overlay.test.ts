@@ -18,7 +18,7 @@ import { launchOwnedChromeEndpoint } from "../../src/launch";
 import { testChromium } from "../../src/test-browser.js";
 import { BrowserDriver } from "../../src/v1/browser-driver";
 import { replay } from "../../src/v1/replay";
-import type { Identity } from "../../src/v1/schema";
+import type { Identity, WorkflowStep } from "../../src/v1/schema";
 import { OVERLAY_HOST_ATTRIBUTE } from "../../../shared/takeover-overlay";
 import { targetFor, testWorkflow } from "../support/workflow";
 
@@ -226,12 +226,13 @@ test("the receipt's page map lists the site's buttons and leaves out the overlay
   }
 });
 
-test("a live handoff that times out takes its failure picture after the control pill is gone", async () => {
+/** Replays one handoff step on a page that answers the overlay's removal late. Reports whether the pill showed and whether each step picture caught it. */
+async function replayOnBusyPage(html: string, step: WorkflowStep): Promise<{ status: string; pillSeen: boolean; pictured: boolean[] }> {
   const shotDir = mkdtempSync(path.join(tmpdir(), "bao-handoff-shot-"));
   const browser = await testChromium.launch({ headless: true });
   try {
     const page = await browser.newPage();
-    await page.setContent("<button>Save</button>");
+    await page.setContent(html);
     // A busy page answers the overlay's removal late.
     const context = page.context();
     const newSession = context.newCDPSession.bind(context);
@@ -260,21 +261,45 @@ test("a live handoff that times out takes its failure picture after the control 
       pictured.push(await overlayShown());
       return shot(target);
     };
-    const save = { surface: "dom", role: "button", name: "Save", path: [] } as Identity;
-    const run = await replay(testWorkflow({
-      driver: "playwright",
-      steps: [{
-        id: "press", index: 0, timeoutMs: 400, caption: { text: "you press Save" }, action: "handoff", reason: "owner-press",
-        target: targetFor(save), check: { kind: "text", match: "Applied", timeoutMs: 400 },
-      }],
-    }), {}, driver, { settings: { heal: "never" }, shotDir });
-    assert.equal(run.status, "failed");
-    assert.equal(pillSeen, true, "the control pill showed while Bao waited for the owner");
-    assert.equal(pictured.at(-1), false, "the failure picture waits until the pill is gone");
+    const run = await replay(testWorkflow({ driver: "playwright", steps: [step] }), {}, driver, { settings: { heal: "never" }, shotDir });
+    return { status: run.status, pillSeen, pictured };
   } finally {
     await browser.close();
     rmSync(shotDir, { recursive: true, force: true });
   }
+}
+
+const save = { surface: "dom", role: "button", name: "Save", path: [] } as Identity;
+
+test("a live handoff that times out takes its failure picture after the control pill is gone", async () => {
+  const run = await replayOnBusyPage("<button>Save</button>", {
+    id: "press", index: 0, timeoutMs: 400, caption: { text: "you press Save" }, action: "handoff", reason: "owner-press",
+    target: targetFor(save), check: { kind: "text", match: "Applied", timeoutMs: 400 },
+  });
+  assert.equal(run.status, "failed");
+  assert.equal(run.pillSeen, true, "the control pill showed while Bao waited for the owner");
+  assert.equal(run.pictured.at(-1), false, "the failure picture waits until the pill is gone");
+});
+
+test("a live handoff the owner finishes takes its step picture after the control pill is gone", async () => {
+  // The page writes the awaited text in pieces, so the script's own source does not match the check.
+  const run = await replayOnBusyPage("<button>Save</button><p id=m></p><script>setTimeout(() => { m.textContent = ['App', 'lied'].join(''); }, 300)</script>", {
+    id: "press", index: 0, timeoutMs: 3000, caption: { text: "you press Save" }, action: "handoff", reason: "owner-press",
+    target: targetFor(save), check: { kind: "text", match: "Applied", timeoutMs: 3000 },
+  });
+  assert.equal(run.status, "passed");
+  assert.equal(run.pillSeen, true, "the control pill showed while Bao waited for the owner");
+  assert.equal(run.pictured.at(-1), false, "the step picture waits until the pill is gone");
+});
+
+test("a sign-in wait the owner finishes takes its step picture after the control pill is gone", async () => {
+  const run = await replayOnBusyPage("<p id=m>Sign in</p><script>setTimeout(() => { m.textContent = ['Welcome', 'back'].join(' '); }, 300)</script>", {
+    id: "login", index: 0, timeoutMs: 3000, caption: { text: "you sign in" }, action: "handoff", reason: "sign-in",
+    check: { kind: "text", match: "Welcome back", timeoutMs: 3000 },
+  });
+  assert.equal(run.status, "passed");
+  assert.equal(run.pillSeen, true, "the control pill showed while Bao waited for the owner");
+  assert.equal(run.pictured.at(-1), false, "the step picture waits until the pill is gone");
 });
 
 test("Running Chrome draws the overlay through the hold's counted session", { timeout: 40_000 }, async () => {

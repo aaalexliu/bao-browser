@@ -1393,12 +1393,12 @@ async function showOwnerAsk(driver: Driver, step: WorkflowStep, ask: HumanAsk): 
   if (step.action === "handoff" && step.reason === "owner-press") await driver.showConfirm?.(stepTitle(step));
 }
 
-function finishHandoff(driver: Driver, gate: ApplyGate, stepId: string): StepOutcome {
+async function finishHandoff(driver: Driver, gate: ApplyGate, stepId: string): Promise<StepOutcome> {
   endHandoff(driver, gate, stepId);
   if (!gate.trail.some((event) => event.kind === "human-confirm" && event.stepId === stepId)) {
     gate.trail.push({ kind: "human-confirm", stepId, ts: Date.now(), text: "Owner confirmed" });
   }
-  void driver.clearConfirm?.(gate.runId || "");
+  await driver.clearConfirm?.(gate.runId || "");
   return { ok: true, repairs: [] };
 }
 

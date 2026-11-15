@@ -1858,6 +1858,7 @@ export class AgentBrowserProxy {
       }
       const active = activeNativeTab(tabs);
       if (!active) return undefined;
+      const moved = session.agentTarget !== active.targetId;
       session.agentTarget = active.targetId;
       // Native tab titles can be URL-derived labels. Read the real title from Chrome, not that label.
       cdp = await this.connectSession(session, { timeoutMs: CDP_PROGRESS_CEILING_MS, signal });
@@ -1865,6 +1866,7 @@ export class AgentBrowserProxy {
       if (session.kind === "current" && !session.relay) await session.recording.recordTab(cdp, active.targetId);
       session.page = { url: targetInfo.url, title: targetInfo.title };
       if (!ownerWall(session.page) && httpPage(session.page.url)) session.beforeWall = session.page;
+      if (moved) await this.followAgentTab(session);
       return { targetId: active.targetId, targetIds: tabs.flatMap((tab) => tab.targetId ? [tab.targetId] : []), page: session.page };
     } catch (error) {
       if (error instanceof TaskTabClosed) throw error;
