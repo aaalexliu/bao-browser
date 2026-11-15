@@ -19,6 +19,8 @@ node "$ROOT/desktop/packaging/helper-identity.js" "$HELPER"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp desktop/packaging/macos/Info.plist "$APP/Contents/Info.plist"
+# Made by assets/gen-mac-icon.mjs from assets/icon.svg. Info.plist names it as CFBundleIconFile.
+cp desktop/packaging/macos/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 VERSION="$(bash desktop/packaging/macos/stamp-version.sh "$APP/Contents/Info.plist")"
 echo "VERSION $VERSION"
 bash "$ROOT/desktop/packaging/stage-runtime.sh" "$APP/Contents/Resources"

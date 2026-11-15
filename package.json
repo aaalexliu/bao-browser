@@ -17,6 +17,7 @@
     "hooks:enable": "git config core.hooksPath .githooks",
     "test:guardrails": "node scripts/run-node-test.mjs test/guardrails.test.mjs",
     "icons": "node assets/gen-icons.mjs",
+    "icons:mac": "node assets/gen-mac-icon.mjs",
     "promo": "node assets/gen-promo.mjs",
     "typecheck": "npm run typecheck:desktop && npm run typecheck:extension && npm --prefix web run typecheck",
     "typecheck:desktop": "tsc -p tsconfig.desktop.json --noEmit",
