@@ -12,7 +12,7 @@ export interface SiteCookies {
 }
 
 export interface ProfileSiteListing {
-  /** The site name the counts cover, such as robinhood.com for https://app.robinhood.com/statements. */
+  /** The host the counts cover, such as app.robinhood.com for https://app.robinhood.com/statements. */
   site: string;
   byDirectory: Record<string, SiteCookies>;
   /** A profile whose cookies could not be read. A fixed phrase, never an error that might carry a path. */
@@ -21,28 +21,28 @@ export interface ProfileSiteListing {
 
 const PROFILE_DIRECTORY = /^(?:Default|Profile \d+)$/;
 
-/** Country domains sell names one level down, such as example.co.uk. Without a public suffix list, these cover the common ones. */
-const COUNTRY_SECOND_LEVEL = new Set(["ac", "co", "com", "edu", "gov", "net", "or", "org", "ne", "go"]);
-
-/** The site an open asks for: the last two labels of its host, or three under a country domain such as co.uk. */
+/**
+ * The host an open asks for, such as app.robinhood.com. Bao does not widen it to a parent domain: without a public suffix list,
+ * alice.github.io and bob.github.io would both become github.io, and one tenant's cookies would count for the other.
+ */
 export function siteOf(url: string): string | undefined {
-  let host: string;
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return undefined;
-    host = parsed.hostname.toLowerCase().replace(/\.$/, "");
+    return parsed.hostname.toLowerCase().replace(/\.$/, "") || undefined;
   } catch { return undefined; }
-  if (!host) return undefined;
-  if (host.includes(":") || /^\d+(?:\.\d+){3}$/.test(host)) return host;
-  const labels = host.split(".");
-  if (labels.length <= 2) return host;
-  const keep = labels.at(-1)!.length === 2 && COUNTRY_SECOND_LEVEL.has(labels.at(-2)!) ? 3 : 2;
-  return labels.slice(-keep).join(".");
 }
 
-function onSite(hostKey: string, site: string): boolean {
-  const host = hostKey.replace(/^\./, "").toLowerCase();
-  return host === site || host.endsWith(`.${site}`);
+/**
+ * A cookie counts when Chrome would send it to the host, or when it belongs to a subdomain of the host.
+ * Chrome sends a domain cookie such as .robinhood.com to app.robinhood.com. Chrome refuses a domain cookie on a public suffix
+ * such as .github.io, so a parent-domain match cannot join two tenants. A host-only cookie on a parent host does not count.
+ */
+export function cookieOnSite(hostKey: string, host: string): boolean {
+  const key = hostKey.toLowerCase();
+  const domain = key.startsWith(".") ? key.slice(1) : undefined;
+  if (domain) return host === domain || host.endsWith(`.${domain}`) || domain.endsWith(`.${host}`);
+  return key === host || key.endsWith(`.${host}`);
 }
 
 /**
@@ -64,7 +64,7 @@ export function siteCookies(profileDir: string, site: string, nowMs = Date.now()
   let cookies = 0;
   let last = 0;
   for (const row of rows) {
-    if (!onSite(String(row.host_key ?? ""), site)) continue;
+    if (!cookieOnSite(String(row.host_key ?? ""), site)) continue;
     const expires = unixMs(row.expires_ms);
     if (expires && expires < nowMs) continue;
     cookies++;
@@ -96,7 +96,7 @@ export function listProfileSites(root: string, directories: readonly string[], u
   return { site, byDirectory, unread };
 }
 
-/** The phrase for one profile, such as `robinhood.com: 31 cookies, last used 2026-11-13`. */
+/** The phrase for one profile, such as `app.robinhood.com: 31 cookies, last used 2026-11-13`. */
 export function siteText(listing: ProfileSiteListing, directory: string): string | undefined {
   const unread = listing.unread[directory];
   if (unread) return `${listing.site} cookies were not read (${unread})`;
