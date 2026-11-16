@@ -6,11 +6,17 @@
 #import <dirent.h>
 #import <dlfcn.h>
 #import <errno.h>
+#import <fcntl.h>
 #import <mach-o/dyld.h>
 #import <stdio.h>
+#import <stdlib.h>
 #import <string.h>
+#import <sys/file.h>
+#import <unistd.h>
 #import "bao-permissions.h"
 
+static NSString *const kAlreadyOpen = @"Bao's permission window is already open, so Bao brought it to the front.";
+static NSString *const kFocusNote = @"dev.bao.permissions.focus";
 static NSString *const kHeadless = @"No screen here, so Bao did not open its permission window. On this Mac, run bao setup.";
 static NSString *const kAccessibilityURL = @"x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";
 static NSString *const kFilesURL = @"x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders";
@@ -50,6 +56,21 @@ static int windowServer(void) {
   void *cg = dlopen("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics", RTLD_LAZY);
   int (*connection)(void) = cg ? dlsym(cg, "CGSMainConnectionID") : NULL;
   return connection && connection() != 0;
+}
+
+/* One permission window per user. The lock sits in TMPDIR, the per-user temp folder that
+ * launchd gives Finder and Terminal alike. The first window holds an flock on it until it
+ * exits; macOS drops the lock with the process, so a crash leaves no stale lock.
+ * Returns 1 when this process may show the window. */
+static int claimWindow(void) {
+  const char *tmp = getenv("TMPDIR");
+  NSString *dir = tmp && tmp[0] ? [NSString stringWithUTF8String:tmp] : NSTemporaryDirectory();
+  NSString *path = [dir stringByAppendingPathComponent:@"dev.bao.permissions.lock"];
+  int fd = open(path.fileSystemRepresentation, O_RDWR | O_CREAT | O_CLOEXEC, 0600);
+  if (fd < 0) return 1;
+  if (flock(fd, LOCK_EX | LOCK_NB) == 0) return 1;
+  close(fd);
+  return 0;
 }
 
 static int printCheck(void) {
@@ -339,6 +360,12 @@ static void drawBaoIcon(NSString *appPath, NSRect rect) {
   [self.guide setFrame:frame display:YES];
   [self.guide orderFront:nil];
 }
+- (void)focus:(NSNotification *)note {
+  if (self.window.miniaturized) [self.window deminiaturize:nil];
+  [NSApp activateIgnoringOtherApps:YES];
+  [self.window makeKeyAndOrderFront:nil];
+  [self.window orderFrontRegardless];
+}
 - (void)windowWillClose:(NSNotification *)note {
   [self.timer invalidate];
   [self.guide close];
@@ -375,6 +402,12 @@ int bao_permissions_show(const BaoPermissionsOpts *opts) {
     fflush(stdout);
     return 0;
   }
+  if (!opts->shot && !claimWindow()) {
+    [NSDistributedNotificationCenter.defaultCenter postNotificationName:kFocusNote object:nil userInfo:nil deliverImmediately:YES];
+    printf("%s\n", kAlreadyOpen.UTF8String);
+    fflush(stdout);
+    return 0;
+  }
   @autoreleasepool {
     NSApplication *app = NSApplication.sharedApplication;
     if (opts->appearance == 1) app.appearance = [NSAppearance appearanceNamed:NSAppearanceNameAqua];
@@ -384,6 +417,7 @@ int bao_permissions_show(const BaoPermissionsOpts *opts) {
     controller.dock = opts->dock;
     controller.appPath = bundlePath();
     app.delegate = controller;
+    [NSDistributedNotificationCenter.defaultCenter addObserver:controller selector:@selector(focus:) name:kFocusNote object:nil suspensionBehavior:NSNotificationSuspensionBehaviorDeliverImmediately];
     [app setActivationPolicy:NSApplicationActivationPolicyRegular];
     NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 560, 280) styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable backing:NSBackingStoreBuffered defer:NO];
     window.title = @"Bao";

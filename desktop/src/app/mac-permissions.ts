@@ -6,6 +6,8 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 
 export const PERMISSION_HEADLESS = "No screen here, so Bao did not open its permission window. On this Mac, run bao setup.";
+/** The window process prints this and exits when another permission window is open; it brings that one to the front. */
+export const PERMISSION_ALREADY_OPEN = "Bao's permission window is already open, so Bao brought it to the front.";
 export const ACCESSIBILITY_GRANT = "Device Control and Data Access";
 export const ACCESSIBILITY_BLOCK = "Device Control and Data Access is not on for Bao";
 
@@ -62,7 +64,10 @@ export function openPermissionWindow(app: string): Promise<PermissionWindowResul
     child.stdout?.on("error", () => {});
     child.stderr?.on("error", () => {});
     child.on("error", (error) => finish({ opened: false, line: error.message || PERMISSION_HEADLESS }));
-    child.on("close", () => finish({ opened: false, line: text.trim() || PERMISSION_HEADLESS }));
+    child.on("close", () => {
+      const line = text.trim();
+      finish({ opened: line === PERMISSION_ALREADY_OPEN, line: line || PERMISSION_HEADLESS });
+    });
     timer = setTimeout(() => {
       finish({ opened: true, line: "" });
       child.stdout?.destroy();
