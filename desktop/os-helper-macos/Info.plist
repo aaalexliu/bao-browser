@@ -22,6 +22,11 @@
   <string>14.0</string>
   <key>LSUIElement</key>
   <true/>
+  <!-- This helper inherits Bao's identity when bao --run-helper starts it (BAO_HELPER_INHERIT),
+       so macOS checks Bao's grants. Older builds always disclaimed and used BaoOSHelper's own
+       grant. package-app.sh refuses a helper without this key. -->
+  <key>BaoRunsUnderBao</key>
+  <true/>
   <key>NSAppleEventsUsageDescription</key>
   <string>The optional bao remote-debugging command opens Chrome's debugging page to change its debugging switch. Chrome agents do not need this permission.</string>
   <key>NSAccessibilityUsageDescription</key>
