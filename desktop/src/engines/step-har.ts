@@ -138,20 +138,24 @@ export async function readStepRecord(home: string, runId: string, stepId: string
   return JSON.parse(raw.toString("utf8")) as StepNetworkRecord;
 }
 
-/** Writes the tool's bytes when there is one file. A second file is concatenated, so that run.har is not a byte copy. */
-export async function writeRunHar(home: string, runId: string, parts: readonly { raw: Buffer; har: HarLog }[]): Promise<void> {
+/** Writes the parsed logs as one HAR. A second file, from a route move, is concatenated. */
+export async function writeRunHar(home: string, runId: string, parts: readonly HarLog[]): Promise<void> {
   if (!parts.length) return;
   const dest = runHarPath(home, runId);
   await mkdir(path.dirname(dest), { recursive: true });
-  if (parts.length === 1) {
-    await writeFile(dest, parts[0]!.raw);
-    return;
-  }
-  await writeFile(dest, JSON.stringify(mergeHar(parts.map((part) => part.har))));
+  await writeFile(dest, JSON.stringify(mergeHar(parts)));
 }
 
+/**
+ * Parses one tool HAR. agent-browser writes `_resourceType` in CDP's capitalized form (`Fetch`, `XHR`);
+ * Chrome DevTools exports and imports it lowercase (`fetch`, `xhr`) and files an unknown value under the wrong type,
+ * so its Fetch/XHR filter shows nothing. Each entry gets the lowercase form.
+ */
 export function parseHar(raw: Buffer): HarLog {
   const parsed = JSON.parse(raw.toString("utf8")) as HarLog;
   if (!parsed?.log || !Array.isArray(parsed.log.entries)) throw new Error("HAR has no log.entries");
+  for (const entry of parsed.log.entries) {
+    if (typeof entry?._resourceType === "string") entry._resourceType = entry._resourceType.toLowerCase();
+  }
   return parsed;
 }

@@ -119,6 +119,24 @@ test("requests that did real work stay in front; static files and analytics are 
   assert.deepEqual(view.work.map((row) => row.url), ["https://a.example/", "https://a.example/api/me", "wss://a.example/live"]);
   assert.deepEqual(view.static.map((row) => row.url), ["https://a.example/x.js", "https://a.example/font"]);
   assert.deepEqual(view.analytics.map((row) => row.url), ["https://stats.g.doubleclick.net/collect"]);
+  const lower = networkView([
+    entry("GET", "https://a.example/app.css", 200, "stylesheet", "text/plain"),
+    entry("POST", "https://a.example/beacon", 0, "ping", ""),
+    entry("GET", "https://a.example/api/me", 200, "fetch", "application/json"),
+  ]);
+  assert.deepEqual([lower.work.length, lower.static.length, lower.analytics.length], [1, 1, 1]);
+});
+
+test("a failed step shows its error, and one filed request reads as one", () => {
+  const view = {
+    id: "command-5", error: "Unknown ref: e999", waits: [{ for: "click", ms: 70 }], pages: {}, console: [], errors: [],
+    network: networkView([entry("GET", "https://a.example/api/me", 200, "xhr", "application/json"), entry("GET", "https://a.example/a.png", 200, "image", "image/png")]),
+  };
+  const html = stepRecordBody(RUN, "command-5", view);
+  assert.match(html, /<h4>Error<\/h4><p>Unknown ref: e999<\/p>/);
+  assert.ok(html.indexOf("Unknown ref") < html.indexOf("Timing"));
+  assert.match(html, /2 requests\. 1 did real work; 1 static file is filed below them\./);
+  assert.doesNotMatch(stepRecordBody(RUN, "command-5", { ...view, error: undefined }), /<h4>Error<\/h4>/);
 });
 
 test("the link and form map comes from the stored DOM snapshot, shadow roots and frames included", () => {
@@ -295,7 +313,7 @@ test("the receipt shows why, a run.har download, and a step section only where a
   const html = runReceipt(view, "Statements", run, undefined, { index: await runRecordIndex(home, RUN), open: new Set(["command-2"]) });
   assert.match(html, new RegExp(`<a href="/api/runs/${RUN}/run.har" download="${RUN}.har">Download run.har</a>`));
   assert.match(html, /<strong>Why:<\/strong> Load the October statement\./);
-  assert.equal(html.match(/Not recorded: cookies, request initiators, redirect targets, and uploaded file paths and SHA-256 in the HAR; the accessibility tree before a step; a stable selector or frame for a step's target\./g)?.length, 1);
+  assert.equal(html.match(/The HAR leaves out cookies, request initiators, redirect targets, and multipart form bodies; each upload step lists its files' paths and SHA-256 instead\. Not recorded: the accessibility tree before a step, and a stable selector or frame for a step's target\./g)?.length, 1);
   assert.match(html, /<details class="receipt-record" data-record-step="command-1">/);
   assert.match(html, /<details class="receipt-record" data-record-step="command-2" open>/);
   assert.doesNotMatch(html, /data-record-step="command-3"/);

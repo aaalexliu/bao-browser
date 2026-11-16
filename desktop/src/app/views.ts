@@ -2219,7 +2219,7 @@ function receiptHar(runId: string, record: ReceiptRecord | undefined): string {
   const har = record.index.harBytes === undefined ? ""
     : `<p><a href="/api/runs/${esc(encodeURIComponent(runId))}/run.har" download="${esc(runId)}.har">Download run.har</a> <span class="record-quiet">${esc(byteSize(record.index.harBytes))}. Every request of the run. To open it in Chrome, open DevTools, choose Network, and drop the file there.</span></p>`;
   const limits = record.index.steps.length
-    ? `<p class="record-quiet">Not recorded: cookies, request initiators, redirect targets, and uploaded file paths and SHA-256 in the HAR; the accessibility tree before a step; a stable selector or frame for a step's target.</p>`
+    ? `<p class="record-quiet">The HAR leaves out cookies, request initiators, redirect targets, and multipart form bodies; each upload step lists its files' paths and SHA-256 instead. Not recorded: the accessibility tree before a step, and a stable selector or frame for a step's target.</p>`
     : "";
   return har || limits ? `<div class="receipt-har">${har}${limits}</div>` : "";
 }

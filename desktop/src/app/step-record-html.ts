@@ -43,7 +43,7 @@ function networkHtml(runId: string, view: StepRecordView): string {
   const { network } = view;
   const filed = network.static.length + network.analytics.length;
   const count = network.total
-    ? `${plural(network.total, "request")}. ${network.work.length} did real work${filed ? `; ${[network.static.length ? plural(network.static.length, "static file") : "", network.analytics.length ? plural(network.analytics.length, "analytics request") : ""].filter(Boolean).join(" and ")} are filed below them` : ""}.`
+    ? `${plural(network.total, "request")}. ${network.work.length} did real work${filed ? `; ${[network.static.length ? plural(network.static.length, "static file") : "", network.analytics.length ? plural(network.analytics.length, "analytics request") : ""].filter(Boolean).join(" and ")} ${filed === 1 ? "is" : "are"} filed below them` : ""}.`
     : "No requests recorded for this step.";
   const work = network.work.map(requestRow);
   const shown = work.length > SHOWN_REQUESTS + 2 ? work.slice(0, SHOWN_REQUESTS) : work;
@@ -116,5 +116,6 @@ export function stepRecordBody(runId: string, stepId: string, state: StepRecordV
   if (state === "loading") return `<p class="record-quiet">Loading…</p>`;
   if (state === "missing") return `<p class="record-quiet">Bao kept no step record for this step.</p>`;
   if (state === "error") return `<p class="record-quiet">Bao could not load this step's record. Close and open this section to try again.</p>`;
-  return `<div class="record" data-record-for="${esc(stepId)}">${timingHtml(state)}${networkHtml(runId, state)}${pageHtml(runId, state)}${mapHtml(state.map)}${consoleHtml(state)}</div>`;
+  const error = state.error ? `<section class="record-part" aria-label="Error"><h4>Error</h4><p>${esc(state.error)}</p></section>` : "";
+  return `<div class="record" data-record-for="${esc(stepId)}">${error}${timingHtml(state)}${networkHtml(runId, state)}${pageHtml(runId, state)}${mapHtml(state.map)}${consoleHtml(state)}</div>`;
 }
