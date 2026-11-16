@@ -927,6 +927,7 @@ test("several Chrome profiles and no named one open nothing and record no run; a
     assert.ok(question instanceof ChromeProfileQuestion);
     assert.equal(question.listing?.unread, "remote debugging is off");
     assert.deepEqual(question.listing?.byDirectory, {});
+    assert.deepEqual(question.sites, { site: "127.0.0.1", byDirectory: {}, unread: { Default: "no cookie file", "Profile 2": "no cookie file" } });
     assert.deepEqual(question.profiles.map((profile) => profile.directory), ["Default", "Profile 2"]);
     await assert.rejects(f.proxy.execute("open", ["http://127.0.0.1/"], "copy", false, "Profile 9", {}, f.proxy.activeRunId),
       /Chrome has no profile "Profile 9" in .*\. Choose one of: "Default" \(Alex, alex@example\.test\); "Profile 2" \(Synthetic\)\./);
