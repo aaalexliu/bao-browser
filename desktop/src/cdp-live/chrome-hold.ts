@@ -710,9 +710,8 @@ async function removeOwnStarting(dir: string): Promise<void> {
 
 async function oneChromePid(root: string): Promise<number | undefined> {
   try {
-    const { chromeProfilesRoot } = await import("../engines/chrome-profile-copy");
     const { dailyChromePids } = await import("./remote-debugging");
-    const pids = await dailyChromePids(root, chromeProfilesRoot());
+    const pids = await dailyChromePids(root);
     return pids.length === 1 ? pids[0] : undefined;
   } catch {
     return undefined;
