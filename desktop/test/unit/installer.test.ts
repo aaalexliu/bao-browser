@@ -70,9 +70,17 @@ function install(lab: Lab, ...args: string[]) {
   return installWith(lab, {}, ...args);
 }
 
+/** A tccutil that logs each call to $HOME/tccutil.log and exits $TCC_EXIT, so no test touches the Mac's real grants. */
+function fakeTccutil(lab: Lab): string {
+  const file = path.join(lab.root, "tccutil");
+  writeFileSync(file, '#!/bin/sh\nprintf "%s\\n" "$*" >> "$HOME/tccutil.log"\nexit "${TCC_EXIT:-0}"\n');
+  chmodSync(file, 0o755);
+  return file;
+}
+
 function installWith(lab: Lab, env: NodeJS.ProcessEnv, ...args: string[]) {
   return spawnSync(process.execPath, [INSTALLER, "--dir", lab.apps, "--release", lab.release, ...args], {
-    env: { HOME: lab.home, PATH: "/usr/bin:/bin", BAO_INSTALLER_LATEST: lab.release, ...env },
+    env: { HOME: lab.home, PATH: "/usr/bin:/bin", BAO_INSTALLER_LATEST: lab.release, BAO_INSTALLER_TCCUTIL: fakeTccutil(lab), ...env },
     encoding: "utf8",
     timeout: scaledMs(60_000),
   });
@@ -202,6 +210,44 @@ test("a release signed by another certificate with the same name keeps the insta
   assert.equal(same.status, 0, same.stderr);
   assert.doesNotMatch(same.stdout, /Kept /);
   assert.equal(version(app), "9.9.2");
+});
+
+function tccCalls(lab: Lab): string {
+  const log = path.join(lab.home, "tccutil.log");
+  return existsSync(log) ? readFileSync(log, "utf8") : "";
+}
+
+test("replacing a Bao signed another way clears its stale macOS grants before setup, and the same signature keeps them", { skip }, (t) => {
+  const box = lab(t);
+  assert.equal(install(box, "--none").status, 0);
+  assert.equal(install(box, "--none").status, 0);
+  assert.equal(tccCalls(box), "", "a first install and a reinstall of the same build keep every grant");
+  publish(box, "9.9.2");
+  const adhoc = install(box, "--none");
+  assert.equal(adhoc.status, 0, adhoc.stderr);
+  assert.equal(tccCalls(box), "reset All dev.bao.installer-test\n");
+  assert.match(adhoc.stdout, /Cleared the macOS grants of the Bao it replaced \(dev\.bao\.installer-test\)\. That Bao was signed ad-hoc, so they no longer matched\./);
+  // The clear comes before setup, which opens the permission window.
+  assert.ok(adhoc.stdout.indexOf("Cleared the macOS grants") < adhoc.stdout.indexOf("Now pick the agents"), adhoc.stdout);
+  rmSync(path.join(box.home, "tccutil.log"));
+  publish(box, "9.9.3");
+  const app = path.join(box.apps, "Bao.app");
+  const same = installWith(box, { BAO_INSTALLER_CODESIGN: certificateCodesign(box), SIGNED_APP: app, OLD_CERT: "a".repeat(40), NEW_CERT: "a".repeat(40) }, "--none");
+  assert.equal(same.status, 0, same.stderr);
+  assert.equal(version(app), "9.9.3");
+  assert.equal(tccCalls(box), "", "the same certificate keeps the grants");
+  assert.doesNotMatch(same.stdout, /Cleared the macOS grants/);
+});
+
+test("a stale grant tccutil cannot clear is named with the command to clear it", { skip }, (t) => {
+  const box = lab(t);
+  assert.equal(install(box, "--none").status, 0);
+  publish(box, "9.9.2");
+  const run = installWith(box, { TCC_EXIT: "64" }, "--none");
+  assert.equal(run.status, 0, run.stderr);
+  assert.equal(version(path.join(box.apps, "Bao.app")), "9.9.2");
+  assert.doesNotMatch(run.stdout, /Cleared the macOS grants/);
+  assert.match(run.stdout, /Could not clear the old grants for dev\.bao\.installer-test\. If a Bao switch in System Settings is on but Bao is still refused, run: tccutil reset All dev\.bao\.installer-test/);
 });
 
 test("a downgrade is refused and leaves the installed app", { skip }, (t) => {

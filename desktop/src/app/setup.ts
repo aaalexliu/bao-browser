@@ -8,7 +8,7 @@ import path from "node:path";
 import { emitKeypressEvents } from "node:readline";
 import { getStaticTOMLValue, parseTOML } from "toml-eslint-parser";
 import { baoUserHome } from "../home";
-import { openPermissionWindow } from "./mac-permissions";
+import { openPermissionWindow, PERMISSION_OPENED } from "./mac-permissions";
 import { agentMain, codexConfigFile, writeConfig, type AgentIo } from "./agent-config";
 import { appBundleOf, DEFAULT_APP, mcpLauncher } from "./bundle";
 import { DesktopMcpInstaller, desktopMcpFile, editClaude } from "./desktop-mcp-config";
@@ -331,7 +331,8 @@ export function pickInTerminal(targets: readonly Target[], launcher: string, io:
 async function permissionWindowStep(app: string, io: SetupIo, probe: Probe): Promise<void> {
   const open = probe.openPermissions ?? ((target: string) => openPermissionWindow(target));
   const result = await open(app);
-  if (result.line) io.out(`${result.line}\n`);
+  const line = result.line || (result.opened ? PERMISSION_OPENED : "");
+  if (line) io.out(`${line}\n`);
 }
 
 /** Cursor reads the same mcpServers shape as Claude Desktop, so the Claude Desktop edit writes it. */

@@ -8,6 +8,8 @@ import path from "node:path";
 export const PERMISSION_HEADLESS = "No screen here, so Bao did not open its permission window. On this Mac, run bao setup.";
 /** The window process prints this and exits when another permission window is open; it brings that one to the front. */
 export const PERMISSION_ALREADY_OPEN = "Bao's permission window is already open, so Bao brought it to the front.";
+/** What setup prints when the window opened, so a person or an agent reading the install log knows where to look. */
+export const PERMISSION_OPENED = "Bao opened its permission window. Click Allow on each card; each turns to Allowed by itself.";
 export const ACCESSIBILITY_GRANT = "Device Control and Data Access";
 export const ACCESSIBILITY_BLOCK = "Device Control and Data Access is not on for Bao";
 
