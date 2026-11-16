@@ -37,18 +37,22 @@ test("entries follow the step that had already started", () => {
   assert.equal([...assigned.values()].some((group) => group.some((entry) => entry.url === "undated")), false);
 });
 
-test("one HAR is copied as bytes and a second is concatenated", async () => {
+test("run.har lowercases each resource type for DevTools, keeps the rest, and concatenates a second file", async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-step-har-"));
   try {
-    const first = Buffer.from(JSON.stringify({ log: { version: "1.2", creator: { name: "agent-browser", version: "0.41.2" }, entries: [{ startedDateTime: "2026-11-14T00:00:00.000Z", url: "a" }] } }));
-    await writeRunHar(home, "run-1", [{ raw: first, har: parseHar(first) }]);
-    assert.deepEqual(await readFile(runHarPath(home, "run-1")), first);
-    const second = parseHar(Buffer.from(JSON.stringify({ log: { version: "1.2", creator: { name: "agent-browser", version: "0.41.2" }, entries: [{ url: "b" }] } })));
-    await writeRunHar(home, "run-1", [{ raw: first, har: parseHar(first) }, { raw: Buffer.from("{}"), har: second }]);
+    const entry = { startedDateTime: "2026-11-14T00:00:00.000Z", url: "a", _resourceType: "Fetch", _custom: { kept: true }, response: { status: 200 } };
+    const first = parseHar(Buffer.from(JSON.stringify({ log: { version: "1.2", creator: { name: "agent-browser", version: "0.41.2" }, entries: [entry, { url: "x", _resourceType: "XHR" }] } })));
+    assert.deepEqual(first.log.entries.map((item) => item._resourceType), ["fetch", "xhr"]);
+    await writeRunHar(home, "run-1", [first]);
+    const one = JSON.parse((await readFile(runHarPath(home, "run-1"))).toString("utf8")) as HarLog;
+    assert.deepEqual(one.log.creator, { name: "agent-browser", version: "0.41.2" });
+    assert.deepEqual(one.log.entries[0], { ...entry, _resourceType: "fetch" });
+    const second = parseHar(Buffer.from(JSON.stringify({ log: { version: "1.2", creator: { name: "agent-browser", version: "0.41.2" }, entries: [{ url: "b", _resourceType: "Document" }] } })));
+    await writeRunHar(home, "run-1", [first, second]);
     const merged = JSON.parse((await readFile(runHarPath(home, "run-1"))).toString("utf8")) as HarLog;
     assert.equal(merged.log.creator.name, "agent-browser");
-    assert.deepEqual(merged.log.entries.map((entry) => entry.url), ["a", "b"]);
-    assert.deepEqual(mergeHar([parseHar(first), second]).log.entries.map((entry) => entry.url), ["a", "b"]);
+    assert.deepEqual(merged.log.entries.map((item) => [item.url, item._resourceType]), [["a", "fetch"], ["x", "xhr"], ["b", "document"]]);
+    assert.deepEqual(mergeHar([first, second]).log.entries.map((item) => item.url), ["a", "x", "b"]);
   } finally {
     await rm(home, { recursive: true, force: true });
   }
@@ -88,7 +92,7 @@ test("fifty step records and one HAR stay small", async () => {
   const raw = Buffer.from(JSON.stringify({ log: { version: "1.2", creator: { name: "agent-browser", version: "0.41.2" }, entries } }));
   const started = performance.now();
   try {
-    await writeRunHar(home, "run-50", [{ raw, har: parseHar(raw) }]);
+    await writeRunHar(home, "run-50", [parseHar(raw)]);
     for (let index = 0; index < 50; index++) {
       await writeStepRecord(home, "run-50", {
         schema: "bao.step-record/v1",

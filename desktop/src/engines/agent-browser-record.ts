@@ -106,7 +106,7 @@ export class AgentBrowserRun {
   } | undefined;
   private encoding: { capture: CdpVideo; startedAt: number } | undefined;
   private videoAbandoned = false;
-  private harParts: { raw: Buffer; har: HarLog }[] = [];
+  private harParts: HarLog[] = [];
   private network = new Map<string, HarEntry[]>();
   private pages = new Map<string, { before?: PageStateEntry; after?: PageStateEntry }>();
   /** Role and name for the element a step named, read from the snapshot current when the step began. */
@@ -497,13 +497,12 @@ export class AgentBrowserRun {
     catch { this.warn("run write"); }
   }
 
-  /** Reads one agent-browser HAR and assigns its entries onto the steps. One file is copied as bytes. A later file is concatenated. */
+  /** Reads one agent-browser HAR and assigns its entries onto the steps. A later file, from a route move, is concatenated. */
   async adoptHar(file: string): Promise<void> {
     try {
       const raw = await readFile(file);
-      const log = parseHar(raw);
-      this.harParts.push({ raw, har: log });
-      this.network = assignEntries(this.harParts.flatMap((part) => part.har.log.entries), this.run.steps.map((step) => ({ id: step.id, startedAt: step.startedAt })));
+      this.harParts.push(parseHar(raw));
+      this.network = assignEntries(this.harParts.flatMap((part) => part.log.entries), this.run.steps.map((step) => ({ id: step.id, startedAt: step.startedAt })));
       await writeRunHar(this.home, this.id, this.harParts);
       for (const step of this.run.steps) if (step.endedAt) await this.saveStep(step);
     } catch {

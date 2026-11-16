@@ -71,7 +71,7 @@ export interface StepRecordView {
 
 const SAFE_ID = /^[\w-]+$/;
 
-const STATIC_TYPES = new Set(["Stylesheet", "Script", "Image", "Font", "Media", "Manifest", "TextTrack"]);
+const STATIC_TYPES = new Set(["stylesheet", "script", "image", "font", "media", "manifest", "texttrack"]);
 const ANALYTICS_HOSTS = [
   "google-analytics.com", "googletagmanager.com", "doubleclick.net", "googlesyndication.com", "segment.io", "segment.com",
   "mixpanel.com", "amplitude.com", "hotjar.com", "fullstory.com", "heapanalytics.com", "sentry.io", "nr-data.net",
@@ -82,8 +82,9 @@ function requestKind(row: RequestRow): keyof Omit<NetworkView, "total"> {
   let host = "";
   let pathname = "";
   try { ({ hostname: host, pathname } = new URL(row.url)); } catch { /* keep the row as work */ }
-  if (row.type === "Ping" || ANALYTICS_HOSTS.some((name) => host === name || host.endsWith(`.${name}`))) return "analytics";
-  if (row.type && STATIC_TYPES.has(row.type)) return "static";
+  const type = row.type?.toLowerCase();
+  if (type === "ping" || ANALYTICS_HOSTS.some((name) => host === name || host.endsWith(`.${name}`))) return "analytics";
+  if (type && STATIC_TYPES.has(type)) return "static";
   if (pathname.endsWith("/favicon.ico")) return "static";
   const mime = (row.mime || "").toLowerCase();
   if (/^(image|font|audio|video)\//.test(mime) || mime.startsWith("text/css") || mime.includes("javascript")) return "static";
