@@ -5,9 +5,9 @@
 // open the page. No debugging switch and no Chrome preference file. The only profile file read is
 // DevToolsActivePort.
 
+import { userInfo } from "node:os";
 import path from "node:path";
 import { chromeDenied } from "../chrome-access";
-import { chromeProfilesRoot } from "../engines/chrome-profile-copy";
 import { processesNaming } from "../launch";
 import { closeInspectTab, logAx, openInspect, type ChromeAx, INSPECT_URL } from "./ax";
 import { REMOTE_CHECKBOX } from "./consent";
@@ -55,9 +55,18 @@ export function chromePidsFromPs(text: string, userDataDir: string, defaultDir: 
   return pids;
 }
 
-export async function dailyChromePids(userDataDir: string, defaultDir: string): Promise<number[]> {
+/**
+ * The folder a Google Chrome started without --user-data-dir uses: the passwd home's Chrome folder.
+ * BAO_CHROME_USER_DATA does not move it, so a test that points Bao at a throwaway Chrome never
+ * counts the owner's Chrome as that throwaway one.
+ */
+export function bareChromeRoot(): string {
+  return path.join(userInfo().homedir, "Library", "Application Support", "Google", "Chrome");
+}
+
+export async function dailyChromePids(userDataDir: string): Promise<number[]> {
   const rows = processesNaming(CHROME_APP_EXE);
-  return chromePidsFromPs(rows.map((row) => `${row.pid} ${row.command}`).join("\n"), userDataDir, defaultDir);
+  return chromePidsFromPs(rows.map((row) => `${row.pid} ${row.command}`).join("\n"), userDataDir, bareChromeRoot());
 }
 
 export interface RemoteDebuggingDeps {
@@ -200,7 +209,7 @@ async function within<T>(deps: RemoteDebuggingDeps, what: string, read: () => Pr
  */
 export async function setRemoteDebugging(on: boolean, deps: RemoteDebuggingDeps): Promise<RemoteDebuggingResult> {
   const userDataDir = path.dirname(deps.portFile);
-  const findChrome = deps.findChrome ?? ((root: string) => dailyChromePids(root, chromeProfilesRoot()));
+  const findChrome = deps.findChrome ?? dailyChromePids;
   const pids = await findChrome(userDataDir);
   if (await deps.screenLocked?.()) throw new Error(SCREEN_LOCKED);
   if (pids.length === 0) throw new Error(CHROME_NOT_OPEN);

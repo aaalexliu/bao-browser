@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { tmpdir, userInfo } from "node:os";
 import path from "node:path";
 import {
   ACCESSIBILITY_MISSING,
@@ -13,6 +13,7 @@ import {
   AUTOMATION_PROMPT,
   CHROME_NOT_OPEN,
   SCREEN_LOCKED,
+  bareChromeRoot,
   chromePidsFromPs,
   dailyChromePids,
   checkboxKnown,
@@ -104,10 +105,19 @@ function fakeChrome(start: { on: boolean; inspectOpen: boolean }) {
   return { state, deps };
 }
 
-test("synthetic profile discovery excludes untagged owner Chrome", async (t) => {
+// A test points BAO_CHROME_USER_DATA at a throwaway Chrome. The owner's Chrome, started with no
+// --user-data-dir, must not count as that throwaway Chrome, or Bao would press its checkbox.
+test("synthetic profile discovery excludes untagged owner Chrome while BAO_CHROME_USER_DATA names the synthetic root", async (t) => {
   const syntheticRoot = path.join(logDir, "synthetic-chrome");
+  const prior = process.env.BAO_CHROME_USER_DATA;
+  process.env.BAO_CHROME_USER_DATA = syntheticRoot;
+  t.after(() => {
+    if (prior === undefined) delete process.env.BAO_CHROME_USER_DATA;
+    else process.env.BAO_CHROME_USER_DATA = prior;
+  });
+  assert.equal(profileCopy.chromeProfilesRoot(), syntheticRoot);
+  assert.equal(bareChromeRoot(), path.join(userInfo().homedir, "Library", "Application Support", "Google", "Chrome"));
   let ps = "101 /Applications/Google Chrome.app/Contents/MacOS/Google Chrome\n";
-  t.mock.method(profileCopy, "chromeProfilesRoot", () => DIR);
   t.mock.method(launch, "processesNaming", (text: string) => {
     assert.equal(text, "/Google Chrome.app/Contents/MacOS/Google Chrome");
     return ps.trim().split("\n").map((line) => {
@@ -118,12 +128,12 @@ test("synthetic profile discovery excludes untagged owner Chrome", async (t) => 
   const { state, deps } = fakeChrome({ on: false, inspectOpen: false });
   deps.portFile = path.join(syntheticRoot, "DevToolsActivePort");
   delete deps.findChrome;
-  assert.deepEqual(await dailyChromePids(syntheticRoot, DIR), []);
-  assert.deepEqual(await dailyChromePids(DIR, DIR), [101]);
+  assert.deepEqual(await dailyChromePids(syntheticRoot), []);
+  assert.deepEqual(await dailyChromePids(bareChromeRoot()), [101]);
   await assert.rejects(setRemoteDebugging(false, deps), new RegExp(CHROME_NOT_OPEN));
   assert.deepEqual(state.calls, []);
   ps += `104 /Applications/Google Chrome.app/Contents/MacOS/Google Chrome --user-data-dir=${syntheticRoot} --no-first-run\n`;
-  assert.deepEqual(await dailyChromePids(syntheticRoot, DIR), [104]);
+  assert.deepEqual(await dailyChromePids(syntheticRoot), [104]);
   assert.deepEqual(await setRemoteDebugging(false, deps), { pid: 104, pressed: false, opened: false, port: null, already: true });
   assert.deepEqual(state.calls, []);
 });

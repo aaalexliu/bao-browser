@@ -213,7 +213,7 @@ export async function connectOwnedChrome(options: {
   if (process.env.BAO_LANE === "hermetic" && !overrides.helper) throw new Error("Hermetic tests never drive the owner's running Chrome");
   const deps: CurrentChromeDeps = {
     helper: overrides.helper ?? chromeHelper(),
-    findChrome: (root) => dailyChromePids(root, chromeProfilesRoot()),
+    findChrome: dailyChromePids,
     startChrome: (root) => startOwnerChrome(root),
     executable: (pid) => {
       const exe = processesNaming(CHROME_APP_EXE).find((row) => row.pid === pid)?.command.split(" --")[0]?.trim();
@@ -470,7 +470,7 @@ export async function listeningProfileDirectory(root: string, axLog?: string): P
 }
 
 async function dailyListener(root: string): Promise<{ endpoint: DevToolsEndpoint; pid: number } | undefined> {
-  const pids = await dailyChromePids(root, chromeProfilesRoot());
+  const pids = await dailyChromePids(root);
   if (pids.length !== 1) return undefined;
   const endpoint = await endpointOnPid(pids[0]!);
   if (!endpoint) return undefined;
