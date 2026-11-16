@@ -404,7 +404,12 @@ test("a session that starts before the hold is published still joins it", { time
   const joined = JSON.parse(out) as { port: number };
   assert.equal(joined.port, endpoint.port);
   assert.equal(endpoint.upgrades(), 1, "the session joined the hold it missed");
-  assert.equal(sessions.count(), 0);
+  // The child prints the port, then detaches. Its session socket closes after the print arrives.
+  const ended = Date.now() + scaledMs(2_000);
+  while (sessions.count() !== 0) {
+    if (Date.now() >= ended) throw new Error(`the detached session left ${sessions.count()} sessions`);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
 });
 
 test("teardown leaves a successor hold, and a waiting session joins the published one", { timeout: scaledMs(20_000) }, async (t) => {
