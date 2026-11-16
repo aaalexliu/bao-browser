@@ -22,6 +22,7 @@ import { chromeProfilesRoot, openCopiedChromeForProxy } from "./chrome-profile-c
 import { ChromeFolderDenied } from "../chrome-access";
 import { baoAgentProfileDir, openBaoChromeForProxy, type SignInImport } from "./bao-profile";
 import { baoPick, boundOpenPlan, boundRoute, chromeApp, ChromeProfileQuestion, chooseChromeProfile, failedPickLine, fallbackPlan, fallsBack, openOrFallBack, pickLine, RoutesFailed, shortPickLine, signInLine, signInSource, type BrowserPick, type BrowserPlan, type RouteWhy } from "./browser-pick";
+import { listProfileSites } from "./profile-sites";
 import { listProfileTabs } from "./profile-tabs";
 import { BOUND_REASON, boundSite, purgeBoundSites } from "./bound-sign-in";
 import { OWNER_WAIT_LIMIT_MS, ownerWall, ownerWallOnAddress, ownerCanResume, ownerTask, ownerWaitTimeout, ownerWaitInstruction, type OwnerPage } from "../cdp-live/owner-wait";
@@ -1164,12 +1165,17 @@ export class AgentBrowserProxy {
   /**
    * Tabs for the profile question. A failed read still asks. It does not open a browser, turn debugging on, or launch Chrome.
    * Live tabs are listed by joining the approved connection, or by attaching to a listener that is already up and pressing Allow. That does not start a hold. The socket is closed before this returns.
+   * Each profile's cookies for the site the open asks for come from a copy of its Cookies file, so they show while debugging is off.
    */
-  private async withOpenTabs(error: ChromeProfileQuestion): Promise<ChromeProfileQuestion> {
+  private async withOpenTabs(error: ChromeProfileQuestion, site: string | undefined): Promise<ChromeProfileQuestion> {
+    const directories = error.profiles.map((profile) => profile.directory);
+    let sites;
+    try { sites = listProfileSites(error.root, directories, site); }
+    catch { sites = undefined; }
     try {
-      return error.withListing(await listProfileTabs(error.root, error.profiles.map((profile) => profile.directory)));
+      return error.withListing(await listProfileTabs(error.root, directories), sites);
     } catch {
-      return error.withListing({ byDirectory: {}, unread: "remote debugging is off" });
+      return error.withListing({ byDirectory: {}, unread: "remote debugging is off" }, sites);
     }
   }
 
@@ -1190,7 +1196,7 @@ export class AgentBrowserProxy {
       }
       return { route, why, profile };
     } catch (error) {
-      if (error instanceof ChromeProfileQuestion) throw await this.withOpenTabs(error);
+      if (error instanceof ChromeProfileQuestion) throw await this.withOpenTabs(error, site);
       // Bao's own profile works without Chrome's profiles. It opens with no sign-in import and says why. A named profile must exist.
       const fallback = fallsBack(route, why);
       if ((route === "bao" || fallback) && (error instanceof ChromeFolderDenied || named === undefined && !(error instanceof ChromeProfileQuestion))) {

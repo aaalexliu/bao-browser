@@ -1,5 +1,6 @@
 import { isChromeTab } from "../cdp-live/chrome-tabs";
 import { withListeningConnection } from "../cdp-live/current-chrome";
+import { siteText, type ProfileSiteListing } from "./profile-sites";
 import { readSavedProfileTabs, type ProfileSessions, type SessionFailure } from "./snss-tabs";
 
 /**
@@ -212,24 +213,28 @@ function tabText(tab: ProfileTab): string {
 }
 
 /** The agent_browser sentence. run_workflow keeps ChromeProfileQuestion.message. */
-export function agentProfileText(root: string, profiles: { directory: string; name: string; email: string }[], settings: string | undefined, listing?: ProfileTabListing): string {
+export function agentProfileText(root: string, profiles: { directory: string; name: string; email: string }[], settings: string | undefined, listing?: ProfileTabListing, sites?: ProfileSiteListing): string {
   const read = listing ?? { byDirectory: {}, unread: "remote debugging is off" };
-  const head = `Chrome has ${profiles.length} profiles in ${root}, so Bao opened nothing. Pick one yourself from this list. Ask the person only if no profile fits the task.`;
+  const hint = sites ? ` A profile with ${sites.site} cookies has used that site and may be signed in there.` : "";
+  const head = `Chrome has ${profiles.length} profiles in ${root}, so Bao opened nothing. Pick one yourself from this list. Ask the person only if no profile fits the task.${hint}`;
   const lines = profiles.map((profile) => {
     const mark = profile.directory === settings ? "; picked in Bao Settings" : "";
-    const name = profileLabel(profile);
-    const failed = read.unavailable?.[profile.directory];
-    if (failed) return `${name}: open tabs were not read (${failed})${mark}`;
-    if (read.unread) return `${name}: open tabs were not read (${read.unread})${mark}`;
-    const group = read.byDirectory[profile.directory];
-    if (!group && read.unmatched) return `${name}: open tabs were not matched to this folder${mark}`;
-    const tabs = group?.tabs ?? [];
-    const body = tabs.length ? tabs.map(tabText).join("; ") : "no open tabs";
-    const more = group?.omitted ? `; and ${group.omitted} more` : "";
-    return `${name}: ${body}${more}${mark}`;
+    const site = sites ? siteText(sites, profile.directory) : undefined;
+    return `${profileLabel(profile)}: ${site ? `${site}; ` : ""}${profileTabsText(read, profile.directory)}${mark}`;
   });
   const unmatched = read.unmatched ? [unmatchedText(read.unmatched)] : [];
   return [head, ...lines, ...unmatched].join("\n");
+}
+
+function profileTabsText(read: ProfileTabListing, directory: string): string {
+  const failed = read.unavailable?.[directory];
+  if (failed) return `open tabs were not read (${failed})`;
+  if (read.unread) return `open tabs were not read (${read.unread})`;
+  const group = read.byDirectory[directory];
+  if (!group && read.unmatched) return "open tabs were not matched to this folder";
+  const tabs = group?.tabs ?? [];
+  const body = tabs.length ? tabs.map(tabText).join("; ") : "no open tabs";
+  return `${body}${group?.omitted ? `; and ${group.omitted} more` : ""}`;
 }
 
 function unmatchedText(group: ProfileTabGroup): string {

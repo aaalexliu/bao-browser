@@ -239,7 +239,8 @@ export function finishToolResult(card: BrowserToolCard | undefined, receipt: Rec
  */
 export function profileQuestionResult(question: ChromeProfileQuestion, call: Record<string, unknown>, ui: boolean) {
   const listing = question.listing ?? { byDirectory: {}, unread: "remote debugging is off" };
-  const summary = agentProfileText(question.root, question.profiles, question.settings, listing);
+  const sites = question.sites;
+  const summary = agentProfileText(question.root, question.profiles, question.settings, listing, sites);
   const example = question.settings && question.profiles.some((profile) => profile.directory === question.settings)
     ? question.settings : question.profiles[0]!.directory;
   const retry = agentProfileRetry(call, example);
@@ -250,7 +251,11 @@ export function profileQuestionResult(question: ChromeProfileQuestion, call: Rec
     structuredContent: { command: "open", status: "needs_profile", run_id: null, step_id: null, summary, retry,
       ...(listing?.unread ? { tabsUnread: listing.unread } : {}),
       ...(listing?.unmatched ? { tabsUnmatched: listing.unmatched } : {}),
+      ...(sites ? { site: sites.site } : {}),
       profiles: question.profiles.map((profile) => {
+        const siteRead = sites?.byDirectory[profile.directory];
+        const siteUnread = sites?.unread[profile.directory];
+        const site = siteRead ? { siteCookies: siteRead } : siteUnread ? { siteCookiesUnread: siteUnread } : {};
         const group = listing.byDirectory[profile.directory];
         const failed = listing.unread ? undefined : listing.unavailable?.[profile.directory];
         const matched = group
@@ -259,6 +264,7 @@ export function profileQuestionResult(question: ChromeProfileQuestion, call: Rec
         return {
           ...profile,
           ...(profile.directory === question.settings ? { pickedInSettings: true } : {}),
+          ...site,
           ...(listing.unread || failed ? (failed ? { tabsUnread: failed } : {}) : matched),
         };
       }) },

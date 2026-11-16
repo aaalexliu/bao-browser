@@ -4,6 +4,7 @@ import { resolveNormalChrome } from "../launch";
 import type { SignInImport } from "./bao-profile";
 import { BOUND_REASON, boundSite } from "./bound-sign-in";
 import { listChromeProfiles, type ChromeProfileChoice } from "./chrome-profile-copy";
+import type { ProfileSiteListing } from "./profile-sites";
 import type { ProfileTabListing } from "./profile-tabs";
 import { ROUTE_LABELS } from "./route-labels";
 
@@ -202,6 +203,8 @@ export function signInLine(report: SignInImport, profile: string): string {
 export class ChromeProfileQuestion extends Error {
   /** Open tabs for the agent_browser list. Absent on the question run_workflow and the app reuse. */
   listing?: ProfileTabListing;
+  /** Each profile's cookies for the site the open asks for. Absent where listing is, and when the open names no web page. */
+  sites?: ProfileSiteListing;
 
   constructor(readonly root: string, readonly profiles: ChromeProfileChoice[], readonly settings: string | undefined) {
     const marked = profiles.map((profile) => `${profileName(profile)}${profile.directory === settings ? ", picked in Bao Settings" : ""}`);
@@ -209,9 +212,10 @@ export class ChromeProfileQuestion extends Error {
   }
 
   /** A copy with tabs attached. The shared message stays the profile list without tabs. */
-  withListing(listing: ProfileTabListing): ChromeProfileQuestion {
+  withListing(listing: ProfileTabListing, sites?: ProfileSiteListing): ChromeProfileQuestion {
     const next = new ChromeProfileQuestion(this.root, this.profiles, this.settings);
     next.listing = listing;
+    if (sites) next.sites = sites;
     return next;
   }
 
