@@ -84,6 +84,24 @@ test("the native window keeps navigation, reopen, editing, downloads and server 
   }
 });
 
+test("a drag that starts anywhere on the Accessibility guide bar carries Bao.app, and the Files & Folders bar does not drag", { skip: launcherSkip() }, () => {
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), "bao-perm-drag-")));
+  try {
+    const bin = path.join(root, "bao-permissions-test");
+    execFileSync("cc", [
+      "-fobjc-arc", "-Wall", "-Wextra", "-Werror",
+      "-framework", "Foundation", "-framework", "AppKit", "-framework", "ApplicationServices",
+      path.join(MACOS, "bao-permissions-test.m"), "-o", bin,
+    ], { stdio: "inherit", timeout: scaledMs(60_000) });
+    const app = path.join(root, "Bao.app");
+    const out = execFileSync(bin, ["drag", app], { encoding: "utf8", timeout: scaledMs(20_000) });
+    // The press is at x=400, far right of the 48 px icon at x=16, and the icon lifts from under it.
+    assert.equal(out, `bar ${app} {{376, 14}, {48, 48}}\nfiles none\n`);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("a second permission window open brings the first one forward instead of opening another", { skip: launcherSkip(), timeout: scaledMs(90_000) }, async (t) => {
   const root = realpathSync(mkdtempSync(path.join(tmpdir(), "bao-perm-window-")));
   const bin = path.join(root, "bao-permissions-test");
