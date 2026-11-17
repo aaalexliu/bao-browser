@@ -507,6 +507,7 @@ test("an installed bundle serves extension settings and imports synthetic localS
   assert.equal(existsSync(path.join(dest, "extension/dist/manifest.json")), true);
   assert.equal(existsSync(path.join(dest, "extension/dist/background.js")), true);
   assert.equal(existsSync(path.join(dest, "bao/src/app/app.js")), true);
+  assert.equal(existsSync(path.join(dest, "bao/src/app/trace.js")), true);
   assert.equal(existsSync(path.join(dest, "bao/node_modules/classic-level/prebuilds/linux-x64/classic-level.node")), true);
   assert.equal(existsSync(path.join(dest, "bao/node_modules/classic-level/prebuilds/darwin-x64+arm64/classic-level.node")), true);
   const bao = path.join(dest, "bao");
@@ -655,6 +656,8 @@ test("an installed bundle serves extension settings and imports synthetic localS
     assert.match(js, /id="host-access"/);
     assert.match(js, /all sites/);
     assert.match(js, /per site/);
+    const trace = await fetch(`http://127.0.0.1:${port}/trace.js`).then((res) => res.text());
+    assert.match(trace, /Bao could not load this run\./);
   } finally {
     server.kill("SIGTERM");
     rmSync(destParent, { recursive: true, force: true });

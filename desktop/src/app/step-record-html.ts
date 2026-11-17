@@ -4,7 +4,7 @@ import { esc } from "./views";
 
 const SHOWN_REQUESTS = 10;
 
-function duration(ms: number): string {
+export function duration(ms: number): string {
   return ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`;
 }
 
@@ -18,7 +18,7 @@ function fileLink(runId: string, stepId: string, name: string, label: string): s
 }
 
 /** A load that went wrong: an HTTP error status, or a network error Chrome named. No response with no error is not one. */
-function failed(row: RequestRow): boolean {
+export function failed(row: RequestRow): boolean {
   return row.status >= 400 || Boolean(row.error);
 }
 
@@ -70,7 +70,7 @@ function pageRow(runId: string, stepId: string, phase: Phase, facts: PageFacts):
   return `<div class="record-row"><span class="record-key">${word}</span><span class="record-value">${esc(facts.title || "Untitled page")}<span class="record-facts">${esc(facts.url)}</span><span class="record-facts">${esc(where)}</span><span class="record-links">${links}</span>${notes}</span></div>`;
 }
 
-function pageHtml(runId: string, view: StepRecordView): string {
+export function pageHtml(runId: string, view: StepRecordView): string {
   const rows = (["before", "after"] as const).flatMap((phase) => view.pages[phase] ? [pageRow(runId, view.id, phase, view.pages[phase]!)] : []);
   const target = view.target
     ? `<p>Acted on ${esc([view.target.ref, view.target.role, view.target.name ? `"${view.target.name}"` : ""].filter(Boolean).join(" "))}${view.target.box ? `, box ${esc(`${Math.round(view.target.box.x)}, ${Math.round(view.target.box.y)}, ${Math.round(view.target.box.width)} × ${Math.round(view.target.box.height)}`)}` : ""}.</p>`
@@ -90,7 +90,7 @@ function mapRow(key: string, value: string): string {
   return `<div class="record-row"><span class="record-key">${esc(key)}</span><span class="record-value">${value}</span></div>`;
 }
 
-function mapHtml(map: PageMap | undefined): string {
+export function mapHtml(map: PageMap | undefined): string {
   if (!map) return "";
   const groups = [
     collapsed("Links", map.links.map((link) => mapRow("Link", `${esc(link.text || "(no text)")}<span class="record-facts">${esc(link.href)}</span>${link.frame ? `<span class="record-facts">In frame ${esc(link.frame)}</span>` : ""}`))),

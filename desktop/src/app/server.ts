@@ -550,11 +550,14 @@ export async function startApp(opts: {
       if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) {
         return sendFile(res, path.join(publicDir, "index.html"), "text/html");
       }
-      if (req.method === "GET" && url.pathname === "/app.js") {
-        const js = await browserScript();
+      if (req.method === "GET" && (url.pathname === "/app.js" || url.pathname === "/trace.js")) {
+        const js = await browserScript(url.pathname === "/app.js" ? "app" : "trace");
         res.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-store" });
         res.end(js);
         return;
+      }
+      if (req.method === "GET" && url.pathname === "/trace") {
+        return sendFile(res, path.join(publicDir, "trace.html"), "text/html");
       }
       if (req.method === "GET" && (url.pathname === "/fixture" || url.pathname === "/secure")) {
         return sendFile(res, path.join(publicDir, "fixture.html"), "text/html");
@@ -3798,26 +3801,31 @@ function modelStatus(): { label: string } {
   return { label: "no model" };
 }
 
-let bundledClient = "";
-async function browserScript(): Promise<string> {
-  if (bundledClient) return bundledClient;
-  const prebuilt = path.join(__dirname, "app.js");
+/** Each page's browser script: `app.js` for the window, `trace.js` for the trace view. */
+const BROWSER_SCRIPTS = { app: "desktop/src/app/client.ts", trace: "desktop/src/app/trace-client.ts" } as const;
+const bundledScripts = new Map<string, string>();
+async function browserScript(name: keyof typeof BROWSER_SCRIPTS): Promise<string> {
+  const bundled = bundledScripts.get(name);
+  if (bundled) return bundled;
+  const prebuilt = path.join(__dirname, `${name}.js`);
+  let text: string;
   if (existsSync(prebuilt)) {
-    bundledClient = readFileSync(prebuilt, "utf8");
-    return bundledClient;
+    text = readFileSync(prebuilt, "utf8");
+  } else {
+    const esbuild = await import("esbuild");
+    const result = await esbuild.build({
+      absWorkingDir: sourceRoot,
+      entryPoints: [BROWSER_SCRIPTS[name]],
+      bundle: true,
+      format: "iife",
+      platform: "browser",
+      write: false,
+      target: "es2022",
+    });
+    text = result.outputFiles[0]?.text || "";
   }
-  const esbuild = await import("esbuild");
-  const result = await esbuild.build({
-    absWorkingDir: sourceRoot,
-    entryPoints: ["desktop/src/app/client.ts"],
-    bundle: true,
-    format: "iife",
-    platform: "browser",
-    write: false,
-    target: "es2022",
-  });
-  bundledClient = result.outputFiles[0]?.text || "";
-  return bundledClient;
+  if (text) bundledScripts.set(name, text);
+  return text;
 }
 
 async function materializeFiles(args: ReplayArgs): Promise<ReplayArgs> {

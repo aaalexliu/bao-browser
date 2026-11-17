@@ -35,6 +35,10 @@ cp -a "$OUT/extension-dist/." "$DEST/extension/dist/"
   --bundle --format=iife --platform=browser --target=es2022 \
   --outfile="$DEST/bao/src/app/app.js"
 test -s "$DEST/bao/src/app/app.js"
+"$ROOT/node_modules/.bin/esbuild" desktop/src/app/trace-client.ts \
+  --bundle --format=iife --platform=browser --target=es2022 \
+  --outfile="$DEST/bao/src/app/trace.js"
+test -s "$DEST/bao/src/app/trace.js"
 
 node "$ROOT/desktop/packaging/stage-agent-browser.mjs" "$DEST/agent-browser"
 node "$ROOT/desktop/packaging/stage-deps.mjs" "$DEST/bao"
