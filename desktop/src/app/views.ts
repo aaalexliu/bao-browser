@@ -2207,10 +2207,11 @@ export interface ReceiptRecord {
   open: ReadonlySet<string>;
 }
 
+/** Decimal units, as Finder shows a file: a KB is 1,000 bytes and an MB 1,000,000. */
 function byteSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} bytes`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  if (bytes < 1000) return `${bytes} bytes`;
+  if (bytes < 999_500) return `${Math.round(bytes / 1000)} KB`;
+  return `${(bytes / 1_000_000).toFixed(1)} MB`;
 }
 
 /** The run.har download, and one note on what the step records cannot hold, so no step repeats it. */
