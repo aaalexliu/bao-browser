@@ -193,7 +193,10 @@ async function loadState(): Promise<void> {
     }
   }
   if (screen === "live" && liveId && !state.activeRun) selectRun(liveId);
-  if (screen === "runs" && !opened) selectDefaultRun();
+  // `/?run=<id>` opens that run's receipt. The trace view links back with it.
+  const asked = firstLoad ? new URLSearchParams(location.search).get("run") : null;
+  if (asked && state.runs?.some((run) => run.id === asked)) selectRun(asked);
+  else if (screen === "runs" && !opened) selectDefaultRun();
   const key = JSON.stringify({
     recording: state.recording,
     replaying: state.replaying,

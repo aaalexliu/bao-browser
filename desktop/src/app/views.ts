@@ -2092,7 +2092,7 @@ function receiptBrowserLine(browser: BrowserPick, fromStep?: number): string {
 }
 
 /** A route history names each route and the step it started at. An older run with only `browser` keeps the single line. */
-function receiptBrowsers(run: RunSummary): string {
+export function receiptBrowsers(run: RunSummary): string {
   if (run.routes?.length) return run.routes.map((route) => receiptBrowserLine(route.browser, route.fromStep)).join("");
   return run.browser ? receiptBrowserLine(run.browser) : "";
 }
@@ -2102,7 +2102,7 @@ function receiptStepStatus(status: string, id: string | undefined, run: RunSumma
   return typeof run.steps?.find((step) => step.id === id)?.startedAt === "number" ? "did not finish" : "not reached";
 }
 
-function receiptClock(ms: number): string {
+export function receiptClock(ms: number): string {
   const abs = Math.max(0, Math.round(ms));
   const minutes = Math.floor(abs / 60000);
   const seconds = ((abs % 60000) / 1000).toFixed(1).padStart(4, "0");
@@ -2115,6 +2115,13 @@ function receiptDuration(ms: number): string {
 
 function privateReceiptField(label: string): boolean {
   return /password|e-?mail|secret|ssn|social security|card number|cvv|cvc|\bpin\b|token/i.test(label);
+}
+
+/** A command's arguments as a receipt prints them: the value typed into a field whose label names a secret reads Hidden. */
+export function shownArgs(label: string, native: StepView["native"]): string[] {
+  const args = native?.args || [];
+  const secretIndex = native?.command === "fill" ? 1 : args.length - 1;
+  return privateReceiptField(label) ? args.map((arg, index) => index === secretIndex ? "Hidden" : arg) : args;
 }
 
 function keepStreet(text: string): string {
@@ -2208,7 +2215,7 @@ export interface ReceiptRecord {
 }
 
 /** Decimal units, as Finder shows a file: a KB is 1,000 bytes and an MB 1,000,000. */
-function byteSize(bytes: number): string {
+export function byteSize(bytes: number): string {
   if (bytes < 1000) return `${bytes} bytes`;
   if (bytes < 999_500) return `${Math.round(bytes / 1000)} KB`;
   return `${(bytes / 1_000_000).toFixed(1)} MB`;
@@ -2217,12 +2224,15 @@ function byteSize(bytes: number): string {
 /** The run.har download, and one note on what the step records cannot hold, so no step repeats it. */
 function receiptHar(runId: string, record: ReceiptRecord | undefined): string {
   if (!record) return "";
+  const trace = record.index.steps.length
+    ? `<p><a href="/trace?run=${esc(encodeURIComponent(runId))}">Open trace</a> <span class="record-quiet">A debug view of this run: a timeline, each step's page before and after, and its network, console, and errors.</span></p>`
+    : "";
   const har = record.index.harBytes === undefined ? ""
     : `<p><a href="/api/runs/${esc(encodeURIComponent(runId))}/run.har" download="${esc(runId)}.har">Download run.har</a> <span class="record-quiet">${esc(byteSize(record.index.harBytes))}. Every request of the run. To open it in Chrome, open DevTools, choose Network, and drop the file there.</span></p>`;
   const limits = record.index.steps.length
     ? `<p class="record-quiet">The HAR leaves out cookies, request initiators, redirect targets, and multipart form bodies; each upload step lists its files' paths and SHA-256 instead. Not recorded: the accessibility tree before a step, and a stable selector or frame for a step's target.</p>`
     : "";
-  return har || limits ? `<div class="receipt-har">${har}${limits}</div>` : "";
+  return trace || har || limits ? `<div class="receipt-har">${trace}${har}${limits}</div>` : "";
 }
 
 function receiptStepRecord(stepId: string | undefined, record: ReceiptRecord | undefined): string {
@@ -2238,7 +2248,7 @@ function fileAddress(value: string): string {
 }
 
 /** The files an upload or download moved, each with its full path, size, and SHA-256, and how Bao moved them. */
-function receiptFiles(transfer: FileTransfer | undefined): string {
+export function receiptFiles(transfer: FileTransfer | undefined): string {
   if (!transfer) return "";
   const how = transfer.source === "download" ? `Chrome downloaded it${transfer.url ? ` from ${fileAddress(transfer.url)}` : ""}.`
     : transfer.source === "link" ? `Bao fetched the link from ${fileAddress(transfer.url)} with the page's sign-in and did not open a tab.`
@@ -2279,10 +2289,7 @@ function receiptInspector(view: ReturnType<typeof inspectRunView>, run: RunSumma
     const status = receiptStepStatus(step.status || viewed?.status || "unknown", step.id, run);
     const reason = step.reason || receiptReadBack(run, step.id) || viewed?.result;
     const native = step.native;
-    const hidden = privateReceiptField(label);
-    const rawArgs = native?.args || [];
-    const secretIndex = native?.command === "fill" ? 1 : rawArgs.length - 1;
-    const args = rawArgs.map((arg, argIndex) => hidden && argIndex === secretIndex ? "Hidden" : arg);
+    const args = shownArgs(label, native);
     const timing = typeof step.startedAt === "number" && typeof run.at === "number" ? receiptClock(step.startedAt - run.at) : "";
     const duration = typeof step.startedAt === "number" && typeof step.endedAt === "number" ? receiptDuration(step.endedAt - step.startedAt) : "";
     const command = [native?.command, ...args, timing, duration].filter(Boolean).join(" · ");
