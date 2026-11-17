@@ -2690,11 +2690,12 @@ export class AgentBrowserProxy {
   private async cleanupBody(session: Session, keepOpen: boolean, closeTaskTabs: boolean): Promise<void> {
     const overlay = this.takeover;
     const keepWindow = keepOpen && !this.closingOf(session) && this.pendingCloses === 0 && !session.chrome.isClosed();
-    // The finished pill must not delay the lease or a close. A closing window cannot show it, and a dead browser must not sit in a CDP timeout.
-    const painting = overlay && this.takeover === overlay && keepWindow
+    // The owner's Chrome shows the finished pill on the task tab, then Bao closes that tab. A closing window cannot show it, and a dead browser must not sit in a CDP timeout.
+    const ownerTab = session.kind === "current" && !session.relay && !this.closingOf(session) && !session.chrome.isClosed();
+    const painting = overlay && this.takeover === overlay && (keepWindow || ownerTab)
       ? overlay.finish(overlay.stoppedByOwner ? "stopped" : session.outcome?.outcome === "failed" ? "failed" : "finished").catch(() => undefined)
       : undefined;
-    if (overlay && this.takeover === overlay && !keepWindow) await overlay.dispose().catch(() => undefined);
+    if (overlay && this.takeover === overlay && !painting) await overlay.dispose().catch(() => undefined);
     if (overlay && this.takeover === overlay) this.takeover = undefined;
     await this.disarmReloadBanner();
     session.abort.abort();
@@ -2715,6 +2716,10 @@ export class AgentBrowserProxy {
           } finally { session.chrome.detach(); }
         } else if (session.kind === "current") {
           try {
+            if (painting) {
+              await painting;
+              await overlay?.dispose().catch(() => undefined);
+            }
             if (closeTaskTabs && session.taskTabs.size && session.chrome.cdp.isOpen) {
               const { targetInfos } = await session.chrome.cdp.send<{ targetInfos: { targetId: string }[] }>("Target.getTargets", {}, undefined, 5000);
               for (const target of targetInfos.filter((target) => session.taskTabs.has(target.targetId))) {
