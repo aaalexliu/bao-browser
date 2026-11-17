@@ -5,6 +5,7 @@ import { gunzip } from "node:zlib";
 import { STEP_RECORD_SCHEMA, readStepRecord, runHarPath, runRecordDir, type HarEntry, type StepNetworkRecord, type StepTarget, type StepWait } from "../engines/step-har";
 import type { PageState, PageStateEntry } from "../engines/step-page";
 import { OVERLAY_HOST_ATTRIBUTE } from "../../../shared/takeover-overlay";
+import { mhtmlPage } from "./mhtml-page";
 
 const gunzipAsync = promisify(gunzip);
 
@@ -17,6 +18,8 @@ export interface RunRecordIndex {
 }
 
 export interface RequestRow {
+  /** The request's place in the step's stored HAR entries. `request-<index>.json` downloads that entry. */
+  index: number;
   method: string;
   url: string;
   /** 0 when agent-browser recorded no response: a request Chrome refused or dropped, one it handed to a download, or one still running when the HAR was written. */
@@ -27,6 +30,10 @@ export interface RequestRow {
   /** Left out, like `ms`, when there is no response: agent-browser fills both with placeholders. */
   mime?: string;
   ms?: number;
+  /** When the request started, in epoch milliseconds. */
+  at?: number;
+  /** The response body's size in bytes. */
+  bytes?: number;
   /** The GraphQL operation the request named. */
   operation?: string;
 }
@@ -73,6 +80,8 @@ export interface StepRecordView {
 }
 
 const SAFE_ID = /^[\w-]+$/;
+/** Hides Bao's own overlay, which the archive keeps without its styles, and keeps a click on a link from leaving the stored page. */
+const ARCHIVE_PAGE_STYLE = `<style>[${OVERLAY_HOST_ATTRIBUTE}]{display:none!important}a,area{pointer-events:none!important}</style>`;
 
 const STATIC_TYPES = new Set(["stylesheet", "script", "image", "font", "media", "manifest", "texttrack"]);
 const ANALYTICS_HOSTS = [
@@ -94,12 +103,15 @@ function requestKind(row: RequestRow): keyof Omit<NetworkView, "total"> {
   return "work";
 }
 
-function requestRow(entry: HarEntry): RequestRow {
+function requestRow(entry: HarEntry, index: number): RequestRow {
   const request = (entry.request ?? {}) as { method?: string; url?: string; postData?: { text?: string } };
-  const response = (entry.response ?? {}) as { status?: number; statusText?: string; content?: { mimeType?: string } };
+  const response = (entry.response ?? {}) as { status?: number; statusText?: string; bodySize?: number; content?: { mimeType?: string; size?: number } };
   const operation = graphqlOperation(request.url, request.postData?.text);
   const status = typeof response.status === "number" ? response.status : 0;
+  const at = Date.parse(entry.startedDateTime ?? "");
+  const bytes = [response.content?.size, response.bodySize].find((size) => typeof size === "number" && size >= 0);
   return {
+    index,
     method: request.method || "GET",
     url: request.url || "",
     status,
@@ -107,6 +119,8 @@ function requestRow(entry: HarEntry): RequestRow {
     ...(typeof entry._resourceType === "string" ? { type: entry._resourceType } : {}),
     ...(status && response.content?.mimeType ? { mime: response.content.mimeType } : {}),
     ...(status && typeof entry.time === "number" ? { ms: Math.round(entry.time) } : {}),
+    ...(Number.isNaN(at) ? {} : { at }),
+    ...(status && bytes !== undefined ? { bytes } : {}),
     ...(operation ? { operation } : {}),
   };
 }
@@ -126,10 +140,10 @@ function graphqlOperation(url: string | undefined, body: string | undefined): st
 
 export function networkView(entries: readonly HarEntry[]): NetworkView {
   const view: NetworkView = { total: entries.length, work: [], static: [], analytics: [] };
-  for (const entry of entries) {
-    const row = requestRow(entry);
+  entries.forEach((entry, index) => {
+    const row = requestRow(entry, index);
     view[requestKind(row)].push(row);
-  }
+  });
   return view;
 }
 
@@ -325,11 +339,13 @@ export async function stepRecordView(home: string, runId: string, stepId: string
   };
 }
 
-export interface RecordDownload { body: Buffer | string; type: string; filename: string }
+/** `page` marks the one file a window shows in place, not a download: the archive as a page. */
+export interface RecordDownload { body: Buffer | string; type: string; filename: string; page?: true }
 
 /**
- * One raw file behind a step: `network.har` (the step's HAR entries as a HAR 1.2 log), `<phase>.dom.json` (the page read without its accessibility tree),
- * `<phase>.ax.json` (Accessibility.getFullAXTree as stored), or `<phase>.mhtml` (the page archive).
+ * One raw file behind a step: `network.har` (the step's HAR entries as a HAR 1.2 log), `request-<index>.json` (one of those entries),
+ * `<phase>.dom.json` (the page read without its accessibility tree), `<phase>.ax.json` (Accessibility.getFullAXTree as stored),
+ * `<phase>.mhtml` (the page archive), or `<phase>.html` (that archive as one HTML page).
  */
 export async function stepRecordDownload(home: string, runId: string, stepId: string, name: string): Promise<RecordDownload | undefined> {
   const record = await readRecord(home, runId, stepId);
@@ -339,15 +355,24 @@ export async function stepRecordDownload(home: string, runId: string, stepId: st
     const har = { log: { version: "1.2", creator: { name: "Bao step record", version: STEP_RECORD_SCHEMA }, entries: record.network.entries } };
     return { body: JSON.stringify(har), type: "application/json", filename };
   }
-  const match = /^(before|after)\.(dom\.json|ax\.json|mhtml)$/.exec(name);
+  const request = /^request-(\d+)\.json$/.exec(name);
+  if (request) {
+    const found = record.network.entries[Number(request[1])];
+    return found ? { body: JSON.stringify(found), type: "application/json", filename } : undefined;
+  }
+  const match = /^(before|after)\.(dom\.json|ax\.json|mhtml|html)$/.exec(name);
   if (!match) return undefined;
   const entry = record.page?.[match[1] as Phase];
   if (!entry || "error" in entry) return undefined;
-  if (match[2] === "mhtml") {
+  if (match[2] === "mhtml" || match[2] === "html") {
     const file = entry.mhtml ? recordFile(home, runId, entry.mhtml) : undefined;
     if (!file) return undefined;
-    try { return { body: await gunzipAsync(await readFile(file)), type: "multipart/related", filename }; }
-    catch { return undefined; }
+    try {
+      const mhtml = await gunzipAsync(await readFile(file));
+      if (match[2] === "mhtml") return { body: mhtml, type: "multipart/related", filename };
+      const page = mhtmlPage(mhtml);
+      return page === undefined ? undefined : { body: page + ARCHIVE_PAGE_STYLE, type: "text/html; charset=utf-8", filename, page: true };
+    } catch { return undefined; }
   }
   const state = await readPageState(home, runId, entry);
   if (!state) return undefined;
