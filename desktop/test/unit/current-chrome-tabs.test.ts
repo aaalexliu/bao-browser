@@ -325,6 +325,29 @@ test("a popup that appears after the tab read and before the native command stay
   assert.ok(f.closed.includes("task"));
 });
 
+test("finish shows the outcome pill on the task tab before Bao closes it", async (t) => {
+  const f = await fixture(t);
+  await f.proxy.execute("open", [MAPS], "current");
+  const seen: string[] = [];
+  (f.proxy as unknown as { takeover: unknown }).takeover = {
+    held: false,
+    stoppedByOwner: false,
+    async follow() {},
+    async noteOwned() {},
+    async waitConfirm() {},
+    async showAsk() {},
+    async clearAsk() {},
+    async activityLine() {},
+    async hideForShot<T>(fn: () => Promise<T>) { return fn(); },
+    async bracket<T>(fn: () => Promise<T>) { return fn(); },
+    async finish(outcome: string) { seen.push(`finish ${outcome}, task ${f.closed.includes("task") ? "closed" : "open"}`); },
+    async dispose() { seen.push(`dispose, task ${f.closed.includes("task") ? "closed" : "open"}`); },
+  };
+  assert.ok(await f.proxy.finishTask({ outcome: "failed", reason: "fixture" }, f.proxy.activeRunId));
+  assert.deepEqual(seen, ["finish failed, task open", "dispose, task open"]);
+  assert.ok(f.closed.includes("task"));
+});
+
 test("a popup Chrome lists before the daemon does stays pending, and the next snapshot follows it", async (t) => {
   const f = await fixture(t);
   await f.proxy.execute("open", [MAPS], "current");

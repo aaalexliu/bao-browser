@@ -232,8 +232,8 @@ export class Takeover {
 
   async finish(outcome: FinishOutcome): Promise<void> {
     this.control = stepControl(this.control, { type: "finish", outcome });
-    await this.push().catch(() => undefined);
-    if (this.finishHoldMs > 0) await new Promise((resolve) => setTimeout(resolve, this.finishHoldMs));
+    const shown = await this.push().then(() => true, () => false);
+    if (shown && this.finishHoldMs > 0) await new Promise((resolve) => setTimeout(resolve, this.finishHoldMs));
   }
 
   /** Stops the poll and heartbeat so the page watchdog can fail open. */

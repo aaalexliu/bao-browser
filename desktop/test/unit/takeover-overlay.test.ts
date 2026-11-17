@@ -118,6 +118,13 @@ async function click(cdp: CdpSocket, sessionId: string): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 100));
 }
 
+test("finish does not hold the pill when the overlay could not paint it", async () => {
+  const takeover = new Takeover({ quiet: true, finishHoldMs: 4000 });
+  const started = Date.now();
+  await takeover.finish("finished");
+  assert.ok(Date.now() - started < 1000, "a page with no overlay must not delay the close by the hold");
+});
+
 test("the shield blocks a click, and the watchdog gives the page back", async () => {
   const open = await page();
   const takeover = new Takeover({ watchdogMs: 400, quiet: true });
