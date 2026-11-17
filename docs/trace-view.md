@@ -23,13 +23,22 @@ A step with no step record still shows its pictures, Call, and Attachments. The 
 
 ## What Playwright shows that this view cannot
 
-Each line names the evidence Bao does not record. None of it is recorded for this view.
+Bao records none of the evidence below, and this view adds no recording. Sizes and times are from the six-step Robinhood run `run-fb3d9279` (19 MB on disk, 9 page reads) unless a line says otherwise.
 
-- **A snapshot for every step.** Bao keeps an MHTML archive once per address, so a later read of the same page has a picture but no Snapshot. It keeps a Before picture only for a step that names a target.
-- **The target inside the snapshot, and Pick locator.** The step keeps a ref, role, name, and box, not a selector or a DOM node id, so the view marks the target on the picture only.
+| Evidence Bao could record | Why the view needs it | What it would unlock | Rough cost |
+| --- | --- | --- | --- |
+| An MHTML archive on every page read. Now: once per address. | Snapshot is Playwright's main pane. Only 3 of the run's 9 reads kept an archive. | Snapshot for Before and After of every step, with the whole page and not only the viewport. | 125 to 326 KB gzipped per read; 6 more reads is about 1.9 MB on this run. A read with an archive took 44 to 193 ms, one without 12 to 55 ms. |
+| A picture before every step. Now: only a step that names a target. | Steps that read the page have no Before picture. | Before for every step, with no archive needed. | 167 to 281 KB per picture. Capture time not measured; assume 50 to 100 ms per step. |
+| The target's DOM node id or selector. Now: ref, role, name, and box. | Playwright marks the target inside the snapshot. | The target marked in Snapshot, and a jump from a step to its node in the DOM and accessibility files. | About 100 bytes and one CDP call per step. |
+| Console messages as they happen, with time and code location. Now: one read at the end of the step, text only. | Playwright's Console shows when and where each message fired. | Console lined up with the timeline and the requests; messages during an owner wait. | About 200 bytes per message. It needs a listener on Bao's own CDP socket or an agent-browser change, not a per-step call. |
+| Page errors for one step. Now: every error so far, because pinned agent-browser does not clear its buffer. | Errors repeats old page errors on every step. | Errors with this step's page errors only. | No bytes. An agent-browser fix, or the same listener as the console. |
+| A tab video on every route. Now: Running Chrome over remote debugging only. | The film strip and the hover frame come from the video. | A film strip on Bao-profile and copy runs, which now show step pictures. | 0.63 MB for 69.5 s on this run, about 0.54 MB a minute. |
+| The accessibility tree before a step. Now: after only. | Page shows what the agent could read after the step, not before. | What the agent could read before it acted, and a before and after diff. | About 10 KB gzipped per read on this run. On a large page the call takes about as long as the step. |
+| Why a request has no response. Now: Chrome's error, for a refused request only. | Network cannot tell a download from a cancelled or unfinished request. | "Handed to a download", "cancelled", or "still running" on the row. | Bytes. agent-browser's HAR drops these events, so it needs an agent-browser change or Bao's own listener. |
+
+Four Playwright parts have no evidence to record:
+
 - **Log.** agent-browser returns the command's result, not the waits and checks it made.
 - **Source.** An agent run has no test file. The step's `why` is the nearest thing Bao keeps.
-- **Console times and code locations.** agent-browser's console read has neither, and it is taken once at the end of the step.
-- **Page errors of this step only.** Pinned agent-browser does not clear its error buffer, so each step lists every page error so far.
-- **A film strip on every route.** Only a Running Chrome session over remote debugging keeps a tab video.
-- **Why a request has no response.** The HAR keeps Chrome's error for a refused request, and nothing for one handed to a download or still running at export.
+- **Pick locator.** It needs a selector engine over the snapshot, beyond the node id above.
+- **A time-range filter, playback, and resource-type chips in Network.** No evidence is missing. They are left out to keep the view small.
