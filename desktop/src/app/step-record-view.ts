@@ -19,9 +19,12 @@ export interface RunRecordIndex {
 export interface RequestRow {
   method: string;
   url: string;
-  /** 0 when agent-browser recorded no response, as for a redirect hop or a blocked request. */
+  /** 0 when agent-browser recorded no response: a request Chrome refused or dropped, one it handed to a download, or one still running when the HAR was written. */
   status: number;
+  /** Chrome's network error for a request with no response, such as `net::ERR_BLOCKED_BY_CLIENT`. agent-browser writes it as the status text. */
+  error?: string;
   type?: string;
+  /** Left out, like `ms`, when there is no response: agent-browser fills both with placeholders. */
   mime?: string;
   ms?: number;
   /** The GraphQL operation the request named. */
@@ -93,15 +96,17 @@ function requestKind(row: RequestRow): keyof Omit<NetworkView, "total"> {
 
 function requestRow(entry: HarEntry): RequestRow {
   const request = (entry.request ?? {}) as { method?: string; url?: string; postData?: { text?: string } };
-  const response = (entry.response ?? {}) as { status?: number; content?: { mimeType?: string } };
+  const response = (entry.response ?? {}) as { status?: number; statusText?: string; content?: { mimeType?: string } };
   const operation = graphqlOperation(request.url, request.postData?.text);
+  const status = typeof response.status === "number" ? response.status : 0;
   return {
     method: request.method || "GET",
     url: request.url || "",
-    status: typeof response.status === "number" ? response.status : 0,
+    status,
+    ...(!status && response.statusText ? { error: response.statusText } : {}),
     ...(typeof entry._resourceType === "string" ? { type: entry._resourceType } : {}),
-    ...(response.content?.mimeType ? { mime: response.content.mimeType } : {}),
-    ...(typeof entry.time === "number" ? { ms: Math.round(entry.time) } : {}),
+    ...(status && response.content?.mimeType ? { mime: response.content.mimeType } : {}),
+    ...(status && typeof entry.time === "number" ? { ms: Math.round(entry.time) } : {}),
     ...(operation ? { operation } : {}),
   };
 }

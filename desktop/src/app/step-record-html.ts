@@ -17,13 +17,14 @@ function fileLink(runId: string, stepId: string, name: string, label: string): s
   return `<a href="${esc(href)}" download="${esc(`${runId}-${stepId}-${name}`)}">${esc(label)}</a>`;
 }
 
+/** A load that went wrong: an HTTP error status, or a network error Chrome named. No response with no error is not one. */
 function failed(row: RequestRow): boolean {
-  return row.status === 0 || row.status >= 400;
+  return row.status >= 400 || Boolean(row.error);
 }
 
 function requestRow(row: RequestRow): string {
-  const status = row.status ? String(row.status) : "no response";
-  const facts = [row.operation ? `GraphQL ${row.operation}` : "", row.type, row.mime, row.ms === undefined ? "" : `${row.ms} ms`].filter(Boolean).join(" · ");
+  const status = row.status ? String(row.status) : row.error ? "failed" : "no response recorded";
+  const facts = [row.error, row.operation ? `GraphQL ${row.operation}` : "", row.type, row.mime, row.ms === undefined ? "" : `${row.ms} ms`].filter(Boolean).join(" · ");
   return `<div class="record-row${failed(row) ? " failed" : ""}"><span class="record-key">${esc(row.method)} ${esc(status)}</span><span class="record-value">${esc(row.url)}${facts ? `<span class="record-facts">${esc(facts)}</span>` : ""}</span></div>`;
 }
 
@@ -106,7 +107,7 @@ function consoleHtml(view: StepRecordView): string {
   const rows = [
     ...view.console.map((line) => `<div class="record-row${line.type === "error" ? " failed" : ""}"><span class="record-key">${esc(line.type)}</span><span class="record-value">${esc(line.text)}</span></div>`),
     ...view.errors.map((line) => `<div class="record-row failed"><span class="record-key">Page error</span><span class="record-value">${esc(line.text)}</span></div>`),
-    ...loads.map((row) => `<div class="record-row failed"><span class="record-key">${esc(row.status ? `Load ${row.status}` : "No response")}</span><span class="record-value">${esc(row.url)}</span></div>`),
+    ...loads.map((row) => `<div class="record-row failed"><span class="record-key">${esc(row.status ? `Load ${row.status}` : "Load failed")}</span><span class="record-value">${esc(row.url)}${row.error ? `<span class="record-facts">${esc(row.error)}</span>` : ""}</span></div>`),
   ];
   return `<section class="record-part" aria-label="Console and errors"><h4>Console and errors</h4>${rows.length > SHOWN_REQUESTS + 2 ? collapsed("Messages", rows) : rows.length ? `<div class="record-rows">${rows.join("")}</div>` : "<p>No console messages, page errors, or failed loads recorded.</p>"}</section>`;
 }

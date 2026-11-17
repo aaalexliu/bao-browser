@@ -150,6 +150,10 @@ test("a request with no recorded response is not a failed load; one Chrome refus
     id: "command-6", waits: [{ for: "download", ms: 1100 }], pages: {}, console: [], errors: [],
     network: networkView([noResponse("GET", download, "xhr", ""), noResponse("POST", blocked, "fetch", "net::ERR_BLOCKED_BY_CLIENT")]),
   };
+  assert.deepEqual(view.network.work.map((row) => [row.status, row.error, row.mime, row.ms]), [
+    [0, undefined, undefined, undefined],
+    [0, "net::ERR_BLOCKED_BY_CLIENT", undefined, undefined],
+  ]);
   const html = stepRecordBody(RUN, "command-6", view);
   const rows = html.split('<div class="record-row');
   const downloadRow = rows.find((row) => row.includes(download) && row.includes("GET"))!;
@@ -362,7 +366,6 @@ test("a step section lists real work first, files the rest behind counts, and li
   assert.match(html, /password = Hidden/);
   assert.match(html, /TypeError: boom/);
   assert.match(html, /Load 404/);
-  assert.match(html, /No response/);
   const empty = stepRecordBody(RUN, "command-1", (await stepRecordView(home, RUN, "command-1"))!);
   assert.match(empty, /No requests recorded for this step\./);
   assert.doesNotMatch(html, /No requests recorded for this step/);
