@@ -210,8 +210,13 @@ function refLine(arg: string | undefined, snapshot: string | undefined): string 
   });
 }
 
+/** agent-browser writes a name as a JSON string, so `10"` arrives as `"10\""`. */
 function refName(line: string | undefined): string | undefined {
-  const quoted = line?.match(/"([^\"]+)"/)?.[1]?.trim();
+  const raw = line?.match(/"((?:[^"\\]|\\.)+)"/)?.[1];
+  if (!raw) return undefined;
+  let quoted: string;
+  try { quoted = (JSON.parse(`"${raw}"`) as string).replace(/\s+/g, " ").trim(); }
+  catch { quoted = raw.trim(); }
   if (!quoted || isElementRef(quoted) || quoted.startsWith("@e")) return undefined;
   return quoted;
 }

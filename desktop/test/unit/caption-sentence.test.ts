@@ -15,6 +15,14 @@ test("a click sentence cites the snapshot line, not the ref", () => {
   assert.equal(stepTitle({ caption: { text: spoken.text, citation: spoken.citation } }), 'Click "Issues"');
 });
 
+test("a name with an escaped quote or line break reads as the page shows it", () => {
+  const lines = '- button "10\\"" [ref=e7]\n- link " 8\\" + 10\\" Glass Lid\\n " [ref=e9]\n';
+  const inch = commandSentence("click", "@e7", lines);
+  assert.equal(inch.text, 'Click 10"');
+  assert.equal(stepTitle({ caption: { text: inch.text, citation: inch.citation } }), 'Click "10""');
+  assert.equal(commandSentence("click", "@e9", lines).text, 'Click 8" + 10" Glass Lid');
+});
+
 test("a type sentence cites the field name from the snapshot", () => {
   const spoken = commandSentence("fill", "@e18", snapshot);
   assert.equal(spoken.text, "Type into Search issues");
