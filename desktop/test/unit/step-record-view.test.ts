@@ -139,6 +139,36 @@ test("a failed step shows its error, and one filed request reads as one", () => 
   assert.doesNotMatch(stepRecordBody(RUN, "command-5", { ...view, error: undefined }), /<h4>Error<\/h4>/);
 });
 
+test("a request with no recorded response is not a failed load; one Chrome refused shows its network error", () => {
+  const noResponse = (method: string, url: string, type: string, statusText: string): HarEntry => {
+    const base = entry(method, url, 0, type, "application/octet-stream");
+    return { ...base, time: 0, response: { ...(base.response as object), statusText } };
+  };
+  const download = "https://files.example/statement.pdf?Signature=abc";
+  const blocked = "https://o1.ingest.example/envelope";
+  const view = {
+    id: "command-6", waits: [{ for: "download", ms: 1100 }], pages: {}, console: [], errors: [],
+    network: networkView([noResponse("GET", download, "xhr", ""), noResponse("POST", blocked, "fetch", "net::ERR_BLOCKED_BY_CLIENT")]),
+  };
+  assert.deepEqual(view.network.work.map((row) => [row.status, row.error, row.mime, row.ms]), [
+    [0, undefined, undefined, undefined],
+    [0, "net::ERR_BLOCKED_BY_CLIENT", undefined, undefined],
+  ]);
+  const html = stepRecordBody(RUN, "command-6", view);
+  const rows = html.split('<div class="record-row');
+  const downloadRow = rows.find((row) => row.includes(download) && row.includes("GET"))!;
+  assert.match(downloadRow, /^"><span class="record-key">GET no response recorded<\/span>/);
+  assert.doesNotMatch(downloadRow, /octet-stream|0 ms/);
+  const blockedRow = rows.find((row) => row.includes(blocked) && row.includes("POST"))!;
+  assert.match(blockedRow, /^ failed"><span class="record-key">POST failed<\/span>/);
+  assert.match(blockedRow, /net::ERR_BLOCKED_BY_CLIENT/);
+  const consoleSection = html.slice(html.indexOf("Console and errors"));
+  assert.match(consoleSection, /Load failed<\/span><span class="record-value">https:\/\/o1\.ingest\.example\/envelope<span class="record-facts">net::ERR_BLOCKED_BY_CLIENT/);
+  assert.doesNotMatch(consoleSection, /statement\.pdf|No response/);
+  const quiet = stepRecordBody(RUN, "command-6", { ...view, network: networkView([noResponse("GET", download, "xhr", "")]) });
+  assert.match(quiet, /No console messages, page errors, or failed loads recorded\./);
+});
+
 test("the link and form map comes from the stored DOM snapshot, shadow roots and frames included", () => {
   const map = pageMap(snapshot(), "after");
   assert.deepEqual(map.links, [
@@ -336,7 +366,6 @@ test("a step section lists real work first, files the rest behind counts, and li
   assert.match(html, /password = Hidden/);
   assert.match(html, /TypeError: boom/);
   assert.match(html, /Load 404/);
-  assert.match(html, /No response/);
   const empty = stepRecordBody(RUN, "command-1", (await stepRecordView(home, RUN, "command-1"))!);
   assert.match(empty, /No requests recorded for this step\./);
   assert.doesNotMatch(html, /No requests recorded for this step/);
