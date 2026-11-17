@@ -228,6 +228,9 @@ test("the receipt opens the trace view, which loads each step from its stored fi
   assert.equal(await page.locator('[data-panel="network"]').innerText(), "Bao kept no step record for this step.", "the picked tab stays open across steps");
   assert.match(await page.locator("#snapshot .empty").innerText(), /owner input is private/);
 
+  await page.evaluate(() => { document.documentElement.dataset.baoNative = "true"; });
+  const clear = await page.evaluate(() => [document.querySelector("#bar .back")!.getBoundingClientRect().left, document.querySelector("#timeline")!.getBoundingClientRect().top]);
+  assert.ok(clear[0]! >= 212 && clear[1]! >= 52, `in Bao's window the Run link and the timeline stay clear of the strip that drags the window: ${clear}`);
   await page.locator("#bar .back").click();
   await page.locator("#run-receipt h2").waitFor();
   assert.equal(await page.locator("#run-receipt h2").innerText(), "Download the October statement");
