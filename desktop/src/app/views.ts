@@ -2207,10 +2207,11 @@ export interface ReceiptRecord {
   open: ReadonlySet<string>;
 }
 
+/** Decimal units, as Finder shows a file: a KB is 1,000 bytes and an MB 1,000,000. */
 function byteSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} bytes`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  if (bytes < 1000) return `${bytes} bytes`;
+  if (bytes < 999_500) return `${Math.round(bytes / 1000)} KB`;
+  return `${(bytes / 1_000_000).toFixed(1)} MB`;
 }
 
 /** The run.har download, and one note on what the step records cannot hold, so no step repeats it. */
@@ -2229,12 +2230,19 @@ function receiptStepRecord(stepId: string | undefined, record: ReceiptRecord | u
   return `<details class="receipt-record" data-record-step="${esc(stepId)}"${record.open.has(stepId) ? " open" : ""}><summary>Network, page, and console</summary><div class="record-body"></div></details>`;
 }
 
+/** A download's address without its query, which on a signed link runs to many lines. The run file keeps the whole URL. */
+function fileAddress(value: string): string {
+  let url: URL;
+  try { url = new URL(value); } catch { return value; }
+  return url.search ? `${url.origin}${url.pathname}?… (query left out)` : value;
+}
+
 /** The files an upload or download moved, each with its full path, size, and SHA-256, and how Bao moved them. */
 function receiptFiles(transfer: FileTransfer | undefined): string {
   if (!transfer) return "";
-  const how = transfer.source === "download" ? `Chrome downloaded it${transfer.url ? ` from ${transfer.url}` : ""}.`
-    : transfer.source === "link" ? `Bao fetched the link from ${transfer.url} with the page's sign-in and did not open a tab.`
-    : transfer.source === "pdf-viewer" ? `Chrome showed it as a PDF instead of downloading it, so Bao fetched it from ${transfer.url} with the page's sign-in.`
+  const how = transfer.source === "download" ? `Chrome downloaded it${transfer.url ? ` from ${fileAddress(transfer.url)}` : ""}.`
+    : transfer.source === "link" ? `Bao fetched the link from ${fileAddress(transfer.url)} with the page's sign-in and did not open a tab.`
+    : transfer.source === "pdf-viewer" ? `Chrome showed it as a PDF instead of downloading it, so Bao fetched it from ${fileAddress(transfer.url)} with the page's sign-in.`
       : transfer.source === "file-input" ? "Bao set it on the page's file input."
         : "Bao clicked the target, caught the file chooser it opened, and set it there. No file panel opened.";
   const count = transfer.files.length;

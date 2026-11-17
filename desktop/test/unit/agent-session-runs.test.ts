@@ -145,6 +145,27 @@ test("a receipt shows each file a download saved or an upload attached, with its
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test("a receipt names a download's address without its query, so a signed link stays one line", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-files-signed-"));
+  try {
+    const library = new Library(root);
+    const file = "/Users/alex/Library/Application Support/bao/downloads/run-signed/october.pdf";
+    const signed = `https://storage.example/user/7/edocs/57be?response-content-type=application%2Fpdf&Signature=${"S5Ohxj".repeat(200)}&Expires=1794950986`;
+    const step = (id: string, url: string) => ({
+      id, status: "passed", label: "Download october.pdf", caption: { text: "Download october.pdf" }, startedAt: 1, endedAt: 2,
+      native: { command: "download", args: ["@e45", file], results: [], isError: false, screenshots: [] },
+      transfer: { command: "download", source: "download", url, files: [{ path: file, bytes: 48213, sha256: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08" }] },
+    });
+    library.saveRun({ id: "run-signed", workflowId: "agent-browser", kind: "capture", pageEngine: "agent-browser", status: "passed", at: 1, heals: [],
+      steps: [step("command-1", signed), step("command-2", "https://storage.example/files/october.pdf")] } as never);
+    const html = runReceipt(inspectRunView(library, { run_id: "run-signed" }), "Statements", library.readRun("run-signed") as unknown as RunSummary);
+    const files = (id: number) => html.match(new RegExp(`id="receipt-step-${id}"[\\s\\S]*?<section class="receipt-files"[\\s\\S]*?</section>`))?.[0] ?? "";
+    assert.match(files(1), /Saved 1 file\. Chrome downloaded it from https:\/\/storage\.example\/user\/7\/edocs\/57be\?… \(query left out\)\./);
+    assert.doesNotMatch(files(1), /Signature|S5Ohxj/);
+    assert.match(files(2), /Saved 1 file\. Chrome downloaded it from https:\/\/storage\.example\/files\/october\.pdf\./);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test("an ended agent session receipt names its steps in words and marks the cut-off and unreached ones", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-agent-receipt-"));
   try {

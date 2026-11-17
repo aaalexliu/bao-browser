@@ -350,6 +350,18 @@ test("the receipt shows why, a run.har download, and a step section only where a
   assert.doesNotMatch(runReceipt(view, "Statements", run), /run\.har|data-record-step|Not recorded/);
 });
 
+test("the run.har size counts a megabyte as a million bytes, as Finder does", () => {
+  const run = { id: RUN, workflowId: "agent-browser", kind: "capture", status: "passed", at: 0, steps: [] } as unknown as RunSummary;
+  const view = { run: { at: 0, stepCount: 0, modelCalls: null }, steps: [] } as unknown as ReturnType<typeof inspectRunView>;
+  const size = (harBytes: number) => / <span class="record-quiet">([^.]+(?:\.\d)?[^.]*)\. Every request/.exec(runReceipt(view, "Statements", run, undefined, { index: { harBytes, steps: [] }, open: new Set() }))?.[1];
+  assert.equal(size(13_529_262), "13.5 MB");
+  assert.equal(size(999), "999 bytes");
+  assert.equal(size(1_000), "1 KB");
+  assert.equal(size(150_499), "150 KB");
+  assert.equal(size(999_499), "999 KB");
+  assert.equal(size(999_500), "1.0 MB");
+});
+
 test("a step section lists real work first, files the rest behind counts, and links the raw files", async (t) => {
   const home = await fixture(t);
   const html = stepRecordBody(RUN, "command-2", (await stepRecordView(home, RUN, "command-2"))!);
