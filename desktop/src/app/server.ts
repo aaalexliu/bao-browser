@@ -225,6 +225,8 @@ export function moveSession(session: CaptureSession, event: SessionEvent): Sessi
 const sourceRoot =
   [process.cwd(), path.resolve(__dirname, "../../../../..")].find((dir) => existsSync(path.join(dir, "desktop/src/app/public"))) ||
   process.cwd();
+/** A stored page is another site's markup. It runs no script and loads nothing but what the archive wrote into it. */
+const ARCHIVE_PAGE_POLICY = "sandbox; default-src 'none'; style-src 'unsafe-inline' data:; img-src data:; font-src data:; media-src data:; frame-src data:";
 const publicDir = process.env.BAO_PUBLIC || path.join(sourceRoot, "desktop/src/app/public");
 
 /** Move each source step's outlined crop onto the merged step id. A 96×54 stripe is not a crop. */
@@ -938,7 +940,7 @@ export async function startApp(opts: {
         }
         const file = await stepRecordDownload(library.root, runId!, stepId!, name!);
         if (!file) return json(res, { error: "no such file" }, 404);
-        res.writeHead(200, { "content-type": file.type, "content-disposition": `attachment; filename="${file.filename}"`, "cache-control": "no-store" });
+        res.writeHead(200, { "content-type": file.type, "cache-control": "no-store", ...(file.page ? { "content-security-policy": ARCHIVE_PAGE_POLICY } : { "content-disposition": `attachment; filename="${file.filename}"` }) });
         res.end(file.body);
         return;
       }

@@ -9,6 +9,8 @@ import { stepRecordBody } from "../../src/app/step-record-html";
 import { networkView, pageMap, runRecordIndex, stepRecordDownload, stepRecordView } from "../../src/app/step-record-view";
 import { runReceipt, type RunSummary } from "../../src/app/views";
 import type { inspectRunView } from "../../src/mcp/run-view";
+import { startApp } from "../../src/app/server";
+import { sampleArchive } from "../support/mhtml";
 
 const RUN = "run-receipt-1";
 
@@ -327,6 +329,44 @@ test("a step view reads the stored record and page files, and the raw files down
   assert.equal(await stepRecordView(home, RUN, "../command-2"), undefined);
   assert.equal(await stepRecordView(home, "../runs", "command-2"), undefined);
   assert.deepEqual(await runRecordIndex(home, "run-none"), { steps: [] });
+});
+
+test("a step serves one request's HAR entry, and its archive as a page that runs no script and loads nothing from the web", async (t) => {
+  const home = await fixture(t);
+  const after = await writePageState(home, RUN, "command-3", "after", { state: pageState(true), mhtml: { data: sampleArchive() }, ms: 9 });
+  await writeStepRecord(home, RUN, {
+    schema: "bao.step-record/v1", id: "command-3", command: "click", args: ["@e5"], status: "passed", startedAt: "2026-11-14T00:00:02.000Z", endedAt: "2026-11-14T00:00:02.100Z",
+    waits: [{ for: "click", ms: 100 }], page: { after },
+    network: { entries: [
+      { ...entry("GET", "https://broker.example/api/me", 200, "xhr", "application/json"), startedDateTime: "2026-11-14T00:00:02.050Z", response: { status: 200, bodySize: 44, content: { mimeType: "application/json", size: 120 } } },
+      { ...entry("GET", "https://broker.example/old", 301, "document", "text/html"), startedDateTime: "not a time", response: { status: 301, bodySize: 0, content: { mimeType: "text/html", size: -1 } } },
+    ] },
+  });
+  const view = (await stepRecordView(home, RUN, "command-3"))!;
+  assert.deepEqual(view.network.work.map((row) => [row.index, row.at, row.bytes]), [[0, Date.parse("2026-11-14T00:00:02.050Z"), 120], [1, undefined, 0]]);
+  const second = (await stepRecordDownload(home, RUN, "command-3", "request-1.json"))!;
+  assert.equal((JSON.parse(String(second.body)) as { request: { url: string } }).request.url, "https://broker.example/old");
+  assert.equal(await stepRecordDownload(home, RUN, "command-3", "request-2.json"), undefined);
+  const page = (await stepRecordDownload(home, RUN, "command-3", "after.html"))!;
+  assert.equal(page.page, true);
+  assert.match(String(page.body), /<h1>October – Statement<\/h1>/);
+  assert.match(String(page.body), /<style>\[data-bao-overlay\]\{display:none!important\}a,area\{pointer-events:none!important\}<\/style>$/);
+  assert.equal(await stepRecordDownload(home, RUN, "command-3", "before.html"), undefined, "the step kept no before archive");
+  assert.equal(await stepRecordDownload(home, RUN, "command-2", "after.html"), undefined, "a stored file that is not an archive gives no page");
+
+  const oldHome = process.env.HOME;
+  process.env.HOME = home;
+  const app = await startApp({ home, extensionHost: false, chromeProfilesRoot: path.join(home, "profiles") });
+  t.after(async () => {
+    await app.close();
+    if (oldHome === undefined) delete process.env.HOME; else process.env.HOME = oldHome;
+  });
+  const served = await fetch(`http://127.0.0.1:${app.port}/api/runs/${RUN}/steps/command-3/after.html`);
+  assert.equal(served.headers.get("content-type"), "text/html; charset=utf-8");
+  assert.equal(served.headers.get("content-security-policy"), "sandbox; default-src 'none'; style-src 'unsafe-inline' data:; img-src data:; font-src data:; media-src data:; frame-src data:");
+  assert.equal(served.headers.get("content-disposition"), null, "the page shows in place");
+  const raw = await fetch(`http://127.0.0.1:${app.port}/api/runs/${RUN}/steps/command-3/after.mhtml`);
+  assert.match(raw.headers.get("content-disposition") || "", /^attachment; filename="run-receipt-1-command-3-after\.mhtml"$/, "the raw archive still downloads");
 });
 
 test("the receipt shows why, a run.har download, and a step section only where a step record exists", async (t) => {
