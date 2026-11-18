@@ -61,8 +61,8 @@ function receipt(run: OutlineRun): string {
   } as unknown as ReturnType<typeof inspectRunView>, "Receipt", run as never);
 }
 
-function chapters(html: string): string {
-  return html.match(/aria-label="Chapters"[\s\S]*?<h3 id="receipt-step-heading"/)?.[0] || "";
+function stepList(html: string): string {
+  return html.match(/<section class="receipt-chapters" aria-label="Steps">[\s\S]*?<\/div><\/section>/)?.[0] || "";
 }
 
 for (const [verb, expected] of [
@@ -71,11 +71,11 @@ for (const [verb, expected] of [
   ["close", "Closed a tab"],
   ["2", "Switched tab"],
 ] as const) {
-  test(`receipt tab ${verb} overrides stale labels in chapters and inspector`, () => {
+  test(`receipt tab ${verb} overrides stale labels in the step list and inspector`, () => {
     const run: OutlineRun = { steps: [step({ label: "Switch tab", command: "tab", args: [verb, "--json"], title: "Tabs", url: "https://fixture.test/tabs" })] };
-    assert.deepEqual(receiptOutline(run).chapters[0]?.rows, [{ line: expected, status: "passed" }]);
+    assert.deepEqual(receiptOutline(run).chapters[0]?.rows, [{ step: 1, line: expected, status: "passed" }]);
     const html = receipt(run);
-    assert.ok(chapters(html).includes(expected));
+    assert.ok(stepList(html).includes(expected));
     assert.ok(html.includes(`<strong>${expected}</strong>`));
     assert.ok(html.includes(`tab · ${verb} · --json`));
     assert.doesNotMatch(html, /Switch tab/);
@@ -95,9 +95,9 @@ for (const [args, expected, wrong] of [
   test(`receipt tab ${args.join(" ")} names the verb after flags`, () => {
     const recorded = [...args];
     const run: OutlineRun = { steps: [step({ label: "Switch tab", command: "tab", args: recorded, title: "Tabs", url: "https://fixture.test/tabs" })] };
-    assert.deepEqual(receiptOutline(run).chapters[0]?.rows, [{ line: expected, status: "passed" }]);
+    assert.deepEqual(receiptOutline(run).chapters[0]?.rows, [{ step: 1, line: expected, status: "passed" }]);
     const html = receipt(run);
-    assert.ok(chapters(html).includes(expected));
+    assert.ok(stepList(html).includes(expected));
     assert.ok(html.includes(`<strong>${expected}</strong>`));
     assert.ok(html.includes(`tab · ${recorded.join(" · ")}`));
     assert.equal(html.includes(wrong), false);
@@ -161,17 +161,22 @@ test("a pizza run shows its pages, clicks, and the agent's own words", () => {
   assert.match(html, /Agent said[\s\S]*Created a list and verified it shows exactly 3 places\./);
   assert.match(html, /Agent listed[\s\S]*Added Ceres Mott St/);
   assert.match(html, /Step 2, Click Saved, <span class="run-state failed">failed<\/span>\./);
-  assert.match(chapters(html), /Clicked &quot;Ceres pizza&quot;/);
-  assert.match(chapters(html), /Typed &quot;nytimes pizza&quot; into a text field/);
-  assert.match(chapters(html), /Opened https:\/\/www\.google\.com\/maps/);
-  const listed = chapters(html);
-  assert.equal(listed.match(/<ul class="receipt-items"><li/g)?.length, listed.match(/class="receipt-chapter"/g)?.length);
-  assert.match(chapters(html), /Step 2/);
-  assert.doesNotMatch(chapters(html), /@e5|#|4–4|4-4/);
+  assert.match(stepList(html), /Clicked &quot;Ceres pizza&quot;/);
+  assert.match(stepList(html), /Typed &quot;nytimes pizza&quot; into a text field/);
+  assert.match(stepList(html), /Opened https:\/\/www\.google\.com\/maps/);
+  const listed = stepList(html);
+  assert.equal(listed.match(/<li data-step="\d+"/g)?.length, run.steps?.length, "every step has a row");
+  assert.deepEqual([...listed.matchAll(/class="receipt-chapter-title">([^<]*)<\/span><span class="receipt-range">([^<]*)</g)].map((found) => `${found[1]}: ${found[2]}`).slice(0, 3), ["Google Maps: Step 1", "Google Gemini: Step 2", "Google Maps: Step 3"]);
+  assert.match(listed, /<li data-step="2" class="failed"><span class="receipt-step-number">2<\/span><span>Clicked &quot;Saved&quot;<\/span>/);
+  assert.match(stepList(html), /Step 2/);
+  assert.doesNotMatch(stepList(html), /@e5|#|4–4|4-4/);
   assert.match(html, /Recorded as passed/);
   assert.match(html, /class="run-state failed">1 failed</);
   assert.doesNotMatch(html, /class="run-state passed"/);
-  assert.match(html, /alt="nytimes pizza - Google Maps"/);
+  assert.match(html, /<figure class="receipt-proof"><img src="\/api\/runs\/pizza-shaped\/shots\/list\.png" alt="nytimes pizza - Google Maps"><\/figure>/, "a picture of the page it names needs no caption");
+  const order = ['class="receipt-proof"', "Last recorded page:", 'aria-label="Steps"', "Agent said", "Command inspector"].map((part) => html.indexOf(part));
+  assert.deepEqual(order, [...order].sort((a, b) => a - b), "proof shot, then the step list, then the agent's words, then the inspector");
+  assert.ok(order[0]! > 0);
   assert.doesNotMatch(html, /the agent claimed|not confirmed|Submitted|Confirmation was not captured|Submission was not observed|Saved draft/i);
   assert.doesNotMatch(html, /<h3 id="receipt-step-heading" class="section"/);
   assert.match(html, /Command inspector/);
@@ -206,8 +211,8 @@ test("a form lists every passed fill in order and hides email", () => {
   const html = receipt({ id: "synthetic-form", status: "passed", steps });
   assert.match(html, /<p class="receipt-recorded">Last recorded page: Thank you\. Your order could not be submitted\.<\/p>/);
   assert.doesNotMatch(html, /submitted\.\./);
-  assert.match(chapters(html), /old note[\s\S]*Cleared/);
-  assert.doesNotMatch(chapters(html), /ada@fixture\.test|other@bad\.test|s3cret-value|Thank you for your help/);
+  assert.match(stepList(html), /old note[\s\S]*Cleared/);
+  assert.doesNotMatch(stepList(html), /ada@fixture\.test|other@bad\.test|s3cret-value|Thank you for your help/);
   assert.match(html, /<details><summary>Evidence<\/summary>[\s\S]*fill @email Hidden/);
   assert.match(html, /<details><summary>Evidence<\/summary>[\s\S]*fill @password Hidden/);
   assert.doesNotMatch(html, /ada@fixture\.test|s3cret-value/);
@@ -229,12 +234,14 @@ test("a ten-place run reads as the page's clicks", () => {
   assert.equal(outline.chapters[0]?.clicks[0]?.label, "Click Place 1 Example Street");
   assert.equal(outline.chapters[0]?.clicks[9]?.status, "passed");
   const html = receipt({ status: "passed", steps });
-  assert.equal(chapters(html).match(/Clicked &quot;Place \d+ Example Street&quot;/g)?.length, 10);
+  assert.equal(stepList(html).match(/Clicked &quot;Place \d+ Example Street&quot;/g)?.length, 10);
   assert.doesNotMatch(html, /not confirmed|selected|entries were|Submitted/);
-  assert.doesNotMatch(receipt({
+  const noPage = stepList(receipt({
     status: "passed",
     steps: [step({ label: "Read fixture", command: "snapshot" }), step({ label: "Read fixture", command: "snapshot" })],
-  }), /<h3>Chapters<\/h3>/);
+  }));
+  assert.equal(noPage.match(/<li data-step="\d+"/g)?.length, 2, "steps with no recorded page are still listed");
+  assert.doesNotMatch(noPage, /receipt-chapter-title/, "and get no chapter heading");
 });
 
 test("passed fills stay in order, including css targets and a repeated email", () => {
@@ -249,7 +256,7 @@ test("passed fills stay in order, including css targets and a repeated email", (
       step({ label: "Type into \"Email\"", command: "fill", args: ["@email", "pending@fixture.test"], status: "pending", title: "Order", url: "https://fixture.test/order" }),
     ],
   });
-  const listed = chapters(html);
+  const listed = stepList(html);
   assert.match(listed, /Ada[\s\S]*London/);
   assert.equal(listed.match(/Typed a hidden value into Email/g)?.length, 4);
   assert.match(listed, /class="failed"/);
@@ -270,7 +277,7 @@ test("a fill with a trailing option uses the positional value", () => {
       step({ label: "Type into \"Password\"", command: "fill", args: ["@password", "s3cret-value", "--json"], title: "Order", url: "https://fixture.test/order" }),
     ],
   });
-  const listed = chapters(html);
+  const listed = stepList(html);
   assert.match(listed, /Ada/);
   assert.match(listed, /Cleared/);
   assert.doesNotMatch(listed, /--json|s3cret-value/);
@@ -364,7 +371,7 @@ test("a task-tab fallback is captioned as the other tab", () => {
   assert.equal(outline.shot?.label, note);
   const html = receipt(run);
   assert.match(html, /Last recorded page: Amore Pizza - Google Maps\./);
-  assert.match(html, /alt="The active tab could not be pictured, so Bao kept a picture of another tab\."/);
+  assert.match(html, /alt="The active tab could not be pictured, so Bao kept a picture of another tab\."><figcaption>The active tab could not be pictured, so Bao kept a picture of another tab\.<\/figcaption>/);
   assert.doesNotMatch(html, /task tab/);
   assert.doesNotMatch(html, /alt="Amore Pizza - Google Maps"|alt="Click Amore Pizza"/);
   const titled = receipt({
@@ -426,7 +433,8 @@ test("a replay inspector keeps the label and read-back past the first page", () 
   assert.doesNotMatch(html, /submitted\. matches\./);
   assert.match(html, /data-search="[^"]*Open the last report/);
   assert.doesNotMatch(html, /Next steps|Previous steps/);
-  assert.doesNotMatch(html, /<h3>Chapters<\/h3>/);
+  assert.match(stepList(html), /<li data-step="21"><span class="receipt-step-number">21<\/span><span>Open the last report<\/span>/, "the step list names a replay step as its workflow does");
+  assert.doesNotMatch(stepList(html), /Recorded step|receipt-chapter-title/);
 });
 
 test("a replay with a recorded page shows that page as a chapter", () => {
@@ -437,8 +445,7 @@ test("a replay with a recorded page shows that page as a chapter", () => {
       step({ label: "Open the confirmation", command: "click", args: ["@confirm"], title: "Thank you - Order", url: "https://fixture.test/thanks", at: 1_000 }),
     ],
   });
-  assert.match(html, /<h3>Chapters<\/h3>/);
-  assert.match(html, /Thank you - Order/);
+  assert.match(html, /class="receipt-chapter-title">Thank you - Order<\/span><span class="receipt-range">Step 1</);
   assert.match(html, /Clicked Open the confirmation/);
   assert.doesNotMatch(html, /Clicked a button|Clicked &quot;Open the confirmation&quot;/);
   assert.match(html, /Step 1/);
@@ -453,7 +460,7 @@ test("ten distinct place pages drop the repeated site suffix and name the step",
     ];
   }).flat();
   const html = receipt({ status: "passed", steps });
-  const listed = chapters(html);
+  const listed = stepList(html);
   assert.equal(listed.match(/Steps \d+-\d+|Step \d+/g)?.length, 20);
   assert.match(listed, /Step 1/);
   assert.doesNotMatch(listed, /\d+-\d+|\d+–\d+/);
@@ -508,7 +515,7 @@ test("a short replay does not say it took 0 s, and agent words are labeled", () 
   assert.doesNotMatch(html, /Agent said: Set Bao stopped/);
 });
 
-test("chapter rows follow the recorded command, including a failed fill and a typed Cleared", () => {
+test("step rows follow the recorded command, including a failed fill and a typed Cleared", () => {
   const sequence = receipt({
     status: "passed",
     steps: [
@@ -522,7 +529,7 @@ test("chapter rows follow the recorded command, including a failed fill and a ty
       step({ label: "", command: "click", args: [".copy-link-button"], title: "Example", url: "https://example.com" }),
     ],
   });
-  const listed = chapters(sequence);
+  const listed = stepList(sequence);
   assert.match(listed, /Opened https:\/\/example\.com/);
   assert.match(listed, /Typed &quot;Ada&quot; into Name/);
   assert.match(listed, /Pressed &quot;Enter&quot;/);
@@ -533,7 +540,7 @@ test("chapter rows follow the recorded command, including a failed fill and a ty
   assert.match(listed, /<span>Clicked<\/span>/);
   assert.doesNotMatch(listed, /Clicked &quot;the checkbox&quot;/);
   assert.doesNotMatch(listed, /Clicked a button|Clicked a link/);
-  assert.doesNotMatch(listed, /Read the page/);
+  assert.match(listed, /<li data-step="2"><span class="receipt-step-number">2<\/span><span>Read the page<\/span>/, "a step that changed nothing is listed too");
   assert.doesNotMatch(listed, /Opened Example/);
 
   const failed = receipt({
@@ -544,9 +551,9 @@ test("chapter rows follow the recorded command, including a failed fill and a ty
       step({ label: "Type into \"Note\"", command: "fill", args: ["@note", ""], title: "Order", url: "https://fixture.test/order" }),
     ],
   });
-  const form = chapters(failed);
+  const form = stepList(failed);
   assert.match(failed, /class="receipt-recorded-status run-state failed">Recorded as failed/);
-  assert.match(form, /<li class="failed"><span>Typed &quot;Ada&quot; into Name<\/span><span class="receipt-status run-state failed">Failed<\/span>/);
+  assert.match(form, /<li data-step="1" class="failed"><span class="receipt-step-number">1<\/span><span>Typed &quot;Ada&quot; into Name<\/span><span class="receipt-status run-state failed">Failed<\/span>/);
   assert.match(form, /Typed &quot;Cleared&quot; into Status/);
   assert.match(form, /Cleared Note/);
   assert.doesNotMatch(form, /Cleared Status/);
@@ -556,12 +563,42 @@ test("chapter rows follow the recorded command, including a failed fill and a ty
     status: "passed",
     steps: [step({ label: "Read the page", command: "snapshot", title: "Example", url: "https://example.com" })],
   });
-  assert.match(chapters(read), /Read the page/);
-  assert.doesNotMatch(chapters(read), /Opened /);
+  assert.match(stepList(read), /Read the page/);
+  assert.doesNotMatch(stepList(read), /Opened /);
   const waited = receipt({
     status: "passed",
     steps: [step({ label: "Wait for you to sign in", command: "wait_for_owner", title: "Example", url: "https://example.com" })],
   });
-  assert.match(chapters(waited), /Waited/);
-  assert.doesNotMatch(chapters(waited), /Opened /);
+  assert.match(stepList(waited), /Waited/);
+  assert.doesNotMatch(stepList(waited), /Opened /);
+});
+
+test("the step list words an unfinished step as the inspector does", () => {
+  const listed = stepList(receipt({
+    id: "stopped",
+    status: "failed",
+    steps: [
+      { id: "a", status: "passed", label: "Open example.com", startedAt: 1_000, endedAt: 1_200 },
+      { id: "b", status: "pending", label: "Click Save", startedAt: 1_300 },
+      { id: "c", status: "pending", label: "Read the page" },
+    ],
+  }));
+  assert.match(listed, /Clicked Save<\/span><span class="receipt-status">did not finish</);
+  assert.match(listed, /Read the page<\/span><span class="receipt-status">not reached</);
+  assert.doesNotMatch(listed, /pending/);
+});
+
+test("steps before the first recorded page are listed under no chapter", () => {
+  const outline = receiptOutline({
+    status: "passed",
+    steps: [
+      step({ label: "Listed tabs", command: "tab", args: ["list"] }),
+      step({ label: "Open example.com", command: "open", args: ["https://example.com"], title: "Example", url: "https://example.com" }),
+      step({ label: "Read the page", command: "snapshot" }),
+    ],
+  });
+  assert.deepEqual(outline.chapters.map((chapter) => [chapter.title, chapter.start, chapter.end, chapter.rows.map((row) => row.step)]), [
+    ["", 1, 1, [1]],
+    ["Example", 2, 3, [2, 3]],
+  ]);
 });

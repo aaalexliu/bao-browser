@@ -48,10 +48,13 @@ export interface ReceiptClick {
 }
 
 export interface ReceiptRow {
+  /** The step's place in the run, from 1. */
+  step: number;
   line: string;
   status: string;
 }
 
+/** A run of steps on one recorded page. Steps before the first recorded page share one chapter with no title. */
 export interface ReceiptChapter {
   title: string;
   url: string;
@@ -167,7 +170,8 @@ function clickLine(step: OutlineStep): string {
 
 function openedLine(step: OutlineStep, fallback: string): string {
   const arg = command(step) === "open" ? step.native?.args?.[0]?.trim() : "";
-  return `Opened ${arg || pageTitle(step) || pageUrl(step) || fallback}`;
+  const where = arg || pageTitle(step) || pageUrl(step) || fallback;
+  return where ? `Opened ${where}` : cleanLabel(step.label || "") || "Opened a page";
 }
 
 function pressLine(step: OutlineStep): string {
@@ -175,7 +179,7 @@ function pressLine(step: OutlineStep): string {
   return key && !/^@e\d+$/.test(key) ? `Pressed ${quoted(key)}` : "Pressed a key";
 }
 
-function readOnlyLine(step: OutlineStep): string | undefined {
+function unchangedLine(step: OutlineStep): string | undefined {
   const cmd = command(step);
   if (cmd === "snapshot") return "Read the page";
   if (cmd === "wait_for_owner") return "Waited";
@@ -224,21 +228,9 @@ function isClick(step: OutlineStep): boolean {
   return command(step) === "click" || /^Click\b/.test(cleanLabel(step.label || ""));
 }
 
-interface DraftRow extends ReceiptRow {
-  readOnly?: boolean;
-}
+type StepLine = Omit<ReceiptRow, "step">;
 
-interface DraftChapter {
-  url: string;
-  title: string;
-  start: number;
-  end: number;
-  fields: ReceiptField[];
-  clicks: ReceiptClick[];
-  rows: DraftRow[];
-}
-
-function actionRow(step: OutlineStep, title: string): { row: DraftRow; field?: ReceiptField; click?: ReceiptClick } {
+function actionRow(step: OutlineStep, title: string): { row: StepLine; field?: ReceiptField; click?: ReceiptClick } {
   const status = step.status || "unknown";
   const value = fillArg(step);
   if (value !== undefined) {
@@ -255,47 +247,30 @@ function actionRow(step: OutlineStep, title: string): { row: DraftRow; field?: R
   if (command(step) === "open") return { row: { line: openedLine(step, title), status } };
   if (command(step) === "press") return { row: { line: pressLine(step), status } };
   if (command(step) === "tab") return { row: { line: tabSentence(step.native?.args), status } };
-  const readOnly = readOnlyLine(step);
-  if (readOnly) return { row: { line: readOnly, status, readOnly: true } };
+  const unchanged = unchangedLine(step);
+  if (unchanged) return { row: { line: unchanged, status } };
   return { row: { line: cleanLabel(step.label || "") || "Recorded step", status } };
 }
 
-function keepActionRows(chapter: DraftChapter): void {
-  if (chapter.rows.some((row) => !row.readOnly)) chapter.rows = chapter.rows.filter((row) => !row.readOnly);
-}
-
 function chaptersFor(steps: OutlineStep[]): ReceiptChapter[] {
-  const chapters: DraftChapter[] = [];
-  let current: DraftChapter | undefined;
-  const close = () => { if (current) keepActionRows(current); };
+  const chapters: ReceiptChapter[] = [];
+  let current: ReceiptChapter | undefined;
   steps.forEach((step, index) => {
     const url = pageUrl(step);
-    if (url && url !== current?.url) {
-      close();
-      current = { url, title: pageTitle(step) || url, start: index, end: index, fields: [], clicks: [], rows: [] };
+    if (!current || (url && url !== current.url)) {
+      current = { url: url || "", title: url ? pageTitle(step) || url : "", start: index + 1, end: index + 1, fields: [], clicks: [], rows: [] };
       chapters.push(current);
-    } else if (!current) {
-      return;
     } else {
-      current.end = index;
+      current.end = index + 1;
       const title = pageTitle(step);
-      if (title) current.title = title;
+      if (title && current.url) current.title = title;
     }
     const action = actionRow(step, current.title);
     if (action.field) current.fields.push(action.field);
     if (action.click) current.clicks.push(action.click);
-    current.rows.push(action.row);
+    current.rows.push({ step: index + 1, ...action.row });
   });
-  close();
-  return withoutRepeatedSuffix(chapters.map((chapter) => ({
-    title: chapter.title,
-    url: chapter.url,
-    start: chapter.start + 1,
-    end: chapter.end + 1,
-    fields: chapter.fields,
-    clicks: chapter.clicks,
-    rows: chapter.rows.map((row) => ({ line: row.line, status: row.status })),
-  })));
+  return withoutRepeatedSuffix(chapters);
 }
 
 function lastPageShot(steps: OutlineStep[]): { title?: string; shot?: ReceiptShot } {
