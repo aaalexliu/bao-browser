@@ -22,7 +22,6 @@ concurrency:
 jobs:
   # The `full-suite` label runs desktop/test/unit in three shards side by side. A manual run does too.
   full-suite:
-    name: full-suite (${{ matrix.shard }})
     if: github.event_name == 'workflow_dispatch' || (contains(github.event.pull_request.labels.*.name, 'full-suite') && (github.event.action != 'labeled' || github.event.label.name == 'full-suite' || github.event.label.name == 'replay-suite'))
     runs-on: ubuntu-24.04
     timeout-minutes: 30

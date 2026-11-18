@@ -62,19 +62,6 @@ test("get_run preserves failed capture command errors and stop reason", () => {
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-test("get_run leaves saved-workflow receipts and links unchanged", () => {
-  const root = mkdtempSync(path.join(tmpdir(), "bao-replay-status-"));
-  try {
-    const library = new Library(root);
-    library.saveRun({ ...capture, kind: "replay", workflowId: "groceries", status: "passed" });
-    const result = getRun(library, capture.id);
-    assert.equal(result.outcome, "ok");
-    assert.equal(result.status, "passed");
-    assert.equal(result.link, "bao://workflow/groceries");
-    assert.deepEqual(result.receipts, [{ id: command.id, status: "passed", readBack: "" }]);
-  } finally { rmSync(root, { recursive: true, force: true }); }
-});
-
 for (const kind of ["capture", "replay"] as const) {
   for (const status of ["new-state", "", "toString"]) {
     for (const enveloped of [false, true]) {

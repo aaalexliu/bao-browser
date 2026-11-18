@@ -58,6 +58,34 @@
       "desktop/test/unit/agent-browser-proxy.test.ts"
     ]
   },
+  "receipt": {
+    "reason": "Coverage: the run record and the receipt of a first agent run. Each command's sentence and stored step, uploads and downloads, step records and the HAR, the receipt outline and page, the trace view, get_run and the MCP cards, and who holds the tab during an owner wait.",
+    "tests": [
+      "desktop/test/unit/agent-browser-describe.test.ts",
+      "desktop/test/unit/agent-browser-files.test.ts",
+      "desktop/test/unit/agent-browser-record.test.ts",
+      "desktop/test/unit/agent-browser-tabs.test.ts",
+      "desktop/test/unit/agent-browser-transfer-skip.test.ts",
+      "desktop/test/unit/agent-session-runs.test.ts",
+      "desktop/test/unit/caption-sentence.test.ts",
+      "desktop/test/unit/capture-run-status.test.ts",
+      "desktop/test/unit/cdp-socket-close.test.ts",
+      "desktop/test/unit/debug-switch.test.ts",
+      "desktop/test/unit/mcp-tool-card.test.ts",
+      "desktop/test/unit/mhtml-page.test.ts",
+      "desktop/test/unit/owner-wait-view.test.ts",
+      "desktop/test/unit/receipt-outline.test.ts",
+      "desktop/test/unit/receipt-page.test.ts",
+      "desktop/test/unit/run-lookup.test.ts",
+      "desktop/test/unit/run-record-polish.test.ts",
+      "desktop/test/unit/step-har.test.ts",
+      "desktop/test/unit/step-har-proxy.test.ts",
+      "desktop/test/unit/step-record-view.test.ts",
+      "desktop/test/unit/takeover-follow.test.ts",
+      "desktop/test/unit/takeover-wait.test.ts",
+      "desktop/test/unit/trace-view.test.ts"
+    ]
+  },
   "core": {
     "reason": "Coverage: the app shell, Runs rows and the run viewer, page classes, video privacy, and bounded test-runner safety cases.",
     "tests": [

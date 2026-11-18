@@ -59,7 +59,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [experian, video-host, isolation, browser, browser-mcp, core]
+        group: [experian, video-host, isolation, browser, browser-mcp, receipt, core]
     env:
       BAO_HEAL_CURSOR_ACCOUNT: "0"
       PLAYWRIGHT_BROWSERS_PATH: /tmp/bao-playwright
@@ -117,7 +117,7 @@ jobs:
           HOME="$(mktemp -d)"
           export HOME
           trap 'rm -rf "$HOME"' EXIT
-          if [ "$GROUP" = browser ] || [ "$GROUP" = browser-mcp ] || [ "$GROUP" = experian ] || [ "$GROUP" = video-host ]; then
+          if [ "$GROUP" = browser ] || [ "$GROUP" = browser-mcp ] || [ "$GROUP" = receipt ] || [ "$GROUP" = experian ] || [ "$GROUP" = video-host ]; then
             xvfb-run --auto-servernum node scripts/test-essential.mjs "$GROUP"
           else
             node scripts/test-essential.mjs "$GROUP"
