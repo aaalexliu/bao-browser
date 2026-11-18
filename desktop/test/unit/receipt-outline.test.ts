@@ -167,7 +167,15 @@ test("a pizza run shows its pages, clicks, and the agent's own words", () => {
   const listed = stepList(html);
   assert.equal(listed.match(/<li data-step="\d+"/g)?.length, run.steps?.length, "every step has a row");
   assert.deepEqual([...listed.matchAll(/class="receipt-chapter-title">([^<]*)<\/span><span class="receipt-range">([^<]*)</g)].map((found) => `${found[1]}: ${found[2]}`).slice(0, 3), ["Google Maps: Step 1", "Google Gemini: Step 2", "Google Maps: Step 3"]);
-  assert.match(listed, /<li data-step="2" class="failed"><span class="receipt-step-number">2<\/span><span>Clicked &quot;Saved&quot;<\/span>/);
+  assert.match(listed, /<li data-step="2" class="failed"><button type="button" class="receipt-step" data-receipt-step="2"><span class="receipt-step-number">2<\/span><span class="receipt-step-line">Clicked &quot;Saved&quot;<\/span>/);
+  assert.match(listed, /<li data-step="11" data-picture="\/api\/runs\/pizza-shaped\/shots\/list\.png">/, "a row carries its step's picture for the player");
+  const player = html.match(/<section class="receipt-player"[\s\S]*?<\/section>/)?.[0] || "";
+  assert.match(player, /data-steps="11"/);
+  assert.deepEqual([...player.matchAll(/class="player-mark" data-receipt-step="(\d+)" style="left:([\d.]+)%" title="([^"]*)"/g)].map((found) => found.slice(1, 4)).slice(0, 4), [
+    ["1", "0.00", "Google Maps"], ["2", "10.00", "Google Gemini"], ["3", "20.00", "Google Maps"], ["4", "30.00", "Untitled list"],
+  ], "the bar has a mark where each chapter starts");
+  assert.equal(player.match(/class="player-mark"/g)?.length, listed.match(/class="receipt-chapter-title"/g)?.length);
+  assert.ok(html.indexOf('class="receipt-proof"') < html.indexOf('id="receipt-player"') && html.indexOf('id="receipt-player"') < html.indexOf('aria-label="Steps"'), "the player sits between the proof shot and the step list");
   assert.match(stepList(html), /Step 2/);
   assert.doesNotMatch(stepList(html), /@e5|#|4–4|4-4/);
   assert.match(html, /Recorded as passed/);
@@ -433,7 +441,7 @@ test("a replay inspector keeps the label and read-back past the first page", () 
   assert.doesNotMatch(html, /submitted\. matches\./);
   assert.match(html, /data-search="[^"]*Open the last report/);
   assert.doesNotMatch(html, /Next steps|Previous steps/);
-  assert.match(stepList(html), /<li data-step="21"><span class="receipt-step-number">21<\/span><span>Open the last report<\/span>/, "the step list names a replay step as its workflow does");
+  assert.match(stepList(html), /<li data-step="21"><div class="receipt-step"><span class="receipt-step-number">21<\/span><span class="receipt-step-line">Open the last report<\/span>/, "the step list names a replay step as its workflow does");
   assert.doesNotMatch(stepList(html), /Recorded step|receipt-chapter-title/);
 });
 
@@ -536,11 +544,11 @@ test("step rows follow the recorded command, including a failed fill and a typed
   assert.match(listed, /Clicked &quot;Save&quot;/);
   assert.match(listed, /Clicked &quot;Save \[draft\]&quot;/);
   assert.doesNotMatch(listed, /Clicked &quot;&quot;Save&quot;&quot;/);
-  assert.match(listed, /<span>Clicked the checkbox<\/span>/);
-  assert.match(listed, /<span>Clicked<\/span>/);
+  assert.match(listed, /<span class="receipt-step-line">Clicked the checkbox<\/span>/);
+  assert.match(listed, /<span class="receipt-step-line">Clicked<\/span>/);
   assert.doesNotMatch(listed, /Clicked &quot;the checkbox&quot;/);
   assert.doesNotMatch(listed, /Clicked a button|Clicked a link/);
-  assert.match(listed, /<li data-step="2"><span class="receipt-step-number">2<\/span><span>Read the page<\/span>/, "a step that changed nothing is listed too");
+  assert.match(listed, /<li data-step="2"><div class="receipt-step"><span class="receipt-step-number">2<\/span><span class="receipt-step-line">Read the page<\/span>/, "a step that changed nothing is listed too");
   assert.doesNotMatch(listed, /Opened Example/);
 
   const failed = receipt({
@@ -553,7 +561,7 @@ test("step rows follow the recorded command, including a failed fill and a typed
   });
   const form = stepList(failed);
   assert.match(failed, /class="receipt-recorded-status run-state failed">Recorded as failed/);
-  assert.match(form, /<li data-step="1" class="failed"><span class="receipt-step-number">1<\/span><span>Typed &quot;Ada&quot; into Name<\/span><span class="receipt-status run-state failed">Failed<\/span>/);
+  assert.match(form, /<li data-step="1" class="failed"><div class="receipt-step"><span class="receipt-step-number">1<\/span><span class="receipt-step-line">Typed &quot;Ada&quot; into Name<\/span><span class="receipt-status run-state failed">Failed<\/span>/);
   assert.match(form, /Typed &quot;Cleared&quot; into Status/);
   assert.match(form, /Cleared Note/);
   assert.doesNotMatch(form, /Cleared Status/);
@@ -601,4 +609,33 @@ test("steps before the first recorded page are listed under no chapter", () => {
     ["", 1, 1, [1]],
     ["Example", 2, 3, [2, 3]],
   ]);
+});
+
+test("a run with one step, or with no picture, has no player and plain rows", () => {
+  const one = receipt({ id: "one", status: "passed", steps: [step({ label: "Open example.com", command: "open", args: ["https://example.com"], title: "Example", url: "https://example.com", shot: "one.png" })] });
+  const blind = receipt({
+    id: "blind",
+    status: "passed",
+    steps: [
+      step({ label: "Open example.com", command: "open", args: ["https://example.com"], title: "Example", url: "https://example.com" }),
+      step({ label: "Read the page", command: "snapshot", title: "Example", url: "https://example.com" }),
+    ],
+  });
+  for (const html of [one, blind]) {
+    assert.doesNotMatch(html, /receipt-player|data-receipt-step|data-picture/);
+    assert.match(stepList(html), /<div class="receipt-chapter-head"><span class="receipt-chapter-title">Example<\/span>/);
+  }
+  assert.match(one, /class="receipt-proof"/, "the one picture is still the proof shot");
+});
+
+test("a row carries the note kept with its picture, in plain words", () => {
+  const html = receipt({
+    id: "noted",
+    status: "passed",
+    steps: [
+      step({ label: "Open example.com", command: "open", args: ["https://example.com"], title: "Example", url: "https://example.com", shot: "a.png" }),
+      step({ label: "Click Save", command: "click", args: ["@save"], title: "Example", url: "https://example.com", shot: "b.png", shotNote: "The active tab could not be pictured, so Bao kept a picture of its task tab." }),
+    ],
+  });
+  assert.match(stepList(html), /<li data-step="2" data-picture="\/api\/runs\/noted\/shots\/b\.png" data-picture-note="The active tab could not be pictured, so Bao kept a picture of another tab\.">/);
 });

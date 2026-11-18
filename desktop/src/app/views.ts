@@ -2184,18 +2184,54 @@ function chapterRange(chapter: ReceiptChapter): string {
   return chapter.start === chapter.end ? `Step ${chapter.start}` : `Steps ${chapter.start}-${chapter.end}`;
 }
 
-/** Every step in order, each under the page it ran on. Steps before the first recorded page have no heading. */
+/** The step's picture and the note kept with it, as the player reads them from the step's row. */
+function stepPicture(run: RunSummary, step: number): { src: string; note: string } {
+  const stored = run.steps?.[step - 1] as InspectorStep | undefined;
+  const src = imageRef(run.id, stored?.afterShot);
+  return { src, note: src && stored?.shotNote?.trim() ? plainPictureNote(stored.shotNote.trim()) : "" };
+}
+
+/** A run plays when it has more than one step and a picture of at least one. */
+function receiptPlays(run: RunSummary): boolean {
+  const steps = run.steps || [];
+  return steps.length > 1 && steps.some((step) => imageRef(run.id, step.afterShot));
+}
+
+/** Every step in order, each under the page it ran on. Steps before the first recorded page have no heading. With a player, a row or a chapter title is a button that shows that step there. */
 function receiptStepsHtml(run: RunSummary, outline: ReceiptOutline): string {
   if (!outline.chapters.length) return "";
+  const plays = receiptPlays(run);
   const chapters = outline.chapters.map((chapter) => {
-    const head = chapter.title ? `<button type="button" data-receipt-from="${chapter.start}" data-receipt-to="${chapter.end}"><span class="receipt-chapter-title">${esc(chapter.title)}</span><span class="receipt-range">${chapterRange(chapter)}</span></button>` : "";
+    const title = `<span class="receipt-chapter-title">${esc(chapter.title)}</span><span class="receipt-range">${chapterRange(chapter)}</span>`;
+    const head = !chapter.title ? "" : plays ? `<button type="button" class="receipt-chapter-head" data-receipt-step="${chapter.start}">${title}</button>` : `<div class="receipt-chapter-head">${title}</div>`;
     const items = chapter.rows.map((row) => {
       const status = receiptStepStatus(row.status, run.steps?.[row.step - 1]?.id, run);
-      return `<li data-step="${row.step}"${status === "failed" ? " class=\"failed\"" : ""}><span class="receipt-step-number">${row.step}</span><span>${esc(keepStreet(row.line))}</span>${receiptStatusHtml(status)}</li>`;
+      const picture = stepPicture(run, row.step);
+      const cells = `<span class="receipt-step-number">${row.step}</span><span class="receipt-step-line">${esc(keepStreet(row.line))}</span>${receiptStatusHtml(status)}`;
+      const data = plays ? `${picture.src ? ` data-picture="${picture.src}"` : ""}${picture.note ? ` data-picture-note="${esc(picture.note)}"` : ""}` : "";
+      return `<li data-step="${row.step}"${status === "failed" ? " class=\"failed\"" : ""}${data}>${plays ? `<button type="button" class="receipt-step" data-receipt-step="${row.step}">${cells}</button>` : `<div class="receipt-step">${cells}</div>`}</li>`;
     }).join("");
     return `<section class="receipt-chapter">${head}<ol class="receipt-items">${items}</ol></section>`;
   }).join("");
   return `<section class="receipt-chapters" aria-label="Steps"><h3>Steps</h3><div class="receipt-list">${chapters}</div></section>`;
+}
+
+/** The step player: one step's picture at a time, with a mark on the bar where each chapter starts. receipt-player.ts runs it and reads each step from its row in the step list. */
+function receiptPlayerHtml(run: RunSummary, outline: ReceiptOutline): string {
+  if (!receiptPlays(run)) return "";
+  const total = run.steps!.length;
+  const marks = outline.chapters.filter((chapter) => chapter.title).map((chapter) =>
+    `<button type="button" class="player-mark" data-receipt-step="${chapter.start}" style="left:${(((chapter.start - 1) / (total - 1)) * 100).toFixed(2)}%" title="${esc(chapter.title)}" aria-label="${esc(`${chapter.title}, from step ${chapter.start}`)}"></button>`).join("");
+  return `<section class="receipt-player" id="receipt-player" aria-label="Step player" data-steps="${total}">
+    <div class="player-stage"><img id="player-picture" alt="" hidden><p id="player-empty" hidden>No picture was recorded for this step.</p></div>
+    <p class="player-caption"><span id="player-chapter"></span><span id="player-line"></span></p>
+    <div class="player-controls">
+      <button type="button" id="player-toggle" aria-label="Play"><svg class="player-play" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.5v11l9-5.5z"/></svg><svg class="player-pause" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 2.5h3.2v11H3.5zM9.3 2.5h3.2v11H9.3z"/></svg></button>
+      <div class="player-track"><div class="player-marks">${marks}</div><input id="player-seek" type="range" min="1" max="${total}" step="1" value="1" aria-label="Step"></div>
+      <span id="player-count">1 / ${total}</span>
+      <button type="button" id="player-speed" aria-label="Speed 1×">1×</button>
+    </div>
+  </section>`;
 }
 
 interface InspectorStep {
@@ -2331,6 +2367,7 @@ export function runReceipt(view: ReturnType<typeof inspectRunView>, name: string
     ${spoken || (isAgentBrowserSession(run) && ask && runWaiting(run)) || skipUnlabeled ? "" : unlabeled ? `<p class="receipt-reason">${esc(ownerStopText(unlabeled))}</p>` : ""}
     ${pendingHealCount([run]) ? `<p>A target change is ready to review.</p><button type="button" data-screen="heals">Review heals</button>` : ""}
     ${outcome ? `<section class="receipt-outcome" aria-label="Outcome">${outcome}</section>` : ""}
+    ${receiptPlayerHtml(run, outline)}
     ${receiptStepsHtml(run, outline)}
     ${receiptAgentHtml(run, outline)}
     ${receiptBrowsers(run)}
