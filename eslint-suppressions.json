@@ -36,42 +36,6 @@
       "count": 1
     }
   },
-  "desktop/test/live/cross-device-search.test.ts": {
-    "@typescript-eslint/no-unsafe-argument": {
-      "count": 1
-    }
-  },
-  "desktop/test/live/listing-devices.test.ts": {
-    "@typescript-eslint/no-unsafe-member-access": {
-      "count": 1
-    }
-  },
-  "desktop/test/live/marketplace-trust.test.ts": {
-    "@typescript-eslint/no-unsafe-argument": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-member-access": {
-      "count": 1
-    }
-  },
-  "desktop/test/live/registry.test.ts": {
-    "@typescript-eslint/no-unsafe-argument": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-member-access": {
-      "count": 2
-    }
-  },
-  "desktop/test/live/remote-mcp.test.ts": {
-    "@typescript-eslint/no-unsafe-member-access": {
-      "count": 1
-    }
-  },
-  "desktop/test/live/sync-conflict.test.ts": {
-    "@typescript-eslint/no-unsafe-member-access": {
-      "count": 1
-    }
-  },
   "desktop/test/unit/cdp-video-privacy.test.ts": {
     "@typescript-eslint/no-unsafe-assignment": {
       "count": 2
@@ -108,14 +72,6 @@
       "count": 1
     },
     "@typescript-eslint/no-unsafe-member-access": {
-      "count": 1
-    }
-  },
-  "desktop/test/unit/files-dates-demo.test.ts": {
-    "@typescript-eslint/no-misused-promises": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-argument": {
       "count": 1
     }
   },

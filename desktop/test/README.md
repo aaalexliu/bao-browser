@@ -56,7 +56,7 @@ The old root extension and its `test:live` scripts are retired. Run desktop live
 npx tsc -p tsconfig.desktop.json && node desktop/test/run-live.mjs
 ```
 
-Name compiled files after the runner to select them; an unknown name fails. The live runner applies the same sanitized test environment, adds `BAO_LIVE_TESTS=1`, and pins Playwright Chromium. Direct live files call `pinTestBrowser()` too. Linux-only files still need tools such as `xdotool` for `extension-host.test.ts`.
+Name compiled files after the runner to select them; an unknown name fails. The live runner applies the same sanitized test environment, adds `BAO_LIVE_TESTS=1`, and pins Playwright Chromium. Direct live files call `pinTestBrowser()` too.
 
 `npm run test:desktop:integration` runs `browser.test.js`, then `drift.test.js`. Keep those local browser fixtures sequential: in parallel, one Chrome can load the other fixture's pages.
 
