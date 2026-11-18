@@ -95,6 +95,7 @@ test("an open receipt stays in place when another run changes the state", { time
     await page.locator('[data-open-run="open"]').click();
     await page.locator("#run-receipt").waitFor();
     await statePolls(2);
+    assert.equal(await page.locator("#run-evidence #pass-grid thead time").count(), 1);
     await page.evaluate(() => {
       document.getElementById("run-receipt")!.dataset.kept = "yes";
       document.getElementById("content")!.scrollTop = 600;
@@ -109,6 +110,7 @@ test("an open receipt stays in place when another run changes the state", { time
       page: document.getElementById("content")!.scrollTop,
       list: document.querySelector(".receipt-list")?.scrollTop,
     })), { kept: "yes", page: 600, list: 300 }, "a new run in the list does not rebuild the open receipt or move its scrolling");
+    assert.equal(await page.locator("#run-evidence #pass-grid thead time").count(), 2, "Detailed evidence still gains the new run in Recent runs");
 
     const open = app.library.readRun("open");
     app.library.saveRun({ ...open, status: "failed", failure: { reason: "The page stopped." } });
