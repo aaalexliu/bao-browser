@@ -217,16 +217,17 @@ test("attention separates waiting runs from items and keeps import and step revi
   assert.match(side, /data-count="5" aria-label="5 need you"/);
   assert.match(side, /1 run is waiting for you · Sign-in needs you · 1 step needs review/);
   assert.doesNotMatch(side, /5 runs/);
-  assert.match(shellList("runs", state), />5 need you</);
+  assert.match(shellList("runs", state), /aria-label="5 items">5</);
+  assert.doesNotMatch(shellList("runs", state), /5 need you/);
   const list = runsList(runs, [], "", Date.now(), undefined, "confirm");
   assert.match(list, /aria-label="5 items">5</);
   assert.match(list, /Sign-in needs you/);
   assert.match(list, /Step needs review after 3 heals/);
   assert.match(shellList("runs", {}), />No runs yet</);
   assert.match(rail({}), /aria-label="No runs yet"/);
-  assert.match(shellList("runs", { runs: [runs[1]!] }), />1 needs you</);
+  assert.match(shellList("runs", { runs: [runs[1]!] }), /aria-label="1 items">1</);
   assert.match(rail({ runs: [runs[1]!] }), /aria-label="1 needs you"/);
-  assert.match(shellList("runs", { runs: [{ id: "done", workflowId: "wf", status: "passed" }] }), />Nothing needs you</);
+  assert.match(shellList("runs", { runs: [{ id: "done", workflowId: "wf", status: "passed" }] }), />Nothing needs you\.</);
 });
 
 test("footer follows replay start and end when no other state changes", { timeout: scaledMs(30_000) }, async () => {
@@ -257,7 +258,6 @@ test("footer follows replay start and end when no other state changes", { timeou
     for (const run of reviewRuns) app.library.saveRun({ ...run, steps: [] });
     extra = { runs: reviewRuns, pendingImport: { id: "consent", phase: "confirm", domain: "example.com", message: "Review the import" } };
     await page.waitForFunction(() => document.querySelector("#attention")?.getAttribute("data-count") === "2");
-    assert.equal(await page.locator(".pane-title p").innerText(), "2 need you");
     assert.equal(await page.locator("#attention-label").innerText(), "Sign-in needs you · 1 step needs review");
     assert.equal(await page.locator("#needs-you-heading .run-count").innerText(), "2");
     assert.equal(await page.locator("html").getAttribute("data-badge"), "2");
@@ -300,7 +300,7 @@ test("Runs first load opens the top Needs-you run, else newest, without replacin
     assert.equal(await page.locator('#runs [aria-current=true]').getAttribute("data-open-run"), "waiting");
     assert.equal(await page.evaluate(() => document.activeElement?.tagName), "BODY", "first load does not draw a keyboard focus ring around the receipt");
     assert.equal(await page.locator("#attention-label").innerText(), "1 run is waiting for you");
-    assert.equal(await page.locator(".pane-title p").innerText(), "1 needs you");
+    assert.equal(await page.locator("#needs-you-heading .run-count").innerText(), "1");
     await page.locator('#rail [data-place=workflows]').click();
     await page.locator('#rail [data-place=runs]').click();
     await page.locator('#run-receipt').waitFor();
