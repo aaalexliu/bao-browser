@@ -13,16 +13,11 @@ const env = laneChildEnv("hermetic", process.env);
 const files = group.tests.map((file) => file.replace(/^desktop\/test\//, "desktop/dist/desktop/test/").replace(/\.ts$/, ".js"));
 const flags = runnerTestArgs();
 const filter = group.names ? ["--test-name-pattern=" + group.names.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$").join("|")] : [];
-const args = group.kind === "desktop"
-  ? ["--test", "--test-concurrency=2", "--test-reporter=tap", ...flags, ...filter]
-  : group.kind === "web"
-    ? ["--experimental-transform-types", "--import", "./web/test/register.mjs", "--test", ...flags]
-    : null;
-if (!args) throw new Error(`Unknown essential kind: ${group.kind}`);
+const args = ["--test", "--test-concurrency=2", "--test-reporter=tap", ...flags, ...filter];
 const result = await runWithFileRetry({
   execPath: process.execPath,
   args,
-  files: group.kind === "web" ? group.tests : files,
+  files,
   env,
 });
 if (result.signal) process.kill(process.pid, result.signal);

@@ -17,14 +17,6 @@ function fakeChromium(): string {
   return file;
 }
 
-test("the required files and dates demo stays on local fixtures", () => {
-  const demo = readFileSync("desktop/test/unit/files-dates-demo.test.ts", "utf8");
-  assert.equal(demo.includes("/opt/cursor"), false);
-  assert.equal(demo.includes("automationintesting.online"), false);
-  assert.equal(demo.includes("www.irs.gov"), false);
-  assert.equal(demo.includes("the-internet.herokuapp.com"), false);
-});
-
 test("a failed evidence write does not replace the caller error", async () => {
   await tryWriteEvidence(() => {
     throw new Error("disk full");

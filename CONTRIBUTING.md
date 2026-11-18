@@ -24,8 +24,8 @@ the same static gates as Guardrails' required `static` jobs (types, lint,
 architecture), then checks the diff against `origin/main` for whitespace
 errors. It takes about 30 seconds. The `test/essential.json` groups and the
 full suite run in CI. [Testing](docs/TESTING.md) describes safe browser and Library isolation.
-Use focused test files while working and the PR `full-suite` label for the
-full run.
+Use focused test files while working, the PR `full-suite` label for the full
+run of `desktop/test/unit`, and the `replay-suite` label for the replay lane.
 
 For a packaging change, build desktop and extension, then build Bao.app using
 [Mac build](docs/mac-build.md). Reuse the signed helper; do not rebuild it or
@@ -45,7 +45,7 @@ The hook fills the root and web `node_modules` in each new run copy before Revie
 ## PR checks
 
 Every PR gets the essential tests and static gates. Decide whether the
-`full-suite` label is needed and state the choice and reason in the PR body.
+`full-suite` or `replay-suite` label is needed and state the choice and reason in the PR body.
 Choose it for shared runtime, packaging, or test-infrastructure changes that
 the essential set does not fully cover. A removal must name each deleted test,
 its last measured time (or note that no measurement exists), and the retired

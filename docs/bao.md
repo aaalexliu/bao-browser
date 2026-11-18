@@ -47,7 +47,7 @@ The poll number is the rest of that 200 ms sleep plus the result POST, measured 
 
 A throwaway library profile replayed `https://books.toscrape.com/` through the relay. The workflow driver was absent, so the run used Playwright. Round trip 1168 ms, outcome ok. A second pass set the workflow to `cdp-live` and pointed `BAO_CDP_PORT_FILE` at a copy of `DevToolsActivePort` under the temp directory, from a Chrome started with its own user-data dir. Round trip 469 ms, outcome ok. `workflowDriver` still reported Playwright for that document. The test did not read a profile under the home directory. No captcha solving and no fingerprint spoofing.
 
-Hermetic coverage is `desktop/test/unit/relay.test.ts` (pairing, revoke, cross-account isolation, reconnect resume, secret masking, flag-off 404, the latency line). The durable store check is `web/src/lib/relay-job.test.ts` (two `PgJobStore` objects, one PGlite directory). The books replay is `desktop/test/live/relay-books.test.ts` and is not part of `npm run test:v1`.
+Hermetic coverage is `desktop/test/replay/relay.test.ts` (pairing, revoke, cross-account isolation, reconnect resume, secret masking, flag-off 404, the latency line). The durable store check is `web/src/lib/relay-job.test.ts` (two `PgJobStore` objects, one PGlite directory). The books replay is `desktop/test/live/relay-books.test.ts` and is not part of `npm run test:v1`.
 
 ## 2026-10-24 — Remote MCP for a cloud agent
 
