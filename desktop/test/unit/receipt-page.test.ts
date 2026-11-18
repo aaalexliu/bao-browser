@@ -78,3 +78,47 @@ test("a receipt shows the proof shot above a step list that scrolls inside its o
     await rm(home, { recursive: true, force: true });
   }
 });
+
+test("an open receipt stays in place when another run changes the state", { timeout: scaledMs(60_000) }, async () => {
+  const home = await mkdtemp(path.join(tmpdir(), "bao-receipt-keep-"));
+  const previousHome = process.env.HOME;
+  process.env.HOME = home;
+  const app = await startApp({ home, extensionHost: false, chromeProfilesRoot: path.join(home, "profiles") });
+  const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
+  const page = await browser.newPage({ viewport: { width: 1280, height: 860 } });
+  const statePolls = async (count: number) => {
+    for (let n = 0; n < count; n++) await page.waitForResponse((response) => new URL(response.url()).pathname === "/api/state");
+  };
+  try {
+    app.library.saveRun(recorded("open", 40) as never);
+    await page.goto(`http://127.0.0.1:${app.port}/`);
+    await page.locator('[data-open-run="open"]').click();
+    await page.locator("#run-receipt").waitFor();
+    await statePolls(2);
+    assert.equal(await page.locator("#run-evidence #pass-grid thead time").count(), 1);
+    await page.evaluate(() => {
+      document.getElementById("run-receipt")!.dataset.kept = "yes";
+      document.getElementById("content")!.scrollTop = 600;
+      document.querySelector(".receipt-list")!.scrollTop = 300;
+    });
+
+    app.library.saveRun(recorded("another", 2) as never);
+    await page.locator('[data-open-run="another"]').waitFor();
+    await statePolls(2);
+    assert.deepEqual(await page.evaluate(() => ({
+      kept: document.getElementById("run-receipt")?.dataset.kept,
+      page: document.getElementById("content")!.scrollTop,
+      list: document.querySelector(".receipt-list")?.scrollTop,
+    })), { kept: "yes", page: 600, list: 300 }, "a new run in the list does not rebuild the open receipt or move its scrolling");
+    assert.equal(await page.locator("#run-evidence #pass-grid thead time").count(), 2, "Detailed evidence still gains the new run in Recent runs");
+
+    const open = app.library.readRun("open");
+    app.library.saveRun({ ...open, status: "failed", failure: { reason: "The page stopped." } });
+    await page.locator("#run-receipt .receipt-recorded-status").filter({ hasText: "Recorded as failed" }).waitFor();
+    assert.equal(await page.locator("#run-receipt").getAttribute("data-kept"), null, "a change to the open run itself still redraws it");
+  } finally {
+    await browser.close(); await app.close();
+    if (previousHome === undefined) delete process.env.HOME; else process.env.HOME = previousHome;
+    await rm(home, { recursive: true, force: true });
+  }
+});

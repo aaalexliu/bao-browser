@@ -73,6 +73,8 @@ let receiptQuery = "";
 let receiptSearchSelection: { start: number; end: number } | null = null;
 let evidenceOpen = false;
 let runRequest = 0;
+/** The HTML each run host shows now, so that loadRun redraws only the part that changed. */
+const shownRun = new WeakMap<HTMLElement, { receipt: string; evidence: string }>();
 let renderedDetail = "";
 let liveRequest = 0;
 let liveViewElement: HTMLElement | null = null;
@@ -325,7 +327,9 @@ function render(focusDetail = true): void {
   const keepWorkflow = screen === "workflow" && document.getElementById("workflow-host")?.getAttribute("data-workflow") === openWorkflow;
   const keepImport = screen === "import" && document.getElementById("import-sheet")?.getAttribute("data-id") === state.opened?.id;
   const keepLive = screen === "live" && live && document.getElementById("live-run")?.dataset.step === `${live.id}:${live.ask?.stepId ?? ""}:${live.ask?.startedAt ?? ""}`;
-  if (!keepReplay && !keepWorkflow && !keepImport && !keepLive) {
+  // The open receipt stays: loadRun redraws it only when what it shows changed.
+  const keepRun = screen === "run" && document.getElementById("run-host")?.dataset.run === openRun;
+  if (!keepReplay && !keepWorkflow && !keepImport && !keepLive && !keepRun) {
     const body = initialConnectionError ? connectionError()
       : screen === "capture" ? capture()
       : screen === "teach" ? teachScreen()
@@ -1450,6 +1454,7 @@ async function showRun(id: string): Promise<void> {
     const host = document.getElementById("run-host");
     if (!host || screen !== "run" || openRun !== id || request !== runRequest) return;
     receiptSearchSelection = null;
+    shownRun.delete(host);
     host.innerHTML = receiptError();
     document.getElementById("retry-run")!.onclick = () => { void showRun(id).then(() => focusMain({ preventScroll: true })); };
   }
@@ -1475,7 +1480,6 @@ async function loadRun(id: string, request: number): Promise<void> {
     if (screen !== "run" || openRun !== id) receiptSearchSelection = null;
     return;
   }
-  rememberReceiptSearch();
   const timings = (run.steps || []).map((step) => Math.max(0, (step.endedAt || 0) - (step.startedAt || 0)));
   const recorded = !workflow.recordedOnly && workflow.steps ? trajectoryFromWorkflow(workflow as unknown as WorkflowV2, timings) : [];
   const recent = (state.runs || []).filter((item) => item.workflowId === run.workflowId);
@@ -1484,12 +1488,31 @@ async function loadRun(id: string, request: number): Promise<void> {
   const history = [...merged.values()].sort((a, b) => (a.at || 0) - (b.at || 0)).slice(-8);
   const reviewStepIds = reviewItems((state.runs || []).filter((item) => item.workflowId === run.workflowId)).map((item) => item.stepId);
   const record = recordIndex ? { index: recordIndex, open: new Set([...openRecords].flatMap((key) => key.startsWith(`${id}/`) ? [key.slice(id.length + 1)] : [])) } : undefined;
-  host.innerHTML = (receipt ? runReceipt(receipt, workflow.name, run, workflow.recordedOnly ? undefined : workflow.steps, record) : receiptError()) + `<details id="run-evidence"${evidenceOpen ? " open" : ""}><summary>Detailed evidence</summary>${runViewer(run, workflow, selectedStep, { recent: history, recorded, reviewStepIds })}</details>`;
-  if (!receipt) receiptSearchSelection = null;
+  const html = {
+    receipt: receipt ? runReceipt(receipt, workflow.name, run, workflow.recordedOnly ? undefined : workflow.steps, record) : receiptError(),
+    evidence: `<details id="run-evidence"${evidenceOpen ? " open" : ""}><summary>Detailed evidence</summary>${runViewer(run, workflow, selectedStep, { recent: history, recorded, reviewStepIds })}</details>`,
+  };
+  // Other runs feed the evidence viewer's history, so a new run redraws that part and leaves the receipt as it is.
+  const shown = host.dataset.run === id ? shownRun.get(host) : undefined;
+  const evidence = host.querySelector<HTMLElement>("#run-evidence");
+  if (shown?.receipt !== html.receipt || !evidence) {
+    rememberReceiptSearch();
+    host.innerHTML = html.receipt + html.evidence;
+    if (!receipt) receiptSearchSelection = null;
+    bindRunReceipt(host, id);
+    bindRunEvidence(host, run);
+  } else if (shown.evidence !== html.evidence) {
+    evidence.outerHTML = html.evidence;
+    bindRunEvidence(host, run);
+  }
+  host.dataset.run = id;
+  shownRun.set(host, html);
+  seekPending();
+}
+
+function bindRunReceipt(host: HTMLElement, id: string): void {
   const retry = document.getElementById("retry-run");
   if (retry) retry.onclick = () => { void showRun(id).then(() => focusMain({ preventScroll: true })); };
-  const evidence = document.getElementById("run-evidence") as HTMLDetailsElement;
-  evidence.ontoggle = () => { if (evidence.isConnected) evidenceOpen = evidence.open; };
   host.querySelectorAll<HTMLElement>("[data-receipt-offset]").forEach((button) => {
     button.onclick = () => {
       receiptOffset = Number(button.dataset.receiptOffset);
@@ -1502,6 +1525,12 @@ async function loadRun(id: string, request: number): Promise<void> {
   host.querySelectorAll<HTMLElement>("[data-screen=heals]").forEach((button) => {
     button.onclick = () => navigate("heals");
   });
+}
+
+function bindRunEvidence(host: HTMLElement, run: RunSummary): void {
+  const id = run.id;
+  const evidence = document.getElementById("run-evidence") as HTMLDetailsElement;
+  evidence.ontoggle = () => { if (evidence.isConnected) evidenceOpen = evidence.open; };
   host.querySelectorAll("[data-select-step]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
       const stepId = (btn as HTMLButtonElement).dataset.selectStep || "";
@@ -1586,11 +1615,13 @@ async function loadRun(id: string, request: number): Promise<void> {
   const debug = host.querySelector("#debug-step");
   if (debug) (debug as HTMLButtonElement).onclick = () => openPastRun(run.workflowId, run.id, (debug as HTMLButtonElement).dataset.step || "", run.inputs);
   bindVideoSkip();
-  if (typeof pendingSeek === "number") {
-    const at = pendingSeek;
-    pendingSeek = undefined;
-    seekVideo(at);
-  }
+}
+
+function seekPending(): void {
+  if (typeof pendingSeek !== "number") return;
+  const at = pendingSeek;
+  pendingSeek = undefined;
+  seekVideo(at);
 }
 
 function openPastRun(workflowId: string, runId: string, stepId: string, inputs?: Record<string, string>): void {
