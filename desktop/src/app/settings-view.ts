@@ -139,6 +139,6 @@ export function settingsScreen(view: SettingsView, advanced: string): string {
       `<label id="replay-label" for="replay-switch">Replay saved workflows</label><p id="replay-help">Shows Workflows and Record, and lets agents find and run saved workflows. Off until you turn it on. An agent sees the change the next time it connects.</p>`,
       `<span id="replay-state">${replay ? "On" : "Off"}</span><input class="settings-switch" id="replay-switch" type="checkbox" role="switch" data-setting="replay" aria-describedby="replay-help replay-state"${replay ? " checked" : ""}>`))}
     <p id="settings-feedback" role="status"></p>
-    <details class="settings-advanced" id="settings-advanced"><summary>Technical details</summary><p class="quiet">Engine and window choices use the Save buttons below. Sync and remote pairing details save when you press Pair. Other settings save as you change them.</p>${advanced}</details>
+    <details class="settings-advanced" id="settings-advanced"><summary>Technical details</summary><p class="quiet">Engine and window choices use the Save buttons below.${replay ? " Sync and remote pairing details save when you press Pair." : ""} Other settings save as you change them.</p>${advanced}</details>
   </section>`;
 }

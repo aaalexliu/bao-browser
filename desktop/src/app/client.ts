@@ -597,10 +597,10 @@ function settings(): string {
       <button id="save-agent-browser-lifetime" type="button">Save window choice</button>
       <p id="agent-browser-lifetime-feedback" role="status"></p>
     </div>
-    ${hostAccessPanel(state.settings?.hostAccess)}
+    ${replayOn() ? hostAccessPanel(state.settings?.hostAccess) : ""}
     ${replayOn() ? `<p class="quiet">AI help uses the source chosen above. After ${esc(String(circuit))} failed runs in a short window, auto-heal stays off.</p>
     <label>Failed runs that stop auto-heal <input id="circuit-limit" data-setting="circuitLimit" type="number" required min="1" max="50" value="${circuit}" aria-describedby="circuit-limit-error"></label><span id="circuit-limit-error" role="status" hidden></span>` : ""}
-    ${syncPanel(state.sync, conflictCopy)}
+    ${replayOn() ? syncPanel(state.sync, conflictCopy) : ""}
     <h3>Appearance</h3>
     <label>Theme <select id="theme">
       <option value="light" ${theme === "light" ? "selected" : ""}>Light</option>
