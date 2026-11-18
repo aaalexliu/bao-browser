@@ -1,12 +1,9 @@
-import { testWorkflow } from "../support/workflow";
 import assert from "node:assert/strict";
 import childProcess from "node:child_process";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { workflowDriver } from "../../src/extension/protocol";
-import { validateWorkflow, type WorkflowV2 } from "../../src/v1/schema";
 import { liveShotUrl, publicLiveSession, liveLabel, shotNameOk } from "../../src/cdp-live/live-record";
 import { acquireCdpLock, lockIsStale, lockText, parseLock, releaseCdpLock } from "../../src/cdp-live/lock";
 import { liveSessionView, screenFromQuery } from "../../src/app/live-view";
@@ -18,7 +15,6 @@ import {
   type AxLike,
 } from "../../src/cdp-live/consent";
 import { assertActivePortFile, listenPid, parseDevToolsActivePort, parseListenPid } from "../../src/cdp-live/endpoint";
-import { CDP_LIVE_SERVER_REFUSAL, EXTENSION_NOT_CONNECTED, refusesOwnedBrowser, replayRefusal } from "../../src/cdp-live/launch-guard";
 import { ServerFrameDecoder, handshakeRequest, scrubCdp } from "../../src/cdp-live/socket";
 
 const ready = {
@@ -85,27 +81,6 @@ test("AX summary drops other window titles", () => {
   assert.equal(blob.includes("Allow remote debugging?"), true);
   assert.equal(summary.dialog.buttonCount, 1);
   assert.equal(summary.checkbox.value, "0");
-});
-
-test("cdp-live is not a workflow driver", () => {
-  const doc = testWorkflow({ id: "wf-cdp-live", name: "Live", startUrl: "https://books.toscrape.com/" });
-  assert.ok(validateWorkflow({ ...doc, driver: "cdp-live" as unknown as WorkflowV2["driver"] }).includes("driver"));
-  assert.ok(validateWorkflow({ ...doc, driver: "cdp" as unknown as WorkflowV2["driver"] }).includes("driver"));
-  assert.equal(workflowDriver({ driver: "cdp-live" }), "playwright");
-  assert.equal(workflowDriver({ driver: "cdp" }), "playwright");
-  assert.equal(refusesOwnedBrowser("cdp-live"), true);
-  assert.equal(refusesOwnedBrowser("playwright"), false);
-  assert.equal(refusesOwnedBrowser("extension"), false);
-  assert.equal(refusesOwnedBrowser("cdp"), false);
-  assert.equal(CDP_LIVE_SERVER_REFUSAL, "this workflow used the retired live driver");
-});
-
-test("a replay refuses cdp-live, and refuses an extension workflow only without a linked extension", () => {
-  assert.equal(replayRefusal("cdp-live", { extensionLinked: true }), CDP_LIVE_SERVER_REFUSAL);
-  assert.equal(replayRefusal("extension", { extensionLinked: false }), EXTENSION_NOT_CONNECTED);
-  assert.equal(replayRefusal("extension", { extensionLinked: true }), null);
-  assert.equal(replayRefusal("playwright", { extensionLinked: false }), null);
-  assert.equal(replayRefusal(undefined, { extensionLinked: false }), null);
 });
 
 test("the browser handshake has no Origin header", () => {

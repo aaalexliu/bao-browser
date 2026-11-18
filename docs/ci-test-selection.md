@@ -15,7 +15,9 @@ The move rests on one measured full run of main at `ff9782af`, [run 44227928623]
 
 Cut outright, because no script or CI job ran them and they needed a local `vercel dev` or a real extension: `desktop/test/live/` `cross-device-search`, `import-gate`, `listing-devices`, `marketplace-trust`, `registry`, `sync-conflict`, `vercel-dev-sync`, `remote-mcp`, and `extension-host`. Cut with them: `files-dates-demo.test.ts`, 32 s of every full run to replay a demo whose cases `files-dates.test.ts` keeps.
 
-27 unit files still mix replay cases with first-run cases. They stay in `desktop/test/unit`, which is why that lane also runs with `BAO_REPLAY=1`.
+A second pass split the mixed files that were in the essential set: 45 replay cases moved to a file of the same name in `desktop/test/replay`, and the 5 replay cases on the extension relay route were cut. The essential set gained a `receipt` group, 23 files on the run record and the receipt of a first agent run, which makes it 7 groups and 69 files.
+
+11 unit files still mix replay cases with first-run cases, none of them in the essential set except `agent-browser-startup.test.ts` and `receipt-outline.test.ts`, whose cases guard the first run's open and receipt. They stay in `desktop/test/unit`, which is why that lane also runs with `BAO_REPLAY=1`.
 
 ## Legacy extension retirement
 

@@ -124,6 +124,11 @@
       "count": 1
     }
   },
+  "desktop/test/replay/viewer-depth.test.ts": {
+    "@typescript-eslint/no-unsafe-assignment": {
+      "count": 1
+    }
+  },
   "desktop/test/unit/cdp-video-privacy.test.ts": {
     "@typescript-eslint/no-unsafe-assignment": {
       "count": 2
@@ -168,11 +173,6 @@
     "@typescript-eslint/no-unsafe-argument": {
       "count": 1
     },
-    "@typescript-eslint/no-unsafe-assignment": {
-      "count": 1
-    }
-  },
-  "desktop/test/unit/viewer-depth.test.ts": {
     "@typescript-eslint/no-unsafe-assignment": {
       "count": 1
     }

@@ -7,14 +7,10 @@ import { startApp } from "../../src/app/server";
 import type { CdpSocket } from "../../src/cdp-live/socket";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
-import { navigateWorkflowBrowser, openWorkflowBrowser, ownerPrompts } from "../../src/engines/workflow-browser";
 import { EXTENSION_NOT_LINKED } from "../../src/extension/cdp-relay";
 import { openRunningChrome, RUNNING_CHROME_EXTENSION_OFF, RUNNING_CHROME_NEEDS_APP } from "../../src/extension/running-chrome";
 import { pinTestBrowser } from "../../src/launch";
-import { runWorkflow } from "../../src/mcp/catalog";
 import { Library } from "../../src/v1/store";
-import type { WorkflowStep } from "../../src/v1/schema";
-import { targetFor, testWorkflow } from "../support/workflow";
 import { ownerChrome, stripWhen, type Strip } from "../support/owner-chrome";
 import { scaledMs } from "../runtime";
 
@@ -135,36 +131,6 @@ test("Running Chrome through the extension is refused with the gate off and expl
   await assert.rejects(openRunningChrome({ home: root }), { message: EXTENSION_NOT_LINKED });
 });
 
-test("Running Chrome refuses a workflow that downloads or uploads a file before it opens a tab", { timeout: scaledMs(30_000) }, async (t) => {
-  const root = await mkdtemp(path.join(tmpdir(), "bao-running-files-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
-  const app = await startApp({ home: root, port: 0, extensionHost: true, extensionConfigHome: path.join(root, "native-host") });
-  t.after(() => app.close());
-  app.library.updateSettings({ runningChromeExtension: true });
-  const refusal = "This workflow downloads or uploads a file, which Bao cannot do on your running Chrome yet. Run it on the Bao profile instead.";
-  const upload: WorkflowStep = { id: "up", index: 0, action: "upload", caption: { text: "Upload" }, timeoutMs: 1000, file: { input: "statement" },
-    target: targetFor({ surface: "dom", role: "textbox", tag: "input", id: "file", path: [] }) };
-  const statement = { name: "statement", type: "file", label: "statement", supply: "must" } as const;
-  const docs = {
-    download: testWorkflow({ id: "download", steps: [{ id: "dl", index: 0, action: "download", caption: { text: "Download" }, timeoutMs: 1000, download: { output: "statement", name: "statement.pdf", url: "https://example.test/statement.pdf" } }] }),
-    upload: testWorkflow({ id: "upload", inputs: [statement], steps: [upload] }),
-    drop: testWorkflow({ id: "drop", inputs: [statement, { name: "rows", type: "text", label: "rows", supply: "must" }],
-      steps: [{ id: "each", index: 0, action: "for_each", caption: { text: "Each row" }, timeoutMs: 1000, forEach: { over: { kind: "input", name: "rows" }, steps: [{ ...upload, id: "dropped", action: "drop" }] } }] }),
-    plain: testWorkflow({ id: "plain", steps: [{ id: "read", index: 0, action: "verify", caption: { text: "Read" }, timeoutMs: 1000, check: { kind: "text", match: "x", timeoutMs: 1000 } }] }),
-  };
-  for (const doc of Object.values(docs)) app.library.save(doc);
-  for (const id of ["download", "upload", "drop"]) {
-    const outcome = await runWorkflow(app.library, { id, browser: "current" });
-    assert.deepEqual([outcome.outcome, outcome.reason], ["failed", refusal], `run_workflow ${id}`);
-  }
-  assert.equal((await runWorkflow(app.library, { id: "plain", browser: "current" })).reason, EXTENSION_NOT_LINKED);
-  app.library.updateSettings({ runningChromeExtension: false });
-  for (const id of ["download", "upload", "drop"]) {
-    const outcome = await runWorkflow(app.library, { id, browser: "current" });
-    assert.deepEqual([outcome.outcome, outcome.reason], ["failed", refusal], `run_workflow ${id} over remote debugging`);
-  }
-});
-
 for (const ending of ["close", "finish", "disconnect"] as const) test(`the agent route drives a grouped background task tab and closes only Bao's tabs on ${ending}`, { timeout: scaledMs(60_000) }, async (t) => {
   const chrome = await ownerChrome(t, PAGES);
   const root = await mkdtemp(path.join(tmpdir(), "bao-running-proxy-"));
@@ -239,38 +205,4 @@ const bound = JSON.parse(fs.readFileSync('bao.target', 'utf8')).targetId;
     assert.ok(step.afterShot);
     await access(path.join(home, "shots", "runs", run!.id, step.afterShot));
   }
-});
-
-test("a workflow on Running Chrome runs in a grouped background tab, opens the group for a handoff, and closes it", { timeout: scaledMs(60_000) }, async (t) => {
-  const chrome = await ownerChrome(t, PAGES);
-  const session = await openWorkflowBrowser({ browser: "current", home: chrome.home, site: `${chrome.base}/task`, extensionRoute: true });
-  t.after(() => session.close());
-  assert.equal(session.kind, "current");
-  await navigateWorkflowBrowser(session, `${chrome.base}/task`);
-  await session.page.fill("#q", "Ada");
-  await session.page.click("#b");
-  assert.equal(await session.page.title(), "Saved Ada");
-  let strip = await chrome.strip();
-  const task = strip.tabs.find((tab) => tab.url.endsWith("/task"))!;
-  assert.deepEqual(strip.groups.map((item) => [item.title, item.collapsed]), [["Bao", true]]);
-  assert.equal(task.groupId, group(strip)!.id);
-  assert.deepEqual(strip.tabs.filter((tab) => tab.groupId !== -1).map((tab) => tab.id), [task.id], "the group holds only the page Bao works on, no blank tab");
-  assert.equal(active(strip)?.id, chrome.ownerTabId);
-
-  const prompts = ownerPrompts(session)!;
-  prompts.showAsk!({ kind: "confirm", workflowId: "wf", workflowName: "Save", stepId: "save", stepIndex: 1, stepCount: 1, label: "Save",
-    site: "127.0.0.1", windowName: "Task", instruction: "Press Save.", startedAt: 1, deadline: null, timeoutMs: 1000, runId: "run" });
-  strip = await stripWhen(chrome, (s) => group(s)?.collapsed === false);
-  assert.equal(group(strip)?.collapsed, false);
-  assert.equal(active(strip)?.id, chrome.ownerTabId, "a handoff never switches the owner's tab");
-  prompts.clearConfirm!("run");
-  assert.equal(group(await stripWhen(chrome, (s) => group(s)?.collapsed === true))?.collapsed, true);
-
-  // The owner's own request to see the run brings its tab to the front.
-  await session.bringToFront();
-  assert.equal(active(await stripWhen(chrome, (s) => active(s)?.id === task.id))?.id, task.id);
-
-  await session.close();
-  strip = await stripWhen(chrome, (s) => s.tabs.length === 1);
-  assert.deepEqual(strip.tabs.map((tab) => tab.id), [chrome.ownerTabId], "the run's tab closes with the run");
 });
