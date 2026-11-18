@@ -8,24 +8,32 @@ The native-messaging extension in `extension/` is still bundled in Bao.app.
 ## Choose the PR checks
 
 Every PR runs static gates and the tests in
-[`test/essential.json`](../test/essential.json). The separate **Full suite**
-check runs only on a PR with the `full-suite` label or through manual dispatch.
-It has no schedule and is not a required check. A label starts it at once and
-keeps it running on later pushes while the label remains.
+[`test/essential.json`](../test/essential.json). Two more checks run only when
+asked, each by its own PR label or both through manual dispatch. Neither has a
+schedule or is a required check. A label starts its check at once and keeps it
+running on later pushes while the label remains.
 
-Opt in when a change touches shared runtime, engines, live-browser behavior,
-recording/replay, sync/storage, packaging, or test infrastructure that the
-essential set does not cover. Skip it when the essential set fully covers the
+| Label | Runs | Covers |
+| --- | --- | --- |
+| `full-suite` | `desktop/test/unit` | The first agent run: `agent_browser`, Running Chrome, the run record, the receipt, Chrome profiles, install, the app shell |
+| `replay-suite` | `desktop/test/replay`, then `web/` | What the [Replay switch](bao.md#replay-switch) gates: saved-workflow replay, heals, the recorder, the Workflows place, the extension driver, remote relay, sync, the registry, evals |
+
+Add `full-suite` when a change touches shared runtime, engines, live-browser
+behavior, packaging, or test infrastructure that the essential set does not
+cover. Add `replay-suite` when it touches replay, recording, sync, the
+registry, or `web/`. Shared code such as the Library store, the app server, or
+the MCP server needs both. Skip them when the essential set fully covers the
 change. Always state the choice and reason in the PR body.
 
 ```sh
 gh-axi pr edit <number> --add-label full-suite
+gh-axi pr edit <number> --add-label replay-suite
 gh-axi workflow run guardrails.yml --ref <branch>
 ```
 
-The full check runs hermetic desktop and web tests. It no longer builds or
-tests the legacy extension. It never runs public-site tests or billable model
-evals. Read its actual result; an essential pass is not a full-suite pass.
+Both checks are hermetic. They never run public-site tests or billable model
+evals. Read the actual result; an essential pass is not a full-suite pass, and
+a full-suite pass says nothing about replay.
 [Selection evidence](ci-test-selection.md) records the retired suites and their
 last measured times.
 
@@ -72,8 +80,8 @@ JS
 
 ## Run broader checks remotely
 
-`npm run check` checks types and runs desktop units. `npm --prefix web test`
-runs the registry tests. Prefer the opt-in remote Full suite to a full local
+`npm run check` checks types and runs desktop units. `npm run test:desktop:replay`
+runs the replay lane. `npm --prefix web test` runs the registry tests. Prefer the opt-in remote Full suite to a full local
 pass on the shared Mac. Local browser integration uses
 `npm run test:desktop:integration`.
 

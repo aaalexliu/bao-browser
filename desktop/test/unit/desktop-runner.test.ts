@@ -153,10 +153,10 @@ require("node:test")("forced once", () => {
 `;
 }
 
-function runPlanned(files: Record<string, string>): { status: number | null; output: string } {
+function runPlanned(files: Record<string, string>, args: string[] = [], lane: "unit" | "replay" = "unit"): { status: number | null; output: string } {
   const root = mkdtempSync(path.join(tmpdir(), "bao-runner-flaky-"));
   const runtime = path.join(root, "desktop/dist/desktop/test/runtime.js");
-  const dist = path.join(root, "desktop/dist/desktop/test/unit");
+  const dist = path.join(root, "desktop/dist/desktop/test", lane);
   const names = Object.keys(files);
   mkdirSync(path.dirname(runtime), { recursive: true });
   mkdirSync(dist, { recursive: true });
@@ -170,7 +170,7 @@ exports.playwrightVersionError = () => undefined;`);
   delete env.NODE_OPTIONS;
   delete env.BAO_TEST_FAILED_FILES;
   try {
-    const result = spawnSync(process.execPath, [runner], { cwd: root, env, encoding: "utf8", timeout: scaledMs(20_000) });
+    const result = spawnSync(process.execPath, [runner, ...args], { cwd: root, env, encoding: "utf8", timeout: scaledMs(20_000) });
     return { status: result.status, output: `${result.stdout}${result.stderr}` };
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -195,6 +195,35 @@ test("a file that fails once is flaky and a file that fails twice fails the run"
     assert.equal(once.output.includes("failed:"), false);
   } finally {
     rmSync(marker, { force: true });
+  }
+});
+
+test("a lane's shards run each file once between them, and --lane=replay runs the replay folder", { timeout: scaledMs(60_000) }, () => {
+  const log = path.join(mkdtempSync(path.join(tmpdir(), "bao-runner-shards-")), "ran.txt");
+  const names = ["a", "b", "c", "d", "e"].map((name) => `${name}.test.js`);
+  const files = Object.fromEntries(names.map((name) => [name, `require("node:test")(${JSON.stringify(name)}, () => { require("node:fs").appendFileSync(${JSON.stringify(log)}, ${JSON.stringify(`${name}\n`)}); });\n`]));
+  const ran = (): string[] => {
+    const lines = readFileSync(log, "utf8").trim().split("\n");
+    rmSync(log);
+    return lines.sort();
+  };
+  try {
+    const perShard = ["1/3", "2/3", "3/3"].map((shard) => {
+      const result = runPlanned(files, [`--shard=${shard}`]);
+      assert.equal(result.status, 0, result.output);
+      return ran();
+    });
+    assert.deepEqual(perShard, [["a.test.js", "d.test.js"], ["b.test.js", "e.test.js"], ["c.test.js"]]);
+    const replay = runPlanned(files, ["--lane=replay"], "replay");
+    assert.equal(replay.status, 0, replay.output);
+    assert.deepEqual(ran(), names);
+    for (const bad of ["--shard=4/3", "--shard=0/3", "--shard=two", "--lane=live"]) {
+      const refused = runPlanned(files, [bad]);
+      assert.notEqual(refused.status, 0, bad);
+      assert.equal(existsSync(log), false, bad);
+    }
+  } finally {
+    rmSync(path.dirname(log), { recursive: true, force: true });
   }
 });
 

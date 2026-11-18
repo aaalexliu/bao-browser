@@ -59,7 +59,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [auth, password-slot, experian, video-host, storage, isolation, browser, browser-mcp, core, web]
+        group: [experian, video-host, isolation, browser, browser-mcp, core]
     env:
       BAO_HEAL_CURSOR_ACCOUNT: "0"
       PLAYWRIGHT_BROWSERS_PATH: /tmp/bao-playwright

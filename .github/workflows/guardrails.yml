@@ -20,10 +20,44 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  full-suite:
-    if: github.event_name == 'workflow_dispatch' || (contains(github.event.pull_request.labels.*.name, 'full-suite') && (github.event.action != 'labeled' || github.event.label.name == 'full-suite'))
+  # Which lanes this event asks for. `full-suite` runs desktop/test/unit in three shards side by side,
+  # `replay-suite` runs desktop/test/replay and web/. A manual run takes both. A label event that adds some other label runs nothing.
+  plan:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'full-suite') || contains(github.event.pull_request.labels.*.name, 'replay-suite')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    outputs:
+      suites: ${{ steps.pick.outputs.suites }}
+    steps:
+      - name: Pick lanes from the event and the labels
+        id: pick
+        env:
+          EVENT: ${{ github.event_name }}
+          ACTION: ${{ github.event.action }}
+          ADDED: ${{ github.event.label.name }}
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        shell: bash
+        run: |
+          unit='[{"lane":"unit","shard":"1/3"},{"lane":"unit","shard":"2/3"},{"lane":"unit","shard":"3/3"}]'
+          replay='[{"lane":"replay","shard":"1/1"}]'
+          suites='[]'
+          if [[ "$EVENT" == workflow_dispatch ]]; then
+            suites="$(jq -cn --argjson unit "$unit" --argjson replay "$replay" '$unit + $replay')"
+          elif [[ "$EVENT" == pull_request && ( "$ACTION" != labeled || "$ADDED" == full-suite || "$ADDED" == replay-suite ) ]]; then
+            suites="$(jq -c --argjson unit "$unit" --argjson replay "$replay" '(if index("full-suite") then $unit else [] end) + (if index("replay-suite") then $replay else [] end)' <<<"$LABELS")"
+          fi
+          echo "suites=$suites" >> "$GITHUB_OUTPUT"
+
+  suite:
+    name: ${{ matrix.suite.lane == 'unit' && format('full-suite ({0})', matrix.suite.shard) || 'replay-suite' }}
+    needs: plan
+    if: needs.plan.outputs.suites != '[]'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: ${{ fromJSON(needs.plan.outputs.suites) }}
     env:
       BAO_HEAL_CURSOR_ACCOUNT: "0"
       PLAYWRIGHT_BROWSERS_PATH: /tmp/bao-playwright
@@ -74,6 +108,8 @@ jobs:
       - run: npm run build:desktop -- --sourceMap
       - name: Desktop tests
         env:
+          LANE: ${{ matrix.suite.lane }}
+          SHARD: ${{ matrix.suite.shard }}
           MEASURE_COVERAGE: ${{ inputs.measure-coverage }}
         shell: bash
         run: |
@@ -82,12 +118,12 @@ jobs:
           export HOME
           trap 'rm -rf "$HOME"' EXIT
           if [[ "$MEASURE_COVERAGE" == true ]]; then
-            xvfb-run -a node scripts/measure-test-coverage.mjs "$RUNNER_TEMP/test-coverage"
+            xvfb-run -a node scripts/measure-test-coverage.mjs "$RUNNER_TEMP/test-coverage" "$LANE" "$SHARD"
           else
-            xvfb-run -a node desktop/test/run-v1.mjs --test-concurrency=2 --test-reporter=tap --test-force-exit
+            xvfb-run -a node desktop/test/run-v1.mjs "--lane=$LANE" "--shard=$SHARD" --test-concurrency=2 --test-reporter=tap --test-force-exit
           fi
       - name: Web tests
-        if: always() && !cancelled()
+        if: matrix.suite.lane == 'replay' && always() && !cancelled()
         shell: bash
         run: |
           unset OPENAI_API_KEY ANTHROPIC_API_KEY GROQ_API_KEY XAI_API_KEY CURSOR_API_KEY
@@ -98,7 +134,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always() && inputs.measure-coverage
         with:
-          name: per-test-coverage
+          name: per-test-coverage-${{ matrix.suite.lane }}-${{ strategy.job-index }}
           path: ${{ runner.temp }}/test-coverage
           retention-days: 14
 

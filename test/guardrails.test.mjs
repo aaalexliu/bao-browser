@@ -152,3 +152,26 @@ test("baseline gate rejects added/increased lint suppressions and new graph edge
   expect(check(), 0);
   expect(f.run(process.execPath, ["scripts/check-baselines.mjs"], { BASELINE_REF: "missing-ref" }), 1, /missing-ref/);
 });
+
+test("baseline gate lets a test keep its suppressions when it moves or splits between the unit and replay lanes", (t) => {
+  const f = fixture(t);
+  const rule = "@typescript-eslint/no-unsafe-assignment";
+  const write = (lint) => {
+    for (const file of Object.keys(lint)) f.write(file, "export {};\n");
+    f.write("eslint-suppressions.json", JSON.stringify(lint));
+  };
+  write({ "desktop/test/unit/a.test.ts": { [rule]: { count: 3 } } });
+  f.write(".dependency-cruiser-known-violations.json", "[]");
+  expect(f.run("git", ["init", "--quiet"]), 0);
+  expect(f.run("git", ["add", "eslint-suppressions.json", ".dependency-cruiser-known-violations.json"]), 0);
+  expect(f.run("git", ["-c", "user.name=Guardrail test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "Seed baseline"]), 0);
+  const check = () => f.run(process.execPath, ["scripts/check-baselines.mjs"], { BASELINE_REF: "HEAD" });
+  write({ "desktop/test/replay/a.test.ts": { [rule]: { count: 3 } } });
+  expect(check(), 0);
+  write({ "desktop/test/unit/a.test.ts": { [rule]: { count: 1 } }, "desktop/test/replay/a.test.ts": { [rule]: { count: 2 } } });
+  expect(check(), 0);
+  write({ "desktop/test/unit/a.test.ts": { [rule]: { count: 2 } }, "desktop/test/replay/a.test.ts": { [rule]: { count: 2 } } });
+  expect(check(), 1, /baseline growth.*3 -> 4/);
+  write({ "desktop/test/replay/b.test.ts": { [rule]: { count: 1 } } });
+  expect(check(), 1, /baseline growth.*b\.test\.ts/);
+});

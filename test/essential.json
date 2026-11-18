@@ -1,41 +1,8 @@
 {
-  "auth": {
-    "kind": "desktop",
-    "reason": "Safety: password slots, no saved credentials, login recovery, and human confirm stops.",
-    "tests": [
-      "desktop/test/unit/auth-login.test.ts"
-    ],
-    "names": [
-      "a missing session and an expired session are not logged in",
-      "auth precondition uses the pathname, so a next query is still logged out",
-      "the recorder keeps a password value in a secret slot",
-      "property: interpret retains passwords without changing logged-out replay waits",
-      "a logged-out replay is an auth miss and does not call a model",
-      "a secret from the parameter form fills the masked field and stops before Apply",
-      "login and auth recovery hand off stripped credentials without filling or submitting",
-      "outbound-stripped login and owner Teach steps hand off, but automated entry still stops",
-      "an Apply click runs before a later explicit human confirm",
-      "the local fixture redirects logged-out and expired sessions and hides the secret",
-      "a headed-off replay of both login paths stops at confirm",
-      "an imported stripped password reaches sign-in handoff, and the person continues to confirm"
-    ]
-  },
-  "password-slot": {
-    "kind": "desktop",
-    "reason": "Safety: keep the slow real password-recording case isolated from other auth cases to bound cold-cache wall time.",
-    "tests": [
-      "desktop/test/unit/auth-login.test.ts"
-    ],
-    "names": [
-      "recording a password field saves its value in a secret slot"
-    ]
-  },
   "experian": {
-    "kind": "desktop",
-    "reason": "Safety: pass-through workflow recording, sign-in and bot-wall handoffs, Experian redirects, an explicit Chrome profile and route for every session, open, close, and finish_task with a process list over 1 MiB, the owner's Chrome keeping its active tab while the agent works in a background task tab, a Chrome copy that restores many tabs opening the agent's page in a new background tab beside them, one browser connection per Chrome user-data-dir, shared by every session through the hold, and the gated extension route closing only its own tabs.",
+    "reason": "Safety: sign-in and bot-wall handoffs, Experian redirects, an explicit Chrome profile and route for every session, open, close, and finish_task with a process list over 1 MiB, the owner's Chrome keeping its active tab while the agent works in a background task tab, a Chrome copy that restores many tabs opening the agent's page in a new background tab beside them, one browser connection per Chrome user-data-dir, shared by every session through the hold, and the gated extension route closing only its own tabs.",
     "tests": [
       "desktop/test/unit/agent-browser-startup.test.ts",
-      "desktop/test/unit/agent-browser-workflow.test.ts",
       "desktop/test/unit/browser-pick.test.ts",
       "desktop/test/unit/chrome-access.test.ts",
       "desktop/test/unit/chrome-hold.test.ts",
@@ -48,37 +15,14 @@
     "ffmpeg": true
   },
   "video-host": {
-    "kind": "desktop",
     "reason": "Safety: a host signal stops a pass-through session within its cap and the run still points at a playable video. Split from experian so each group stays well under the 4-minute job limit when a lockfile change misses the package cache.",
     "tests": [
       "desktop/test/unit/video-host-stop.test.ts"
     ],
     "ffmpeg": true
   },
-  "storage": {
-    "kind": "desktop",
-    "reason": "Safety: damaged workflow isolation and preservation; secret stripping and slots across every saved writer, binding, seal, sync/relay, and public report.",
-    "tests": [
-      "desktop/test/unit/damaged-library.test.ts",
-      "desktop/test/unit/import-deeplink.test.ts",
-      "desktop/test/unit/input-token.test.ts",
-      "desktop/test/unit/owner-auth.test.ts",
-      "desktop/test/unit/relay.test.ts",
-      "desktop/test/unit/audit-redact.test.ts",
-      "desktop/test/unit/run-pass.test.ts",
-      "desktop/test/unit/save-workflow.test.ts",
-      "desktop/test/unit/saved-secret-regressions.test.ts",
-      "desktop/test/unit/saved-secrets-capture.test.ts",
-      "desktop/test/unit/saved-secrets-eval.test.ts",
-      "desktop/test/unit/saved-secrets-writers.test.ts",
-      "desktop/test/unit/sync-guard.test.ts",
-      "desktop/test/unit/sync-panel.test.ts",
-      "desktop/test/unit/sync-refuse.test.ts"
-    ]
-  },
   "isolation": {
-    "kind": "desktop",
-    "reason": "Safety: native and extension permissions, the test guard for the owner's Chrome port, daily-profile refusal, model-account isolation, signed helper identity, staged secret owner, and camera/microphone denial.",
+    "reason": "Safety: native permissions, the test guard for the owner's Chrome port, daily-profile refusal, signed helper identity, staged secret owner, and camera/microphone denial.",
     "tests": [
       "desktop/test/unit/home.test.ts",
       "desktop/test/unit/connection-guard.test.ts",
@@ -86,7 +30,6 @@
       "desktop/test/unit/installed-bundle.test.ts",
       "desktop/test/unit/install-scripts.test.ts",
       "desktop/test/unit/test-media.test.ts",
-      "desktop/test/unit/cursor-account.test.ts",
       "desktop/test/unit/owned-port.test.ts",
       "desktop/test/unit/ax-dump-guard.test.ts",
       "desktop/test/unit/app-permissions.test.ts",
@@ -94,28 +37,21 @@
       "desktop/test/unit/remote-debugging.test.ts",
       "desktop/test/unit/chrome-profile-copy.test.ts",
       "desktop/test/unit/chrome-login.test.ts",
-      "desktop/test/unit/permissions.test.ts",
-      "desktop/test/unit/extension-driver.test.ts",
       "desktop/test/unit/login-import.test.ts"
     ]
   },
   "browser": {
-    "kind": "desktop",
-    "reason": "Safety: browser grants, capture privacy, secret replay, human handoffs, short snapshot find and diff results, the owner's Chrome keeping the agent in its task tab and out of Chrome's own panels, and the Replay switch hiding every replay entry in the app and bao mcp until it is on.",
+    "reason": "Safety: short snapshot find and diff results, the MCP viewer, the owner's Chrome keeping the agent in its task tab and out of Chrome's own panels, and the Replay switch hiding every replay entry in the app and bao mcp until it is on.",
     "tests": [
       "desktop/test/unit/current-chrome-tabs.test.ts",
       "desktop/test/unit/replay-switch.test.ts",
       "desktop/test/unit/snapshot-view.test.ts",
       "desktop/test/unit/mcp-viewer-client.test.ts",
       "desktop/test/unit/mcp-viewer-design.test.ts",
-      "desktop/test/unit/background-cdp.test.ts",
-      "desktop/test/unit/driver-fixes.test.ts",
-      "desktop/test/unit/capture.test.ts",
-      "desktop/test/unit/human-envelope.test.ts"
+      "desktop/test/unit/background-cdp.test.ts"
     ]
   },
   "browser-mcp": {
-    "kind": "desktop",
     "reason": "Safety: pass-through sessions through the MCP server and the agent-browser proxy. Split from browser so each group stays well under the 4-minute job limit when a lockfile change misses the package cache.",
     "tests": [
       "desktop/test/unit/mcp.test.ts",
@@ -123,64 +59,23 @@
     ]
   },
   "core": {
-    "kind": "desktop",
-    "reason": "Coverage: every remaining test file above 100 exclusive covered lines/second, plus bot-wall, human-check, secret, video-privacy, and bounded test-runner safety cases.",
+    "reason": "Coverage: the app shell, Runs rows and the run viewer, page classes, video privacy, and bounded test-runner safety cases.",
     "tests": [
       "desktop/test/unit/artifact-dir.test.ts",
       "desktop/test/unit/ax-fixtures.test.ts",
       "desktop/test/unit/backup-schedule.test.ts",
-      "desktop/test/unit/catalog.test.ts",
       "desktop/test/unit/cdp-live.test.ts",
-      "desktop/test/unit/live-library.test.ts",
       "desktop/test/unit/cdp-video-privacy.test.ts",
-      "desktop/test/unit/checks.test.ts",
-      "desktop/test/unit/data-steps.test.ts",
       "desktop/test/unit/desktop-runner.test.ts",
-      "desktop/test/unit/dialog-recorder.test.ts",
-      "desktop/test/unit/effect-replay-lint.test.ts",
-      "desktop/test/unit/element-history.test.ts",
-      "desktop/test/unit/eval-drivers.test.ts",
-      "desktop/test/unit/eval-intent.test.ts",
-      "desktop/test/unit/extension-shots.test.ts",
-      "desktop/test/unit/files-dates.test.ts",
-      "desktop/test/unit/guide-me.test.ts",
-      "desktop/test/unit/guide.test.ts",
-      "desktop/test/unit/heal-cursor.test.ts",
       "desktop/test/unit/helper-pid-keys.test.ts",
-      "desktop/test/unit/identity.test.ts",
-      "desktop/test/unit/interpret-os.test.ts",
-      "desktop/test/unit/invalid-fixture.test.ts",
-      "desktop/test/unit/listing-stat.test.ts",
-      "desktop/test/unit/locators.test.ts",
-      "desktop/test/unit/nightly-diff.test.ts",
       "desktop/test/unit/page-class.test.ts",
-      "desktop/test/unit/proof-expect.test.ts",
-      "desktop/test/unit/realworld-basics.test.ts",
-      "desktop/test/unit/relay-singleton.test.ts",
-      "desktop/test/unit/revise-decision.test.ts",
       "desktop/test/unit/runs-row-navigation.test.ts",
-      "desktop/test/unit/schema-replay.test.ts",
       "desktop/test/unit/shell-navigation.test.ts",
-      "desktop/test/unit/site-trust.test.ts",
       "desktop/test/unit/spike-workdir.test.ts",
       "desktop/test/unit/state-poll.test.ts",
-      "desktop/test/unit/sync-catchup.test.ts",
-      "desktop/test/unit/teach.test.ts",
-      "desktop/test/unit/try-step.test.ts",
       "desktop/test/unit/ui-views.test.ts",
-      "desktop/test/unit/url-oracle.test.ts",
-      "desktop/test/unit/versions.test.ts",
       "desktop/test/unit/viewer-depth.test.ts"
     ],
     "ffmpeg": true
-  },
-  "web": {
-    "kind": "web",
-    "reason": "Safety: authenticated relay boundaries, bounded relay jobs, and runnable workflow search.",
-    "tests": [
-      "web/src/lib/relay.boundary.test.ts",
-      "web/src/lib/relay-job.test.ts",
-      "web/src/lib/catalog.test.ts"
-    ]
   }
 }

@@ -1,5 +1,22 @@
 # PR test selection
 
+## Replay lane
+
+Saved-workflow replay sits behind the [Replay switch](bao.md#replay-switch), off by default. Its tests left `desktop/test/unit` and the per-PR essential set for `desktop/test/replay`, which CI runs on a PR with the `replay-suite` label. The lane also holds what else the switch gates: the in-app recorder, the Workflows place, the extension driver, remote relay, sync, the registry, and evals. `web/` tests run with it.
+
+The move rests on one measured full run of main at `ff9782af`, [run 44227928623](https://github.com/aaalexliu/bao-browser/actions/runs/44227928623): 222 unit files, 2,003 s of file time, 16 min 46 s on the clock with two workers. Tests of the first agent run took 1,049 s of that, and replay-only files 330 s.
+
+| Set | Before | After |
+| --- | --- | --- |
+| `desktop/test/unit` (`full-suite`) | 222 files | 127 files, in three shards side by side |
+| `desktop/test/replay` (`replay-suite`) | none | 96 files |
+| Essential groups | 10 (`auth`, `password-slot`, `storage`, and `web` held only moved tests) | 6 |
+| Essential files | 102 | 46 |
+
+Cut outright, because no script or CI job ran them and they needed a local `vercel dev` or a real extension: `desktop/test/live/` `cross-device-search`, `import-gate`, `listing-devices`, `marketplace-trust`, `registry`, `sync-conflict`, `vercel-dev-sync`, `remote-mcp`, and `extension-host`. Cut with them: `files-dates-demo.test.ts`, 32 s of every full run to replay a demo whose cases `files-dates.test.ts` keeps.
+
+27 unit files still mix replay cases with first-run cases. They stay in `desktop/test/unit`, which is why that lane also runs with `BAO_REPLAY=1`.
+
 ## Legacy extension retirement
 
 The old standalone root extension is retired. Its source, root manifest, side-panel/dashboard pages, build/watch/package commands, installer, and all legacy fixture/live tools are removed. CI no longer runs the **Legacy extension tests** step or the `legacy` essential group. The desktop extension in `extension/`, its installer, and its tests remain. Shared masking and workflow types live in `shared/mask.ts` and `shared/types.ts`.
