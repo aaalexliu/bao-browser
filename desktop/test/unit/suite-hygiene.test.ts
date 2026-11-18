@@ -266,6 +266,7 @@ test("inherited BAO names and CI do not reach the launched Chrome", { timeout: s
     "BAO_HEADED",
     "BAO_HEAL_CURSOR_ACCOUNT",
     "BAO_LANE",
+    "BAO_REPLAY",
     "BAO_REPLAY_VIDEO",
     "BAO_TEST_BROWSER",
     "BAO_TEST_RUN_ID",

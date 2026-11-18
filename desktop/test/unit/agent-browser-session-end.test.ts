@@ -132,7 +132,7 @@ if (!fs.existsSync(${JSON.stringify(teardown)}) && args.includes(${JSON.stringif
   if (drivePage) await writeFile(path.join(root, "drive-page.js"), DRIVE_PAGE);
   const env: NodeJS.ProcessEnv = {
     PATH: process.env.PATH, TMPDIR: process.env.TMPDIR, HOME: root, BAO_HOME: home,
-    BAO_HEAL_CURSOR_ACCOUNT: "0", BAO_TEST_BROWSER: pinTestBrowser(), PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH,
+    BAO_HEAL_CURSOR_ACCOUNT: "0", BAO_REPLAY: "1", BAO_TEST_BROWSER: pinTestBrowser(), PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH,
     BAO_AGENT_BROWSER: executable, BAO_AGENT_BROWSER_PROFILE_ROOT: sourceRoot,
     ...(process.env.DISPLAY ? { DISPLAY: process.env.DISPLAY } : {}),
     ...(process.env.XAUTHORITY ? { XAUTHORITY: process.env.XAUTHORITY } : {}),
