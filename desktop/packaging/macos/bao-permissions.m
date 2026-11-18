@@ -117,51 +117,49 @@ static void drawBaoIcon(NSString *appPath, NSRect rect) {
   [icon drawInRect:rect fromRect:NSZeroRect operation:NSCompositingOperationSourceOver fraction:1 respectFlipped:YES hints:nil];
 }
 
-@interface BaoDragTile : NSView <NSDraggingSource>
+/* The whole guide bar. In the Accessibility guide it is also the drag source for Bao.app,
+ * so a drag that starts anywhere on the bar carries Bao, as Hex's bar does. */
+@interface BaoGuideView : NSView <NSDraggingSource>
+@property(copy) NSString *line;
 @property(copy) NSString *appPath;
+@property BOOL draggable;
 @property NSPoint down;
 @property BOOL dragging;
 @end
 
-@implementation BaoDragTile
+@implementation BaoGuideView
+- (BOOL)isOpaque { return YES; }
 - (BOOL)acceptsFirstMouse:(NSEvent *)event { return YES; }
+- (BOOL)dark {
+  NSString *name = [self.effectiveAppearance bestMatchFromAppearancesWithNames:@[NSAppearanceNameAqua, NSAppearanceNameDarkAqua]];
+  return [name isEqualToString:NSAppearanceNameDarkAqua];
+}
+- (NSRect)tileRect {
+  return NSMakeRect(16, (NSHeight(self.bounds) - 48) / 2, 48, 48);
+}
+- (void)resetCursorRects {
+  if (self.draggable) [self addCursorRect:self.bounds cursor:NSCursor.openHandCursor];
+}
 - (NSDragOperation)draggingSession:(NSDraggingSession *)session sourceOperationMaskForDraggingContext:(NSDraggingContext)context {
   return NSDragOperationCopy;
 }
+- (void)draggingSession:(NSDraggingSession *)session endedAtPoint:(NSPoint)point operation:(NSDragOperation)operation {
+  self.dragging = NO;
+}
 - (void)mouseDown:(NSEvent *)event { self.down = event.locationInWindow; self.dragging = NO; }
 - (void)mouseDragged:(NSEvent *)event {
-  if (self.dragging || self.appPath.length == 0) return;
+  if (!self.draggable || self.dragging || self.appPath.length == 0) return;
   NSPoint now = event.locationInWindow;
   if (fabs(now.x - self.down.x) < 3 && fabs(now.y - self.down.y) < 3) return;
   self.dragging = YES;
   NSURL *url = [NSURL fileURLWithPath:self.appPath];
   NSDraggingItem *item = [[NSDraggingItem alloc] initWithPasteboardWriter:url];
-  item.draggingFrame = self.bounds;
+  /* The icon lifts from under the pointer, wherever on the bar the drag began. */
+  NSPoint at = [self convertPoint:self.down fromView:nil];
+  NSRect frame = NSMakeRect(at.x - 24, at.y - 24, 48, 48);
   NSImage *icon = [NSWorkspace.sharedWorkspace iconForFile:self.appPath];
-  item.imageComponentsProvider = ^NSArray<NSDraggingImageComponent *> *{
-    NSDraggingImageComponent *component = [NSDraggingImageComponent draggingImageComponentWithKey:NSDraggingImageComponentIconKey];
-    component.contents = icon;
-    component.frame = self.bounds;
-    return @[component];
-  };
+  [item setDraggingFrame:frame contents:icon];
   [self beginDraggingSessionWithItems:@[item] event:event source:self];
-}
-- (void)drawRect:(NSRect)dirty {
-  drawBaoIcon(self.appPath, self.bounds);
-}
-@end
-
-@interface BaoGuideView : NSView
-@property(copy) NSString *line;
-@property(copy) NSString *appPath;
-@property BOOL showTile;
-@end
-
-@implementation BaoGuideView
-- (BOOL)isOpaque { return YES; }
-- (BOOL)dark {
-  NSString *name = [self.effectiveAppearance bestMatchFromAppearancesWithNames:@[NSAppearanceNameAqua, NSAppearanceNameDarkAqua]];
-  return [name isEqualToString:NSAppearanceNameDarkAqua];
 }
 - (void)drawRect:(NSRect)dirty {
   BOOL dark = [self dark];
@@ -178,13 +176,18 @@ static void drawBaoIcon(NSString *appPath, NSRect rect) {
     NSForegroundColorAttributeName: fg,
   };
   CGFloat textX = 16;
-  if (self.showTile) {
-    drawBaoIcon(self.appPath, NSMakeRect(16, 14, 48, 48));
+  if (self.draggable) {
+    drawBaoIcon(self.appPath, [self tileRect]);
     textX = 76;
   }
-  NSRect textRect = NSMakeRect(textX + 22, 16, NSWidth(self.bounds) - textX - 38, 44);
-  [@"↑" drawAtPoint:NSMakePoint(textX, NSMidY(textRect) - 8) withAttributes:arrowAttrs];
-  [self.line drawInRect:textRect withAttributes:textAttrs];
+  /* Center the arrow and the line on the bar's middle. */
+  CGFloat mid = NSHeight(self.bounds) / 2;
+  NSSize arrow = [@"↑" sizeWithAttributes:arrowAttrs];
+  [@"↑" drawAtPoint:NSMakePoint(textX, mid - arrow.height / 2) withAttributes:arrowAttrs];
+  CGFloat width = NSWidth(self.bounds) - textX - 22 - 16;
+  NSRect fit = [self.line boundingRectWithSize:NSMakeSize(width, 60) options:NSStringDrawingUsesLineFragmentOrigin attributes:textAttrs];
+  CGFloat height = ceil(NSHeight(fit));
+  [self.line drawInRect:NSMakeRect(textX + 22, mid - height / 2, width, height) withAttributes:textAttrs];
 }
 @end
 
@@ -338,15 +341,10 @@ static void drawBaoIcon(NSString *appPath, NSRect rect) {
   }
   BaoGuideView *view = (BaoGuideView *)self.guide.contentView;
   view.line = self.dock == 2 ? kFilesLine : kDragLine;
-  view.showTile = self.dock == 1;
+  view.draggable = self.dock == 1;
   view.appPath = self.appPath;
-  for (NSView *child in view.subviews.copy) [child removeFromSuperview];
-  if (view.showTile) {
-    BaoDragTile *tile = [[BaoDragTile alloc] initWithFrame:NSMakeRect(16, 14, 48, 48)];
-    tile.appPath = self.appPath;
-    tile.toolTip = @"Drag Bao into the list";
-    [view addSubview:tile];
-  }
+  view.toolTip = view.draggable ? @"Drag Bao into the list" : nil;
+  [self.guide invalidateCursorRectsForView:view];
   [view setNeedsDisplay:YES];
   [self placeGuide];
   [self.guide orderFront:nil];
