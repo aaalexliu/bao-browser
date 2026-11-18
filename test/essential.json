@@ -101,9 +101,10 @@
   },
   "browser": {
     "kind": "desktop",
-    "reason": "Safety: browser grants, capture privacy, secret replay, human handoffs, short snapshot find and diff results, and the owner's Chrome keeping the agent in its task tab and out of Chrome's own panels.",
+    "reason": "Safety: browser grants, capture privacy, secret replay, human handoffs, short snapshot find and diff results, the owner's Chrome keeping the agent in its task tab and out of Chrome's own panels, and the Replay switch hiding every replay entry in the app and bao mcp until it is on.",
     "tests": [
       "desktop/test/unit/current-chrome-tabs.test.ts",
+      "desktop/test/unit/replay-switch.test.ts",
       "desktop/test/unit/snapshot-view.test.ts",
       "desktop/test/unit/mcp-viewer-client.test.ts",
       "desktop/test/unit/mcp-viewer-design.test.ts",

@@ -18,16 +18,16 @@ const routes = [
   ["settings", "settings", "Settings"], ["logins", "settings", "Logins"],
 ] as const;
 
-test("three places keep all nine screens and their detail routes reachable", () => {
+test("with Replay on, three places keep all nine screens and their detail routes reachable", () => {
   assert.deepEqual(shellPlaces.map((place) => place.label), ["Runs", "Workflows", "Settings"]);
   assert.equal(Object.keys(shellScreens).length, 9);
   for (const [screen, place] of routes) {
     assert.equal(shellScreens[screen].place, place);
-    assert.match(rail({}, screen), new RegExp(`data-place="${place}"[^>]*aria-current="page"`));
+    assert.match(rail({ settings: { replay: true } }, screen), new RegExp(`data-place="${place}"[^>]*aria-current="page"`));
     if (screen === "library") assert.equal(shellList(screen, {}), "");
     else if (place === "runs") assert.doesNotMatch(shellList(screen, {}), /aria-label="Runs screens"/);
     else assert.match(shellList(screen, {}), new RegExp(`data-screen="${screen}"[^>]*aria-current="page"`));
-    assert.ok(commandItems([]).some((item) => item.screen === screen));
+    assert.ok(commandItems([], true).some((item) => item.screen === screen));
   }
   for (const [screen, parent] of [["run", "runs"], ["workflow", "library"], ["import", "library"]] as const) {
     assert.equal(shellScreen(screen), parent);

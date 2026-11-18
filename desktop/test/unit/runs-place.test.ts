@@ -164,7 +164,7 @@ test("Runs rows use filled glyphs, stop reasons and elapsed time without invente
   assert.match(html, /Stopped at step 5 of 7/);
   assert.match(html, /The Download PDF button is gone/);
   assert.doesNotMatch(html, /model calls|0 s/);
-  const side = rail({ runs: [{ id: "fail", workflowId: "wf", status: "failed" }], damagedWorkflows: [{ file: "damaged-workflow.json", reason: "Invalid workflow" }], helper: { label: "helper available", platform: "darwin", accessibility: false, screenCapture: false } });
+  const side = rail({ settings: { replay: true }, runs: [{ id: "fail", workflowId: "wf", status: "failed" }], damagedWorkflows: [{ file: "damaged-workflow.json", reason: "Invalid workflow" }], helper: { label: "helper available", platform: "darwin", accessibility: false, screenCapture: false } });
   assert.match(side, /data-count="1"/);
   assert.match(side, /Nothing running/);
   assert.match(side, /One workflow can’t open/);

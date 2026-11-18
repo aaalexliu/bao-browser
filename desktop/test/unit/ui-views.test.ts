@@ -188,6 +188,7 @@ test("login act bar offers continue and does not press the site button", () => {
 
 test("sidebar count covers Needs-you runs, active asks and imports", () => {
   const html = rail({
+    settings: { replay: true },
     recording: true,
     helper: { label: "helper off" },
     model: { label: "no model" },
@@ -611,7 +612,7 @@ test("the record bar follows live state without Mac permission onboarding", () =
   assert.match(quiet, /Nothing running/);
   assert.equal(quiet.includes("not granted yet"), false);
   assert.equal(quiet.includes("perm-dot"), false);
-  assert.ok(commandItems([{ id: "wf", name: "fixture apply" }]).some((item) => item.label === "Run fixture apply" && item.screen === "replay"));
+  assert.ok(commandItems([{ id: "wf", name: "fixture apply" }], true).some((item) => item.label === "Run fixture apply" && item.screen === "replay"));
 });
 
 test("a target clip is the element rect, padded and centered, and stays inside the viewport", () => {

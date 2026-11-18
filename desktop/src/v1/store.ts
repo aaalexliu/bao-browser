@@ -48,7 +48,15 @@ export interface Settings extends HealSettings {
    * Not ready: off unless set to true in settings.json, and no screen offers it.
    */
   runningChromeExtension?: boolean;
+  /**
+   * Saved-workflow replay: the Workflows place, Record, heal and remote-run settings, and the workflow MCP tools.
+   * Off unless turned on in Settings. Local, never synced. BAO_REPLAY=1 turns it on for a home that has saved no choice.
+   */
+  replay?: boolean;
 }
+
+/** What a replay entry point answers while the Replay switch is off. */
+export const REPLAY_OFF = "Replay is off. Turn on Replay in Bao Settings to use saved workflows.";
 
 export interface StoredRun {
   schema: string;
@@ -136,6 +144,10 @@ const DEFAULT_SETTINGS: Settings = {
   circuitLimit: DEFAULT_CIRCUIT_LIMIT,
   circuitWindowMs: DEFAULT_CIRCUIT_WINDOW_MS,
 };
+
+function replayDefault(): Pick<Settings, "replay"> {
+  return process.env.BAO_REPLAY === "1" ? { replay: true } : {};
+}
 
 export interface DamagedWorkflow {
   file: string;
@@ -387,9 +399,9 @@ export class Library {
       delete saved.liveChromeProfile;
       delete saved.siteTrust;
       delete saved.remotePermission;
-      return { ...DEFAULT_SETTINGS, ...saved };
+      return { ...DEFAULT_SETTINGS, ...replayDefault(), ...saved };
     } catch {
-      return { ...DEFAULT_SETTINGS };
+      return { ...DEFAULT_SETTINGS, ...replayDefault() };
     }
   }
 

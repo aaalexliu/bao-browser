@@ -16,10 +16,10 @@ import { remoteDriverKind } from "./remote-run";
 import type { WorkflowV2 } from "./schema";
 import { Library } from "./store";
 
-/** This Mac dials out only when its own setting is on, or BAO_REMOTE_MCP=1 is set for the process. */
+/** This Mac dials out only while Replay is on, and its own setting is on or BAO_REMOTE_MCP=1 is set for the process. */
 export function desktopRemoteEnabled(library: Library, env: NodeJS.ProcessEnv = process.env): boolean {
-  if (env.BAO_REMOTE_MCP === "1") return true;
-  return library.settings().remoteMcp === true;
+  const settings = library.settings();
+  return settings.replay === true && (env.BAO_REMOTE_MCP === "1" || settings.remoteMcp === true);
 }
 
 export interface RemoteView {

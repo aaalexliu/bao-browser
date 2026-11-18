@@ -2,7 +2,7 @@
 
 import { formatWait } from "../v1/human-ask";
 import { activePolling, createStatePoller } from "./state-poll";
-import { shellScreen, shellScreens, type Screen } from "./shell-navigation";
+import { replayScreen, shellScreen, shellScreens, type Screen } from "./shell-navigation";
 import type { OpenedView } from "./deeplink";
 import { bindDesktopMcp, desktopMcpSettings } from "./desktop-mcp-view";
 import { settingsIndex, settingsScreen } from "./settings-view";
@@ -150,6 +150,16 @@ function refresh(): Promise<void> {
   return statePoller.refresh();
 }
 
+/** The Replay switch in Settings. Off hides the Workflows place, Record, and each control that starts a replay. */
+function replayOn(): boolean {
+  return state.settings?.replay === true;
+}
+
+/** With Replay off the app has no heal review, so a run shows no heal to act on. */
+function withoutHeals<T extends RunSummary>(run: T): T {
+  return replayOn() || !run.heals?.length ? run : { ...run, heals: [] };
+}
+
 async function refreshState(): Promise<void> {
   try {
     await loadState();
@@ -173,6 +183,8 @@ async function loadState(): Promise<void> {
   const firstLoad = !stateLoaded;
   const liveId = state.activeRun?.id;
   state = await response.json();
+  state.runs = state.runs?.map(withoutHeals);
+  if (!replayOn() && replayScreen(screen)) screen = "runs";
   stateLoaded = true;
   initialConnectionError = false;
   const opened = state.opened;
@@ -333,7 +345,7 @@ function render(focusDetail = true): void {
     const body = initialConnectionError ? connectionError()
       : screen === "capture" ? capture()
       : screen === "teach" ? teachScreen()
-      : screen === "runs" ? runsWelcome(Boolean(state.runs?.length))
+      : screen === "runs" ? runsWelcome(Boolean(state.runs?.length), replayOn())
       : screen === "live" ? live ? liveRunView(live) : liveSessionView(state.liveSession, livePageFromQuery(location.search))
       : screen === "run" ? `<section id="run-host"><p class="meta">Loading run…</p></section>`
       : screen === "heals" ? openHeal ? `<div id="heal-detail"><p class="quiet">Loading target review…</p></div>` : healInbox(state.runs || [], state.workflows || [], healFilter)
@@ -585,8 +597,8 @@ function settings(): string {
       <p id="agent-browser-lifetime-feedback" role="status"></p>
     </div>
     ${hostAccessPanel(state.settings?.hostAccess)}
-    <p class="quiet">AI help uses the source chosen above. After ${esc(String(circuit))} failed runs in a short window, auto-heal stays off.</p>
-    <label>Failed runs that stop auto-heal <input id="circuit-limit" data-setting="circuitLimit" type="number" required min="1" max="50" value="${circuit}" aria-describedby="circuit-limit-error"></label><span id="circuit-limit-error" role="status" hidden></span>
+    ${replayOn() ? `<p class="quiet">AI help uses the source chosen above. After ${esc(String(circuit))} failed runs in a short window, auto-heal stays off.</p>
+    <label>Failed runs that stop auto-heal <input id="circuit-limit" data-setting="circuitLimit" type="number" required min="1" max="50" value="${circuit}" aria-describedby="circuit-limit-error"></label><span id="circuit-limit-error" role="status" hidden></span>` : ""}
     ${syncPanel(state.sync, conflictCopy)}
     <h3>Appearance</h3>
     <label>Theme <select id="theme">
@@ -672,7 +684,9 @@ function bindSettings(): void {
       }
     };
   });
-  document.querySelectorAll<HTMLAnchorElement>("[data-settings-jump]").forEach((link) => {
+  const jumps = [...document.querySelectorAll<HTMLAnchorElement>("[data-settings-jump]")];
+  if (jumps[0] && !jumps.some((link) => link.dataset.settingsJump === settingsSection)) settingsSection = jumps[0].dataset.settingsJump || "runs";
+  jumps.forEach((link) => {
     if (link.dataset.settingsJump === settingsSection) link.setAttribute("aria-current", "true");
     else link.removeAttribute("aria-current");
     link.onclick = (event) => {
@@ -1467,7 +1481,7 @@ async function loadRun(id: string, request: number): Promise<void> {
     fetch("/api/runs/" + encodeURIComponent(id) + "/record").catch(() => null),
   ]);
   if (!runResponse.ok) throw new Error("Run unavailable");
-  const run = await runResponse.json() as RunSummary;
+  const run = withoutHeals(await runResponse.json() as RunSummary);
   const receipt = receiptResponse?.ok ? await receiptResponse.json().catch(() => null) as ReturnType<typeof inspectRunView> | null : null;
   const recordIndex = recordResponse?.ok ? await recordResponse.json().catch(() => null) as RunRecordIndex | null : null;
   const listed = (state.workflows || []).some((item) => item.id === run.workflowId);
@@ -1490,7 +1504,7 @@ async function loadRun(id: string, request: number): Promise<void> {
   const record = recordIndex ? { index: recordIndex, open: new Set([...openRecords].flatMap((key) => key.startsWith(`${id}/`) ? [key.slice(id.length + 1)] : [])) } : undefined;
   const html = {
     receipt: receipt ? runReceipt(receipt, workflow.name, run, workflow.recordedOnly ? undefined : workflow.steps, record) : receiptError(),
-    evidence: `<details id="run-evidence"${evidenceOpen ? " open" : ""}><summary>Detailed evidence</summary>${runViewer(run, workflow, selectedStep, { recent: history, recorded, reviewStepIds })}</details>`,
+    evidence: `<details id="run-evidence"${evidenceOpen ? " open" : ""}><summary>Detailed evidence</summary>${runViewer(run, workflow, selectedStep, { recent: history, recorded, reviewStepIds, replay: replayOn() })}</details>`,
   };
   // Other runs feed the evidence viewer's history, so a new run redraws that part and leaves the receipt as it is.
   const shown = host.dataset.run === id ? shownRun.get(host) : undefined;
@@ -2589,7 +2603,7 @@ function paintLive(): void {
 
 function filteredCommands(): CommandItem[] {
   const q = paletteQuery.trim().toLowerCase();
-  return commandItems(state.workflows || []).filter((item) => !q || item.label.toLowerCase().includes(q));
+  return commandItems(state.workflows || [], replayOn()).filter((item) => !q || item.label.toLowerCase().includes(q));
 }
 
 let paletteHoldToken = 0;
@@ -2645,12 +2659,12 @@ function paintPalette(): void {
     host.innerHTML = "";
     return;
   }
-  const items = commandItems(state.workflows || []);
+  const items = commandItems(state.workflows || [], replayOn());
   const current = host.querySelector<HTMLInputElement>("#palette-input");
   const list = host.querySelector("#palette-list");
   const had = current !== null && document.activeElement === current;
   const pos = had && current ? current.selectionStart : null;
-  if (!current || !list) host.innerHTML = paletteView(items, paletteQuery, paletteActive);
+  if (!current || !list) host.innerHTML = paletteView(items, paletteQuery, paletteActive, replayOn());
   else list.innerHTML = paletteList(items, paletteQuery, paletteActive);
   const input = host.querySelector<HTMLInputElement>("#palette-input");
   if (input) input.oninput = () => {

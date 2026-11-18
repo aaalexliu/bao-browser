@@ -374,7 +374,7 @@ test("grouped Settings saves live controls, preserves secondary settings, opens 
     await page.goto(`http://127.0.0.1:${app.port}`);
     await page.locator('#rail [data-place="settings"]').click();
     await page.locator("#set-runs").waitFor();
-    assert.deepEqual(await page.locator(".settings-heading").allTextContents(), ["Runs and heals", "Mac permissions", "Remote access", "Logins", "AI help"]);
+    assert.deepEqual(await page.locator(".settings-heading").allTextContents(), ["Runs and heals", "Mac permissions", "Remote access", "Logins", "AI help", "Replay"]);
     assert.equal(await page.getByText("Before each run", { exact: true }).count(), 0);
     assert.equal(await page.getByRole("radio", { name: "Stop", exact: true }).count(), 1);
     assert.equal(await page.getByRole("combobox", { name: "Use AI to suggest heals" }).inputValue(), "none");

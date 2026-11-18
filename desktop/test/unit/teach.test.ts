@@ -201,7 +201,7 @@ test("a model narration is labeled, and a failed model call stays on the heurist
   assert.match(review, /data-shot=/);
   assert.doesNotMatch(review, /You do this/);
   assert.doesNotMatch(review, /<h3 class="section">Workflow/);
-  const nav = rail({}, "teach");
+  const nav = rail({ settings: { replay: true } }, "teach");
   assert.match(nav, /data-place="workflows" data-screen="library" class="on"/);
   const screens = shellList("teach", {});
   assert.ok(screens.indexOf('data-screen="capture"') < screens.indexOf('data-screen="teach"'));

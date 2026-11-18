@@ -74,7 +74,7 @@ import { tryStep } from "../v1/try-step";
 import { baoUserHome, showOnce } from "../home";
 import { appBundleOf, DEFAULT_APP, mcpLauncher } from "./bundle";
 import { DesktopMcpInstaller } from "./desktop-mcp-config";
-import { Library, secretInputNames, type Settings } from "../v1/store";
+import { Library, REPLAY_OFF, secretInputNames, type Settings } from "../v1/store";
 import { hostAccessMode, hostGrantMessage } from "../../../extension/src/host-grant";
 import { ExtensionDriver, HostGrantNeeded, isHostGrantMessage } from "../extension/driver";
 import { gestureQueue, readGestures, writeGestures } from "../extension/gestures";
@@ -226,6 +226,8 @@ const sourceRoot =
   [process.cwd(), path.resolve(__dirname, "../../../../..")].find((dir) => existsSync(path.join(dir, "desktop/src/app/public"))) ||
   process.cwd();
 /** A stored page is another site's markup. It runs no script and loads nothing but what the archive wrote into it. */
+/** The posts that start a replay or a recording, or bring a workflow in. They answer 403 while the Replay switch is off. */
+const REPLAY_STARTS = new Set(["/api/replay", "/api/sessions", "/api/workflows/import", "/api/open/install", "/api/remote/pair"]);
 const ARCHIVE_PAGE_POLICY = "sandbox; default-src 'none'; style-src 'unsafe-inline' data:; img-src data:; font-src data:; media-src data:; frame-src data:";
 const publicDir = process.env.BAO_PUBLIC || path.join(sourceRoot, "desktop/src/app/public");
 
@@ -544,6 +546,7 @@ export async function startApp(opts: {
   const server = createServer(async (req, res) => {
     try {
       const url = new URL(req.url || "/", "http://127.0.0.1");
+      if (req.method === "POST" && REPLAY_STARTS.has(url.pathname) && !library.settings().replay) return json(res, { error: REPLAY_OFF }, 403);
       if (req.method === "POST" && url.pathname === "/api/live") {
         return json(res, RETIRED_LIVE_TOOL, 410);
       }
@@ -664,6 +667,7 @@ export async function startApp(opts: {
       if (req.method === "POST" && url.pathname === "/api/open") {
         const body = await readBody(req) as { link?: string; document?: unknown };
         const link = parseBaoLink(String(body.link || ""));
+        if (link && link.kind !== "receipt" && !library.settings().replay) return json(res, { ok: false, error: REPLAY_OFF }, 403);
         if (link?.kind === "receipt") {
           try { library.readRun(link.id); }
           catch { return json(res, { ok: false, error: "run not on this Mac" }, 404); }
@@ -993,7 +997,7 @@ export async function startApp(opts: {
         }
       }
       if (req.method === "PUT" && url.pathname === "/api/settings") {
-        const body = await readBody(req) as { heal?: Settings["heal"]; promoteAfter?: number; actTimeoutMin?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; pageEngine?: string; chromeProfile?: string; chromeProfileExtensions?: unknown; keepAgentBrowserOpen?: unknown; healSource?: unknown };
+        const body = await readBody(req) as { heal?: Settings["heal"]; promoteAfter?: number; actTimeoutMin?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; replay?: unknown; pageEngine?: string; chromeProfile?: string; chromeProfileExtensions?: unknown; keepAgentBrowserOpen?: unknown; healSource?: unknown };
         const patch: Partial<Settings> = {};
         if (body.healSource !== undefined) {
           const source = body.healSource as Partial<{ kind: string; provider: string; key: string }> | null;
@@ -1039,6 +1043,7 @@ export async function startApp(opts: {
         }
         if (typeof body.syncServer === "string") patch.syncServer = body.syncServer;
         if (typeof body.remoteMcp === "boolean") patch.remoteMcp = body.remoteMcp;
+        if (typeof body.replay === "boolean") patch.replay = body.replay;
         if (!Object.keys(patch).length) return json(res, { error: "settings" }, 400);
         return json(res, library.updateSettings(patch));
       }
