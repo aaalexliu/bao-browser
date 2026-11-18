@@ -492,7 +492,7 @@
     button.receipt-chapter-head:hover, button.receipt-chapter-head:focus-visible { background: color-mix(in oklab, var(--ink) 10%, var(--bg)); }
     .receipt-player { margin: 0 0 18px; }
     .player-stage { position: relative; cursor: pointer; display: grid; place-items: center; width: 100%; aspect-ratio: 16 / 10; max-height: 42vh; overflow: hidden; border-radius: 10px; background: #1c1915; }
-    .player-stage img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+    .player-stage :is(img, video) { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
     #run-receipt #player-empty { margin: 0; color: #d1d1d6; font-size: 13px; }
     #run-receipt .player-caption { display: flex; gap: 8px; max-width: none; min-height: 1.5em; margin: 8px 0 6px; }
     #player-chapter { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--quiet); }

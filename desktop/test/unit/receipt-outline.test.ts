@@ -639,3 +639,21 @@ test("a row carries the note kept with its picture, in plain words", () => {
   });
   assert.match(stepList(html), /<li data-step="2" data-picture="\/api\/runs\/noted\/shots\/b\.png" data-picture-note="The active tab could not be pictured, so Bao kept a picture of another tab\.">/);
 });
+
+test("a run with a video gets it in the player, with each step's start and the idle gaps to jump", () => {
+  const steps = [
+    step({ label: "Open example.com", command: "open", args: ["https://example.com"], title: "Example", url: "https://example.com", at: 9_800 }),
+    step({ label: "Click Save", command: "click", args: ["@save"], title: "Example", url: "https://example.com", at: 11_000 }),
+    step({ label: "Read the page", command: "snapshot", title: "Saved", url: "https://example.com/saved", at: 23_200 }),
+  ];
+  const html = receipt({ id: "filmed", status: "passed", steps, video: "filmed.mp4", videoStartedAt: 10_000, videoTruncated: true } as OutlineRun);
+  const player = html.match(/<section class="receipt-player"[\s\S]*?<\/section>/)?.[0] || "";
+  assert.match(player, /<video id="player-video" src="\/api\/runs\/filmed\/video" data-skips="\[\{&quot;from&quot;:1\.2,&quot;to&quot;:13\.2\}\]" preload="auto" muted playsinline hidden><\/video>/, "a run with no step picture still plays its video, and the 12 s between steps 2 and 3 is a gap");
+  assert.match(player, /Video truncated at the capture limit\./);
+  assert.deepEqual([...stepList(html).matchAll(/<li data-step="(\d)" data-at="([\d.]+)">/g)].map((found) => [found[1], found[2]]), [["1", "0.00"], ["2", "1.00"], ["3", "13.20"]], "a step that began before the video starts at its first frame");
+
+  const untimed = receipt({ id: "untimed", status: "passed", video: "untimed.mp4", steps: steps.map((item) => ({ ...item, startedAt: undefined, endedAt: undefined })) } as OutlineRun);
+  assert.doesNotMatch(untimed, /receipt-player|player-video/, "a video with no step times to find in it, and no pictures, is no player");
+  const named = receipt({ id: "named", status: "passed", video: "../named.mp4", videoStartedAt: 10_000, steps } as OutlineRun);
+  assert.doesNotMatch(named, /player-video/);
+});
