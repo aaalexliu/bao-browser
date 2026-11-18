@@ -16,7 +16,7 @@ import { replay, type Driver } from "../../src/v1/replay";
 import { relayPath, saveRelay } from "../../src/v1/relay-link";
 import { remoteDriverKind } from "../../src/v1/remote-run";
 import type { WorkflowV2 } from "../../src/v1/schema";
-import { Library } from "../../src/v1/store";
+import { Library, REPLAY_OFF } from "../../src/v1/store";
 import { MemoryJobStore } from "../../../web/src/lib/relay-job";
 import { createRelay, listenRelay, MemoryDirectory } from "../../../web/src/lib/relay";
 import { openWebSocket, type LiteSocket } from "../../../web/src/lib/ws-lite";
@@ -341,6 +341,46 @@ test("requested remote runs start directly and keep the workflow's driver", asyn
     }
   } finally {
     await server.close();
+  }
+});
+
+test("turning Replay off ends an open remote connection, and no remote request starts a run until it is on again", { timeout: scaledMs(30_000) }, async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "bao-relay-replay-off-"));
+  const library = new Library(root);
+  library.save(workflow("books"));
+  library.updateSettings({ replay: true, remoteMcp: true });
+  const { server, directory } = await up();
+  let runs = 0;
+  const remote = createRemoteAgent({ library, prompts: {}, stop() {}, clearStop() {}, runners: { playwright: async () => { runs += 1; return { outcome: "ok" }; } } });
+  try {
+    directory.addDevice("dev-a", "user-a");
+    const paired = await claim(server.origin, "user-a", "dev-a");
+    const agent = await directory.mintAgent("user-a", paired.deviceId);
+    assert.ok(agent);
+    saveRelay(root, { server: server.origin, token: paired.token, deviceId: paired.deviceId, tokenId: paired.tokenId });
+    const mark = directory.lookups;
+    remote.start();
+    await waitFor(() => directory.lookups > mark);
+    assert.equal((await tool(server.origin, agent.token, "run_workflow", { id: "books" })).json.outcome, "ok");
+    assert.equal(runs, 1);
+
+    library.updateSettings({ replay: false });
+    const refused = await tool(server.origin, agent.token, "run_workflow", { id: "books" });
+    assert.deepEqual([refused.json.outcome, refused.json.reason], ["failed", REPLAY_OFF]);
+    for (const [name, args] of [["resume_workflow", { resume: "held" }], ["run_workflow", { id: "books" }]] as const) {
+      assert.equal((await tool(server.origin, agent.token, name, args)).json.outcome, "device_offline", name);
+    }
+    assert.equal(runs, 1);
+
+    const dialed = directory.lookups;
+    library.updateSettings({ replay: true });
+    await waitFor(() => directory.lookups > dialed, scaledMs(8_000));
+    assert.equal((await tool(server.origin, agent.token, "run_workflow", { id: "books" })).json.outcome, "ok");
+    assert.equal(runs, 2);
+  } finally {
+    await remote.stop();
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
   }
 });
 
