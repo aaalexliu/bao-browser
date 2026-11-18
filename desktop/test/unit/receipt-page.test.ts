@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { copyFileSync, mkdirSync } from "node:fs";
+import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -124,6 +124,9 @@ test("an open receipt stays in place when another run changes the state", { time
   }
 });
 
+/** Seven seconds of one colour, 64 by 40, VP8, a keyframe each second. Made with: ffmpeg -f lavfi -i "color=c=0x336699:size=64x40:rate=4:duration=7" -c:v libvpx -b:v 10k -g 4 -an */
+const SEVEN_SECONDS_WEBM = "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";
+
 /** What the player shows now, read in one pass so the parts belong to the same step. */
 async function playerNow(page: import("playwright-core").Page) {
   return page.evaluate(() => {
@@ -132,7 +135,9 @@ async function playerNow(page: import("playwright-core").Page) {
     const row = current[0]?.getBoundingClientRect();
     const pane = list.getBoundingClientRect();
     const picture = document.querySelector<HTMLImageElement>("#player-picture")!;
+    const video = document.querySelector<HTMLVideoElement>("#player-video");
     return {
+      video: video && !video.hidden ? { time: video.currentTime, paused: video.paused, rate: video.playbackRate } : null,
       count: document.querySelector("#player-count")!.textContent,
       toggle: document.querySelector("#player-toggle")!.getAttribute("aria-label"),
       picture: picture.hidden ? "" : (picture.getAttribute("src") || "").split("/").pop(),
@@ -274,6 +279,87 @@ test("with reduced motion the player does not start by itself", { timeout: scale
     assert.deepEqual([(await playerNow(page)).count, (await playerNow(page)).toggle], ["1 / 6", "Play"]);
     await page.locator("#player-toggle").click();
     await page.waitForFunction(() => document.querySelector("#player-count")?.textContent === "2 / 6");
+  } finally {
+    await browser.close(); await app.close();
+    if (previousHome === undefined) delete process.env.HOME; else process.env.HOME = previousHome;
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("a run with a video plays it in the player, and one whose video is gone plays its pictures", { timeout: scaledMs(90_000) }, async () => {
+  const home = await mkdtemp(path.join(tmpdir(), "bao-receipt-film-"));
+  const previousHome = process.env.HOME;
+  process.env.HOME = home;
+  const app = await startApp({ home, extensionHost: false, chromeProfilesRoot: path.join(home, "profiles") });
+  const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
+  const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  const reach = (count: string) => page.waitForFunction((text) => document.querySelector("#player-count")?.textContent === text, count);
+  try {
+    // Steps start 0 s, 1 s, 2 s and 5.8 s into the video. Step 3 ends at 2.5 s, so 2.5 s to 5.8 s is idle.
+    const starts = [0, 1_000, 2_000, 5_800];
+    const filmed = (id: string) => {
+      const run = recorded(id, 4);
+      return { ...run, video: `${id}.webm`, videoStartedAt: 10_000, steps: run.steps.map((step, index) => ({ ...step, startedAt: 10_000 + starts[index]!, endedAt: 10_500 + starts[index]! })) };
+    };
+    mkdirSync(path.join(home, "videos"), { recursive: true });
+    writeFileSync(path.join(home, "videos", "film.webm"), Buffer.from(SEVEN_SECONDS_WEBM, "base64"));
+    for (const id of ["film", "lost"]) {
+      const shots = path.join(home, "shots", "runs", id);
+      mkdirSync(shots, { recursive: true });
+      await page.goto(`http://127.0.0.1:${app.port}/fixture`);
+      await page.screenshot({ path: path.join(shots, "page.png") });
+    }
+    app.library.saveRun(filmed("film") as never);
+    app.library.saveRun(filmed("lost") as never);
+    await page.goto(`http://127.0.0.1:${app.port}/`);
+
+    await page.locator('[data-open-run="film"]').click();
+    await page.locator("#receipt-player").waitFor();
+    await page.locator("#player-video").evaluate((node) => {
+      const seen: number[] = [];
+      (window as unknown as { filmTimes: number[] }).filmTimes = seen;
+      node.addEventListener("timeupdate", () => seen.push((node as HTMLVideoElement).currentTime));
+    });
+    await page.waitForFunction(() => (document.querySelector(".receipt-proof img") as HTMLImageElement | null)?.naturalWidth);
+    const waiting = await playerNow(page);
+    assert.deepEqual([waiting.count, waiting.toggle, waiting.picture, waiting.video?.paused], ["1 / 4", "Play", "", true], "the stage holds the video, not a step picture");
+
+    await page.locator("#receipt-player").evaluate((node) => node.scrollIntoView());
+    await reach("2 / 4");
+    const second = await playerNow(page);
+    assert.equal(second.toggle, "Pause", "in view, the video plays by itself");
+    assert.ok(second.video!.time >= 0.9 && second.video!.time < 2, `step 2 is on while the video is in its second: ${second.video!.time}`);
+    assert.deepEqual(second.current, [2]);
+    await reach("4 / 4");
+    const times = await page.evaluate(() => (window as unknown as { filmTimes: number[] }).filmTimes);
+    assert.deepEqual(times.filter((time) => time > 3 && time < 5.7), [], "playing jumps the idle time between step 3 and step 4");
+    assert.ok(times.some((time) => time >= 2 && time < 2.6), "and plays step 3 itself");
+    await page.waitForFunction(() => document.querySelector("#player-toggle")?.getAttribute("aria-label") === "Play");
+    assert.equal((await playerNow(page)).count, "4 / 4", "it stops when the video ends");
+
+    await page.locator('.receipt-list li[data-step="2"] button').click();
+    await reach("2 / 4");
+    await page.waitForFunction(() => Math.abs((document.querySelector("#player-video") as HTMLVideoElement).currentTime - 1) < 0.2);
+    assert.equal((await playerNow(page)).video!.paused, true, "a step row seeks the paused video to that step's start");
+    await page.locator('.player-mark[data-receipt-step="3"]').click();
+    await reach("3 / 4");
+    await page.waitForFunction(() => Math.abs((document.querySelector("#player-video") as HTMLVideoElement).currentTime - 2) < 0.2);
+    await page.locator("#player-speed").click();
+    assert.equal((await playerNow(page)).video!.rate, 2, "the speed button sets the video's rate");
+    await page.locator("#player-toggle").click();
+    await reach("4 / 4");
+    await page.waitForFunction(() => document.querySelector("#player-toggle")?.getAttribute("aria-label") === "Play");
+    await page.locator("#player-toggle").click();
+    await reach("1 / 4");
+    assert.equal((await playerNow(page)).toggle, "Pause", "Play at the end starts the video again");
+
+    await page.locator('[data-open-run="lost"]').click();
+    await page.locator("#run-receipt h2").filter({ hasText: "Run of 4" }).waitFor();
+    await page.waitForFunction(() => document.getElementById("run-host")?.dataset.run === "lost" && (document.querySelector("#player-video") as HTMLVideoElement | null)?.hidden === true);
+    await page.locator("#receipt-player").evaluate((node) => node.scrollIntoView());
+    await reach("2 / 4");
+    const pictures = await playerNow(page);
+    assert.deepEqual([pictures.picture, pictures.video, pictures.toggle], ["page.png", null, "Pause"], "with no video file, the player shows the step pictures and still plays");
   } finally {
     await browser.close(); await app.close();
     if (previousHome === undefined) delete process.env.HOME; else process.env.HOME = previousHome;

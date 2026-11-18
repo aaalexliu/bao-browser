@@ -1,5 +1,6 @@
-// The receipt's step player: it shows one step's picture at a time, moves to the next by itself,
-// and keeps the step list on the step it shows. The markup comes from receiptPlayerHtml in views.ts.
+// The receipt's step player. It plays the run's video when the run has one, and otherwise shows one step's
+// picture at a time and moves to the next by itself. Either way it keeps the step list on the step it shows.
+// The markup comes from receiptPlayerHtml in views.ts.
 
 /** How long the player shows each step at 1×. */
 const STEP_MS = 1200;
@@ -8,6 +9,8 @@ const SPEEDS = [1, 2, 4];
 interface Playback {
   run: string;
   step: number;
+  /** Seconds into the video, for a run that has one. */
+  time: number;
   playing: boolean;
   speed: number;
   /** Set once the player has started by itself or the owner has used it, so a redraw does not start it again. */
@@ -29,7 +32,7 @@ export function bindReceiptPlayer(host: HTMLElement, runId: string): void {
   const player = host.querySelector<HTMLElement>("#receipt-player");
   if (!player) return;
   const total = Number(player.dataset.steps);
-  if (playback?.run !== runId) playback = { run: runId, step: 1, playing: false, speed: 1, started: false, following: true };
+  if (playback?.run !== runId) playback = { run: runId, step: 1, time: 0, playing: false, speed: 1, started: false, following: true };
   const state = playback;
   state.step = Math.min(Math.max(1, state.step), total);
 
@@ -46,6 +49,19 @@ export function bindReceiptPlayer(host: HTMLElement, runId: string): void {
   const marks = [...player.querySelectorAll<HTMLElement>(".player-mark")];
   const rows = new Map([...list.querySelectorAll<HTMLElement>("li[data-step]")].map((row) => [Number(row.dataset.step), row]));
   const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const video = player.querySelector<HTMLVideoElement>("#player-video");
+  const starts = [...rows].flatMap(([step, row]) => row.dataset.at === undefined ? [] : [{ step, at: Number(row.dataset.at) }]);
+  const skips = JSON.parse(video?.dataset.skips || "[]") as { from: number; to: number }[];
+  // A video that cannot load leaves the pictures to play.
+  let film = Boolean(video) && !video!.error && starts.length > 0;
+
+  /** The step whose start is the latest at or before `time`. Before the first start, the first timed step. */
+  const stepAt = (time: number) => starts.reduce((best, item) => item.at <= time + 0.04 && item.at >= best.at ? item : best, { step: starts[0]!.step, at: -Infinity }).step;
+  const seekVideo = (time: number) => {
+    const go = () => { video!.currentTime = Number.isFinite(video!.duration) ? Math.min(time, Math.max(0, video!.duration - 0.05)) : time; };
+    if (video!.readyState >= 1) go();
+    else video!.addEventListener("loadedmetadata", go, { once: true });
+  };
 
   const follow = (row: HTMLElement, smooth: boolean) => {
     // Scroll the pane, never the page: scrollIntoView would move the receipt under the reader.
@@ -57,9 +73,10 @@ export function bindReceiptPlayer(host: HTMLElement, runId: string): void {
     state.step = Math.min(Math.max(1, step), total);
     const row = rows.get(state.step);
     const src = row?.dataset.picture || "";
-    if (src && picture.getAttribute("src") !== src) picture.src = src;
-    picture.hidden = !src;
-    empty.hidden = Boolean(src);
+    if (!film && src && picture.getAttribute("src") !== src) picture.src = src;
+    if (video) video.hidden = !film;
+    picture.hidden = film || !src;
+    empty.hidden = film || Boolean(src);
     const line = row?.querySelector(".receipt-step-line")?.textContent || "";
     const note = row?.dataset.pictureNote || "";
     picture.alt = note || line;
@@ -79,12 +96,12 @@ export function bindReceiptPlayer(host: HTMLElement, runId: string): void {
     }
     if (row && scroll !== "none" && state.following) follow(row, scroll === "smooth");
     const next = rows.get(state.step + 1)?.dataset.picture;
-    if (next) new Image().src = next;
+    if (!film && next) new Image().src = next;
   };
 
   const schedule = () => {
     clearTimeout(timer);
-    if (!state.playing) return;
+    if (film || !state.playing) return;
     timer = setTimeout(() => {
       if (!player.isConnected) {
         state.playing = false;
@@ -112,18 +129,24 @@ export function bindReceiptPlayer(host: HTMLElement, runId: string): void {
     state.following = true;
     paint();
     schedule();
+    if (!film) return;
+    video!.playbackRate = state.speed;
+    if (on) void video!.play().catch(() => { state.playing = false; paint(); });
+    else video!.pause();
   };
 
   /** A step the owner picked: show it, and give it a full turn before the player moves on. */
   const pick = (step: number) => {
     state.started = true;
     state.following = true;
+    const at = film ? starts.find((item) => item.step === step)?.at : undefined;
+    if (at !== undefined) seekVideo(at);
     show(step, "smooth");
     schedule();
   };
 
   toggle.onclick = () => {
-    if (!state.playing && state.step >= total) show(1, "smooth");
+    if (!state.playing && (film ? video!.ended : state.step >= total)) pick(film ? stepAt(0) : 1);
     play(!state.playing);
   };
   stage.onclick = toggle.onclick;
@@ -131,7 +154,32 @@ export function bindReceiptPlayer(host: HTMLElement, runId: string): void {
     state.speed = SPEEDS[(SPEEDS.indexOf(state.speed) + 1) % SPEEDS.length]!;
     paint();
     schedule();
+    if (film) video!.playbackRate = state.speed;
   };
+  if (video) {
+    const tick = () => {
+      if (!film || video.seeking) return;
+      const time = video.currentTime;
+      // Idle between steps is not worth watching: playing jumps a gap that idleSkips names.
+      const skip = state.playing ? skips.find((gap) => time >= gap.from && time < gap.to - 0.05) : undefined;
+      if (skip) {
+        video.currentTime = skip.to;
+        return;
+      }
+      state.time = time;
+      const step = stepAt(time);
+      if (step !== state.step) show(step, "smooth");
+    };
+    video.ontimeupdate = tick;
+    video.onseeked = tick;
+    video.onended = () => { state.playing = false; paint(); };
+    video.onpause = () => { if (!player.isConnected) state.playing = false; };
+    video.onerror = () => {
+      film = false;
+      show(state.step, "none");
+      schedule();
+    };
+  }
   seek.oninput = () => pick(Number(seek.value));
   // A wheel, a touch or a press in the pane is the reader looking for a step. A press on a row then picks it, which follows again.
   list.onwheel = list.ontouchmove = list.onpointerdown = () => { state.following = false; };
@@ -142,6 +190,10 @@ export function bindReceiptPlayer(host: HTMLElement, runId: string): void {
   show(state.step, state.started ? "instant" : "none");
   paint();
   schedule();
+  if (film && state.started) {
+    seekVideo(state.time);
+    if (state.playing) play(true);
+  }
   if (state.started || calm) return;
   // Start once the reader can see most of the stage. The proof shot above pushes the player down when it loads, so wait for it.
   const watch = () => {
