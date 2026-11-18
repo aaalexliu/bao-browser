@@ -374,7 +374,7 @@ export function shellList(screen: Screen, state: ShellState, selectedRun = "", a
   const place = shellPlaces.find((item) => item.id === shellScreens[current].place)!;
   return `<header class="pane-bar">
       <button id="sidebar-toggle" type="button" aria-label="Show sidebar" aria-haspopup="dialog" aria-controls="sidebar-dialog">${icon("sidebar")}</button>
-      <div class="pane-title"><h1>${place.label}</h1>${place.id === "runs" ? `<p>${available ? needsYouText(shellAttentionCount(state), Boolean(state.runs?.length)) : "Run history unavailable"}</p>` : ""}</div>
+      <div class="pane-title"><h1>${place.label}</h1></div>
       ${place.id === "runs" && state.settings?.replay ? `<button type="button" class="runs-record" data-screen="capture">${icon("record")}Record</button>` : ""}
     </header>
     ${place.id === "runs" ? available ? runsList(state.runs || [], state.workflows || [], selectedRun, Date.now(), state.activeAsk, state.pendingImport?.phase, { selectedHeal, liveSelected: screen === "live", promotions: state.promotions, activeRun: state.activeRun, runExecuting: state.runExecuting, replay: state.settings?.replay === true }) : `<p class="run-list-note">Run history is unavailable. Use Retry to reconnect.</p>` : `<nav aria-label="${place.label} screens" class="screen-list">${Object.entries(shellScreens).filter(([, item]) => item.place === place.id).map(([id, item]) => `<button type="button" data-screen="${id}"${id === current ? ` class="on" aria-current="page"` : ""}>
@@ -2286,10 +2286,10 @@ export function byteSize(bytes: number): string {
 function receiptHar(runId: string, record: ReceiptRecord | undefined): string {
   if (!record) return "";
   const trace = record.index.steps.length
-    ? `<p><a href="/trace?run=${esc(encodeURIComponent(runId))}">Open trace</a> <span class="record-quiet">A debug view of this run: a timeline, each step's page before and after, and its network, console, and errors.</span></p>`
+    ? `<p><a href="/trace?run=${esc(encodeURIComponent(runId))}">Open trace</a></p>`
     : "";
   const har = record.index.harBytes === undefined ? ""
-    : `<p><a href="/api/runs/${esc(encodeURIComponent(runId))}/run.har" download="${esc(runId)}.har">Download run.har</a> <span class="record-quiet">${esc(byteSize(record.index.harBytes))}. Every request of the run. To open it in Chrome, open DevTools, choose Network, and drop the file there.</span></p>`;
+    : `<p><a href="/api/runs/${esc(encodeURIComponent(runId))}/run.har" download="${esc(runId)}.har">Download run.har</a> <span class="record-quiet">${esc(byteSize(record.index.harBytes))}. To open it in Chrome, open DevTools, choose Network, and drop the file there.</span></p>`;
   const limits = record.index.steps.length
     ? `<p class="record-quiet">The HAR leaves out cookies, request initiators, redirect targets, and multipart form bodies; each upload step lists its files' paths and SHA-256 instead. Not recorded: the accessibility tree before a step, and a stable selector or frame for a step's target.</p>`
     : "";
@@ -2382,7 +2382,7 @@ export function runReceipt(view: ReturnType<typeof inspectRunView>, name: string
   const recordedKind = kind === "failed" || kind === "timed-out" ? kind : "";
   const outcome = receiptProofHtml(run.id, outline) + receiptOutcomeHtml(outline);
   return `<section id="run-receipt" aria-label="Run receipt"><p class="receipt-kicker"><span class="receipt-recorded-status${recordedKind ? ` run-state ${esc(recordedKind)}` : ""}">Recorded as ${esc(statusLabel(kind))}</span> · ${esc(at)}</p><h2>${esc(name)}</h2>
-    <p class="receipt-meta">${view.run.stepCount} step${view.run.stepCount === 1 ? "" : "s"}${calls === null ? "" : ` · ${calls} model call${calls === 1 ? "" : "s"}`}</p>
+    ${calls === null ? "" : `<p class="receipt-meta">${calls} model call${calls === 1 ? "" : "s"}</p>`}
     ${spoken ? `<p class="receipt-reason">${esc(spoken)}</p>` : ask ? runWaiting(run) ? `<aside class="receipt-handoff"><h3>Needs you</h3><p>${esc(ownerStopText(ask))}</p>${view.handoff?.deadline ? `<p>Deadline: ${esc(view.handoff.deadline)}</p>` : ""}</aside>` : `<h3>${esc(statusLabel(kind))}</h3><p class="receipt-reason">${esc(ownerStopText(ask))}</p>` : ""}
     ${spoken || (isAgentBrowserSession(run) && ask && runWaiting(run)) || skipUnlabeled ? "" : unlabeled ? `<p class="receipt-reason">${esc(ownerStopText(unlabeled))}</p>` : ""}
     ${pendingHealCount([run]) ? `<p>A target change is ready to review.</p><button type="button" data-screen="heals">Review heals</button>` : ""}
