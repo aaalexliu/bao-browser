@@ -504,7 +504,7 @@ While it is off:
 
 - The app has two places, Runs and Settings. Workflows, Record, the heal review, the command palette's workflow entries, and a run's re-run buttons do not show. Settings leaves out Runs and heals, Remote access, and AI help.
 - The app answers 403 with `Replay is off. Turn on Replay in Bao Settings to use saved workflows.` to a request that starts a replay or a recording, imports a workflow, opens a workflow link, or pairs a remote device. A `bao://receipt/<run id>` link still opens.
-- This Mac does not dial the registry for remote runs, whatever `remoteMcp` and `BAO_REMOTE_MCP` say.
+- This Mac does not dial the registry for remote runs, whatever `remoteMcp` and `BAO_REMOTE_MCP` say. A connection that is open when the switch goes off closes within two seconds. A remote request that arrives before that gets `failed` with the same sentence and starts nothing. A run already in progress is not cancelled.
 - `bao mcp` does not list `search_workflows`, `describe_workflow`, or `run_workflow`, and answers a call to one with that same sentence. Its instructions, tool descriptions, and results do not mention workflows or replay.
 
 `agent_browser` records a run the same way with the switch on or off, and `finish_task` still saves an eligible workflow in the Library. Only the line that reports the save is left out. `bao mcp` reads the switch on each request. An agent that already listed its tools sees the change the next time it connects.
