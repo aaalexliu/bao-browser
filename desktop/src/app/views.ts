@@ -2147,13 +2147,13 @@ function receiptStatusHtml(status: string): string {
   return `<span class="receipt-status${failed ? " run-state failed" : ""}">${esc(receiptStatusWord(status))}</span>`;
 }
 
-function receiptShotHtml(runId: string, outline: ReceiptOutline): string {
+function receiptProofHtml(runId: string, outline: ReceiptOutline): string {
   const shot = outline.shot;
   if (!shot) return "";
   const src = imageRef(runId, shot.file);
   if (!src) return "";
-  const label = plainPictureNote(shot.label);
-  return `<div class="receipt-shots"><figure><img src="${src}" alt="${esc(keepStreet(label))}"><figcaption>${esc(keepStreet(label))}</figcaption></figure></div>`;
+  const note = shot.note ? `<figcaption>${esc(keepStreet(plainPictureNote(shot.note)))}</figcaption>` : "";
+  return `<figure class="receipt-proof"><img src="${src}" alt="${esc(keepStreet(plainPictureNote(shot.label)))}">${note}</figure>`;
 }
 
 function receiptPageSentence(title: string): string {
@@ -2184,13 +2184,18 @@ function chapterRange(chapter: ReceiptChapter): string {
   return chapter.start === chapter.end ? `Step ${chapter.start}` : `Steps ${chapter.start}-${chapter.end}`;
 }
 
-function receiptChaptersHtml(outline: ReceiptOutline): string {
+/** Every step in order, each under the page it ran on. Steps before the first recorded page have no heading. */
+function receiptStepsHtml(run: RunSummary, outline: ReceiptOutline): string {
   if (!outline.chapters.length) return "";
-  const rows = outline.chapters.map((chapter) => {
-    const items = chapter.rows.length ? `<ul class="receipt-items">${chapter.rows.map((row) => `<li${row.status === "failed" ? " class=\"failed\"" : ""}><span>${esc(keepStreet(row.line))}</span>${receiptStatusHtml(row.status)}</li>`).join("")}</ul>` : "";
-    return `<section class="receipt-chapter"><button type="button" data-receipt-from="${chapter.start}" data-receipt-to="${chapter.end}"><span class="receipt-chapter-title">${esc(chapter.title)}</span><span class="receipt-range">${chapterRange(chapter)}</span></button>${items}</section>`;
+  const chapters = outline.chapters.map((chapter) => {
+    const head = chapter.title ? `<button type="button" data-receipt-from="${chapter.start}" data-receipt-to="${chapter.end}"><span class="receipt-chapter-title">${esc(chapter.title)}</span><span class="receipt-range">${chapterRange(chapter)}</span></button>` : "";
+    const items = chapter.rows.map((row) => {
+      const status = receiptStepStatus(row.status, run.steps?.[row.step - 1]?.id, run);
+      return `<li data-step="${row.step}"${status === "failed" ? " class=\"failed\"" : ""}><span class="receipt-step-number">${row.step}</span><span>${esc(keepStreet(row.line))}</span>${receiptStatusHtml(status)}</li>`;
+    }).join("");
+    return `<section class="receipt-chapter">${head}<ol class="receipt-items">${items}</ol></section>`;
   }).join("");
-  return `<section class="receipt-chapters" aria-label="Chapters"><h3>Chapters</h3>${rows}</section>`;
+  return `<section class="receipt-chapters" aria-label="Steps"><h3>Steps</h3><div class="receipt-list">${chapters}</div></section>`;
 }
 
 interface InspectorStep {
@@ -2314,20 +2319,22 @@ export function runReceipt(view: ReturnType<typeof inspectRunView>, name: string
   const calls = view.run.modelCalls;
   const spoken = plainAgentReason(run);
   const ask = spoken ? undefined : view.handoff?.ask || run.envelope?.ask;
-  const outline = receiptOutline(run as OutlineRun);
+  // A replay step is named by its workflow, as the command inspector names it.
+  const outline = receiptOutline({ ...run, steps: (run.steps || []).map((step) => ({ ...step, label: workflowStepLabel(workflowSteps, step.id) || step.label })) } as OutlineRun);
   const unlabeled = view.reason || run.failure?.reason || "";
   const skipUnlabeled = Boolean(outline.claim);
   const recordedKind = kind === "failed" || kind === "timed-out" ? kind : "";
+  const outcome = receiptProofHtml(run.id, outline) + receiptOutcomeHtml(outline);
   return `<section id="run-receipt" aria-label="Run receipt"><p class="receipt-kicker"><span class="receipt-recorded-status${recordedKind ? ` run-state ${esc(recordedKind)}` : ""}">Recorded as ${esc(statusLabel(kind))}</span> · ${esc(at)}</p><h2>${esc(name)}</h2>
     <p class="receipt-meta">${view.run.stepCount} step${view.run.stepCount === 1 ? "" : "s"}${calls === null ? "" : ` · ${calls} model call${calls === 1 ? "" : "s"}`}</p>
-    ${receiptBrowsers(run)}
-    ${receiptHar(run.id, record)}
     ${spoken ? `<p class="receipt-reason">${esc(spoken)}</p>` : ask ? runWaiting(run) ? `<aside class="receipt-handoff"><h3>Needs you</h3><p>${esc(ownerStopText(ask))}</p>${view.handoff?.deadline ? `<p>Deadline: ${esc(view.handoff.deadline)}</p>` : ""}</aside>` : `<h3>${esc(statusLabel(kind))}</h3><p class="receipt-reason">${esc(ownerStopText(ask))}</p>` : ""}
     ${spoken || (isAgentBrowserSession(run) && ask && runWaiting(run)) || skipUnlabeled ? "" : unlabeled ? `<p class="receipt-reason">${esc(ownerStopText(unlabeled))}</p>` : ""}
     ${pendingHealCount([run]) ? `<p>A target change is ready to review.</p><button type="button" data-screen="heals">Review heals</button>` : ""}
-    <section class="receipt-outcome" aria-label="Outcome"><h3>Outcome</h3>${receiptOutcomeHtml(outline)}${receiptShotHtml(run.id, outline)}</section>
+    ${outcome ? `<section class="receipt-outcome" aria-label="Outcome">${outcome}</section>` : ""}
+    ${receiptStepsHtml(run, outline)}
     ${receiptAgentHtml(run, outline)}
-    ${receiptChaptersHtml(outline)}
+    ${receiptBrowsers(run)}
+    ${receiptHar(run.id, record)}
     ${receiptInspector(view, run, workflowSteps, record)}
   </section>`;
 }
