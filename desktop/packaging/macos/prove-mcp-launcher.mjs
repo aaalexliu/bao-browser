@@ -32,6 +32,8 @@ delete env.NODE_PATH;
 delete env.NODE_OPTIONS;
 for (const key of ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GROQ_API_KEY", "XAI_API_KEY", "CURSOR_API_KEY"]) delete env[key];
 env.BAO_HEAL_CURSOR_ACCOUNT = "0";
+// Replay is off in a new library, which drops the workflow tools. The library check below reads through search_workflows.
+env.BAO_REPLAY = "1";
 
 const started = Date.now();
 const child = spawn(launcher, [], { cwd: agentDir, env, stdio: ["pipe", "pipe", "pipe"] });
