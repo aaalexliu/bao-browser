@@ -13,6 +13,7 @@ import type { WorkflowV2 } from "../v1/schema";
 import { oneTimeCodeInput } from "../../../shared/saved-secrets";
 import type { inspectRunView } from "../mcp/run-view";
 import { stepRecordBody } from "./step-record-html";
+import { bindReceiptPlayer } from "./receipt-player";
 import type { RunRecordIndex, StepRecordView } from "./step-record-view";
 import type { DamagedWorkflow, Settings } from "../v1/store";
 import { captureTrailOwnsSteps, livePageFromQuery, liveRunView, liveSessionView, screenFromQuery } from "./live-view";
@@ -1400,20 +1401,6 @@ function bindReceipt(host: HTMLElement): void {
     };
     applySearch();
   }
-  host.querySelectorAll<HTMLButtonElement>("[data-receipt-from]").forEach((button) => {
-    button.onclick = () => {
-      const from = Number(button.dataset.receiptFrom || 0);
-      const to = Number(button.dataset.receiptTo || 0);
-      receiptQuery = "";
-      if (search) search.value = "";
-      rows().forEach((row) => {
-        row.hidden = false;
-        const step = Number(row.dataset.step || 0);
-        row.classList.toggle("in-chapter", step >= from && step <= to);
-      });
-      host.querySelector<HTMLElement>(`#receipt-step-${from}`)?.scrollIntoView({ block: "start" });
-    };
-  });
 }
 
 /** Fills each open "Network, page, and console" section. It shows the last copy at once and reads the step record again, which a live run can still rewrite. */
@@ -1520,6 +1507,7 @@ function bindRunReceipt(host: HTMLElement, id: string): void {
     };
   });
   bindReceipt(host);
+  bindReceiptPlayer(host, id);
   bindStepRecords(host, id);
   restoreReceiptSearch(host);
   host.querySelectorAll<HTMLElement>("[data-screen=heals]").forEach((button) => {
