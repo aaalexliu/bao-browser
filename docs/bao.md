@@ -485,7 +485,7 @@ Example workflows (a fixture sign-in, a row pick, a username, a file upload, Wik
 
 The operational steps for the default `bao mcp` server are in [Agent quickstart](agent-quickstart.md).
 
-`bao mcp` lists the same six tools no matter how many workflows you add: the five catalog tools below and `agent_browser`. They run inside `bao mcp` without a running Bao app. MCP Apps hosts also get the reader tools described in [Read-only MCP run viewer](mcp-viewer.md), which owns UI negotiation, visibility, and privacy limits. The older live-driver tools have been removed. `bao mcp-live` remains an alias. [Direct MCP commands](agent-browser-engine.md#direct-mcp-commands) describes the pass-through, recording, cleanup, and raw evidence.
+`bao mcp` lists `get_run`, `list_runs`, `agent_browser`, and `finish_task`. With the [Replay switch](#replay-switch) on, it also lists the three workflow tools below, no matter how many workflows you add. They run inside `bao mcp` without a running Bao app. MCP Apps hosts also get the reader tools described in [Read-only MCP run viewer](mcp-viewer.md), which owns UI negotiation, visibility, and privacy limits. The older live-driver tools have been removed. `bao mcp-live` remains an alias. [Direct MCP commands](agent-browser-engine.md#direct-mcp-commands) describes the pass-through, recording, cleanup, and raw evidence.
 
 | Tool | What it returns |
 | --- | --- |
@@ -495,6 +495,21 @@ The operational steps for the default `bao mcp` server are in [Agent quickstart]
 | `get_run` | A saved MCP report, or an outcome built from a stored capture or replay run when no report exists. See the lookup rules below. |
 | `list_runs` | Five recently updated stored runs per page, with run id, name, time, status, and `nextOffset` for paging. Pass a listed id to `get_run` to read its outcome. |
 | `agent_browser` | The step result in [Direct MCP commands](agent-browser-engine.md#direct-mcp-commands), which also owns browser choices. The session records commands and [pass-through evidence](agent-browser-engine.md#evidence) in Runs. Supported single-page tasks save replayable workflows when the session ends; other tasks stay capture-only with a reason. It does not block final clicks. |
+
+### Replay switch
+
+Saved-workflow replay is off until you turn on **Settings → Replay → Replay saved workflows**. The choice is `replay` in the Library's `settings.json`. It stays on this Mac and does not sync.
+
+While it is off:
+
+- The app has two places, Runs and Settings. Workflows, Record, the heal review, the command palette's workflow entries, and a run's re-run buttons do not show. Settings leaves out Runs and heals, Remote access, and AI help.
+- The app answers 403 with `Replay is off. Turn on Replay in Bao Settings to use saved workflows.` to a request that starts a replay or a recording, imports a workflow, opens a workflow link, or pairs a remote device. A `bao://receipt/<run id>` link still opens.
+- This Mac does not dial the registry for remote runs, whatever `remoteMcp` and `BAO_REMOTE_MCP` say. A connection that is open when the switch goes off closes within two seconds. A remote request that arrives before that gets `failed` with the same sentence and starts nothing. A run already in progress is not cancelled.
+- `bao mcp` does not list `search_workflows`, `describe_workflow`, or `run_workflow`, and answers a call to one with that same sentence. Its instructions, tool descriptions, and results do not mention workflows or replay.
+
+`agent_browser` records a run the same way with the switch on or off, and `finish_task` still saves an eligible workflow in the Library. Only the line that reports the save is left out. `bao mcp` reads the switch on each request. An agent that already listed its tools sees the change the next time it connects.
+
+`BAO_REPLAY=1` turns Replay on for a Library that has saved no choice. The test runners set it; see [Desktop tests](../desktop/test/README.md).
 
 `search_workflows` and `describe_workflow` set `required` from `supply`: `saved` is not required, and `must` is. They do not read a login step or a saved secret to decide that flag. Inputs bound to `autocomplete="one-time-code"` fields never use saved defaults; see the [saved-file replay rules](permissions.md#secret-text-in-saved-files).
 

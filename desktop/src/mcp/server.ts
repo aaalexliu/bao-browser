@@ -1,7 +1,7 @@
 import { baoUserHome, resolveLibraryIdentity, tildePath, type LibraryIdentity } from "../home";
 import { describeWorkflow, getRun, hasHeldRuns, peekResume, runWorkflow, searchWorkflows } from "./catalog";
 import { frameRpc, takeRpcChunk } from "./frame";
-import { Library } from "../v1/store";
+import { Library, REPLAY_OFF } from "../v1/store";
 import { AGENT_BROWSER_COMMANDS, AgentBrowserProxy, otherTaskClosed, type AgentBrowserCommandResult } from "../engines/agent-browser-proxy";
 import { abandonVideoOnHostStop } from "../engines/agent-browser-record";
 import { sweepClaimedVideoFrames } from "../engines/video-handoff";
@@ -113,6 +113,43 @@ export const INSTRUCTIONS = [
   "Every agent_browser result starts with one plain sentence of what the step did, quoting the element's own text from the latest snapshot, such as Clicked \"Save\" (button). In MCP Apps hosts, a card shows that sentence with the page picture and the target boxed; a failed step shows the last picture before it and the page now; an owner wait shows the sign-in or check page's title and address; finish_task shows the run's result and its optional done list. Exact native stdout/stderr (for a snapshot with find or diff, Bao's shorter view of it) and snapshot refs remain in content blocks after the sentence. A picture text block follows that output when the step has no page picture or kept a picture of a different tab, unless the step failed to start, the command is close or wait_for_owner, or the page is owner-private. A thrown error follows, then a short run_id and step_id block, then a workflow save notice when the session ends. structuredContent contains only command, status, run_id, step_id, and optional error metadata, not another copy of native output. Without MCP Apps, the sentence is followed by a Run <run_id> line; a sign-in or check wait adds · <outcome> to it and gives the instruction as text, with outcome, instruction, and run_id in structuredContent. finish_task returns the sentence, a Run <run_id> · <status> · <link> line, and the workflow save result as text. structuredContent is a short receipt for the model: that sentence, the run id, status, link, workflow line, and browser lines, not each step's native output. Picture bytes are fetched separately by the app and never included in ordinary agent_browser results. A visual result includes run_id: use get_run with that id when asked to show the session, not filesystem access. finish_task saves a successful single-document task as a WorkflowV2 for open, click, fill, and press when every action has a durable target. Its result says saved with its id, or not saved with the reason. Scrolling, second tabs, popups, unsupported options, and missing targets remain capture-only.",
   "Use Bao's tools to find and read runs and workflows, not filesystem browsing. Catalog replies identify library.active, the one Library Bao uses for search, get_run, and replay. library.inactive lists other roots with data, their contents, and the latest data-file update time; Bao does not use or search those roots. Nothing is merged or migrated. search_workflows, describe_workflow, run_workflow, list_runs, and get_run work on saved workflows and runs. get_run also reads browser capture sessions. Workflows from the retired live driver cannot replay. Workflows saved from pass-through tasks replay through run_workflow on the current engine, not through the native pass-through.",
 ].join("\n");
+
+/** The tools that find, describe, and run a saved workflow. `bao mcp` lists and answers them only while the Replay switch is on. */
+const REPLAY_TOOLS: ReadonlySet<string> = new Set(["search_workflows", "describe_workflow", "run_workflow"]);
+
+/**
+ * What the model reads about saved workflows and replay, and what it reads in its place while the Replay switch is off.
+ * Each first text is in a tool description or the instructions above.
+ */
+export const REPLAY_WORDING: readonly (readonly [on: string, off: string])[] = [
+  ["An agent names it, a workflow that moves files uses it because running Chrome cannot do that yet, and an open that named no browser uses it", "An agent names it, and an open that named no browser uses it"],
+  [" A workflow with a file step stays on the browser it named.", ""],
+  [" finish_task saves a task that moved files with a note step naming each file by full path; replay does not move those files yet.", ""],
+  [" finish_task also saves a replayable workflow for a successful single-document task using open, click, fill, and press. Its result gives the workflow id or a one-line reason it was not saved. Second tabs, popups, scrolling, missing targets, and failed tasks remain capture-only. Replay uses run_workflow with the current engine, not the native pass-through.", ""],
+  [" It also saves an eligible workflow.", ""],
+  ["run id, status, link, workflow line, and browser lines", "run id, status, link, and browser lines"],
+  [" A successful, representable single-document task saves a workflow; finish_task returns its id or the reason it was not saved. Never claim a workflow exists without that saved result.", ""],
+  ["then a short run_id and step_id block, then a workflow save notice when the session ends.", "then a short run_id and step_id block."],
+  ["finish_task returns the sentence, a Run <run_id> · <status> · <link> line, and the workflow save result as text.", "finish_task returns the sentence and a Run <run_id> · <status> · <link> line as text."],
+  [" finish_task saves a successful single-document task as a WorkflowV2 for open, click, fill, and press when every action has a durable target. Its result says saved with its id, or not saved with the reason. Scrolling, second tabs, popups, unsupported options, and missing targets remain capture-only.", ""],
+  ["Use Bao's tools to find and read runs and workflows, not filesystem browsing. Catalog replies identify library.active, the one Library Bao uses for search, get_run, and replay.", "Use Bao's tools to find and read runs, not filesystem browsing. Catalog replies identify library.active, the one Library Bao uses for list_runs and get_run."],
+  [" search_workflows, describe_workflow, run_workflow, list_runs, and get_run work on saved workflows and runs. get_run also reads browser capture sessions. Workflows from the retired live driver cannot replay. Workflows saved from pass-through tasks replay through run_workflow on the current engine, not through the native pass-through.", " list_runs and get_run read saved runs, browser capture sessions included."],
+  ["Read one replay outcome or browser capture by run id, including its current status and declared outputs when the workflow has them.", "Read one run by run id, including its current status."],
+];
+
+function withoutReplay(text: string): string {
+  return REPLAY_WORDING.reduce((out, [on, off]) => out.replaceAll(on, off), text);
+}
+
+/** The tools `bao mcp` lists: all of them while the Replay switch is on, and none that names a workflow or replay while it is off. */
+export function mcpTools(replay: boolean): readonly { name: string; description: string; inputSchema: object }[] {
+  if (replay) return TOOLS;
+  return TOOLS.filter((tool) => !REPLAY_TOOLS.has(tool.name)).map((tool) => ({ ...tool, description: withoutReplay(tool.description), inputSchema: JSON.parse(withoutReplay(JSON.stringify(tool.inputSchema))) as object }));
+}
+
+export function mcpInstructions(replay: boolean): string {
+  return replay ? INSTRUCTIONS : withoutReplay(INSTRUCTIONS);
+}
 
 interface Context {
   checkVersion(): Promise<void>;
@@ -234,7 +271,7 @@ async function handle(msg: Rpc, ctx: Context): Promise<void> {
         protocolVersion: "2024-11-05",
         capabilities: ctx.ui ? { tools: {}, resources: {}, extensions: { [UI_EXTENSION]: { mimeTypes: [VIEWER_MIME] } } } : { tools: {} },
         serverInfo: { name: "bao", version: baoVersion(__filename) },
-        instructions: INSTRUCTIONS,
+        instructions: mcpInstructions(replayOn(ctx)),
       },
     });
     return;
@@ -252,10 +289,11 @@ async function handle(msg: Rpc, ctx: Context): Promise<void> {
     }
   }
   if (msg.method === "tools/list") {
+    const listed = mcpTools(replayOn(ctx));
     const tools = ctx.ui ? [
-      ...TOOLS.map((tool) => ({ ...tool, ...(tool.name === "agent_browser" ? { outputSchema: BROWSER_RESULT_SCHEMA } : {}), _meta: { ui: { visibility: tool.name === "list_runs" ? ["model", "app"] : ["model"], ...(["get_run", "list_runs", "agent_browser", "finish_task"].includes(tool.name) ? { resourceUri: VIEWER_URI } : {}) } } })),
+      ...listed.map((tool) => ({ ...tool, ...(tool.name === "agent_browser" ? { outputSchema: BROWSER_RESULT_SCHEMA } : {}), _meta: { ui: { visibility: tool.name === "list_runs" ? ["model", "app"] : ["model"], ...(["get_run", "list_runs", "agent_browser", "finish_task"].includes(tool.name) ? { resourceUri: VIEWER_URI } : {}) } } })),
       ...VIEWER_TOOLS,
-    ] : TOOLS;
+    ] : listed;
     send({ jsonrpc: "2.0", id: msg.id, result: { tools } });
     return;
   }
@@ -273,6 +311,7 @@ async function handle(msg: Rpc, ctx: Context): Promise<void> {
     const args = msg.params?.arguments || {};
     try {
       let result;
+      if (REPLAY_TOOLS.has(name) && !replayOn(ctx)) throw new Error(REPLAY_OFF);
       if (ctx.ui && isViewerTool(name)) result = callViewerTool(ctx.library, name, args);
       else if (name === "agent_browser") result = await proxyTool(args, ctx);
       else if (name === "finish_task") {
@@ -293,7 +332,7 @@ async function handle(msg: Rpc, ctx: Context): Promise<void> {
         let card;
         try { card = runId ? finishCardFor(ctx.library, runId) : undefined; }
         catch { card = undefined; }
-        result = { ...finishToolResult(card, { ...receipt, workflow: ctx.proxy.lastWorkflowOutcome, endedWait: ctx.proxy.endedWait }, ctx.ui, ctx.proxy.pickLines),
+        result = { ...finishToolResult(card, { ...receipt, workflow: workflowLine(ctx), endedWait: ctx.proxy.endedWait }, ctx.ui, ctx.proxy.pickLines),
           ...(ctx.ui && card ? { _meta: { baoToolCard: card } } : {}) };
       }
       else {
@@ -326,6 +365,20 @@ async function handle(msg: Rpc, ctx: Context): Promise<void> {
   if (msg.id !== undefined) send({ jsonrpc: "2.0", id: msg.id, error: { code: -32601, message: "method not found" } });
 }
 
+function replayOn(ctx: Context): boolean {
+  return ctx.library.settings().replay === true;
+}
+
+/** Whether the task was saved as a workflow, for the model. Absent while the Replay switch is off: the model has no tool to run one. */
+function workflowLine(ctx: Context): string | undefined {
+  return replayOn(ctx) ? ctx.proxy.lastWorkflowOutcome : undefined;
+}
+
+function workflowNotice(ctx: Context): string[] {
+  const line = workflowLine(ctx);
+  return line ? [line] : [];
+}
+
 async function proxyTool(args: Record<string, unknown>, ctx: Context) {
   let results: AgentBrowserCommandResult[] = [];
   let error: string | undefined;
@@ -346,7 +399,7 @@ async function proxyTool(args: Record<string, unknown>, ctx: Context) {
     if (!ctx.ui) {
       const shot = pageShotLine(ctx.proxy.lastCommand?.step);
       const runId = ctx.proxy.refused ? undefined : ctx.proxy.lastCommand?.runId ?? ctx.proxy.activeRunId;
-      const notice = [...runId ? [runLine(runId)] : [], ...shot ? [shot] : [], ...ctx.proxy.endedWait ? [ctx.proxy.endedWait] : [], ...ctx.proxy.pickLines, ...ctx.proxy.lastWorkflowOutcome ? [ctx.proxy.lastWorkflowOutcome] : []];
+      const notice = [...runId ? [runLine(runId)] : [], ...shot ? [shot] : [], ...ctx.proxy.endedWait ? [ctx.proxy.endedWait] : [], ...ctx.proxy.pickLines, ...workflowNotice(ctx)];
       if (notice.length) throw new Error([cause instanceof Error ? cause.message : String(cause), ...notice].join("\n"));
       throw cause;
     }
@@ -355,7 +408,7 @@ async function proxyTool(args: Record<string, unknown>, ctx: Context) {
   }
   const picked = ctx.proxy.pickLines;
   const saved = ctx.proxy.savedFile;
-  const notice = [...saved ? [`Bao saved the file at ${saved}.`] : [], ...ctx.proxy.endedWait ? [ctx.proxy.endedWait] : [], ...picked, ...ctx.proxy.lastWorkflowOutcome ? [ctx.proxy.lastWorkflowOutcome] : []];
+  const notice = [...saved ? [`Bao saved the file at ${saved}.`] : [], ...ctx.proxy.endedWait ? [ctx.proxy.endedWait] : [], ...picked, ...workflowNotice(ctx)];
   const command = String(args.command || "");
   const refused = ctx.proxy.refused;
   const facts = { args: Array.isArray(args.args) ? args.args.filter((arg): arg is string => typeof arg === "string") : [],

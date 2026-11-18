@@ -49,6 +49,8 @@ function laneEnv(lane: TestLane, parent: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   env.BAO_HEAL_CURSOR_ACCOUNT = "0";
   env.BAO_LANE = lane;
   env.BAO_REPLAY_VIDEO = "0";
+  // The suite runs with the Replay switch on. A test of the switch saves its own choice in settings.json, or drops this name.
+  env.BAO_REPLAY = "1";
   env.BAO_HEADED = "0";
   env.BAO_TEST_RUN_ID = `${Date.now().toString(36)}-${randomBytes(3).toString("hex")}`;
   if (lane === "live") env.BAO_LIVE_TESTS = "1";

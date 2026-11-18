@@ -14,12 +14,12 @@ import type { PersonPrompts } from "./browser-driver";
 import { clearRelay, loadRelay, type RelayLink } from "./relay-link";
 import { remoteDriverKind } from "./remote-run";
 import type { WorkflowV2 } from "./schema";
-import { Library } from "./store";
+import { Library, REPLAY_OFF } from "./store";
 
-/** This Mac dials out only when its own setting is on, or BAO_REMOTE_MCP=1 is set for the process. */
+/** This Mac dials out only while Replay is on, and its own setting is on or BAO_REMOTE_MCP=1 is set for the process. */
 export function desktopRemoteEnabled(library: Library, env: NodeJS.ProcessEnv = process.env): boolean {
-  if (env.BAO_REMOTE_MCP === "1") return true;
-  return library.settings().remoteMcp === true;
+  const settings = library.settings();
+  return settings.replay === true && (env.BAO_REMOTE_MCP === "1" || settings.remoteMcp === true);
 }
 
 export interface RemoteView {
@@ -208,9 +208,13 @@ export function createRemoteAgent(opts: {
     socket = client;
     const ping = setInterval(() => client.send(JSON.stringify({ type: "ping" })), 10_000);
     ping.unref();
+    // A switch turned off while this socket is open ends it, so the registry sees this Mac as offline.
+    const gate = setInterval(() => { if (!desktopRemoteEnabled(opts.library)) client.close(); }, 1500);
+    gate.unref();
     await new Promise<void>((resolve) => {
       client.handlers.close = () => {
         clearInterval(ping);
+        clearInterval(gate);
         if (socket === client) socket = null;
         resolve();
       };
@@ -238,6 +242,13 @@ export function createRemoteAgent(opts: {
     if (message.type !== "job") return;
     const job = assigned(message.job);
     if (!job) return;
+    if (!desktopRemoteEnabled(opts.library)) {
+      // The switch went off after this socket opened. The job gets its answer, and nothing runs.
+      const reason = opts.library.settings().replay === true ? "Remote access is off on this Mac." : REPLAY_OFF;
+      socket?.send(JSON.stringify({ type: "result", jobId: job.id, result: { outcome: "failed", reason } }));
+      socket?.close();
+      return;
+    }
     transition({
       type: "job",
       job,

@@ -44,7 +44,7 @@ test("the re-run field retains a saved secret value", () => {
       { id: "type", status: "passed", label: "type the note", startedAt: 0, endedAt: 400 },
       { id: "save", status: "passed", label: "save", startedAt: 12_400, endedAt: 12_900 },
     ],
-  }, { name: "upload note", steps: [{ id: "type", label: "type the note" }, { id: "save", label: "save" }] }, "save");
+  }, { name: "upload note", steps: [{ id: "type", label: "type the note" }, { id: "save", label: "save" }] }, "save", { replay: true });
   assert.match(viewer, /Re-run with this run's inputs/);
   assert.match(viewer, /Debug from this step/);
   assert.match(viewer, /data-step="save"/);

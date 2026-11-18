@@ -7,7 +7,7 @@ import type { BrowserPick, RunRoute } from "../engines/browser-pick";
 import type { FileTransfer } from "../engines/agent-browser-files";
 import type { RunRecordIndex } from "./step-record-view";
 import { ROUTE_LABELS } from "../engines/route-labels";
-import { shellPlaces, shellScreen, shellScreens, type Screen } from "./shell-navigation";
+import { replayScreen, shellPlaces, shellScreen, shellScreens, shownPlaces, type Screen, type ShellScreen } from "./shell-navigation";
 import type { ImportLoginError } from "../v1/import-login-error";
 import { ownerWaitTimeout } from "../cdp-live/owner-wait";
 import { attentionCount, formatWait, pendingHealCount, type HumanAsk } from "../v1/human-ask";
@@ -225,6 +225,8 @@ export interface ShellState {
   extractPicker?: string;
   saveSheet?: SaveSheet | null;
   remote?: RemoteView;
+  /** The Replay switch. Absent or false hides the Workflows place, Record, and each control that starts a replay. */
+  settings?: { replay?: boolean };
 }
 
 export interface SaveSheet {
@@ -359,9 +361,10 @@ export function rail(state: ShellState, screen: Screen = "runs"): string {
   const action = waits[0] ? waits[0].live ? ' data-screen="live"' : ` data-open-run="${esc(waits[0].run.id)}"` : imports ? ' data-screen="logins"' : reviews ? ' data-screen="library"' : ' data-screen="live"';
   const damaged = state.damagedWorkflows?.length || 0;
   const current = shellScreens[shellScreen(screen)].place;
+  const places = shownPlaces(state.settings?.replay === true);
   const workflowWarning = damaged ? `<span class="workflow-warning" aria-hidden="true">${icon("warning")}</span><span id="workflow-warning-description" hidden>${damaged === 1 ? "One workflow can’t open." : `${damaged} workflows can’t open.`} Open Workflows for recovery options.</span>` : "";
   return `<button id="sidebar-close" type="button" aria-label="Close sidebar">Close</button>
-    <nav aria-label="Places">${shellPlaces.map((place) => `<button type="button" data-place="${place.id}" data-screen="${place.screen}"${current === place.id ? ` class="on" aria-current="page"` : ""}${place.id === "workflows" && damaged ? ` aria-describedby="workflow-warning-description"` : ""}>${icon(place.icon)} <span>${place.label}</span>${place.id === "runs" ? `<span class="place-count" id="attention" data-count="${count}" aria-label="${needsYouText(count, Boolean(state.runs?.length))}">${count || ""}</span>` : place.id === "workflows" && damaged ? workflowWarning : ""}</button>`).join("")}</nav>
+    <nav aria-label="Places">${places.map((place) => `<button type="button" data-place="${place.id}" data-screen="${place.screen}"${current === place.id ? ` class="on" aria-current="page"` : ""}${place.id === "workflows" && damaged ? ` aria-describedby="workflow-warning-description"` : ""}>${icon(place.icon)} <span>${place.label}</span>${place.id === "runs" ? `<span class="place-count" id="attention" data-count="${count}" aria-label="${needsYouText(count, Boolean(state.runs?.length))}">${count || ""}</span>` : place.id === "workflows" && damaged ? workflowWarning : ""}</button>`).join("")}</nav>
     <button type="button" class="rail-foot"${action}>${baoMark()}<span><strong>Bao</strong><span id="attention-label">${esc(footer)}</span></span></button>`;
 }
 
@@ -372,9 +375,9 @@ export function shellList(screen: Screen, state: ShellState, selectedRun = "", a
   return `<header class="pane-bar">
       <button id="sidebar-toggle" type="button" aria-label="Show sidebar" aria-haspopup="dialog" aria-controls="sidebar-dialog">${icon("sidebar")}</button>
       <div class="pane-title"><h1>${place.label}</h1>${place.id === "runs" ? `<p>${available ? needsYouText(shellAttentionCount(state), Boolean(state.runs?.length)) : "Run history unavailable"}</p>` : ""}</div>
-      ${place.id === "runs" ? `<button type="button" class="runs-record" data-screen="capture">${icon("record")}Record</button>` : ""}
+      ${place.id === "runs" && state.settings?.replay ? `<button type="button" class="runs-record" data-screen="capture">${icon("record")}Record</button>` : ""}
     </header>
-    ${place.id === "runs" ? available ? runsList(state.runs || [], state.workflows || [], selectedRun, Date.now(), state.activeAsk, state.pendingImport?.phase, { selectedHeal, liveSelected: screen === "live", promotions: state.promotions, activeRun: state.activeRun, runExecuting: state.runExecuting }) : `<p class="run-list-note">Run history is unavailable. Use Retry to reconnect.</p>` : `<nav aria-label="${place.label} screens" class="screen-list">${Object.entries(shellScreens).filter(([, item]) => item.place === place.id).map(([id, item]) => `<button type="button" data-screen="${id}"${id === current ? ` class="on" aria-current="page"` : ""}>
+    ${place.id === "runs" ? available ? runsList(state.runs || [], state.workflows || [], selectedRun, Date.now(), state.activeAsk, state.pendingImport?.phase, { selectedHeal, liveSelected: screen === "live", promotions: state.promotions, activeRun: state.activeRun, runExecuting: state.runExecuting, replay: state.settings?.replay === true }) : `<p class="run-list-note">Run history is unavailable. Use Retry to reconnect.</p>` : `<nav aria-label="${place.label} screens" class="screen-list">${Object.entries(shellScreens).filter(([, item]) => item.place === place.id).map(([id, item]) => `<button type="button" data-screen="${id}"${id === current ? ` class="on" aria-current="page"` : ""}>
         <span class="screen-name">${id === current ? `<span aria-hidden="true">› </span>` : ""}${item.label}</span>
         <span class="screen-description">${item.description}</span>
       </button>`).join("")}</nav>`}`;
@@ -550,6 +553,8 @@ export interface ViewerContext {
   recorded?: TrajectoryStep[];
   /** Steps whose auto-heal is off after consecutive heals. */
   reviewStepIds?: string[];
+  /** The Replay switch. Absent or false leaves out the buttons that run the workflow again. */
+  replay?: boolean;
 }
 
 function routeRan(
@@ -704,7 +709,7 @@ export function runViewer(
     ${pageClassPane(run)}
     ${envelopePane(run.envelope, envelopeWait ? { stepNumber: steps.indexOf(envelopeWait) + 1, label: envelopeWait.label || envelopeWait.id } : undefined, ownerCheckLimit(ownerCheck))}
     ${handoffPane(run.trail)}
-    ${workflow.recordedOnly ? "" : `<div class="row" id="run-actions">
+    ${workflow.recordedOnly || !context.replay ? "" : `<div class="row" id="run-actions">
       <button id="rerun-run" type="button">Re-run with this run's inputs</button>
       <button id="debug-step" type="button" data-step="${esc(selected?.id || "")}">Debug from this step</button>
     </div>`}
@@ -2004,7 +2009,7 @@ export function runWaitLeft(deadline: number, now = Date.now()): string {
   return Number.isFinite(remaining) ? `${remaining >= 60 ? `${Math.floor(remaining / 60)} h ` : ""}${remaining % 60} min left` : "";
 }
 
-export function runsList(runs: RunSummary[], workflows: WorkflowSummary[], selectedRun = "", now = Date.now(), ask?: HumanAsk | null, importPhase?: string, selection: { selectedHeal?: { runId: string; healId: string } | null; liveSelected?: boolean; promotions?: PromotionView[]; activeRun?: ActiveRun | null; runExecuting?: boolean } = {}): string {
+export function runsList(runs: RunSummary[], workflows: WorkflowSummary[], selectedRun = "", now = Date.now(), ask?: HumanAsk | null, importPhase?: string, selection: { selectedHeal?: { runId: string; healId: string } | null; liveSelected?: boolean; promotions?: PromotionView[]; activeRun?: ActiveRun | null; runExecuting?: boolean; replay?: boolean } = {}): string {
   const active = selection.activeRun;
   const live = selection.runExecuting && active ? active : null;
   const attention = runAttention(runs, ask, active);
@@ -2065,12 +2070,12 @@ export function runsList(runs: RunSummary[], workflows: WorkflowSummary[], selec
     <section aria-labelledby="needs-you-heading"><h2 id="needs-you-heading" class="run-group-heading">Needs you <span class="run-count" aria-label="${count} items">${count}</span></h2>
       ${count ? `<ul aria-label="Needs you">${attention.map((item) => row(item.run, item.label, item.kind, item.live, item.kind === "healed" ? item.healId : undefined)).join("")}${imports ? `<li><button type="button" class="run-row" data-screen="logins"><span class="run-glyph paused" aria-hidden="true">${runStatusGlyph("paused")}</span><span class="run-name">Sign-in needs you</span><span class="run-meta">Review the login import</span></button></li>` : ""}${reviews.map((review) => `<li><button type="button" class="run-row" data-screen="library"><span class="run-glyph warning" aria-hidden="true">${runStatusGlyph("warning")}</span><span class="run-name">${esc(review.label)}</span><span class="run-meta">Step needs review after ${review.streak} heals</span></button></li>`).join("")}</ul>` : `<p class="run-list-note">Nothing needs you.</p>`}</section>
     ${nowRuns.length ? `<section aria-label="Now"><h2 class="run-group-heading">Now</h2><ul>${nowRuns.map((run) => row(run, undefined, undefined, true)).join("")}</ul></section>` : ""}
-    ${groups.size ? [...groups].map(([label, entries]) => `<section aria-label="${esc(label)}"><h2 class="run-group-heading">${esc(label)}</h2><ul>${entries.map((run) => row(run)).join("")}</ul></section>`).join("") : !runs.length && !nowRuns.length ? `<h2 class="run-group-heading">History</h2><p class="run-list-note"><strong>No runs yet</strong><br>When Bao runs a workflow, it shows up here, newest first.</p>` : ""}
+    ${groups.size ? [...groups].map(([label, entries]) => `<section aria-label="${esc(label)}"><h2 class="run-group-heading">${esc(label)}</h2><ul>${entries.map((run) => row(run)).join("")}</ul></section>`).join("") : !runs.length && !nowRuns.length ? `<h2 class="run-group-heading">History</h2><p class="run-list-note"><strong>No runs yet</strong><br>${selection.replay ? "When Bao runs a workflow, it shows up here, newest first." : "When an agent finishes a browser task with Bao, it shows up here, newest first."}</p>` : ""}
   </div>`;
 }
 
-export function runsWelcome(hasRuns: boolean): string {
-  return `<section id="runs-welcome"><h2>Runs</h2>${hasRuns ? `<h3>Every run leaves a receipt.</h3><p>Select a run to see what happened, what needs you, and the steps Bao took.</p>` : `<h3>Record a task once.</h3><p>Run a saved workflow to see its receipt here. Bao keeps runs that need you above your history.</p><button type="button" data-screen="library">Open Workflows</button>`}</section>`;
+export function runsWelcome(hasRuns: boolean, replay = false): string {
+  return `<section id="runs-welcome"><h2>Runs</h2>${hasRuns ? `<h3>Every run leaves a receipt.</h3><p>Select a run to see what happened, what needs you, and the steps Bao took.</p>` : !replay ? `<h3>No runs yet.</h3><p>When an agent finishes a browser task with Bao, its receipt shows here. Bao keeps runs that need you above your history.</p>` : `<h3>Record a task once.</h3><p>Run a saved workflow to see its receipt here. Bao keeps runs that need you above your history.</p><button type="button" data-screen="library">Open Workflows</button>`}</section>`;
 }
 
 export function connectionError(): string {
@@ -2376,11 +2381,12 @@ export function runReceipt(view: ReturnType<typeof inspectRunView>, name: string
   </section>`;
 }
 
-export function commandItems(workflows: { id: string; name: string }[]): CommandItem[] {
+export function commandItems(workflows: { id: string; name: string }[], replay = false): CommandItem[] {
   const screens: CommandItem[] = [
-    ...Object.entries(shellScreens).map(([id, item]) => ({ id, label: item.label, kind: "screen" as const, screen: id, hint: "Go" })),
+    ...Object.entries(shellScreens).filter(([id]) => replay || !replayScreen(id as ShellScreen)).map(([id, item]) => ({ id, label: item.label, kind: "screen" as const, screen: id, hint: "Go" })),
     { id: "theme", label: "Toggle appearance", kind: "theme", hint: "Light or dark" },
   ];
+  if (!replay) return screens;
   const open = workflows.map((workflow) => ({ id: `open-${workflow.id}`, label: `Open ${workflow.name}`, kind: "workflow" as const, workflowId: workflow.id, hint: "Workflow" }));
   const run = workflows.map((workflow) => ({ id: `run-${workflow.id}`, label: `Run ${workflow.name}`, kind: "workflow" as const, workflowId: workflow.id, screen: "replay", hint: "Run" }));
   return [...screens, ...open, ...run];
@@ -2394,9 +2400,9 @@ export function paletteList(items: CommandItem[], query: string, active: number)
   return rows || `<p class="quiet">No matches.</p>`;
 }
 
-export function paletteView(items: CommandItem[], query: string, active: number): string {
+export function paletteView(items: CommandItem[], query: string, active: number, replay = false): string {
   return `<div class="panel" role="dialog" aria-label="Commands">
-    <input id="palette-input" placeholder="Jump to a workflow or screen" value="${esc(query)}" aria-label="Command">
+    <input id="palette-input" placeholder="${replay ? "Jump to a workflow or screen" : "Jump to a screen"}" value="${esc(query)}" aria-label="Command">
     <div id="palette-list">${paletteList(items, query, active)}</div>
   </div>`;
 }

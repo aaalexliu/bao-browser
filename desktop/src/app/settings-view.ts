@@ -18,7 +18,15 @@ const sections = [
   ["remote", "remote", "Remote access"],
   ["logins", "key", "Logins"],
   ["ai", "sparkle", "AI help"],
+  ["replay", "play", "Replay"],
 ] as const;
+
+/** Settings groups that only tune saved-workflow replay. They show while the Replay switch is on. */
+const replayOnly: ReadonlySet<string> = new Set(["runs", "remote", "ai"]);
+
+function replayOn(view: SettingsView): boolean {
+  return view.settings?.replay === true;
+}
 
 function icon(name: string): string {
   const shapes: Record<string, string> = {
@@ -29,6 +37,7 @@ function icon(name: string): string {
     key: '<circle cx="5.25" cy="10.75" r="2.5"/><path d="m7 9 6-6M11 5l1.5 1.5M9.5 6.5 11 8"/>',
     sparkle: '<path d="M8 2.25 9.3 6.7l4.45 1.3-4.45 1.3L8 13.75 6.7 9.3 2.25 8l4.45-1.3Z"/>',
     folder: '<path d="M2.25 4.75a1 1 0 0 1 1-1h3l1.5 1.5h5a1 1 0 0 1 1 1v5.5a1 1 0 0 1-1 1h-9.5a1 1 0 0 1-1-1Z"/>',
+    play: '<path d="M5.25 3.5v9l7.5-4.5Z"/>',
     globe: '<circle cx="8" cy="8" r="5.75"/><path d="M2.25 8h11.5M8 2.25c1.6 1.6 2.4 3.5 2.4 5.75S9.6 12.15 8 13.75C6.4 12.15 5.6 10.25 5.6 8S6.4 3.85 8 2.25Z"/>',
   };
   return `<span class="settings-icon"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${shapes[name]}</svg></span>`;
@@ -59,9 +68,11 @@ export function settingsIndex(view: SettingsView): string {
     remoteLabel(view),
     `${view.sites.length} ${view.sites.length === 1 ? "site" : "sites"} from your Chrome`,
     sourceLabel(view),
+    replayOn(view) ? "On" : "Off",
   ];
+  const shown = sections.map((section, i) => [...section, summaries[i]] as const).filter(([id]) => replayOn(view) || !replayOnly.has(id));
   return `<header class="pane-bar"><button id="sidebar-toggle" type="button" aria-label="Show sidebar" aria-haspopup="dialog" aria-controls="sidebar-dialog">${shellIcon("sidebar")}</button><div><h1>Settings</h1><p class="settings-subtitle">Grouped rows save on change</p></div></header>
-    <nav class="settings-index" aria-label="Settings sections">${sections.map(([id, glyph, title], i) => `<a href="#set-${id}" data-settings-jump="${id}"${i === 0 ? ' aria-current="true"' : ""}>${icon(glyph)}<span><b>${title}</b><span class="settings-subtitle">${esc(summaries[i])}</span></span></a>`).join("")}</nav>`;
+    <nav class="settings-index" aria-label="Settings sections">${shown.map(([id, glyph, title, summary], i) => `<a href="#set-${id}" data-settings-jump="${id}"${i === 0 ? ' aria-current="true"' : ""}>${icon(glyph)}<span><b>${title}</b><span class="settings-subtitle">${esc(summary)}</span></span></a>`).join("")}</nav>`;
 }
 
 function chromeDenied(view: SettingsView): boolean {
@@ -101,8 +112,9 @@ export function settingsScreen(view: SettingsView, advanced: string): string {
   const sites = view.sites.map((site) => row(
     `<b>${esc(site.origin.replace(/^https?:\/\//, ""))}</b><p>${site.signedIn === false ? "Needs sign-in." : site.lastProbeLabel ? `Last checked ${esc(site.lastProbeLabel)}.` : "Saved login."} Bao reads this site's login only.</p>`,
     `<button type="button" data-remove="${htmlEsc(controlKey(site.origin))}" aria-label="Remove the ${esc(site.origin)} login">Remove…</button>`, "globe")).join("");
+  const replay = replayOn(view);
   return `<section id="settings" aria-label="Settings">
-    ${group("runs", "Runs and heals", row(
+    ${!replay ? "" : group("runs", "Runs and heals", row(
       `<span id="heal-label">When a page changes</span><p>Heal it finds the moved button and keeps going. Ask me stops and shows you first.</p>`,
       `<fieldset class="settings-segmented" aria-labelledby="heal-label"><legend class="settings-sr">When a page changes</legend>${[["auto", "Heal it"], ["approve", "Ask me"], ["never", "Stop"]].map(([value, label]) => `<input type="radio" name="heal" id="heal-${value}" value="${value}" data-setting="heal"${(settings.heal || "auto") === value ? " checked" : ""}><label for="heal-${value}">${label}</label>`).join("")}</fieldset>`)
       + row(`<label for="promote-after">Keep a heal after</label><p>Clean runs with the new target before Bao keeps it for good.</p>`, `<input id="promote-after" data-setting="promoteAfter" type="number" required min="1" max="20" value="${settings.promoteAfter ?? 3}" aria-describedby="keep-unit promote-after-error"><span id="keep-unit">runs</span><span id="promote-after-error" role="status" hidden></span>`)
@@ -112,17 +124,20 @@ export function settingsScreen(view: SettingsView, advanced: string): string {
       `<span class="settings-permission${view.helper?.accessibility && mac ? " allowed" : ""}">${view.helper?.accessibility && mac ? "✓ " : ""}${accessibility}</span>${mac ? '<button type="button" class="mac-permissions-setup">Set up</button>' : ''}`, "hand")
       + row(`<b>Screen Recording</b><p>${mac ? "Lets Bao's helper capture app windows for pictures and native-app control. Chrome screenshots do not need it." : "Mac window capture uses this permission on macOS. It does not apply on Linux."}</p>`,
         `<span class="settings-permission">${mac ? "Not checked" : "Mac only"}</span>${mac ? '<a id="screen-recording-settings" class="button" href="x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture">Open System Settings</a>' : ""}`, "eye"))}
-    ${group("remote", "Remote access", row(
+    ${!replay ? "" : group("remote", "Remote access", row(
       `<label id="remote-label" for="remote-mcp">Let AI agents run my workflows</label><p id="remote-help">An agent on another device can ask to run a workflow on this ${mac ? "Mac" : "computer"}. Off until you turn it on.</p>`,
       `<span id="remote-state">${remoteLabel(view)}</span><input class="settings-switch" id="remote-mcp" type="checkbox" role="switch" data-setting="remoteMcp" aria-describedby="remote-help remote-state"${settings.remoteMcp ? " checked" : ""}>`)
       + row(`<b>Connect another device</b><p id="relay-status">${view.relay?.paired ? "Connected. Revoke to disconnect this computer." : "Not paired. Enter a pairing code from your other device."}</p>`, `<div class="settings-pairing"><label>Pairing code <input id="relay-code" data-settings-draft type="text" autocomplete="off" spellcheck="false"></label><div class="row"><button id="relay-pair" type="button">Pair</button><button id="relay-revoke" type="button"${view.relay?.paired ? "" : " disabled"}>Revoke</button></div></div>`))}
     ${group("logins", "Logins", sites + row(`<p>Bring in one site's login from your Chrome, so runs start signed in.</p>`, `<button type="button" data-screen="logins">Import a login…</button>`))}
-    ${group("ai", "AI help", row(`<label for="ai-source">Use AI to suggest heals</label><p id="ai-help">Only when a page changes. Saved steps run without AI.</p>`, `<select id="ai-source" data-settings-draft aria-describedby="ai-help">${[["none", "None"], ["cursor-account", "Cursor account"], ["api-key", "API key…"]].map(([value, label]) => `<option value="${value}"${sourceKind(view) === value ? " selected" : ""}>${label}</option>`).join("")}</select>`)
+    ${!replay ? "" : group("ai", "AI help", row(`<label for="ai-source">Use AI to suggest heals</label><p id="ai-help">Only when a page changes. Saved steps run without AI.</p>`, `<select id="ai-source" data-settings-draft aria-describedby="ai-help">${[["none", "None"], ["cursor-account", "Cursor account"], ["api-key", "API key…"]].map(([value, label]) => `<option value="${value}"${sourceKind(view) === value ? " selected" : ""}>${label}</option>`).join("")}</select>`)
       + `<form id="ai-key-form" class="settings-ai-key"${sourceKind(view) === "api-key" ? "" : " hidden"}>
         <label for="ai-provider">Provider</label><select id="ai-provider" data-settings-draft><option value="openai">OpenAI</option><option value="anthropic"${settings.healSource?.kind === "api-key" && settings.healSource.provider === "anthropic" ? " selected" : ""}>Anthropic</option></select>
         <label for="ai-key">API key</label><input id="ai-key" name="ai-key" data-settings-draft type="password" autocomplete="off" required value="${settings.healSource?.kind === "api-key" ? htmlEsc(settings.healSource.key) : ""}">
         <button type="submit">Save API key</button>
       </form>`)}
+    ${group("replay", "Replay", row(
+      `<label id="replay-label" for="replay-switch">Replay saved workflows</label><p id="replay-help">Shows Workflows and Record, and lets agents find and run saved workflows. Off until you turn it on. An agent sees the change the next time it connects.</p>`,
+      `<span id="replay-state">${replay ? "On" : "Off"}</span><input class="settings-switch" id="replay-switch" type="checkbox" role="switch" data-setting="replay" aria-describedby="replay-help replay-state"${replay ? " checked" : ""}>`))}
     <p id="settings-feedback" role="status"></p>
     <details class="settings-advanced" id="settings-advanced"><summary>Technical details</summary><p class="quiet">Engine and window choices use the Save buttons below. Sync and remote pairing details save when you press Pair. Other settings save as you change them.</p>${advanced}</details>
   </section>`;

@@ -22,6 +22,18 @@ const detailParents = { run: "runs", workflow: "library", import: "library" } as
 export type ShellScreen = keyof typeof shellScreens;
 export type Screen = ShellScreen | keyof typeof detailParents;
 
+/** Screens that exist only for saved-workflow replay. The app shows none of them while the Replay switch is off. */
+const replayScreens: ReadonlySet<Screen> = new Set(["heals", "library", "capture", "teach", "replay", "workflow", "import"]);
+
+export function replayScreen(screen: Screen): boolean {
+  return replayScreens.has(screen);
+}
+
+/** The sidebar's places. Workflows is there only while the Replay switch is on. */
+export function shownPlaces(replay: boolean): readonly (typeof shellPlaces[number])[] {
+  return replay ? shellPlaces : shellPlaces.filter((place) => place.id !== "workflows");
+}
+
 export function shellScreen(screen: Screen): ShellScreen {
   return screen in detailParents ? detailParents[screen as keyof typeof detailParents] : screen as ShellScreen;
 }
