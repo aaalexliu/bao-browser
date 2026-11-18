@@ -1,0 +1,53 @@
+name: Set up a desktop test suite
+description: Node, cached packages, Playwright Chromium and its system libraries, the video tools, and the compiled desktop tests. Run after checkout, with PLAYWRIGHT_BROWSERS_PATH set.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version-file: .nvmrc
+        cache: npm
+        cache-dependency-path: |
+          package-lock.json
+          web/package-lock.json
+    - name: Restore installed packages
+      uses: actions/cache@v4
+      id: packages
+      with:
+        path: |
+          node_modules
+          web/node_modules
+        key: packages-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.nvmrc', 'package.json', 'package-lock.json', 'web/package.json', 'web/package-lock.json') }}
+    - name: Install packages on a cache miss
+      if: steps.packages.outputs.cache-hit != 'true'
+      shell: bash
+      run: npm ci
+    - name: Read Playwright version
+      id: playwright
+      shell: bash
+      run: |
+        node -p '"version=" + require("playwright-core/package.json").version' >> "$GITHUB_OUTPUT"
+        echo "image=${ImageOS:?}-${ImageVersion:?}" >> "$GITHUB_OUTPUT"
+    - name: Restore Chromium
+      uses: actions/cache@v4
+      id: browser
+      with:
+        path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+        key: chromium-${{ runner.os }}-${{ runner.arch }}-playwright-${{ steps.playwright.outputs.version }}
+    - name: Allow sandboxed Chromium to create user namespaces
+      shell: bash
+      run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+    - name: Download Chromium on a cache miss
+      if: steps.browser.outputs.cache-hit != 'true'
+      shell: bash
+      run: npx playwright install chromium
+    - name: Install Chromium system dependencies
+      uses: ./.github/actions/install-chromium-deps
+      with:
+        version: ${{ steps.playwright.outputs.version }}
+        image: ${{ steps.playwright.outputs.image }}
+    - name: Set up the CDP video tools
+      uses: ./.github/actions/setup-ffmpeg
+    - name: Compile the desktop tests
+      shell: bash
+      run: npm run build:desktop -- --sourceMap
