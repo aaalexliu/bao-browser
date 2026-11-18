@@ -71,7 +71,7 @@ export function settingsIndex(view: SettingsView): string {
     replayOn(view) ? "On" : "Off",
   ];
   const shown = sections.map((section, i) => [...section, summaries[i]] as const).filter(([id]) => replayOn(view) || !replayOnly.has(id));
-  return `<header class="pane-bar"><button id="sidebar-toggle" type="button" aria-label="Show sidebar" aria-haspopup="dialog" aria-controls="sidebar-dialog">${shellIcon("sidebar")}</button><div><h1>Settings</h1><p class="settings-subtitle">Grouped rows save on change</p></div></header>
+  return `<header class="pane-bar"><button id="sidebar-toggle" type="button" aria-label="Show sidebar" aria-haspopup="dialog" aria-controls="sidebar-dialog">${shellIcon("sidebar")}</button><h1>Settings</h1></header>
     <nav class="settings-index" aria-label="Settings sections">${shown.map(([id, glyph, title, summary], i) => `<a href="#set-${id}" data-settings-jump="${id}"${i === 0 ? ' aria-current="true"' : ""}>${icon(glyph)}<span><b>${title}</b><span class="settings-subtitle">${esc(summary)}</span></span></a>`).join("")}</nav>`;
 }
 
@@ -136,9 +136,9 @@ export function settingsScreen(view: SettingsView, advanced: string): string {
         <button type="submit">Save API key</button>
       </form>`)}
     ${group("replay", "Replay", row(
-      `<label id="replay-label" for="replay-switch">Replay saved workflows</label><p id="replay-help">Shows Workflows and Record, and lets agents find and run saved workflows. Off until you turn it on. An agent sees the change the next time it connects.</p>`,
+      `<label id="replay-label" for="replay-switch">Replay saved workflows</label><p id="replay-help">Shows Workflows and Record, and lets agents find and run saved workflows. An agent sees the change the next time it connects.</p>`,
       `<span id="replay-state">${replay ? "On" : "Off"}</span><input class="settings-switch" id="replay-switch" type="checkbox" role="switch" data-setting="replay" aria-describedby="replay-help replay-state"${replay ? " checked" : ""}>`))}
     <p id="settings-feedback" role="status"></p>
-    <details class="settings-advanced" id="settings-advanced"><summary>Technical details</summary><p class="quiet">Engine and window choices use the Save buttons below.${replay ? " Sync and remote pairing details save when you press Pair." : ""} Other settings save as you change them.</p>${advanced}</details>
+    <details class="settings-advanced" id="settings-advanced"><summary>Technical details</summary>${advanced}</details>
   </section>`;
 }
