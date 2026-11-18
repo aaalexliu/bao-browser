@@ -108,11 +108,13 @@ test("the app shows no replay entry until the Replay switch in Settings is on", 
   assert.equal(await toggle.isChecked(), false);
   assert.equal(await page.locator("#replay-state").innerText(), "Off");
   assert.deepEqual(await page.locator("#settings .settings-heading").allInnerTexts(), ["Mac permissions", "Logins", "Replay"]);
+  assert.equal(await page.locator("#sync-panel, #host-access").count(), 0);
 
   await toggle.click();
   await page.locator("#rail [data-place=workflows]").waitFor();
   assert.equal(await page.locator("#replay-state").innerText(), "On");
   assert.deepEqual(await page.locator("#settings .settings-heading").allInnerTexts(), ["Runs and heals", "Mac permissions", "Remote access", "Logins", "AI help", "Replay"]);
+  assert.equal(await page.locator("#sync-panel, #host-access").count(), 2);
   assert.equal((JSON.parse(await readFile(path.join(home.library, "settings.json"), "utf8")) as { replay?: boolean }).replay, true);
   assert.match(await paletteLabels(), /Run Saved workflow/);
   await page.locator("#rail [data-place=runs]").click();
