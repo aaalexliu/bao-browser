@@ -563,7 +563,8 @@ fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,args})+'\\n');
       assert.match(step.native.error!, /Bao sign-in retry failed/);
       assert.deepEqual(step.native.results, [{ stdout: "Opened\n", stderr: "", exitCode: 0 }]);
       const card = browserToolResult("open", step.native.results, proxy.lastCommand, proxy.activeRunId, step.native.error);
-      assert.equal(card.isError, true);
+      assert.equal(card.isError, false, "Claude Desktop draws no app for an error result");
+      assert.equal(card.structuredContent.status, "failed");
       assert.ok(card.content.some((item) => item.text === "Opened\n"), "the UI fallback retains exact native output beside the error");
       return;
     }
