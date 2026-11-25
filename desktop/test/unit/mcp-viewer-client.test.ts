@@ -30,6 +30,7 @@ function receipt(name: string) {
 }
 
 const history = { view: "history", runs: [], offset: 0, nextOffset: null, skipped: 0, order: "recently updated" };
+const listed = (name: string) => ({ ...history, runs: [receipt(name).run] });
 const result = (baoViewer: unknown) => ({ jsonrpc: "2.0", method: "ui/notifications/tool-result", params: { _meta: { baoViewer } } });
 
 async function mount(browser: Browser, hostContext: object, clock = false): Promise<Page> {
@@ -61,96 +62,86 @@ test("viewer keeps the latest host view and user request when replies arrive out
   pinTestBrowser();
   const browser = await testChromium.launch({ headless: true, executablePath: process.env.BAO_TEST_BROWSER });
   t.after(() => browser.close());
-  const page = await browser.newPage();
-  await page.addInitScript(() => {
-    const host = window as unknown as HostWindow;
-    host.baoCalls = [];
-    window.addEventListener("message", (event) => {
-      if (event.source !== window) return;
-      const message: unknown = event.data;
-      if (typeof message !== "object" || message === null || !("method" in message) || !("id" in message)) return;
-      if (message.method && message.id !== undefined) event.stopImmediatePropagation();
-      if (message.method === "ui/initialize") window.postMessage({ jsonrpc: "2.0", id: message.id, result: { hostCapabilities: { serverTools: {} }, hostContext: { toolInfo: { tool: { name: "list_runs" } } } } }, "*");
-      if (message.method === "tools/call" && typeof message.id === "number" && "params" in message &&
-          typeof message.params === "object" && message.params !== null && "name" in message.params &&
-          typeof message.params.name === "string") {
-        host.baoCalls.push({ ...message, id: message.id, params: { ...message.params, name: message.params.name } });
-      }
-    });
-  });
-  await page.goto(`data:text/html;base64,${Buffer.from(viewerHtml()).toString("base64")}`);
+  const page = await mount(browser, { toolInfo: { tool: { name: "list_runs" } } });
   const initial = (await calls(page, 1))[0]!;
   assert.equal(initial.params.name, "list_runs");
-  await deliver(page, { jsonrpc: "2.0", method: "ui/notifications/tool-result", params: { _meta: { baoViewer: receipt("Host receipt") } } });
+  await deliver(page, result(receipt("Host receipt")));
   await deliver(page, { jsonrpc: "2.0", id: initial.id, result: { _meta: { baoViewer: history } } });
   assert.equal(await page.locator("h1").textContent(), "Host receipt");
 
-  await page.getByRole("button", { name: "History", exact: true }).click();
+  await deliver(page, result(listed("Visible run")));
+  await page.getByRole("button", { name: "Inspect run", exact: true }).click();
   const older = (await calls(page, 2))[1]!;
-  await deliver(page, { jsonrpc: "2.0", method: "ui/notifications/tool-result", params: { _meta: { baoViewer: receipt("Late model receipt") } } });
-  assert.equal(await page.locator("h1").textContent(), "Host receipt");
+  assert.equal(older.params.name, "inspect_run");
+  await deliver(page, result(receipt("Late model receipt")));
+  assert.equal(await page.locator("h1").textContent(), "Run history");
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   const latest = (await calls(page, 3))[2]!;
-  assert.equal(latest.params.name, "inspect_run");
-  await deliver(page, { jsonrpc: "2.0", method: "ui/notifications/tool-result", params: { _meta: { baoViewer: receipt("Another late model receipt") } } });
-  assert.equal(await page.locator("h1").textContent(), "Host receipt");
-  await deliver(page, { jsonrpc: "2.0", id: latest.id, result: { _meta: { baoViewer: receipt("Refreshed receipt") } } });
-  await deliver(page, { jsonrpc: "2.0", id: older.id, result: { _meta: { baoViewer: history } } });
-  assert.equal(await page.locator("h1").textContent(), "Refreshed receipt");
+  assert.equal(latest.params.name, "list_runs");
+  await deliver(page, result(receipt("Another late model receipt")));
+  assert.equal(await page.locator("h1").textContent(), "Run history");
+  await deliver(page, { jsonrpc: "2.0", id: latest.id, result: { _meta: { baoViewer: listed("Refreshed run") } } });
+  await deliver(page, { jsonrpc: "2.0", id: older.id, result: { _meta: { baoViewer: receipt("Stale receipt") } } });
+  assert.equal(await page.locator("h1").textContent(), "Run history");
+  assert.equal(await page.locator("h2").textContent(), "Refreshed run");
 
-  await page.getByRole("button", { name: "History", exact: true }).click();
+  await page.getByRole("button", { name: "Inspect run", exact: true }).click();
   const staleError = (await calls(page, 4))[3]!;
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   const newer = (await calls(page, 5))[4]!;
   await deliver(page, { jsonrpc: "2.0", id: staleError.id, error: { message: "stale request failed" } });
   assert.equal(await page.getByRole("alert").textContent(), "");
-  await deliver(page, { jsonrpc: "2.0", method: "ui/notifications/tool-result", params: { _meta: { baoViewer: receipt("Late result after stale error") } } });
-  assert.equal(await page.locator("h1").textContent(), "Refreshed receipt");
-  await deliver(page, { jsonrpc: "2.0", id: newer.id, result: { _meta: { baoViewer: receipt("Latest receipt") } } });
-  assert.equal(await page.locator("h1").textContent(), "Latest receipt");
-
-  await page.getByRole("button", { name: "History", exact: true }).click();
-  const ordinary = (await calls(page, 6))[5]!;
-  await deliver(page, { jsonrpc: "2.0", id: ordinary.id, result: { _meta: { baoViewer: { ...history, runs: [receipt("Visible run").run] } } } });
+  await deliver(page, result(receipt("Late result after stale error")));
   assert.equal(await page.locator("h1").textContent(), "Run history");
+  await deliver(page, { jsonrpc: "2.0", id: newer.id, result: { _meta: { baoViewer: listed("Latest run") } } });
+  assert.equal(await page.locator("h2").textContent(), "Latest run");
+
   await page.getByRole("button", { name: "Inspect run", exact: true }).click();
-  const inspect = (await calls(page, 7))[6]!;
+  const inspect = (await calls(page, 6))[5]!;
   assert.equal(inspect.params.name, "inspect_run");
-  await deliver(page, { jsonrpc: "2.0", method: "ui/notifications/tool-result", params: { _meta: { baoViewer: receipt("Old model navigation") } } });
+  await deliver(page, result(receipt("Old model navigation")));
   assert.equal(await page.locator("h1").textContent(), "Run history");
   await deliver(page, { jsonrpc: "2.0", id: inspect.id, result: { _meta: { baoViewer: receipt("User-selected run") } } });
   assert.equal(await page.locator("h1").textContent(), "User-selected run");
-  await deliver(page, { jsonrpc: "2.0", method: "ui/notifications/tool-result", params: { _meta: { baoViewer: receipt("New model navigation") } } });
+  assert.equal(await page.getByRole("button", { name: "Recent runs", exact: true }).count(), 1, "a run opened from the list leads back to it");
+  await deliver(page, result(receipt("New model navigation")));
   assert.equal(await page.locator("h1").textContent(), "New model navigation");
+  assert.equal(await page.getByRole("button", { name: "Recent runs", exact: true }).count(), 0, "a run Claude opened has no list to go back to");
 
-  await page.getByRole("button", { name: "History", exact: true }).click();
-  const failed = (await calls(page, 8))[7]!;
+  await deliver(page, result(listed("Visible run")));
+  await page.getByRole("button", { name: "Inspect run", exact: true }).click();
+  const failed = (await calls(page, 7))[6]!;
   await deliver(page, { jsonrpc: "2.0", id: failed.id, error: { message: "current request failed" } });
   assert.equal(await page.getByRole("alert").textContent(), "current request failed");
-  await deliver(page, { jsonrpc: "2.0", method: "ui/notifications/tool-result", params: { _meta: { baoViewer: receipt("Model navigation after failure") } } });
+  await deliver(page, result(receipt("Model navigation after failure")));
   assert.equal(await page.locator("h1").textContent(), "Model navigation after failure");
 
   const step = { id: "preview", index: 1, label: "Preview", status: "passed", picturesAllowed: true };
   const pictureView = { ...receipt("Picture receipt"), steps: [step] };
-  await deliver(page, { jsonrpc: "2.0", method: "ui/notifications/tool-result", params: { _meta: { baoViewer: pictureView } } });
+  await deliver(page, result(pictureView));
   await page.getByRole("button", { name: "Inspect receipt", exact: true }).click();
   await page.getByRole("button", { name: "Open step pictures", exact: true }).click();
-  const picture = (await calls(page, 9))[8]!;
+  const picture = (await calls(page, 8))[7]!;
   await deliver(page, { jsonrpc: "2.0", id: picture.id, result: { _meta: { baoPictures: { runId: "run-fixture", stepId: "preview", pictures: [{ phase: "after", mimeType: "image/png", data: "iVBORw0KGgo=" }] } } } });
   assert.equal(await page.locator("img").count(), 1);
-  await deliver(page, { jsonrpc: "2.0", method: "ui/notifications/tool-result", params: { _meta: { baoViewer: { ...pictureView, steps: [] } } } });
+  await deliver(page, result({ ...pictureView, steps: [] }));
   assert.equal(await page.locator("img").count(), 0);
   assert.equal(await page.getByText("No step results recorded.", { exact: true }).count(), 1);
 
   const message = "Bao viewer data unavailable: invalid request, missing, linked, or oversized record. Open Bao desktop for local details.";
-  await page.getByRole("button", { name: "History", exact: true }).click();
+  await deliver(page, result(listed("Picture receipt")));
+  await page.getByRole("button", { name: "Inspect run", exact: true }).click();
+  const opened = (await calls(page, 9))[8]!;
+  await deliver(page, { jsonrpc: "2.0", id: opened.id, result: { _meta: { baoViewer: { ...pictureView, nextStepOffset: 20 } } } });
+  await page.getByRole("button", { name: "Recent runs", exact: true }).click();
   const failedHistory = (await calls(page, 10))[9]!;
   assert.equal(failedHistory.params.name, "list_runs");
   await deliver(page, { jsonrpc: "2.0", id: failedHistory.id, result: { isError: true, content: [{ type: "text", text: JSON.stringify({ error: message, library: { active: { path: "/synthetic/library" }, inactive: [] } }) }] } });
   assert.equal(await page.getByRole("alert").textContent(), message);
   assert.equal(await page.locator("h1").textContent(), "Picture receipt");
 
-  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await page.getByRole("button", { name: "Inspect receipt", exact: true }).click();
+  await page.getByRole("button", { name: "Next steps", exact: true }).click();
   const failedReceipt = (await calls(page, 11))[10]!;
   assert.equal(failedReceipt.params.name, "inspect_run");
   await deliver(page, { jsonrpc: "2.0", id: failedReceipt.id, result: { isError: true, content: [{ type: "text", text: message }] } });

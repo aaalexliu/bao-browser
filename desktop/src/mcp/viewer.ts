@@ -38,6 +38,7 @@ interface ToolReply {
 /** Self-contained: the compiled function is bundled into the versioned HTML. */
 function viewerMain(): void {
   const root = document.querySelector<HTMLElement>("#root")!;
+  const LIVE_MS = 3000;
   let current: View | undefined;
   let browserCall: BrowserToolCard | undefined;
   let cardPictures: CardPictures = {};
@@ -51,6 +52,9 @@ function viewerMain(): void {
   let viewRequest = 0;
   let userRequest: number | undefined;
   let expanded = false;
+  let fromHistory = false;
+  let liveTimer: ReturnType<typeof setTimeout> | undefined;
+  let tornDown = false;
   const pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>();
   const pictures = new Map<string, Pictures>();
   const el = <K extends keyof HTMLElementTagNameMap>(tag: K, value?: string, className?: string): HTMLElementTagNameMap[K] => {
@@ -73,7 +77,10 @@ function viewerMain(): void {
   class HostDataError extends Error {}
   function error(cause: unknown): void {
     alert.textContent = cause instanceof Error ? cause.message : String(cause);
-    recovery.textContent = cause instanceof HostDataError ? "" : browserCall ? "Try View run again. If this keeps happening, open Bao desktop for local details." : current ? "Try Refresh. If this keeps happening, open Bao desktop for local details." : "Reopen this viewer from the conversation, or open Bao desktop for local details.";
+    recovery.textContent = cause instanceof HostDataError ? "" : browserCall ? "Try View run again. If this keeps happening, open Bao desktop for local details."
+      : current && "run" in current && current.live ? "Bao reads the run again in a few seconds. If this keeps happening, open Bao desktop for local details."
+      : current && "run" in current ? "Try again. If this keeps happening, open Bao desktop for local details."
+      : current ? "Try Refresh. If this keeps happening, open Bao desktop for local details." : "Reopen this viewer from the conversation, or open Bao desktop for local details.";
     if (!current && !browserCall) root.textContent = "Could not load the run viewer.";
   }
   function clearError(): void { alert.textContent = ""; recovery.textContent = ""; }
@@ -108,16 +115,31 @@ function viewerMain(): void {
       const reply = await tool(name, args);
       if (version !== viewRequest) return;
       if (!reply._meta?.baoViewer) throw new HostDataError("This host did not forward Bao's viewer data. Use the text receipt or the Bao desktop app.");
+      const next = reply._meta.baoViewer;
+      const same = automatic && !browserCall && JSON.stringify(next) === JSON.stringify(current);
       browserCall = undefined; cardKey = undefined;
-      current = reply._meta.baoViewer;
-      clearError(); render();
+      current = next;
+      clearError();
+      if (same) live(); else render();
     } catch (err) {
       if (version === viewRequest) throw err;
     } finally {
       if (userRequest === version) userRequest = undefined;
     }
   }
-  const history = () => show("list_runs", {});
+  /** While the run records, read it again every few seconds, so a card left in the chat never shows an old step. */
+  function live(): void {
+    clearTimeout(liveTimer); liveTimer = undefined;
+    const view = current;
+    if (tornDown || browserCall || !view || !("run" in view) || !view.live || !canRead) return;
+    liveTimer = setTimeout(() => {
+      liveTimer = undefined;
+      if (current !== view) return;
+      if (userRequest !== undefined) { live(); return; }
+      void show("inspect_run", { run_id: view.run.id, step_offset: view.stepOffset, workflow_offset: view.workflow?.offset ?? 0 }, true)
+        .catch((err: Error) => { error(err); if (current === view) live(); });
+    }, LIVE_MS);
+  }
   async function inspect(runId: string, stepOffset = 0, workflowOffset = 0): Promise<void> {
     await show("inspect_run", { run_id: runId, step_offset: stepOffset, workflow_offset: workflowOffset });
   }
@@ -133,7 +155,6 @@ function viewerMain(): void {
     try { return new Intl.DateTimeFormat(context.locale, { dateStyle: "medium", timeStyle: "short", timeZone: context.timeZone }).format(value); }
     catch { return new Date(value).toISOString(); }
   }
-  function calls(value: number | null): string { return value === null ? "Model calls unknown (not tracked)" : `${value} Bao model calls`; }
   function parsedBlocks(reply: ToolReply): Record<string, unknown>[] {
     return (reply.content || []).flatMap((block) => {
       try {
@@ -170,14 +191,14 @@ function viewerMain(): void {
       caption, parts: [caption], runId: key?.runId ?? null, stepId: key?.stepId ?? null, picture: { kind: "unavailable", reason: "" } };
   }
   function showCard(card: BrowserToolCard, key: CardKey | undefined): void {
-    ++viewRequest; current = undefined; browserCall = card; cardKey = key; cardPictures = {};
+    ++viewRequest; fromHistory = false; current = undefined; browserCall = card; cardKey = key; cardPictures = {};
     pictureLoading = false; pictureError = ""; expanded = false; clearError(); render();
     if (key && canRead) void loadCard(key);
   }
   /** Route a tool result. A browser step or finished task always draws its own card, never run history. */
   function receive(reply: ToolReply): void {
     const data = reply._meta?.baoViewer;
-    if (data) { ++viewRequest; browserCall = undefined; cardKey = undefined; current = data; clearError(); render(); return; }
+    if (data) { ++viewRequest; fromHistory = false; browserCall = undefined; cardKey = undefined; current = data; clearError(); render(); return; }
     const key = keyOf(reply);
     const kind = toolKind();
     if (reply._meta?.baoToolCard || key || kind === "agent_browser" || kind === "finish_task") {
@@ -313,16 +334,15 @@ function viewerMain(): void {
     if (card.status === "waiting") body.append(el("p", "Bao keeps no picture of this page. It reads only the title and address while waiting.", "muted"));
     panel.append(ring, body); root.append(panel);
   }
-  function finishBlock(card: BrowserToolCard): void {
-    const finish = card.finish;
+  function finishBlock(target: HTMLElement, finish: BrowserToolCard["finish"]): void {
     if (!finish) return;
     if (finish.done.length) {
       const list = el("ul", undefined, "browser-done");
       for (const item of finish.done) list.append(el("li", item));
-      root.append(list);
+      target.append(list);
     }
     const count = (n: number, one: string, many: string) => n ? `${n} ${n === 1 ? one : many}` : "";
-    root.append(el("p", [count(finish.steps, "step", "steps") || "No steps", finish.duration, count(finish.pageLoads, "page load", "page loads"), count(finish.reads, "read", "reads"),
+    target.append(el("p", [count(finish.steps, "step", "steps") || "No steps", finish.duration, count(finish.pageLoads, "page load", "page loads"), count(finish.reads, "read", "reads"),
       count(finish.clicks, "click", "clicks"), count(finish.typed, "field typed", "fields typed"), count(finish.failedSteps, "failed step", "failed steps")].filter(Boolean).join(" · "), "muted"));
   }
   function stepLabel(card: BrowserToolCard): string {
@@ -333,6 +353,7 @@ function viewerMain(): void {
     return number ? `Step ${number} · ${verb}` : `Browser ${verb}`;
   }
   function renderBrowserCall(card: BrowserToolCard): void {
+    clearTimeout(liveTimer); liveTimer = undefined;
     applyContext(); root.replaceChildren();
     const header = el("header");
     const state = card.status === "failed" ? "Failed" : card.status === "waiting" ? card.style === "finish" ? "Not finished" : "Waiting for you" : card.style === "finish" ? "Passed" : "Done";
@@ -342,11 +363,11 @@ function viewerMain(): void {
     else root.append(sentence(el("p", undefined, "browser-caption"), card.parts.length ? card.parts : [card.caption]));
     if (card.style === "frame") frameBlock(card);
     else if (card.style === "pair") pairBlock(card);
-    else if (card.style === "finish") finishBlock(card);
+    else if (card.style === "finish") finishBlock(root, card.finish);
     if (card.page?.url && (card.style === "frame" || card.style === "pair")) root.append(el("p", card.page.url, "browser-url mono"));
     if (card.runId && canRead) {
       const runId = card.runId;
-      root.append(button("View run", async () => { expanded = false; await inspect(runId); }, "primary"));
+      root.append(button("View run", async () => { expanded = false; fromHistory = false; await inspect(runId); }, "primary"));
     }
     document.title = `${stepLabel(card)} · Bao`;
   }
@@ -354,22 +375,23 @@ function viewerMain(): void {
     if (browserCall) { renderBrowserCall(browserCall); return; }
     if (!current) return;
     applyContext();
+    // A live read redraws the card; keep keyboard focus on the same button.
+    const focused = document.activeElement instanceof HTMLButtonElement && root.contains(document.activeElement) ? document.activeElement.textContent : null;
     root.replaceChildren();
     const header = el("header");
-    header.append(el("strong", "BAO", "brand"), el("span", "Read-only run viewer", "muted"));
-    const nav = el("div", undefined, "actions");
-    nav.append(button("History", history), button("Refresh", async () => {
-      if (current && "run" in current) await inspect(current.run.id, current.stepOffset, current.workflow?.offset);
-      else await show("list_runs", { offset: current && "runs" in current ? current.offset : 0 });
-    }));
-    header.append(nav); root.append(header);
+    header.append(el("strong", "BAO", "brand"));
+    root.append(header);
     if ("runs" in current) {
+      const page = current.offset;
+      const nav = el("div", undefined, "actions");
+      nav.append(button("Refresh", () => show("list_runs", { offset: page })));
+      header.append(nav);
       root.append(el("h1", "Run history"), el("p", "This Mac · Recently updated", "muted"));
       if (!current.runs.length) root.append(el("p", current.skipped ? "No readable runs on this page." : "No runs yet. Run a workflow with Bao to see its receipt here.", "empty"));
       for (const run of current.runs) {
         const row = el("section", undefined, "run-row");
         const label = el("div"); label.append(el("h2", run.name), el("p", `${date(run.at)} · ${run.stepCount} steps`, "muted"));
-        row.append(label, el("span", run.status, "status"), button("Inspect run", async () => { expanded = false; await inspect(run.id); }));
+        row.append(label, el("span", run.status, "status"), button("Inspect run", async () => { expanded = false; fromHistory = true; await inspect(run.id); }));
         root.append(row);
       }
       if (current.skipped) root.append(el("p", `${current.skipped} unavailable or oversized records skipped.`, "muted"));
@@ -379,10 +401,28 @@ function viewerMain(): void {
       root.append(paging);
     } else {
       const view = current;
-      root.append(el("h1", view.run.name));
+      const status = view.run.status || "unknown";
+      const words: Record<string, string> = { recording: "Recording", needs_human: "Waiting for you", passed: "Passed", failed: "Failed" };
+      const word = words[status] || status;
+      const tone = status === "failed" ? "failed" : view.live ? "waiting" : "complete";
+      header.append(el("h1", view.run.name, "run-title"), el("span", word, `status browser-status ${tone}`));
+      if (fromHistory) {
+        const nav = el("div", undefined, "actions");
+        nav.append(button("Recent runs", async () => { expanded = false; await show("list_runs", {}); }));
+        header.append(nav);
+      }
       const summary = el("section", undefined, "summary");
-      summary.append(el("span", view.run.status, "status"), el("p", `${date(view.run.at)} · ${view.run.stepCount} steps · ${calls(view.run.modelCalls)}`), el("p", view.run.id, "mono"));
-      if (view.reason) summary.append(el("p", `Stop reason: ${view.reason}`));
+      const steps = view.finish.steps;
+      const counted = `${steps} ${steps === 1 ? "step" : "steps"}`;
+      if (view.live) {
+        if (view.latest) {
+          summary.append(sentence(el("p", undefined, "browser-caption"), view.latest.parts));
+          summary.append(el("p", [`${counted} so far`, view.finish.duration].filter(Boolean).join(" · "), "muted"));
+        } else summary.append(el("p", "Starting. No steps yet.", "browser-caption"));
+      } else {
+        summary.append(el("p", view.reason ? `${word}: ${view.reason.replace(/\.$/, "")}` : word, "browser-caption"));
+        finishBlock(summary, view.finish);
+      }
       if (view.handoff?.ask) {
         const handoff = el("aside"); handoff.append(el("strong", "Needs you in Bao"), el("p", view.handoff.ask));
         if (view.handoff.deadline) handoff.append(el("p", `Deadline: ${view.handoff.deadline}`, "muted"));
@@ -454,7 +494,8 @@ function viewerMain(): void {
       }
     }
     document.title = `${root.querySelector("h1")?.textContent || "Run viewer"} · Bao`;
-    root.append(el("footer", "Reads the same Library as Bao desktop. No run, edit, resume, approve, or browser controls."));
+    if (focused !== null) [...root.querySelectorAll("button")].find((node) => node.textContent === focused)?.focus();
+    live();
   }
   window.addEventListener("message", (event: MessageEvent<unknown>) => {
     if (event.source !== window.parent || !event.data || typeof event.data !== "object") return;
@@ -474,6 +515,9 @@ function viewerMain(): void {
       const contentChanged = (["locale", "timeZone", "displayMode"] as const).some((key) => key in changes && changes[key] !== context[key]);
       context = { ...context, ...changes }; applyContext();
       if (contentChanged) render();
+    } else if (message.id !== undefined && message.method === "ui/resource-teardown") {
+      tornDown = true; clearTimeout(liveTimer); liveTimer = undefined;
+      window.parent.postMessage({ jsonrpc: "2.0", id: message.id, result: {} }, "*");
     } else if (message.id !== undefined && message.method === "ping") {
       window.parent.postMessage({ jsonrpc: "2.0", id: message.id, result: {} }, "*");
     }
@@ -505,13 +549,14 @@ header,.actions,.run-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap
 header{border-bottom:1px solid var(--line);padding-bottom:12px}
 header .actions{margin-inline-start:auto}
 .brand{letter-spacing:.2em;color:var(--accent)}
+.run-title{font-size:.875rem;line-height:1.35;margin:0;flex:1;min-width:0}
 h1,h2,h3{overflow-wrap:anywhere}
 h1{font-size:1.25rem;line-height:1.3;margin:18px 0 6px}
 h2{font-size:.9375rem;margin:0 0 4px}
 #root>h2{margin-top:18px}
 h3{font-size:.875rem;margin:0 0 8px}
 p{margin:6px 0;overflow-wrap:anywhere}
-.muted,footer,figcaption{color:var(--color-text-secondary,var(--muted));font-size:.75rem}
+.muted,figcaption{color:var(--color-text-secondary,var(--muted));font-size:.75rem}
 .run-row{padding:14px 0;border-bottom:1px solid var(--line)}
 .run-row>div{flex:1;min-width:0}
 button{font:inherit;font-size:.75rem;cursor:pointer;background:var(--color-background-primary,var(--bg));color:var(--accent);border:1px solid var(--line);border-radius:6px;padding:7px 11px;max-width:100%;overflow-wrap:anywhere}
@@ -530,7 +575,6 @@ figcaption{margin-top:4px}
 details{margin-top:18px}
 summary{font-weight:600;cursor:pointer}
 li{padding:4px 0;overflow-wrap:anywhere}
-footer{margin-top:18px;padding-top:12px;border-top:1px solid var(--line);font-size:.6875rem}
 [role=alert]{color:var(--color-text-danger,var(--danger))}
 #error p:empty{margin:0}
 .empty{padding:20px 0}
