@@ -281,6 +281,14 @@ export class AgentBrowserRun {
     this.persist();
   }
 
+  /** The agent's short name for the task, from an open. finish_task's task replaces it. A blank name changes nothing. */
+  noteTask(task: string): void {
+    const trimmed = task.trim();
+    if (!trimmed || trimmed === this.run.task) return;
+    this.run.task = trimmed;
+    this.persist();
+  }
+
   async recordTab(cdp: CdpSocket, targetId: string): Promise<void> {
     if (this.video && this.video.kind !== "recording") return;
     if (this.video?.targetId === targetId) return;
