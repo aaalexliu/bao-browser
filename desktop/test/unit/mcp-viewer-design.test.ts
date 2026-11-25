@@ -147,16 +147,16 @@ test("viewer design survives long labels, host updates, errors and text resize",
         await page.getByRole("button", { name: "Refresh", exact: true }).click();
         if (serverTools) await deliver(page, { jsonrpc: "2.0", id: await lastCall(page), result: {} });
         assert.equal(await page.getByRole("alert").textContent(), serverTools
-          ? "This host did not forward Bao's viewer data. Use the text receipt or the Bao desktop app."
-          : "This host cannot read more Bao data. The text receipt is still available in the conversation.");
+          ? "This chat app did not pass on Bao's run. Open Bao to see it."
+          : "This chat app cannot load more from Bao. Open Bao to see this run.");
         assert.equal(await page.locator("#error .muted").textContent(), "");
         await page.getByRole("button", { name: "Inspect receipt", exact: true }).click();
         assert.equal(await page.getByRole("alert").textContent(), "");
         await page.getByRole("button", { name: "Open step pictures", exact: true }).click();
         if (serverTools) await deliver(page, { jsonrpc: "2.0", id: await lastCall(page, 2), result: {} });
         assert.equal(await page.getByRole("alert").textContent(), serverTools
-          ? "This host did not forward the pictures."
-          : "This host cannot read more Bao data. The text receipt is still available in the conversation.");
+          ? "This chat app did not pass on the pictures."
+          : "This chat app cannot load more from Bao. Open Bao to see this run.");
         assert.equal(await page.locator("#error .muted").textContent(), "");
       } finally { await page.close(); }
     }
@@ -204,7 +204,7 @@ test("viewer design survives long labels, host updates, errors and text resize",
           await deliver(page, view(receipt));
           await page.getByRole("button", { name: "Refresh", exact: true }).click();
           await deliver(page, { jsonrpc: "2.0", id: await lastCall(page), error: { message: "Read failed" } });
-          for (const selector of ["h1", ".muted", ".mono", ".status", "button", "[role=alert]"]) {
+          for (const selector of ["h1", ".muted", ".status", "button", "[role=alert]"]) {
             const pair = await page.locator(selector).first().evaluate((node) => {
               const style = getComputedStyle(node);
               let parent: Element | null = node;
@@ -220,6 +220,37 @@ test("viewer design survives long labels, host updates, errors and text resize",
     }
   });
 
+  await t.test("cards take the host's fonts, colors and corners and show only words for the person", async () => {
+    const variables = { "--font-sans": "Georgia, serif", "--color-background-primary": "rgb(1, 2, 3)", "--color-text-primary": "rgb(250, 250, 250)", "--border-radius-md": "3px" };
+    const page = await mount(browser, { theme: "dark", styles: { variables } });
+    try {
+      const card = { command: "click", status: "complete", style: "frame", caption: "Clicked.", parts: ["Clicked ", { cite: "Print" }], runId: "run-card", stepId: "command-27",
+        picture: { kind: "unavailable", reason: "Page screenshot unavailable: overlay timeout hide." } };
+      await deliver(page, { jsonrpc: "2.0", method: "ui/notifications/tool-result", params: { _meta: { baoToolCard: card } } });
+      const look = await page.evaluate(() => ({ font: getComputedStyle(document.body).fontFamily, background: getComputedStyle(document.body).backgroundColor,
+        color: getComputedStyle(document.body).color, corner: getComputedStyle(document.querySelector("button")!).borderRadius }));
+      assert.deepEqual(look, { font: "Georgia, serif", background: "rgb(1, 2, 3)", color: "rgb(250, 250, 250)", corner: "3px" });
+      const words = await page.locator("#root").innerText();
+      assert.match(words, /Step 27 · click/);
+      assert.match(words, /No picture of this step/);
+      assert.doesNotMatch(words, /\bBAO\b|overlay timeout|target picture/);
+
+      await deliver(page, view({ ...receipt, run: { ...run, modelCalls: null } }));
+      await page.getByRole("button", { name: "Inspect receipt", exact: true }).click();
+      const receiptWords = await page.locator("#root").innerText();
+      assert.doesNotMatch(receiptWords, /\bBAO\b|Read-only|read-back|Model calls|run-design|Library/);
+    } finally { await page.close(); }
+  });
+
+  await t.test("a card drawn from the result text alone leaves out guidance for the model", async () => {
+    const page = await mount(browser, {}, false);
+    try {
+      const content = [{ type: "text", text: "The owner took control of this tab and handed it back. Take a fresh snapshot before acting." }, { type: "text", text: '{"run_id":"run-card","step_id":"command-27"}' }];
+      await deliver(page, { jsonrpc: "2.0", method: "ui/notifications/tool-result", params: { content } });
+      assert.equal(await page.locator(".browser-caption").innerText(), "You took over this tab and handed it back");
+    } finally { await page.close(); }
+  });
+
   await t.test("navigation renders receipts and picture reads ignore stale views", async () => {
     const page = await mount(browser);
     try {
@@ -231,7 +262,7 @@ test("viewer design survives long labels, host updates, errors and text resize",
       await page.getByRole("button", { name: "Inspect receipt", exact: true }).click();
       await page.getByRole("button", { name: "Open step pictures", exact: true }).click();
       await deliver(page, { jsonrpc: "2.0", id: await lastCall(page, 2), result: { _meta: { baoPictures: { runId: run.id, stepId: "project", pictures: [] } } } });
-      assert.equal(await page.getByText(/No pictures found/).count(), 1);
+      assert.equal(await page.getByText("No pictures of this step.").count(), 1);
       let count = 2;
       for (const reply of [{ result: { _meta: { baoPictures: { runId: "run-other", stepId: "project", pictures: [] } } } }, { error: { message: "Stale picture read failed" } }]) {
         await deliver(page, view({ ...receipt, run: { ...run, id: "run-other" } }));

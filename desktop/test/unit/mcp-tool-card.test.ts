@@ -476,7 +476,7 @@ test("the host resource renders a step card from result metadata, keeps it on a 
     parts: ["Clicked ", { cite: "Add blueberries" }, " (button)"], mark: "Clicked", runId: "run-exact", stepId: "command-5", picture: { kind: "captured", phase: "before", target } };
   const picture = { main: { mimeType: "image/png", data: png.toString("base64") } };
   await hostDeliver(page, { jsonrpc: "2.0", method: "ui/notifications/tool-result", params: { _meta: { baoToolCard: card }, structuredContent: { command: "click", status: "complete", run_id: "run-exact", step_id: "command-5" } } });
-  await page.getByText("Loading page picture", { exact: true }).waitFor();
+  await page.getByText("Loading picture", { exact: true }).waitFor();
   const first = (await hostRequests(page, 1))[0]!;
   assert.equal(first.params.name, "open_browser_card");
   assert.deepEqual(first.params.arguments, { run_id: "run-exact", step_id: "command-5" });
@@ -495,7 +495,7 @@ test("the host resource renders a step card from result metadata, keeps it on a 
   assert.equal(inspect.params.name, "inspect_run"); assert.equal(inspect.params.arguments.run_id, "run-exact");
   await hostDeliver(page, { jsonrpc: "2.0", id: inspect.id, result: { isError: true, content: [{ text: "Run read failed" }] } });
   await page.getByRole("alert").filter({ hasText: "Run read failed" }).waitFor();
-  await page.getByText("Try View run again.", { exact: false }).waitFor();
+  await page.getByText("Try View run again, or open Bao.", { exact: true }).waitFor();
   assert.equal(await page.locator(".browser-mark").count(), 1);
   await hostDeliver(page, { jsonrpc: "2.0", method: "ui/notifications/host-context-changed", params: { theme: "dark" } });
   assert.equal(await page.locator("html").getAttribute("data-theme"), "dark");
@@ -510,7 +510,7 @@ test("the host resource renders a step card from result metadata, keeps it on a 
   await hostDeliver(page, { jsonrpc: "2.0", method: "ui/notifications/tool-result", params: { _meta: { baoToolCard: card } } });
   const unavailable = (await hostRequests(page, 4))[3]!;
   await hostDeliver(page, { jsonrpc: "2.0", id: unavailable.id, result: { _meta: { baoToolCard: card, baoCardPictures: {} } } });
-  await page.getByText("Page picture unavailable", { exact: true }).waitFor();
+  await page.getByText("Could not load the picture", { exact: true }).waitFor();
   assert.equal(await page.locator("img").count(), 0);
 
   const closedCard: BrowserToolCard = { command: "close", status: "complete", style: "frame", caption: "Closed the Bao browser window.", parts: ["Closed the Bao browser window"],
@@ -522,7 +522,7 @@ test("the host resource renders a step card from result metadata, keeps it on a 
   await page.getByAltText("Last recorded page: Closed the Bao browser window.").waitFor();
   assert.equal(await page.locator(".browser-mark").count(), 0);
   assert.equal(await page.getByRole("button", { name: "View run", exact: true }).count(), 1);
-  assert.equal(await page.getByText("Page picture unavailable", { exact: true }).count(), 0);
+  assert.equal(await page.getByText("Could not load the picture", { exact: true }).count(), 0);
 });
 
 test("a host that forwards only content and isError still draws each step's card, never run history", async (t) => {
@@ -615,7 +615,27 @@ test("the Chrome profile question is a sentence and the exact retry call, with a
     summary: result.content[0]!.text, retry: result.content[1]!.text, tabsUnread: "remote debugging is off",
     profiles: [{ directory: "Default", name: "Alex", email: "alex@example.test" }, { directory: "Profile 2", name: "Work", email: "", pickedInSettings: true }] });
   assert.deepEqual([result.isError, result._meta?.baoToolCard.style, result._meta?.baoToolCard.caption], [false, "text", result.content[0]!.text]);
+  assert.deepEqual(result._meta?.baoToolCard.parts, ["Chrome has 2 profiles, so Bao opened nothing until one is picked"]);
   assert.equal("_meta" in profileQuestionResult(question, { command: "open" }, false), false);
+});
+
+test("a card speaks to the person and the model's sentence keeps its guidance", async () => {
+  const f = await recorded();
+  try {
+    const handed = [{ stdout: "The owner took control of this tab and handed it back. Take a fresh snapshot before acting.\n", stderr: "", exitCode: 0 }];
+    await f.recording.complete(f.step, handed, f.home, async () => png);
+    const reply = browserToolResult("click", handed, f.evidence);
+    assert.deepEqual(reply._meta.baoToolCard.parts, ["You took over this tab and handed it back"]);
+    assert.match(reply.content[0]!.text, /Take a fresh snapshot before acting\.$/);
+
+    const moved = 'Bao\'s own browser hit a sign-in page on my.example.test; continued in your running Chrome (Chrome profile "Default", Alex) over remote debugging. Take a fresh snapshot before acting.';
+    const open = f.recording.begin("open", ["https://my.example.test/"]);
+    const opened = [{ stdout: "✓ Account\n  https://my.example.test/\n", stderr: "", exitCode: 0 }];
+    await f.recording.complete(open, opened, f.home, async () => png, undefined, false, { moved });
+    const card = browserToolResult("open", opened, { runId: f.recording.id, step: open })._meta.baoToolCard;
+    assert.deepEqual(card.parts, ['Bao\'s own browser hit a sign-in page on my.example.test; continued in your running Chrome (Chrome profile "Default", Alex). ', "Went to ", { cite: "Account" }]);
+    assert.match(card.caption, /over remote debugging\. Take a fresh snapshot before acting\. Went to/);
+  } finally { await f.close(); }
 });
 
 test("finish_task carries an ended owner wait in both text and the model receipt", () => {
