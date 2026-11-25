@@ -86,7 +86,10 @@ test("failed commands do not show a successful target annotation and preserve na
     const failure = [{ stdout: "", stderr: "Target moved", exitCode: 1 }];
     await f.recording.complete(f.step, failure, f.home, async () => png);
     const reply = browserToolResult("click", failure, f.evidence);
-    assert.equal(reply.isError, true);
+    // Claude Desktop draws no app for an error result, so a failed step is a card result that says it failed.
+    assert.equal(reply.isError, false);
+    assert.equal(reply.structuredContent.status, "failed");
+    assert.deepEqual(JSON.parse(reply.content.at(-1)!.text), { run_id: f.recording.id, step_id: f.step.id, status: "failed" });
     assert.equal(Object.hasOwn(reply.structuredContent, "results"), false);
     assert.equal(reply.content[1]?.text, "Target moved");
     assert.equal(reply._meta.baoToolCard.status, "failed");
@@ -574,6 +577,9 @@ test("a host that forwards only content and isError still draws each step's card
   assert.equal(await page.locator("header .muted").textContent(), `Step 2 · click`);
 
   await forward(results[1]!);
+  assert.equal(results[1]!.isError, false, "Claude Desktop draws no app for an error result");
+  assert.equal(await page.locator(".browser-status").textContent(), "Failed", "the content alone says the step failed");
+  assert.equal(await page.locator(".browser-caption").textContent(), "Could not click the element.");
   await answer(1);
   await page.getByText("Last seen", { exact: true }).waitFor();
   await page.getByText("Now", { exact: true }).waitFor();
