@@ -50,6 +50,7 @@ function viewerMain(): void {
   let nextId = 0;
   let viewRequest = 0;
   let userRequest: number | undefined;
+  /** Only for a host with no full screen, or one that kept the card in the chat: the full view opens inline at a capped height. */
   let expanded = false;
   const pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>();
   const pictures = new Map<string, Pictures>();
@@ -120,6 +121,24 @@ function viewerMain(): void {
   const history = () => show("list_runs", {});
   async function inspect(runId: string, stepOffset = 0, workflowOffset = 0): Promise<void> {
     await show("inspect_run", { run_id: runId, step_offset: stepOffset, workflow_offset: workflowOffset });
+  }
+  /** Full size shows only in the card's own full-screen window, or capped inline where the host has none. */
+  const isFull = () => context.displayMode === "fullscreen" || expanded;
+  async function setFull(open: boolean): Promise<void> {
+    if (open && context.availableDisplayModes?.includes("fullscreen")) {
+      const reply = await request("ui/request-display-mode", { mode: "fullscreen" }) as { mode?: string };
+      if (reply.mode) context.displayMode = reply.mode;
+      expanded = Boolean(reply.mode) && reply.mode !== "fullscreen";
+    } else if (open) expanded = true;
+    else {
+      expanded = false;
+      if (context.displayMode === "fullscreen") {
+        const reply = await request("ui/request-display-mode", { mode: "inline" }) as { mode?: string };
+        context.displayMode = reply.mode || context.displayMode;
+      }
+    }
+    render();
+    root.querySelector<HTMLButtonElement>(".picture-toggle")?.focus();
   }
   function applyContext(): void {
     document.documentElement.dataset.theme = context.theme === "dark" ? "dark" : "light";
@@ -253,50 +272,77 @@ function viewerMain(): void {
     if (picture?.kind === "unavailable") return picture.reason;
     return pictureLoading ? "Reading the recorded page picture." : pictureError || (canRead ? "" : "This host cannot read the page picture.");
   }
-  function frameBlock(card: BrowserToolCard): void {
+  /** Phase words under a step's main picture, such as "Before click" or "After read". */
+  function phaseOf(card: BrowserToolCard): string {
     const picture = card.picture;
-    const data = cardPictures.main;
-    if (picture.kind !== "captured" || !data) { root.append(emptyPicture(pictureReason(picture))); return; }
-    const figure = el("figure", undefined, `browser-picture${expanded ? " expanded" : ""}`);
-    const image = el("img");
+    if (card.command === "close") return "Last recorded page";
     const words: Record<string, string> = { open: "loading", snapshot: "read", fill: "typing", press: "key press", scroll: "scroll", tab: "tab change", screenshot: "screenshot" };
-    const phase = card.command === "close" ? "Last recorded page" : `${picture.phase === "before" ? "Before" : "After"} ${words[card.command] || card.command}`;
-    image.src = `data:${data.mimeType};base64,${data.data}`; image.alt = `${phase}: ${card.caption}`;
-    const frame = el("div", undefined, "browser-frame"); frame.append(image);
-    if (picture.target) frame.append(mark(picture.target));
-    figure.append(frame, picture.target ? caption(phase, card.mark || (card.command === "fill" ? "Typed here" : "Clicked here")) : caption(phase)); root.append(figure);
-    root.append(button(expanded ? "Close picture" : "Open picture", async () => {
-      expanded = !expanded;
-      try {
-        const mode = expanded ? "fullscreen" : "inline";
-        if (context.availableDisplayModes?.includes(mode)) {
-          const reply = await request("ui/request-display-mode", { mode }) as { mode?: string };
-          context.displayMode = reply.mode || context.displayMode;
-        }
-      } finally { render(); root.querySelector<HTMLButtonElement>(".picture-toggle")?.focus(); }
-    }, "picture-toggle"));
-    if ((card.command === "click" || card.command === "fill") && !picture.target) {
-      root.append(el("p", "The target picture was unavailable. This page picture does not mark the target.", "muted"));
-    }
+    return `${picture.kind === "captured" && picture.phase === "before" ? "Before" : "After"} ${words[card.command] || card.command}`;
   }
-  function smallFigure(data: CardPictures["main"], picture: BrowserToolCard["picture"] | undefined, name: string, boxLabel?: string): HTMLElement {
-    const figure = el("figure");
+  function boxLabelOf(card: BrowserToolCard): string {
+    return card.mark || (card.command === "fill" ? "Typed here" : "Clicked here");
+  }
+  function figure(data: CardPictures["main"], picture: BrowserToolCard["picture"] | undefined, name: string, boxLabel?: string, alt = name): HTMLElement {
+    const node = el("figure");
     if (data && picture?.kind === "captured") {
       const frame = el("div", undefined, "browser-frame");
-      const image = el("img"); image.src = `data:${data.mimeType};base64,${data.data}`; image.alt = name; frame.append(image);
+      const image = el("img"); image.src = `data:${data.mimeType};base64,${data.data}`; image.alt = alt; frame.append(image);
       const target = boxLabel ? picture.target : undefined;
       if (target) frame.append(mark(target));
-      figure.append(frame, caption(name, target ? boxLabel : undefined));
-      return figure;
+      node.append(frame, caption(name, target ? boxLabel : undefined));
+      return node;
     }
-    figure.append(emptyPicture(picture ? pictureReason(picture) : "No earlier picture in this run.", true), caption(name));
-    return figure;
+    node.append(emptyPicture(picture ? pictureReason(picture) : "No earlier picture in this run.", true), caption(name));
+    return node;
   }
-  function pairBlock(card: BrowserToolCard): void {
-    const pair = el("div", undefined, "browser-pair");
-    pair.append(smallFigure(cardPictures.lastSeen, card.lastSeen, "Last seen", "Last seen here"), smallFigure(cardPictures.main, card.picture, "Now"));
-    root.append(pair);
+  /** The step's pictures: the page now, and for a failed step the last page seen before it. */
+  function pictureSet(card: BrowserToolCard): HTMLElement {
+    if (card.style === "pair") {
+      const pair = el("div", undefined, "browser-pair");
+      pair.append(figure(cardPictures.lastSeen, card.lastSeen, "Last seen", "Last seen here"), figure(cardPictures.main, card.picture, "Now"));
+      return pair;
+    }
+    const picture = card.picture;
+    const data = picture.kind === "captured" ? cardPictures.main : undefined;
+    if (!data) return emptyPicture(pictureReason(picture));
+    const phase = phaseOf(card);
+    const node = figure(data, picture, phase, boxLabelOf(card), `${phase}: ${card.caption}`);
+    node.className = "browser-picture";
+    return node;
+  }
+  function hasPicture(card: BrowserToolCard): boolean {
+    return Boolean(card.picture.kind === "captured" && cardPictures.main || card.style === "pair" && card.lastSeen?.kind === "captured" && cardPictures.lastSeen);
+  }
+  /** The chat card: a small picture beside what the step did. The full-size picture opens in the card's own window. */
+  function shortBlock(card: BrowserToolCard, actions: HTMLElement): void {
+    const row = el("div", undefined, "browser-row");
+    const media = pictureSet(card);
+    media.classList.add("browser-thumbs");
+    const text = el("div");
+    text.append(sentence(el("p", undefined, "browser-caption"), card.parts.length ? card.parts : [card.caption]));
+    if (card.page?.url) { const url = el("p", card.page.url, "browser-url mono"); url.title = card.page.url; text.append(url); }
+    if (card.error) text.append(el("p", card.error.startsWith("✗") ? card.error : `✗ ${card.error}`, "browser-error"));
+    if (hasPicture(card)) {
+      const open = button("Open picture", () => setFull(true), "picture-toggle");
+      media.classList.add("opens"); media.onclick = () => open.click();
+      actions.prepend(open);
+    }
+    text.append(actions); row.append(media, text); root.append(row);
+  }
+  /** The full card in its own window, or at a capped height in a host that has no full screen. */
+  function fullBlock(card: BrowserToolCard, actions: HTMLElement): void {
+    root.append(sentence(el("p", undefined, "browser-caption"), card.parts.length ? card.parts : [card.caption]));
+    const pictures = pictureSet(card);
+    if (context.displayMode !== "fullscreen") pictures.classList.add("capped");
+    root.append(pictures);
+    if (card.style === "frame" && (card.command === "click" || card.command === "fill") && card.picture.kind === "captured" && !card.picture.target) {
+      root.append(el("p", "The target picture was unavailable. This page picture does not mark the target.", "muted"));
+    }
     if (card.error) root.append(el("p", card.error.startsWith("✗") ? card.error : `✗ ${card.error}`, "browser-error"));
+    if (card.page?.url) root.append(el("p", card.page.url, "browser-url mono"));
+    if (context.displayMode !== "fullscreen") actions.prepend(button("Close picture", () => setFull(false), "picture-toggle"));
+    else if (context.availableDisplayModes?.includes("inline")) actions.prepend(button("Back to conversation", () => setFull(false), "picture-toggle"));
+    root.append(actions);
   }
   function waitBlock(card: BrowserToolCard): void {
     const panel = el("section", undefined, `browser-wait ${card.status}`);
@@ -338,15 +384,18 @@ function viewerMain(): void {
     const state = card.status === "failed" ? "Failed" : card.status === "waiting" ? card.style === "finish" ? "Not finished" : "Waiting for you" : card.style === "finish" ? "Passed" : "Done";
     header.append(el("strong", "BAO", "brand"), el("span", stepLabel(card), "muted"), el("span", state, `status browser-status ${card.status}`));
     root.append(header);
-    if (card.style === "wait") waitBlock(card);
-    else root.append(sentence(el("p", undefined, "browser-caption"), card.parts.length ? card.parts : [card.caption]));
-    if (card.style === "frame") frameBlock(card);
-    else if (card.style === "pair") pairBlock(card);
-    else if (card.style === "finish") finishBlock(card);
-    if (card.page?.url && (card.style === "frame" || card.style === "pair")) root.append(el("p", card.page.url, "browser-url mono"));
+    const actions = el("div", undefined, "actions");
     if (card.runId && canRead) {
       const runId = card.runId;
-      root.append(button("View run", async () => { expanded = false; await inspect(runId); }, "primary"));
+      actions.append(button("View run", async () => { expanded = false; await inspect(runId); }, "primary"));
+    }
+    if (card.style === "frame" || card.style === "pair") {
+      if (isFull()) fullBlock(card, actions); else shortBlock(card, actions);
+    } else {
+      if (card.style === "wait") waitBlock(card);
+      else root.append(sentence(el("p", undefined, "browser-caption"), card.parts.length ? card.parts : [card.caption]));
+      if (card.style === "finish") finishBlock(card);
+      if (actions.childElementCount) root.append(actions);
     }
     document.title = `${stepLabel(card)} · Bao`;
   }
@@ -389,25 +438,21 @@ function viewerMain(): void {
         summary.append(handoff);
       }
       root.append(summary);
-      if (!expanded && context.displayMode !== "fullscreen") {
-        root.append(button("Inspect receipt", async () => {
-          expanded = true;
-          if (context.availableDisplayModes?.includes("fullscreen")) {
-            const result = await request("ui/request-display-mode", { mode: "fullscreen" }) as { mode?: string };
-            context.displayMode = result.mode || context.displayMode;
-          }
-          render();
-        }, "primary"));
+      if (!isFull()) {
+        root.append(button("Inspect receipt", () => setFull(true), "primary picture-toggle"));
       } else {
-        if (context.displayMode === "fullscreen" && context.availableDisplayModes?.includes("inline")) root.append(button("Back to conversation", async () => {
-          const result = await request("ui/request-display-mode", { mode: "inline" }) as { mode?: string };
-          context.displayMode = result.mode || context.displayMode; expanded = false; render();
-        }));
-        root.append(el("h2", "Step results"));
+        let body = root;
+        if (context.displayMode !== "fullscreen") {
+          root.append(button("Close receipt", () => setFull(false), "picture-toggle"));
+          body = el("section", undefined, "capped");
+          body.tabIndex = 0; body.setAttribute("aria-label", "Receipt");
+          root.append(body);
+        } else if (context.availableDisplayModes?.includes("inline")) root.append(button("Back to conversation", () => setFull(false), "picture-toggle"));
+        body.append(el("h2", "Step results"));
         const missingReadBack = "No separate read-back recorded. Status does not prove a durable page change.";
         const allMissingReadBack = view.steps.length > 0 && view.steps.every((step) => !step.reason && !step.result);
-        if (!view.steps.length) root.append(el("p", "No step results recorded.", "muted"));
-        else if (allMissingReadBack) root.append(el("p", missingReadBack, "muted"));
+        if (!view.steps.length) body.append(el("p", "No step results recorded.", "muted"));
+        else if (allMissingReadBack) body.append(el("p", missingReadBack, "muted"));
         for (const step of view.steps) {
           const section = el("section", undefined, "step");
           section.append(el("h3", `${step.index}. ${step.label || step.id || "Step"}`), el("span", step.status, "status"));
@@ -434,12 +479,12 @@ function viewerMain(): void {
               pictures.set(key, reply._meta.baoPictures); render();
             }));
           }
-          root.append(section);
+          body.append(section);
         }
         const pages = el("div", undefined, "actions");
         if (view.stepOffset) pages.append(button("Previous steps", () => inspect(view.run.id, Math.max(0, view.stepOffset - 20), view.workflow?.offset)));
         if (view.nextStepOffset !== null) pages.append(button("Next steps", () => inspect(view.run.id, view.nextStepOffset!, view.workflow?.offset)));
-        root.append(pages);
+        body.append(pages);
         const workflow = el("details"); workflow.open = true;
         workflow.append(el("summary", "Workflow steps"));
         if (!view.workflow) workflow.append(el("p", "No saved workflow is linked to this run. Check the closing tool result for the saved workflow or capture-only reason.", "muted"));
@@ -450,7 +495,7 @@ function viewerMain(): void {
           if (view.workflow.offset) workflow.append(button("Previous workflow steps", () => inspect(view.run.id, view.stepOffset, Math.max(0, view.workflow!.offset - 20))));
           if (view.workflow.nextOffset !== null) workflow.append(button("Next workflow steps", () => inspect(view.run.id, view.stepOffset, view.workflow!.nextOffset!)));
         }
-        root.append(workflow);
+        body.append(workflow);
       }
     }
     document.title = `${root.querySelector("h1")?.textContent || "Run viewer"} · Bao`;
@@ -472,6 +517,8 @@ function viewerMain(): void {
     } else if (message.method === "ui/notifications/host-context-changed") {
       const changes = message.params as HostContext;
       const contentChanged = (["locale", "timeZone", "displayMode"] as const).some((key) => key in changes && changes[key] !== context[key]);
+      // The host may leave full screen by its own close button; any change of mode returns the card to its short form.
+      if ("displayMode" in changes && changes.displayMode !== context.displayMode) expanded = false;
       context = { ...context, ...changes }; applyContext();
       if (contentChanged) render();
     } else if (message.id !== undefined && message.method === "ping") {
@@ -536,8 +583,26 @@ footer{margin-top:18px;padding-top:12px;border-top:1px solid var(--line);font-si
 .empty{padding:20px 0}
 .browser-status{margin-inline-start:auto}
 .browser-status.failed{color:var(--danger)}
-.browser-picture{position:relative;max-width:480px;margin:16px auto 8px}
-.browser-picture.expanded{max-width:none}
+.browser-picture{position:relative;margin:16px 0 8px}
+.browser-row{display:grid;grid-template-columns:auto minmax(0,1fr);gap:14px;align-items:start;margin-top:14px}
+.browser-row .browser-caption{margin:0 0 4px}
+.browser-row .browser-url{margin:0 0 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.browser-row .actions{gap:8px}
+.browser-thumbs{margin:0}
+.browser-thumbs.opens{cursor:zoom-in}
+.browser-thumbs figure,figure.browser-thumbs{width:144px}
+.browser-pair.browser-thumbs{display:flex;gap:8px}
+.browser-pair.browser-thumbs figure{width:104px}
+.browser-thumbs .browser-frame,.capped .browser-frame{width:fit-content;max-width:100%}
+.browser-thumbs .browser-frame img{width:auto;max-width:100%;max-height:120px}
+.browser-thumbs figcaption{overflow-wrap:anywhere}
+.browser-empty.browser-thumbs{width:144px;min-height:90px;padding:10px;gap:4px;margin:0}
+.browser-empty.browser-thumbs .browser-outline{width:48px;height:32px}
+.capped .browser-frame{margin-inline:auto}
+.capped .browser-frame img{width:auto;max-height:480px}
+.browser-pair.capped .browser-frame img{max-height:360px}
+section.capped{max-height:480px;overflow:auto;overscroll-behavior:contain;margin-top:12px;padding:0 12px;border:1px solid var(--line);border-radius:6px}
+section.capped>h2{margin-top:12px}
 .browser-frame{position:relative}
 .browser-frame img{width:100%;height:auto;outline:1px solid #0000001a;outline-offset:-1px}
 html[data-theme=dark] .browser-frame img{outline-color:#ffffff1a}
@@ -564,10 +629,9 @@ html[data-theme=dark] .browser-wait{border-color:#8a6420;background:#2f2716}
 .browser-done{list-style:none;margin:4px 0 10px;padding:0;display:grid;gap:5px}
 .browser-done li{display:grid;grid-template-columns:18px minmax(0,1fr);gap:6px;overflow-wrap:anywhere}
 .browser-done li:before{content:"\\2713";color:var(--accent);font-weight:700}
-.picture-toggle{display:block;margin:8px auto}
 .browser-empty{display:grid;justify-items:center;align-content:center;gap:12px;min-height:200px;padding:24px;text-align:center;background:var(--soft);margin-top:16px;border-radius:6px}
 .browser-outline{width:88px;height:60px;border:1px solid var(--muted);border-radius:5px;position:relative}
 .browser-outline:before{content:"";position:absolute;top:12px;inset-inline:0;border-top:1px solid var(--muted)}
-@media(max-width:440px){main{padding:12px}.browser-pair{grid-template-columns:minmax(0,1fr)}.run-row>div{flex-basis:65%}.run-row>button{margin-inline-start:auto}header{gap:8px}header .muted{display:none}}
+@media(max-width:440px){main{padding:12px}.browser-thumbs figure,figure.browser-thumbs,.browser-empty.browser-thumbs{width:96px}.browser-pair.browser-thumbs figure{width:72px}.browser-pair{grid-template-columns:minmax(0,1fr)}.run-row>div{flex-basis:65%}.run-row>button{margin-inline-start:auto}header{gap:8px}header .muted{display:none}}
 </style></head><body><main><div id="root" aria-live="polite">Connecting to Bao…</div><section id="error"><p role="alert"></p><p class="muted"></p></section></main><script>(${viewerMain.toString()})();</script></body></html>`;
 }

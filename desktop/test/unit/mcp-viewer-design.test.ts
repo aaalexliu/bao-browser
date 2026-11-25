@@ -277,7 +277,7 @@ test("viewer design survives long labels, host updates, errors and text resize",
       await page.getByRole("button", { name: "Inspect receipt", exact: true }).click();
       const receiptRegion = page.getByRole("region", { name: "Receipt", exact: true });
       assert.equal(await receiptRegion.getByRole("heading", { name: "Step results", exact: true }).count(), 1);
-      assert.ok(await height(page) <= short + 480, `the open receipt adds ${await height(page) - short}px to the chat`);
+      assert.ok(await height(page) <= short + 540, `the open receipt, its 480px scroll box and Close receipt add ${await height(page) - short}px to the chat`);
       assert.equal(await receiptRegion.evaluate((node) => node.scrollHeight > node.clientHeight), true, "the rest of the receipt scrolls inside the card");
       await page.getByRole("button", { name: "Close receipt", exact: true }).click();
       assert.equal(await page.getByRole("heading", { name: "Step results", exact: true }).count(), 0);
