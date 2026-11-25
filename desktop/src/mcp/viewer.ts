@@ -1,3 +1,4 @@
+import { CARD_WORDS } from "../engines/agent-browser-describe";
 import type { inspectRunView, listRunViews, openStepPictures } from "./run-view";
 import type { BrowserToolCard } from "./tool-card";
 
@@ -35,8 +36,8 @@ interface ToolReply {
   _meta?: { baoViewer?: View; baoPictures?: Pictures; baoToolCard?: BrowserToolCard; baoCardPictures?: CardPictures };
 }
 
-/** Self-contained: the compiled function is bundled into the versioned HTML. */
-function viewerMain(): void {
+/** Self-contained: the compiled function is bundled into the versioned HTML, with CARD_WORDS as its argument. */
+function viewerMain(cardWords: typeof CARD_WORDS): void {
   const root = document.querySelector<HTMLElement>("#root")!;
   let current: View | undefined;
   let browserCall: BrowserToolCard | undefined;
@@ -44,7 +45,7 @@ function viewerMain(): void {
   let cardKey: CardKey | undefined;
   let toolArgs: Record<string, unknown> | undefined;
   let pictureLoading = false;
-  let pictureError = "";
+  let pictureError = false;
   let context: HostContext = {};
   let canRead = false;
   let nextId = 0;
@@ -73,8 +74,8 @@ function viewerMain(): void {
   class HostDataError extends Error {}
   function error(cause: unknown): void {
     alert.textContent = cause instanceof Error ? cause.message : String(cause);
-    recovery.textContent = cause instanceof HostDataError ? "" : browserCall ? "Try View run again. If this keeps happening, open Bao desktop for local details." : current ? "Try Refresh. If this keeps happening, open Bao desktop for local details." : "Reopen this viewer from the conversation, or open Bao desktop for local details.";
-    if (!current && !browserCall) root.textContent = "Could not load the run viewer.";
+    recovery.textContent = cause instanceof HostDataError ? "" : browserCall ? "Try View run again, or open Bao." : current ? "Try Refresh, or open Bao." : "Reopen this card from the chat, or open Bao.";
+    if (!current && !browserCall) root.textContent = "Could not load this card.";
   }
   function clearError(): void { alert.textContent = ""; recovery.textContent = ""; }
   function button(label: string, act: () => Promise<void>, className?: string): HTMLButtonElement {
@@ -89,10 +90,10 @@ function viewerMain(): void {
     return node;
   }
   async function tool(name: string, args: Record<string, unknown>): Promise<ToolReply> {
-    if (!canRead) throw new HostDataError("This host cannot read more Bao data. The text receipt is still available in the conversation.");
+    if (!canRead) throw new HostDataError("This chat app cannot load more from Bao. Open Bao to see this run.");
     const reply = await request("tools/call", { name, arguments: args }) as ToolReply;
     if (reply.isError) {
-      let message = reply.content?.[0]?.text || "Bao could not read this record.";
+      let message = reply.content?.[0]?.text || "Bao could not read this run.";
       try {
         const data = JSON.parse(message) as { error?: unknown } | null;
         if (typeof data?.error === "string") message = data.error;
@@ -107,7 +108,7 @@ function viewerMain(): void {
     try {
       const reply = await tool(name, args);
       if (version !== viewRequest) return;
-      if (!reply._meta?.baoViewer) throw new HostDataError("This host did not forward Bao's viewer data. Use the text receipt or the Bao desktop app.");
+      if (!reply._meta?.baoViewer) throw new HostDataError("This chat app did not pass on Bao's run. Open Bao to see it.");
       browserCall = undefined; cardKey = undefined;
       current = reply._meta.baoViewer;
       clearError(); render();
@@ -133,7 +134,6 @@ function viewerMain(): void {
     try { return new Intl.DateTimeFormat(context.locale, { dateStyle: "medium", timeStyle: "short", timeZone: context.timeZone }).format(value); }
     catch { return new Date(value).toISOString(); }
   }
-  function calls(value: number | null): string { return value === null ? "Model calls unknown (not tracked)" : `${value} Bao model calls`; }
   function parsedBlocks(reply: ToolReply): Record<string, unknown>[] {
     return (reply.content || []).flatMap((block) => {
       try {
@@ -163,7 +163,8 @@ function viewerMain(): void {
   }
   /** The card a text-only result supports: Bao's sentence, plus the owner-wait state when the result says so. */
   function textCard(reply: ToolReply, key: CardKey | undefined): BrowserToolCard {
-    const caption = reply.content?.map((block) => block.text?.trim() || "").find(Boolean) || "Bao sent no details for this call.";
+    const first = reply.content?.map((block) => block.text?.trim() || "").find(Boolean);
+    const caption = first ? cardWords.reduce((words, [model, person]) => words.replace(model, person), first) : "Bao sent no details for this call.";
     const waiting = parsedBlocks(reply).some((value) => value.outcome === "halted" || value.outcome === "waiting");
     const command = typeof toolArgs?.command === "string" ? toolArgs.command : key?.finish ? "finish_task" : "agent_browser";
     return { command, status: waiting ? "waiting" : reply.isError ? "failed" : "complete", style: waiting ? "wait" : key?.finish ? "finish" : "text",
@@ -171,7 +172,7 @@ function viewerMain(): void {
   }
   function showCard(card: BrowserToolCard, key: CardKey | undefined): void {
     ++viewRequest; current = undefined; browserCall = card; cardKey = key; cardPictures = {};
-    pictureLoading = false; pictureError = ""; expanded = false; clearError(); render();
+    pictureLoading = false; pictureError = false; expanded = false; clearError(); render();
     if (key && canRead) void loadCard(key);
   }
   /** Route a tool result. A browser step or finished task always draws its own card, never run history. */
@@ -199,12 +200,12 @@ function viewerMain(): void {
       const reply = await tool("open_browser_card", key.finish ? { run_id: key.runId } : { run_id: key.runId, step_id: key.stepId });
       if (cardKey !== key) return;
       const card = reply._meta?.baoToolCard;
-      if (!card || card.runId !== key.runId || !key.finish && card.stepId !== key.stepId) throw new HostDataError("This host did not forward the browser card.");
+      if (!card || card.runId !== key.runId || !key.finish && card.stepId !== key.stepId) throw new HostDataError("This chat app did not pass on this step.");
       browserCall = card; cardPictures = reply._meta?.baoCardPictures || {};
-      if (card.picture.kind === "captured" && !cardPictures.main) pictureError = "The page picture is missing, invalid, or over the size limit.";
-    } catch (cause) {
+      pictureError = card.picture.kind === "captured" && !cardPictures.main;
+    } catch {
       if (cardKey !== key) return;
-      pictureError = cause instanceof Error ? cause.message : String(cause);
+      pictureError = true;
     } finally {
       if (cardKey === key) { pictureLoading = false; render(); }
     }
@@ -242,21 +243,19 @@ function viewerMain(): void {
     } else node.append(text);
     return node;
   }
-  function emptyPicture(reason: string, small = false): HTMLElement {
+  /** Why a picture is missing stays in the tool result for the model; the person sees only that there is none. */
+  function emptyPicture(picture: BrowserToolCard["picture"] | undefined, small = false): HTMLElement {
     const empty = el("div", undefined, `browser-empty${small ? " small" : ""}`);
     const outline = el("div", undefined, "browser-outline"); outline.setAttribute("aria-hidden", "true");
-    empty.append(outline, el("strong", pictureLoading ? "Loading page picture" : "Page picture unavailable"));
-    if (reason) empty.append(el("p", reason, "muted"));
+    const captured = picture?.kind === "captured";
+    const words = !picture ? "No earlier picture" : captured && pictureLoading ? "Loading picture" : captured && (pictureError || !canRead) ? "Could not load the picture" : "No picture of this step";
+    empty.append(outline, el("strong", words, "muted"));
     return empty;
-  }
-  function pictureReason(picture: BrowserToolCard["picture"] | undefined): string {
-    if (picture?.kind === "unavailable") return picture.reason;
-    return pictureLoading ? "Reading the recorded page picture." : pictureError || (canRead ? "" : "This host cannot read the page picture.");
   }
   function frameBlock(card: BrowserToolCard): void {
     const picture = card.picture;
     const data = cardPictures.main;
-    if (picture.kind !== "captured" || !data) { root.append(emptyPicture(pictureReason(picture))); return; }
+    if (picture.kind !== "captured" || !data) { root.append(emptyPicture(picture)); return; }
     const figure = el("figure", undefined, `browser-picture${expanded ? " expanded" : ""}`);
     const image = el("img");
     const words: Record<string, string> = { open: "loading", snapshot: "read", fill: "typing", press: "key press", scroll: "scroll", tab: "tab change", screenshot: "screenshot" };
@@ -275,9 +274,6 @@ function viewerMain(): void {
         }
       } finally { render(); root.querySelector<HTMLButtonElement>(".picture-toggle")?.focus(); }
     }, "picture-toggle"));
-    if ((card.command === "click" || card.command === "fill") && !picture.target) {
-      root.append(el("p", "The target picture was unavailable. This page picture does not mark the target.", "muted"));
-    }
   }
   function smallFigure(data: CardPictures["main"], picture: BrowserToolCard["picture"] | undefined, name: string, boxLabel?: string): HTMLElement {
     const figure = el("figure");
@@ -289,7 +285,7 @@ function viewerMain(): void {
       figure.append(frame, caption(name, target ? boxLabel : undefined));
       return figure;
     }
-    figure.append(emptyPicture(picture ? pictureReason(picture) : "No earlier picture in this run.", true), caption(name));
+    figure.append(emptyPicture(picture, true), caption(name));
     return figure;
   }
   function pairBlock(card: BrowserToolCard): void {
@@ -306,10 +302,10 @@ function viewerMain(): void {
     if (card.owner) {
       const line = el("p", undefined, "muted");
       if (card.owner.title) line.append(el("q", card.owner.title, "cite"), " · ");
-      line.append(el("span", card.owner.url, "mono"));
+      line.append(el("span", card.owner.url));
       if (card.owner.waitedMs !== undefined) line.append(` · waiting ${waited(card.owner.waitedMs)}`);
       body.append(line);
-    } else if (card.page?.url) body.append(el("p", card.page.url, "mono"));
+    } else if (card.page?.url) body.append(el("p", card.page.url, "muted"));
     if (card.status === "waiting") body.append(el("p", "Bao keeps no picture of this page. It reads only the title and address while waiting.", "muted"));
     panel.append(ring, body); root.append(panel);
   }
@@ -336,17 +332,17 @@ function viewerMain(): void {
     applyContext(); root.replaceChildren();
     const header = el("header");
     const state = card.status === "failed" ? "Failed" : card.status === "waiting" ? card.style === "finish" ? "Not finished" : "Waiting for you" : card.style === "finish" ? "Passed" : "Done";
-    header.append(el("strong", "BAO", "brand"), el("span", stepLabel(card), "muted"), el("span", state, `status browser-status ${card.status}`));
+    header.append(el("span", stepLabel(card), "muted"), el("span", state, `status browser-status ${card.status}`));
     root.append(header);
     if (card.style === "wait") waitBlock(card);
     else root.append(sentence(el("p", undefined, "browser-caption"), card.parts.length ? card.parts : [card.caption]));
     if (card.style === "frame") frameBlock(card);
     else if (card.style === "pair") pairBlock(card);
     else if (card.style === "finish") finishBlock(card);
-    if (card.page?.url && (card.style === "frame" || card.style === "pair")) root.append(el("p", card.page.url, "browser-url mono"));
+    if (card.page?.url && (card.style === "frame" || card.style === "pair")) root.append(el("p", card.page.url, "browser-url muted"));
     if (card.runId && canRead) {
       const runId = card.runId;
-      root.append(button("View run", async () => { expanded = false; await inspect(runId); }, "primary"));
+      root.append(button("View run", async () => { expanded = false; await inspect(runId); }));
     }
     document.title = `${stepLabel(card)} · Bao`;
   }
@@ -356,7 +352,6 @@ function viewerMain(): void {
     applyContext();
     root.replaceChildren();
     const header = el("header");
-    header.append(el("strong", "BAO", "brand"), el("span", "Read-only run viewer", "muted"));
     const nav = el("div", undefined, "actions");
     nav.append(button("History", history), button("Refresh", async () => {
       if (current && "run" in current) await inspect(current.run.id, current.stepOffset, current.workflow?.offset);
@@ -372,7 +367,7 @@ function viewerMain(): void {
         row.append(label, el("span", run.status, "status"), button("Inspect run", async () => { expanded = false; await inspect(run.id); }));
         root.append(row);
       }
-      if (current.skipped) root.append(el("p", `${current.skipped} unavailable or oversized records skipped.`, "muted"));
+      if (current.skipped) root.append(el("p", `Bao could not read ${current.skipped} ${current.skipped === 1 ? "run" : "runs"} on this page.`, "muted"));
       const paging = el("div", undefined, "actions");
       if (current.offset > 0) paging.append(button("Previous runs", () => show("list_runs", { offset: Math.max(0, (current && "runs" in current ? current.offset : 0) - 5) })));
       if (current.nextOffset !== null) { const page = current.nextOffset; paging.append(button("Next runs", () => show("list_runs", { offset: page }))); }
@@ -381,7 +376,7 @@ function viewerMain(): void {
       const view = current;
       root.append(el("h1", view.run.name));
       const summary = el("section", undefined, "summary");
-      summary.append(el("span", view.run.status, "status"), el("p", `${date(view.run.at)} · ${view.run.stepCount} steps · ${calls(view.run.modelCalls)}`), el("p", view.run.id, "mono"));
+      summary.append(el("span", view.run.status, "status"), el("p", `${date(view.run.at)} · ${view.run.stepCount} steps`, "muted"));
       if (view.reason) summary.append(el("p", `Stop reason: ${view.reason}`));
       if (view.handoff?.ask) {
         const handoff = el("aside"); handoff.append(el("strong", "Needs you in Bao"), el("p", view.handoff.ask));
@@ -397,26 +392,22 @@ function viewerMain(): void {
             context.displayMode = result.mode || context.displayMode;
           }
           render();
-        }, "primary"));
+        }));
       } else {
         if (context.displayMode === "fullscreen" && context.availableDisplayModes?.includes("inline")) root.append(button("Back to conversation", async () => {
           const result = await request("ui/request-display-mode", { mode: "inline" }) as { mode?: string };
           context.displayMode = result.mode || context.displayMode; expanded = false; render();
         }));
         root.append(el("h2", "Step results"));
-        const missingReadBack = "No separate read-back recorded. Status does not prove a durable page change.";
-        const allMissingReadBack = view.steps.length > 0 && view.steps.every((step) => !step.reason && !step.result);
         if (!view.steps.length) root.append(el("p", "No step results recorded.", "muted"));
-        else if (allMissingReadBack) root.append(el("p", missingReadBack, "muted"));
         for (const step of view.steps) {
           const section = el("section", undefined, "step");
           section.append(el("h3", `${step.index}. ${step.label || step.id || "Step"}`), el("span", step.status, "status"));
           if (step.reason || step.result) section.append(el("p", step.reason || step.result));
-          else if (!allMissingReadBack) section.append(el("p", missingReadBack, "muted"));
           const key = `${view.run.id}/${step.id}`;
           const opened = step.picturesAllowed ? pictures.get(key) : undefined;
           if (opened) {
-            if (!opened.pictures.length) section.append(el("p", "No pictures found: missing, invalid, or over the size limit.", "muted"));
+            if (!opened.pictures.length) section.append(el("p", "No pictures of this step.", "muted"));
             const pair = el("div", undefined, "pictures");
             for (const picture of opened.pictures) {
               const figure = el("figure"); const image = el("img");
@@ -430,7 +421,7 @@ function viewerMain(): void {
               try { reply = await tool("open_step_pictures", { run_id: view.run.id, step_id: step.id }); }
               catch (err) { if (!current || !("run" in current) || current.run.id !== view.run.id) return; throw err; }
               if (!current || !("run" in current) || current.run.id !== view.run.id) return;
-              if (!reply._meta?.baoPictures) throw new HostDataError("This host did not forward the pictures.");
+              if (!reply._meta?.baoPictures) throw new HostDataError("This chat app did not pass on the pictures.");
               pictures.set(key, reply._meta.baoPictures); render();
             }));
           }
@@ -442,7 +433,7 @@ function viewerMain(): void {
         root.append(pages);
         const workflow = el("details"); workflow.open = true;
         workflow.append(el("summary", "Workflow steps"));
-        if (!view.workflow) workflow.append(el("p", "No saved workflow is linked to this run. Check the closing tool result for the saved workflow or capture-only reason.", "muted"));
+        if (!view.workflow) workflow.append(el("p", "This run has no saved workflow.", "muted"));
         else {
           const list = el("ol"); list.start = view.workflow.offset + 1;
           for (const step of view.workflow.steps) list.append(el("li", `${step.label || "Step"} · ${step.action}`));
@@ -454,7 +445,6 @@ function viewerMain(): void {
       }
     }
     document.title = `${root.querySelector("h1")?.textContent || "Run viewer"} · Bao`;
-    root.append(el("footer", "Reads the same Library as Bao desktop. No run, edit, resume, approve, or browser controls."));
   }
   window.addEventListener("message", (event: MessageEvent<unknown>) => {
     if (event.source !== window.parent || !event.data || typeof event.data !== "object") return;
@@ -497,77 +487,70 @@ function viewerMain(): void {
 export function viewerHtml(): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"><title>Bao run viewer</title><style>
 *{box-sizing:border-box}
-html{color-scheme:light;--bg:#fff;--fg:#1c3029;--muted:#5f7069;--line:#dce5df;--soft:#f5f8f6;--accent:#21604c;--danger:#b12c35}
-html[data-theme=dark]{color-scheme:dark;--bg:#19221e;--fg:#e6eee8;--muted:#a8b8ae;--line:#3b4d42;--soft:#24332a;--accent:#a5d8b8;--danger:#ff929b}
-body{margin:0;background:var(--color-background-primary,var(--bg));color:var(--color-text-primary,var(--fg));font:.875rem var(--font-sans,system-ui,sans-serif);line-height:1.45}
-main{max-width:900px;margin:auto;padding:18px}
+html{color-scheme:light;--bg:var(--color-background-primary,#fff);--soft:var(--color-background-secondary,#f5f4ed);--fg:var(--color-text-primary,#141413);--muted:var(--color-text-secondary,#5e5d59);--line:var(--color-border-primary,#1f1e1d26);--danger:var(--color-text-danger,#b3261e);--warn-bg:var(--color-background-warning,#fdf3e1);--warn-line:var(--color-border-warning,#d89b2b);--radius:var(--border-radius-md,8px);--radius-sm:var(--border-radius-sm,6px);--medium:var(--font-weight-medium,500);--semibold:var(--font-weight-semibold,600)}
+html[data-theme=dark]{color-scheme:dark;--bg:var(--color-background-primary,#262624);--soft:var(--color-background-secondary,#30302e);--fg:var(--color-text-primary,#faf9f5);--muted:var(--color-text-secondary,#c2c0b6);--line:var(--color-border-primary,#faf9f526);--danger:var(--color-text-danger,#ff8a80);--warn-bg:var(--color-background-warning,#3a2f1a);--warn-line:var(--color-border-warning,#8a6420)}
+body{margin:0;background:var(--bg);color:var(--fg);font:var(--font-weight-normal,400) .875rem/1.5 var(--font-sans,ui-sans-serif,system-ui,-apple-system,sans-serif);-webkit-font-smoothing:antialiased}
+main{max-width:900px;margin:auto;padding:16px}
 header,.actions,.run-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-header{border-bottom:1px solid var(--line);padding-bottom:12px}
 header .actions{margin-inline-start:auto}
-.brand{letter-spacing:.2em;color:var(--accent)}
-h1,h2,h3{overflow-wrap:anywhere}
-h1{font-size:1.25rem;line-height:1.3;margin:18px 0 6px}
+h1,h2,h3{overflow-wrap:anywhere;font-weight:var(--semibold)}
+h1{font-size:1.125rem;line-height:1.35;margin:16px 0 4px}
 h2{font-size:.9375rem;margin:0 0 4px}
-#root>h2{margin-top:18px}
-h3{font-size:.875rem;margin:0 0 8px}
+#root>h2{margin-top:16px}
+h3{font-size:.875rem;font-weight:var(--medium);margin:0 0 6px}
 p{margin:6px 0;overflow-wrap:anywhere}
-.muted,footer,figcaption{color:var(--color-text-secondary,var(--muted));font-size:.75rem}
-.run-row{padding:14px 0;border-bottom:1px solid var(--line)}
+.muted,figcaption{color:var(--muted);font-size:.8125rem}
+.run-row{padding:12px 0;border-bottom:1px solid var(--line)}
 .run-row>div{flex:1;min-width:0}
-button{font:inherit;font-size:.75rem;cursor:pointer;background:var(--color-background-primary,var(--bg));color:var(--accent);border:1px solid var(--line);border-radius:6px;padding:7px 11px;max-width:100%;overflow-wrap:anywhere}
+button{font:inherit;font-size:.8125rem;font-weight:var(--medium);cursor:pointer;background:transparent;color:var(--fg);border:1px solid var(--line);border-radius:var(--radius);padding:6px 12px;max-width:100%;overflow-wrap:anywhere}
 button:hover{background:var(--soft)}
 button:disabled{opacity:.5;cursor:wait}
 :focus-visible{outline-offset:2px}
-.primary{font-weight:600}
-.status{display:inline-block;font-size:.6875rem;font-weight:650;padding:3px 8px;border-radius:4px;background:var(--soft);color:var(--accent);overflow-wrap:anywhere}
-.summary,.step{padding:14px 0;border-bottom:1px solid var(--line);margin-bottom:12px}
-.mono{font:.6875rem ui-monospace,monospace;color:var(--muted)}
-aside{border-inline-start:3px solid var(--accent);padding:8px 12px;margin-top:12px;background:var(--soft)}
+.status{display:inline-block;font-size:.75rem;font-weight:var(--medium);padding:2px 8px;border-radius:var(--border-radius-full,999px);background:var(--soft);color:var(--fg);overflow-wrap:anywhere}
+.summary,.step{padding:12px 0;border-bottom:1px solid var(--line);margin-bottom:12px}
+aside{padding:10px 12px;margin-top:12px;background:var(--soft);border-radius:var(--radius)}
 .pictures{display:flex;flex-wrap:wrap;gap:16px;margin-top:12px}
 figure{margin:0;max-width:100%}
-img{display:block;max-width:100%;height:auto;border:1px solid var(--line);border-radius:4px}
+img{display:block;max-width:100%;height:auto;border:1px solid var(--line);border-radius:var(--radius-sm)}
 figcaption{margin-top:4px}
-details{margin-top:18px}
-summary{font-weight:600;cursor:pointer}
+details{margin-top:16px}
+summary{font-weight:var(--semibold);cursor:pointer}
 li{padding:4px 0;overflow-wrap:anywhere}
-footer{margin-top:18px;padding-top:12px;border-top:1px solid var(--line);font-size:.6875rem}
-[role=alert]{color:var(--color-text-danger,var(--danger))}
+[role=alert]{color:var(--danger)}
 #error p:empty{margin:0}
 .empty{padding:20px 0}
 .browser-status{margin-inline-start:auto}
 .browser-status.failed{color:var(--danger)}
-.browser-picture{position:relative;max-width:480px;margin:16px auto 8px}
+.browser-picture{position:relative;max-width:480px;margin:12px auto 8px}
 .browser-picture.expanded{max-width:none}
 .browser-frame{position:relative}
-.browser-frame img{width:100%;height:auto;outline:1px solid #0000001a;outline-offset:-1px}
-html[data-theme=dark] .browser-frame img{outline-color:#ffffff1a}
+.browser-frame img{width:100%;height:auto}
 .browser-mark{position:absolute;border:2px solid #ff6a00;box-shadow:0 0 0 1px #fff,0 0 0 3px #ff6a0033;border-radius:4px;pointer-events:none}
 .browser-key{display:inline-block;width:12px;height:9px;border:2px solid #ff6a00;border-radius:3px;margin-inline-end:6px;vertical-align:-1px}
-figcaption strong{color:var(--color-text-primary,var(--fg))}
-.browser-caption{font-weight:600;margin:14px 0 12px;font-size:.9375rem;line-height:1.4}
-q.cite{quotes:"\\201C" "\\201D";background:#ff6a0029;box-shadow:inset 0 -1px 0 #ff6a00b3;border-radius:3px;padding:0 2px}
-q.value{quotes:"\\201C" "\\201D";font-family:ui-monospace,monospace;font-size:.92em;background:var(--soft);border-radius:3px;padding:0 3px}
+figcaption strong{color:var(--fg);font-weight:var(--medium)}
+.browser-caption{font-size:.9375rem;font-weight:var(--medium);line-height:1.45;margin:10px 0}
+q.cite,q.value{quotes:"\\201C" "\\201D"}
+q.value{font-family:var(--font-mono,ui-monospace,monospace);font-size:.9em;background:var(--soft);border-radius:4px;padding:0 3px}
 .browser-url{margin:6px 0 10px;overflow-wrap:anywhere}
 .browser-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:12px 0 6px}
 .browser-pair figure{margin:0;min-width:0}
 .browser-pair .browser-frame img{width:100%}
-.browser-error{color:var(--color-text-danger,var(--danger));font-weight:600;overflow-wrap:anywhere}
+.browser-error{color:var(--danger);font-weight:var(--medium);overflow-wrap:anywhere}
 .browser-empty.small{min-height:120px;padding:12px;margin-top:0;gap:6px}
-.browser-wait{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;align-items:start;margin:14px 0 12px;padding:12px 14px;border-radius:8px;border:1px solid #d89b2b;background:#fff7e6}
-html[data-theme=dark] .browser-wait{border-color:#8a6420;background:#2f2716}
+.browser-wait{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;align-items:start;margin:10px 0;padding:12px 14px;border-radius:var(--radius);border:1px solid var(--warn-line);background:var(--warn-bg)}
 .browser-wait .browser-caption{margin:0 0 4px}
 .browser-wait.complete{border-color:var(--line);background:var(--soft)}
-.browser-ring{width:18px;height:18px;margin-top:2px;border-radius:50%;border:2.5px solid #d89b2b;border-top-color:transparent;animation:spin 1.1s linear infinite}
-.browser-wait.complete .browser-ring{animation:none;border:0;color:var(--accent);font-weight:700;line-height:18px;text-align:center}
+.browser-ring{width:18px;height:18px;margin-top:2px;border-radius:50%;border:2.5px solid var(--warn-line);border-top-color:transparent;animation:spin 1.1s linear infinite}
+.browser-wait.complete .browser-ring{animation:none;border:0;color:var(--fg);font-weight:var(--semibold);line-height:18px;text-align:center}
 @keyframes spin{to{transform:rotate(360deg)}}
-@media(prefers-reduced-motion:reduce){.browser-ring{animation:none;border-top-color:#d89b2b}}
+@media(prefers-reduced-motion:reduce){.browser-ring{animation:none;border-top-color:var(--warn-line)}}
 .browser-done{list-style:none;margin:4px 0 10px;padding:0;display:grid;gap:5px}
 .browser-done li{display:grid;grid-template-columns:18px minmax(0,1fr);gap:6px;overflow-wrap:anywhere}
-.browser-done li:before{content:"\\2713";color:var(--accent);font-weight:700}
+.browser-done li:before{content:"\\2713";color:var(--muted);font-weight:var(--semibold)}
 .picture-toggle{display:block;margin:8px auto}
-.browser-empty{display:grid;justify-items:center;align-content:center;gap:12px;min-height:200px;padding:24px;text-align:center;background:var(--soft);margin-top:16px;border-radius:6px}
+.browser-empty{display:grid;justify-items:center;align-content:center;gap:12px;min-height:160px;padding:24px;text-align:center;background:var(--soft);margin-top:12px;border-radius:var(--radius)}
 .browser-outline{width:88px;height:60px;border:1px solid var(--muted);border-radius:5px;position:relative}
 .browser-outline:before{content:"";position:absolute;top:12px;inset-inline:0;border-top:1px solid var(--muted)}
-@media(max-width:440px){main{padding:12px}.browser-pair{grid-template-columns:minmax(0,1fr)}.run-row>div{flex-basis:65%}.run-row>button{margin-inline-start:auto}header{gap:8px}header .muted{display:none}}
-</style></head><body><main><div id="root" aria-live="polite">Connecting to Bao…</div><section id="error"><p role="alert"></p><p class="muted"></p></section></main><script>(${viewerMain.toString()})();</script></body></html>`;
+@media(max-width:440px){main{padding:12px}.browser-pair{grid-template-columns:minmax(0,1fr)}.run-row>div{flex-basis:65%}.run-row>button{margin-inline-start:auto}header{gap:8px}}
+</style></head><body><main><div id="root" aria-live="polite">Connecting to Bao…</div><section id="error"><p role="alert"></p><p class="muted"></p></section></main><script>(${viewerMain.toString()})(${JSON.stringify(CARD_WORDS).replace(/</g, "\\u003c")});</script></body></html>`;
 }

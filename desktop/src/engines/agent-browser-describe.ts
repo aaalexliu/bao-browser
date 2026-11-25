@@ -162,6 +162,25 @@ export function failureText(results: readonly AgentBrowserCommandResult[], error
   return firstLine(failed?.stderr) || firstLine(failed?.stdout) || firstLine(error) || "The command failed.";
 }
 
+/** Ends the line that says Bao moved the session to the owner's Chrome. It speaks to the model, so a card leaves it out. */
+export const MOVED_FOR_MODEL = " over remote debugging. Take a fresh snapshot before acting.";
+
+/** Each piece of a step sentence that speaks to the model, and what a card shows in its place. */
+export const CARD_WORDS: readonly (readonly [model: string, person: string])[] = [
+  [HANDED_BACK, "You took over this tab and handed it back"],
+  [MOVED_FOR_MODEL, "."],
+];
+
+const personText = (text: string): string => CARD_WORDS.reduce((words, [model, person]) => words.replace(model, person), text);
+
+/**
+ * The card's copy of a step sentence: the same words without guidance for the model, which stays in the sentence's text.
+ * Saved steps keep that guidance in their parts, so the card drops it when it reads them.
+ */
+export function personParts(parts: readonly SummaryPart[]): SummaryPart[] {
+  return parts.map((part) => typeof part === "string" ? personText(part) : part);
+}
+
 export const CURRENT_CHROME_ENDED = "The owner's Chrome session ended. Reconnect with command=open and browser=current, or choose browser=bao explicitly to use Bao's lasting profile.";
 export const CURRENT_CHROME_LEFT_OPEN = "Disconnected from your Chrome. Bao's task tab may still be open.";
 export const TASK_TAB_CLOSED = "Bao's task tab was closed. Reconnect with command=open and browser=current, or choose browser=bao explicitly to use Bao's lasting profile.";

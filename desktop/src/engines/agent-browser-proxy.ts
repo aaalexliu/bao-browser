@@ -13,7 +13,7 @@ import { openRunningChrome, type RunningChrome } from "../extension/running-chro
 import { resolveNormalChrome } from "../launch";
 import { AgentBrowserRun, type AgentBrowserTaskOutcome, type RecordedAgentBrowserCommand, type StepContext } from "./agent-browser-record";
 import { PAGE_LOG_BATCH, parsePageLog } from "./step-har";
-import { CURRENT_CHROME_ENDED, CURRENT_CHROME_LEFT_OPEN, newInRead, ownerReply, RUN_ENDED, TASK_TAB_CLOSED, type OwnerWaitPage } from "./agent-browser-describe";
+import { CURRENT_CHROME_ENDED, CURRENT_CHROME_LEFT_OPEN, MOVED_FOR_MODEL, newInRead, ownerReply, RUN_ENDED, TASK_TAB_CLOSED, type OwnerWaitPage } from "./agent-browser-describe";
 import { BROWSER_PICTURE_BYTES, type ShotBox } from "../v1/shots";
 import { agentBrowserExecutable } from "./agent-browser";
 import { AgentBrowserWorkflow } from "./agent-browser-workflow";
@@ -1490,7 +1490,7 @@ export class AgentBrowserProxy {
       this.watch(session);
       await this.rebindTakeover(session);
       session.moveError = undefined;
-      this.moved = { line: `${stopped}; continued in your running Chrome (Chrome profile "${profile.directory}", ${profile.name}) over remote debugging. Take a fresh snapshot before acting.`, pick: next.pick, site };
+      this.moved = { line: `${stopped}; continued in your running Chrome (Chrome profile "${profile.directory}", ${profile.name})${MOVED_FOR_MODEL}`, pick: next.pick, site };
       try { await this.stopDaemon(old.stateDir); }
       catch (error) { process.stderr.write(`Bao could not stop the agent-browser daemon of its own window: ${error instanceof Error ? error.message : String(error)}\n`); }
       finally {
