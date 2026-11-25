@@ -79,7 +79,7 @@ const AGENT_BROWSER_TOOL = {
       profile: { type: "string", description: PROFILE_DESCRIPTION },
       profile_reason: { type: "string", description: "On the first open that names profile: a short reason that folder was chosen, such as which profile has cookies for the site or which open tabs matched the task. Bao stores it on the run with the folder, at most 200 characters. Omit it when you did not name a profile." },
       why: { type: "string", description: "Optional. One sentence on why this step, at most 500 characters. Bao stores it on the step. Omit it when you have no reason." },
-      task: { type: "string", description: "Only on open. A short name for the task you are doing, such as \"Download the October statement\". The run card in the chat shows it while the run goes. finish_task's task replaces it." },
+      task: { type: "string", description: "Only on open. A short name for the task you are doing, such as \"Download the October statement\". Bao stores it on the run as its name from this call on. finish_task's task replaces it." },
       find: { type: "object", description: "Only on snapshot. Return only the lines whose accessible name or value contains text (case-insensitive) and whose role is role, each with its ref, the lines that hold it, and everything inside it. Give text, role, or both.",
         properties: { text: { type: "string" }, role: { type: "string", description: "An accessibility role as the snapshot prints it, such as button, link, textbox, heading, or dialog." } }, additionalProperties: false },
       run_id: { type: "string", description: RUN_SCOPE },
