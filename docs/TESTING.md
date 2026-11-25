@@ -52,31 +52,20 @@ npm run test:guardrails
 ```
 
 Use `scripts/test-essential.mjs <group>` for one essential group after building.
-For an exact desktop file, run its compiled path with Node's test runner in an
-isolated environment. Do not pass a filename to `desktop/test/run-v1.mjs` to
-select it: that runner still appends the full suite. The shared environment
-helper pins Playwright Chromium, keeps the real browser cache across a temp `HOME`, and strips model keys and inherited Bao settings except `BAO_TEST_TIME_SCALE`:
+For exact desktop test files, name them:
 
 ```sh
-node --input-type=module <<'JS'
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
-import { spawnSync } from 'node:child_process';
-import { laneChildEnv } from './desktop/dist/desktop/test/runtime.js';
-const home = mkdtempSync(path.join(tmpdir(), 'bao-focused-'));
-try {
-  const env = laneChildEnv('hermetic', { ...process.env, HOME: home });
-  const result = spawnSync(process.execPath, [
-    '--test', '--test-timeout=120000', '--test-force-exit',
-    'desktop/dist/desktop/test/unit/install-scripts.test.js',
-  ], { env, stdio: 'inherit' });
-  process.exitCode = result.status ?? 1;
-} finally {
-  rmSync(home, { recursive: true, force: true });
-}
-JS
+npm run test:focused -- auth-login.test.js live-view.test.js
 ```
+
+It builds `desktop/dist` first, so an edited file never runs stale, then runs
+only the named files through `desktop/test/run-v1.mjs` with the lane's
+environment, timeout, `--test-force-exit` and retry. A name may end in `.js`
+or `.ts`. The runner looks for a bare name in `desktop/test/unit` and
+`desktop/test/replay`; for a name in both, such as `mcp.test.js`, write
+`unit/mcp.test.js` or `replay/mcp.test.js`.
+With no name it refuses to run. Pass Node test flags in `--flag=value` form,
+such as `--test-name-pattern=login`.
 
 ## Run broader checks remotely
 

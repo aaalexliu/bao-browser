@@ -227,6 +227,50 @@ test("a lane's shards run each file once between them, and --lane=replay runs th
   }
 });
 
+test("named files run alone from either lane, and an unknown, shared or missing name runs nothing", { timeout: scaledMs(60_000) }, () => {
+  const root = mkdtempSync(path.join(tmpdir(), "bao-runner-named-"));
+  const log = path.join(root, "ran.txt");
+  const runtime = path.join(root, "desktop/dist/desktop/test/runtime.js");
+  try {
+    const runner = copyRunner(root, "run-v1.mjs");
+    mkdirSync(path.dirname(runtime), { recursive: true });
+    writeFileSync(runtime, `const fs = require("node:fs");
+exports.compiledTestPlan = (_source, dist) => ({ run: fs.existsSync(dist) ? fs.readdirSync(dist).sort() : [], stale: [], missing: [] });
+exports.laneChildEnv = (_lane, env) => env;
+exports.playwrightVersionError = () => undefined;`);
+    const lanes = { unit: ["a.test.js", "both.test.js", "c.test.js"], replay: ["b.test.js", "both.test.js"] };
+    for (const [lane, names] of Object.entries(lanes)) {
+      const dist = path.join(root, "desktop/dist/desktop/test", lane);
+      mkdirSync(dist, { recursive: true });
+      for (const name of names) writeFileSync(path.join(dist, name), `require("node:test")(${JSON.stringify(name)}, () => { require("node:fs").appendFileSync(${JSON.stringify(log)}, ${JSON.stringify(`${lane}/${name}\n`)}); });\n`);
+    }
+    const run = (args: string[]) => {
+      const result = spawnSync(process.execPath, [runner, ...args], { cwd: root, env: runnerEnv(root), encoding: "utf8", timeout: scaledMs(20_000) });
+      const ran = existsSync(log) ? readFileSync(log, "utf8").trim().split("\n").sort() : [];
+      rmSync(log, { force: true });
+      return { status: result.status, output: `${result.stdout}${result.stderr}`, ran };
+    };
+
+    const named = run(["--focused", "a.test.js", "desktop/test/replay/b.test.ts"]);
+    assert.equal(named.status, 0, named.output);
+    assert.deepEqual(named.ran, ["replay/b.test.js", "unit/a.test.js"]);
+    const qualified = run(["unit/both.test.js", "desktop/test/replay/both.test.ts"]);
+    assert.equal(qualified.status, 0, qualified.output);
+    assert.deepEqual(qualified.ran, ["replay/both.test.js", "unit/both.test.js"]);
+    const laned = run(["--lane=replay", "both.test.js"]);
+    assert.equal(laned.status, 0, laned.output);
+    assert.deepEqual(laned.ran, ["replay/both.test.js"]);
+    const lane = run([]);
+    assert.equal(lane.status, 0, lane.output);
+    assert.deepEqual(lane.ran, ["unit/a.test.js", "unit/both.test.js", "unit/c.test.js"]);
+    for (const bad of [["--focused"], ["both.test.js"], ["a.test.js", "nope.test.js"], ["--lane=unit", "b.test.js"]]) {
+      const refused = run(bad);
+      assert.equal(refused.status, 1, `${bad.join(" ")}: ${refused.output}`);
+      assert.deepEqual(refused.ran, [], bad.join(" "));
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 function stubRuntime(root: string, files: string[], lane: "unit" | "live" = "unit"): string {
   const runnerName = lane === "live" ? "run-live.mjs" : "run-v1.mjs";
   const dist = path.join(root, "desktop/dist/desktop/test", lane);

@@ -17,13 +17,13 @@ Do not request Screen Recording, Accessibility, Automation, keychain access, App
 
 ## Focused executable checks
 
-Run `npm run build:desktop`, then the affected tests under `desktop/dist/desktop/test/unit/`. `desktop/test/runtime.ts` exports `laneChildEnv("hermetic", process.env)` for sanitized test environments. Do not run a whole local suite for a focused change.
+Run the affected test files with `npm run test:focused -- <file> ...`, such as `npm run test:focused -- unit/mcp.test.js agent-browser-startup.test.js`. It builds `desktop/dist`, then runs only those files under the lane's sanitized environment and exits. Prefix a name that is in both `desktop/test/unit` and `desktop/test/replay` with its folder. Do not run a whole local suite for a focused change.
 
-- Command forwarding: `agent-browser-proxy.test.js` and `mcp.test.js`.
+- Command forwarding: `agent-browser-proxy.test.js` and `unit/mcp.test.js`.
 - Browser startup: `agent-browser-startup.test.js`.
 - Session teardown: `agent-browser-proxy-close.test.js`.
 - Owner handoff: `agent-browser-owner-wait.test.js`.
-- Retired workflow refusal: `retired-live-driver.test.js` and `catalog.test.js`.
+- Retired workflow refusal: `unit/mcp.test.js` and `catalog.test.js`.
 
 For real native CLI forwarding on a local fixture, stage the pinned executable with `desktop/packaging/stage-agent-browser.mjs` into a temporary directory. Run `desktop/test/live/agent-browser-proxy.test.js` with `AGENT_BROWSER_PROXY_BINARY` set to that file and `AGENT_BROWSER_PROXY_ARTIFACTS` set outside the checkout. The fixture supplies its own source profile and temp homes. Do not set `AGENT_BROWSER_PROXY_INSTALLED_CHROME` for ordinary fixture work.
 

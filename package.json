@@ -25,6 +25,7 @@
     "build:desktop": "tsc -p tsconfig.desktop.json",
     "test:desktop:unit": "npm run build:desktop && node desktop/test/run-v1.mjs",
     "test:desktop:replay": "npm run build:desktop && node desktop/test/run-v1.mjs --lane=replay",
+    "test:focused": "npm run build:desktop && node desktop/test/run-v1.mjs --focused",
     "test:desktop:integration": "npm run build:desktop && node desktop/test/run-live.mjs browser.test.js && node desktop/test/run-live.mjs drift.test.js",
     "package:mac": "bash desktop/packaging/macos/package-app.sh",
     "package:mcpb": "node desktop/packaging/build-mcpb.mjs",
