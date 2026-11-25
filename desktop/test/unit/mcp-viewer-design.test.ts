@@ -246,4 +246,72 @@ test("viewer design survives long labels, host updates, errors and text resize",
       }
     } finally { await page.close(); }
   });
+
+  const fullscreenHost = { displayMode: "inline", availableDisplayModes: ["inline", "fullscreen"] };
+  /** The height the viewer reports to the host, which sets the card's height in the chat. */
+  const height = (page: Page) => page.evaluate(() => Math.ceil(document.documentElement.getBoundingClientRect().height));
+  const longReceipt = { ...receipt, run: { ...run, stepCount: 20 }, steps: Array.from({ length: 20 }, (_, index) => ({ ...receipt.steps[0], id: `step-${index}`, index: index + 1 })) };
+
+  await t.test("closing full screen with the host's own control puts the receipt back to its short form", async () => {
+    const page = await mount(browser, fullscreenHost);
+    try {
+      await deliver(page, view(longReceipt));
+      const short = await height(page);
+      await page.getByRole("button", { name: "Inspect receipt", exact: true }).click();
+      await deliver(page, { jsonrpc: "2.0", id: await lastCall(page), result: { mode: "fullscreen" } });
+      await deliver(page, context({ displayMode: "fullscreen" }));
+      assert.equal(await page.getByRole("heading", { name: "Step results", exact: true }).count(), 1);
+      // Claude Desktop's full-screen window has its own close button; the viewer only hears the new mode.
+      await deliver(page, context({ displayMode: "inline" }));
+      assert.equal(await page.getByRole("heading", { name: "Step results", exact: true }).count(), 0);
+      assert.equal(await page.getByRole("button", { name: "Inspect receipt", exact: true }).count(), 1);
+      assert.equal(await height(page), short);
+    } finally { await page.close(); }
+  });
+
+  await t.test("a host with no full screen shows the receipt inline at a capped height", async () => {
+    const page = await mount(browser);
+    try {
+      await deliver(page, view(longReceipt));
+      const short = await height(page);
+      await page.getByRole("button", { name: "Inspect receipt", exact: true }).click();
+      const receiptRegion = page.getByRole("region", { name: "Receipt", exact: true });
+      assert.equal(await receiptRegion.getByRole("heading", { name: "Step results", exact: true }).count(), 1);
+      assert.ok(await height(page) <= short + 540, `the open receipt, its 480px scroll box and Close receipt add ${await height(page) - short}px to the chat`);
+      assert.equal(await receiptRegion.evaluate((node) => node.scrollHeight > node.clientHeight), true, "the rest of the receipt scrolls inside the card");
+      await page.getByRole("button", { name: "Close receipt", exact: true }).click();
+      assert.equal(await page.getByRole("heading", { name: "Step results", exact: true }).count(), 0);
+      assert.equal(await height(page), short);
+    } finally { await page.close(); }
+  });
+
+  await t.test("a step card stays short in the chat and shows its full picture only in full screen", async () => {
+    for (const host of [fullscreenHost, {}]) {
+      const page = await mount(browser, host);
+      try {
+        const data = await page.evaluate(() => { const canvas = document.createElement("canvas"); canvas.width = 1600; canvas.height = 1000; return canvas.toDataURL("image/png").split(",")[1]!; });
+        const card = { command: "snapshot", status: "complete", style: "frame", caption: 'Read the page "Transaction Details".', parts: ["Read the page ", { cite: "Transaction Details" }],
+          runId: "run-design", stepId: "command-15", picture: { kind: "captured", phase: "after" }, page: { url: `https://my.example/account/transaction-details.html?${"tranId=671006697&".repeat(6)}` } };
+        await deliver(page, { jsonrpc: "2.0", method: "ui/notifications/tool-result", params: { _meta: { baoToolCard: card } } });
+        await deliver(page, { jsonrpc: "2.0", id: await lastCall(page), result: { _meta: { baoToolCard: card, baoCardPictures: { main: { mimeType: "image/png", data } } } } });
+        const image = page.getByAltText('After read: Read the page "Transaction Details".');
+        await image.waitFor();
+        assert.ok(await height(page) <= 240, `the card is ${await height(page)}px tall in the chat`);
+        assert.ok((await image.boundingBox())!.width <= 160, "the chat shows a small picture");
+        await page.getByRole("button", { name: "Open picture", exact: true }).click();
+        if ("availableDisplayModes" in host) {
+          await deliver(page, { jsonrpc: "2.0", id: await lastCall(page, 2), result: { mode: "fullscreen" } });
+          await deliver(page, context({ displayMode: "fullscreen" }));
+          assert.ok((await image.boundingBox())!.width >= 500, "full screen shows the full picture");
+          await deliver(page, context({ displayMode: "inline" }));
+          assert.ok(await height(page) <= 240, "closing full screen with the host's control makes the card short again");
+        } else {
+          const box = (await image.boundingBox())!;
+          assert.ok(box.height <= 480 && box.width > 160, `the inline picture is ${box.width}x${box.height}`);
+          await page.getByRole("button", { name: "Close picture", exact: true }).click();
+          assert.ok(await height(page) <= 240);
+        }
+      } finally { await page.close(); }
+    }
+  });
 });

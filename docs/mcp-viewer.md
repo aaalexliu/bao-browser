@@ -17,7 +17,7 @@ The host must advertise `io.modelcontextprotocol/ui` with `text/html;profile=mcp
 
 Clients that do not negotiate the UI MIME type get the [standard MCP tools and Library identity](bao.md#mcp). These clients get plain text results without viewer metadata or resources and do not need an HTML renderer. This feature does not install or configure Claude Desktop, Codex Desktop, or ChatGPT, and it does not change tool approval settings. Support depends on the host and release; an MCP connection alone does not prove embedded UI support.
 
-The viewer checks host capabilities for further reads, theme, locale, and full-screen mode. **Inspect receipt** requests full-screen mode only when the host offers it. Otherwise the receipt expands inline. The HTML bundles its code and styles and requests no external connections or resources.
+The viewer checks host capabilities for further reads, theme, locale, and full-screen mode. In the chat, a step card stays short: its sentence, status, and a small picture. A receipt shows only its summary. The full-size picture and the step results open in the card's own full-screen window through **Open picture** and **Inspect receipt**. When the host leaves full screen, through **Back to conversation** or its own close button, the card goes back to its short form. A host with no full screen, or one that answers the request with another mode, opens them in the chat instead, with each picture at most 480 px tall and the step results in a 480 px scroll box; **Close picture** and **Close receipt** shorten the card again. The HTML bundles its code and styles and requests no external connections or resources.
 
 Read errors keep the loaded receipt or history visible. For a failed read, try **Refresh**; if it keeps failing, open Bao desktop for local details. If the viewer cannot load, reopen it from the conversation. When the host cannot read more data or does not forward viewer data, use the text receipt or Bao desktop instead. Theme and size updates preserve keyboard focus and the open or closed state of **Workflow steps**.
 
@@ -62,7 +62,7 @@ The viewer offers no run, resume, edit, approve, or browser-control action. In U
 
 - Clipped capture can reset another CDP client's emulated DPR 2 to 1 on a native-DPR-1 browser. The Retina fixture uses native DPR 2. Firstmate owns the follow-up for cross-client emulation.
 
-- If a host advertises full-screen mode but the request fails, the receipt does not fall back to an expanded inline view. This remains deferred.
+- If a host advertises full-screen mode but the request fails with an error, the card stays short and does not open inline. This remains deferred.
 
 ## Follow-ups
 
