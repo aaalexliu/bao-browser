@@ -933,16 +933,18 @@ test("several Chrome profiles and no named one open nothing and record no run; a
       /Chrome has no profile "Profile 9" in .*\. Choose one of: "Default" \(Alex, alex@example\.test\); "Profile 2" \(Synthetic\)\./);
     await assert.rejects(f.proxy.execute("snapshot", [], undefined, false, "Default", {}, f.proxy.activeRunId), /profile is only accepted on open/);
     await assert.rejects(f.proxy.execute("snapshot", [], undefined, false, undefined, {}, f.proxy.activeRunId, "why"), /profile_reason is only accepted on open/);
+    await assert.rejects(f.proxy.execute("snapshot", [], undefined, false, undefined, {}, f.proxy.activeRunId, undefined, undefined, "Robinhood statements"), /task is only accepted on open/);
     assert.equal(f.copy(), "", "no copy started");
     assert.deepEqual(new Library(path.join(f.root, "home")).listRuns(), [], "no run recorded");
     assert.equal(f.proxy.hasSession(), false);
-    assert.equal((await f.proxy.execute("open", ["http://127.0.0.1/"], "copy", false, "Profile 2", {}, f.proxy.activeRunId, "robinhood.com is open there"))[0]!.exitCode, 0);
+    assert.equal((await f.proxy.execute("open", ["http://127.0.0.1/"], "copy", false, "Profile 2", {}, f.proxy.activeRunId, "robinhood.com is open there", undefined, "  Robinhood statements "))[0]!.exitCode, 0);
     assert.match(f.proxy.pickLines[0]!, /^Browser: Chrome copy, named by the agent\. Chrome app: .+\. User data: .+, a copy of Chrome profile "Profile 2" \(Synthetic\) in .+, named by the agent\.$/);
     await assert.rejects(f.proxy.execute("open", ["http://127.0.0.1/"], undefined, false, "Default", {}, f.proxy.activeRunId), /close the current session before choosing a different Chrome profile/);
     const run = new Library(path.join(f.root, "home")).listRuns()[0]!;
     assert.deepEqual(run.browser && { route: run.browser.route, why: run.browser.why, profile: run.browser.route === "extension" ? undefined : run.browser.profile?.directory },
       { route: "copy", why: "named by the agent", profile: "Profile 2" });
     assert.deepEqual(run.profileChoice, { directory: "Profile 2", reason: "robinhood.com is open there" });
+    assert.equal(run.task, "Robinhood statements", "the open's task names the run while it records");
   } finally { await f.close(); }
 });
 

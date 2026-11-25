@@ -680,7 +680,7 @@ export class AgentBrowserProxy {
    * with the same args; the run still records the full native output.
    */
   async execute(command: unknown, args: unknown = [], browser?: unknown, visual = false, profile?: unknown,
-    snapshot: { find?: unknown; diff?: unknown } = {}, runId?: unknown, profileReason?: unknown, why?: unknown): Promise<AgentBrowserCommandResult[]> {
+    snapshot: { find?: unknown; diff?: unknown } = {}, runId?: unknown, profileReason?: unknown, why?: unknown, task?: unknown): Promise<AgentBrowserCommandResult[]> {
     this.endedLine = undefined;
     this.refusal = undefined;
     this.latest = undefined;
@@ -711,6 +711,9 @@ export class AgentBrowserProxy {
       throw new Error("profile_reason is only accepted on open and must be a short reason");
     }
     const statedReason = typeof profileReason === "string" ? profileReason : undefined;
+    if (task !== undefined && (command !== "open" || typeof task !== "string")) {
+      throw new Error("task is only accepted on open and must be a short name for the task");
+    }
     if (command === "wait_for_owner") {
       if (args.length > 1) throw new Error("wait_for_owner accepts only an optional timeout in milliseconds");
       ownerWaitTimeout(args[0] === undefined ? undefined : Number(args[0]));
@@ -793,6 +796,7 @@ export class AgentBrowserProxy {
     const plan = continuing ? undefined : await this.plan(browser as AgentBrowser | undefined, named, webSite(args[0]));
     const recording = this.session?.recording ?? new AgentBrowserRun(this.options.home);
     if (!continuing && named) recording.noteProfileChoice(named, statedReason);
+    if (typeof task === "string") recording.noteTask(task);
     let step = continuing ? undefined : recording.begin(command as string, args, why);
     if (step) this.latest = { runId: recording.id, step, steps: recording.steps };
     if (!this.session) {
