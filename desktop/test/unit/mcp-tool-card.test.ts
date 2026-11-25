@@ -342,18 +342,30 @@ test("capture receipts preserve recording, owner handoff, and finished outcomes 
     assert.deepEqual(read().stops, []);
     const view = inspectRunView(library, { run_id: f.recording.id });
     assert.equal(view.run.status, "recording");
+    assert.equal(view.run.name, "Browser task");
+    assert.equal(view.live, true);
+    assert.deepEqual(view.latest, { index: 1, status: f.step.status, parts: f.step.summary!.parts }, "the card's latest step is the step's own sentence");
+    assert.equal(view.finish.steps, 1);
+    f.recording.noteTask("Weekly groceries");
+    assert.equal(inspectRunView(library, { run_id: f.recording.id }).run.name, "Weekly groceries", "a task named on open names the run while it records");
     assert.equal(view.workflow, null);
     assert.equal(view.steps[0]?.picturesAllowed, true);
     assert.equal(listRunViews(library, {}).runs[0]?.status, "recording");
     f.recording.ownerWaiting(true);
     assert.equal(read().outcome, "needs_human");
     const waiting = inspectRunView(library, { run_id: f.recording.id });
+    assert.equal(waiting.live, true, "an owner wait is still a live run");
     assert.equal(waiting.reason, "owner_signin");
     assert.match(waiting.handoff?.ask || "", /waiting for you/);
     f.recording.ownerWaiting(false);
-    await f.recording.finish();
+    await f.recording.finish({ outcome: "passed", reason: "Bought the groceries.", done: ["Milk", "Eggs"] });
     assert.equal(read().outcome, "ok");
-    assert.equal(inspectRunView(library, { run_id: f.recording.id }).run.status, "passed");
+    const ended = inspectRunView(library, { run_id: f.recording.id });
+    assert.equal(ended.run.status, "passed");
+    assert.equal(ended.live, false);
+    assert.equal(ended.reason, "Bought the groceries.");
+    assert.deepEqual(ended.finish.done, ["Milk", "Eggs"]);
+    assert.equal(ended.run.name, "Weekly groceries");
   } finally { await f.close(); }
   const failed = await recorded();
   try {
@@ -503,8 +515,11 @@ test("the host resource renders a step card from result metadata, keeps it on a 
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 320);
   await page.getByRole("button", { name: "View run", exact: true }).click();
   const next = (await hostRequests(page, 3))[2]!;
-  await hostDeliver(page, { jsonrpc: "2.0", id: next.id, result: { _meta: { baoViewer: { view: "receipt", run: { id: "run-exact", name: "Exact browser session", status: "recording", stepCount: 1, at: 1, modelCalls: null }, steps: [], workflow: null, handoff: null, stepOffset: 0, nextStepOffset: null } } } });
-  await page.getByRole("heading", { name: "Exact browser session" }).waitFor();
+  await hostDeliver(page, { jsonrpc: "2.0", id: next.id, result: { _meta: { baoViewer: { view: "receipt", run: { id: "run-exact", name: "Buy blueberries", status: "recording", stepCount: 5, at: 1, modelCalls: null },
+    live: true, latest: { index: 5, status: "passed", parts: card.parts }, finish: { outcome: "recording", reason: "", done: [], steps: 5, pageLoads: 1, reads: 1, clicks: 1, typed: 0, failedSteps: 0 },
+    steps: [], workflow: null, handoff: null, stepOffset: 0, nextStepOffset: null } } } });
+  await page.getByRole("heading", { name: "Buy blueberries" }).waitFor();
+  assert.equal(await page.locator(".browser-caption").textContent(), "Clicked Add blueberries (button)", "View run keeps the task and the latest step on top");
   assert.equal(await page.locator(".browser-mark").count(), 0);
 
   await hostDeliver(page, { jsonrpc: "2.0", method: "ui/notifications/tool-result", params: { _meta: { baoToolCard: card } } });

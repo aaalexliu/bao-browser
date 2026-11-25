@@ -204,7 +204,7 @@ test("non-UI clients retain the catalog and identify their active Library, inclu
     assert.match(first.result?.instructions || "", /Use Bao's tools to find and read runs and workflows, not filesystem browsing/);
     assert.match(first.result?.instructions || "", /Bao does not use or search those roots/);
     for (const client of [legacy, unsupported]) {
-      const run = { id: "run-capture", workflowId: "agent-browser", kind: "capture" as const, at: 1_700_000_000_000, steps: [], heals: [], status: "passed" };
+      const run = { id: "run-capture", workflowId: "agent-browser", kind: "capture" as const, at: 1_700_000_000_000, steps: [], heals: [], status: "passed", task: "Download October receipt" };
       new Library(client.home).saveRun(run);
       const history = await client.request("tools/call", { name: "list_runs", arguments: {} });
       assert.equal(history.result?.isError, false);
@@ -212,7 +212,7 @@ test("non-UI clients retain the catalog and identify their active Library, inclu
       const data = JSON.parse(history.result?.content?.[0]?.text || "null") as HistoryPayload;
       assert.deepEqual(data.library, { active: { path: client.home }, inactive: [] });
       assert.equal(data.runs.length, 1);
-      assert.deepEqual(data.runs[0], { id: run.id, workflowId: run.workflowId, name: "Browser capture", status: "passed", at: run.at, kind: "capture", stepCount: 0, modelCalls: null, healCount: 0 });
+      assert.deepEqual(data.runs[0], { id: run.id, workflowId: run.workflowId, name: "Download October receipt", status: "passed", at: run.at, kind: "capture", stepCount: 0, modelCalls: null, healCount: 0 });
       const receipt = await client.request("tools/call", { name: "get_run", arguments: { run_id: data.runs[0].id } });
       assert.equal(receipt.result?.isError, false);
       assert.equal(receiptPayload(client.home, receipt).run_id, run.id);

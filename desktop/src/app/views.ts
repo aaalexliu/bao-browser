@@ -3,6 +3,9 @@
 
 import { importErrorView } from "./import-error";
 import type { inspectRunView } from "../mcp/run-view";
+
+/** The receipt fields Bao desktop draws. The live goal fields are for the MCP run card. */
+type ReceiptView = Omit<ReturnType<typeof inspectRunView>, "live" | "latest" | "finish">;
 import type { BrowserPick, RunRoute } from "../engines/browser-pick";
 import type { FileTransfer } from "../engines/agent-browser-files";
 import type { RunRecordIndex } from "./step-record-view";
@@ -2339,7 +2342,7 @@ function receiptReadBack(run: RunSummary, stepId: string | undefined): string | 
   return lines.length ? lines.join("\n") : undefined;
 }
 
-function receiptInspector(view: ReturnType<typeof inspectRunView>, run: RunSummary, workflowSteps?: ReceiptWorkflowStep[], record?: ReceiptRecord): string {
+function receiptInspector(view: ReceiptView, run: RunSummary, workflowSteps?: ReceiptWorkflowStep[], record?: ReceiptRecord): string {
   const labels = new Map(view.steps.flatMap((step) => step.id ? [[step.id, step]] as const : []));
   const stored = (run.steps || []) as InspectorStep[];
   if (!stored.length && !view.steps.length) return `<p class="quiet">No step results recorded.</p>`;
@@ -2369,7 +2372,7 @@ function receiptInspector(view: ReturnType<typeof inspectRunView>, run: RunSumma
   return `<h3 id="receipt-step-heading" tabindex="-1">Command inspector</h3><input id="receipt-search" type="search" aria-label="Search commands" placeholder="Search commands, targets, and values"><ol class="receipt-steps" start="1">${rows}</ol>`;
 }
 
-export function runReceipt(view: ReturnType<typeof inspectRunView>, name: string, run: RunSummary, workflowSteps?: ReceiptWorkflowStep[], record?: ReceiptRecord): string {
+export function runReceipt(view: ReceiptView, name: string, run: RunSummary, workflowSteps?: ReceiptWorkflowStep[], record?: ReceiptRecord): string {
   const kind = runListKind(run);
   const at = view.run.at === null ? "Time unknown" : formatWhen(view.run.at);
   const calls = view.run.modelCalls;

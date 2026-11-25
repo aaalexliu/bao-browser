@@ -6,6 +6,7 @@ import type { WorkflowV2 } from "../v1/schema";
 import { BROWSER_PICTURE_BYTES, shotFile, shotFormat } from "../v1/shots";
 import { Library, secretInputNames, type StoredRun } from "../v1/store";
 import type { RecordedAgentBrowserCommand } from "../engines/agent-browser-record";
+import type { SummaryPart } from "../engines/agent-browser-describe";
 import { finishCard, stepCard, type BrowserToolCard, type CardPicture } from "./tool-card";
 
 export const VIEW_RECORD_BYTES = 2 * 1024 * 1024;
@@ -54,7 +55,7 @@ function workflowFor(library: Library, run: StoredRun): WorkflowV2 | undefined {
 function summary(run: StoredRun, workflow?: WorkflowV2) {
   return {
     id: viewerId(run.id), workflowId: text(run.workflowId, 128),
-    name: text(workflow?.name, 120) || (run.kind === "capture" ? "Browser capture" : "Workflow unavailable"),
+    name: text(run.task?.trim(), 120) || text(run.done?.join("; "), 120) || text(workflow?.name, 120) || (run.kind === "capture" ? "Browser task" : "Workflow unavailable"),
     status: text(run.envelope?.status || run.status, 60),
     at: Number.isFinite(run.at) ? run.at : null, kind: run.kind === "capture" ? "capture" : "replay",
     stepCount: run.steps.length, modelCalls: count(run.modelCalls), healCount: run.heals.length,
@@ -98,14 +99,14 @@ function runView(
   const failure = record(recording ? undefined : run.failure);
   const stopped = recording ? undefined : run.steps.map(record).find((step) => ["paused", "failed", "timeout", "timed-out"].includes(String(step.status)));
   const results = (run.receipts || []).map(record);
-  const steps = run.steps.slice(stepOffset, stepOffset + STEP_PAGE_SIZE).map((item, index) => {
+  const stepView = (item: unknown, index: number) => {
     const step = record(item);
     const definition = workflow?.steps.find((candidate) => candidate.id === step.id);
     const native = record(step.native);
     const readBacks = results.filter((result) => result.stepId === step.id).map((receipt) =>
       `Read back ${text(receipt.source, 60) || "value"}: expected ${readBackText(receipt.expected) || ""}, saw ${readBackText(receipt.actual) || ""}. ${receipt.pass ? "matches" : "does not match"}.`);
     return {
-      id: text(step.id, 128), index: stepOffset + index + 1,
+      id: text(step.id, 128), index: index + 1,
       label: text(definition ? stepTitle(definition) : undefined, 160) || text(record(step.caption).text, 160) || text(step.label, 160) || (run.kind === "capture" ? text(native.command, 40) || "Captured command" : text(step.id, 128)),
       action: text(definition?.action, 40), status: text(step.status, 60) || "unknown",
       reason: text(step.reason),
@@ -113,9 +114,22 @@ function runView(
       durationMs: typeof step.startedAt === "number" && typeof step.endedAt === "number" ? Math.max(0, step.endedAt - step.startedAt) : null,
       picturesAllowed: isViewerId(step.id),
     };
-  });
+  };
+  const steps = run.steps.slice(stepOffset, stepOffset + STEP_PAGE_SIZE).map((item, index) => stepView(item, stepOffset + index));
+  const last = run.steps.at(-1);
+  const lastView = last === undefined ? undefined : stepView(last, run.steps.length - 1);
+  const parts = record(record(last).summary).parts;
+  const latest = lastView && {
+    index: lastView.index, status: lastView.status,
+    parts: Array.isArray(parts) && parts.length ? parts as SummaryPart[] : [lastView.label || "Step"],
+  };
   return {
     view: "receipt", run: summary(run, workflow),
+    /** True while a browser session still records into this run. The app reads the run again until it ends. */
+    live: run.kind === "capture" && ["recording", "needs_human"].includes(run.status),
+    latest: latest ?? null,
+    /** The outcome, done list, step counts and duration, the same summary the finish_task card shows. */
+    finish: finishCard(run).finish!,
     reason: recording ? undefined : text(run.envelope?.reason) || text(failure.reason) || text(stopped?.reason),
     handoff: !recording && run.envelope ? { status: text(run.envelope.status, 60), ask: text(run.envelope.ask), reason: text(run.envelope.reason), deadline: text(run.envelope.deadline, 80) } : null,
     steps, stepOffset, nextStepOffset: stepOffset + STEP_PAGE_SIZE < run.steps.length ? stepOffset + STEP_PAGE_SIZE : null,

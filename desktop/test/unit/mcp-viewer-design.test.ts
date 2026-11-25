@@ -34,7 +34,8 @@ async function mount(browser: Browser, hostContext: object = {}, serverTools = t
 }
 
 const run = { id: "run-design", workflowId: "design", name: "Weekly report", at: 1, kind: "replay", status: "passed", stepCount: 1, modelCalls: 0, healCount: 0 };
-const receipt = { view: "receipt", run, steps: [{ id: "project", index: 1, label: "Enter project name", status: "passed", picturesAllowed: true }], workflow: null, handoff: null, stepOffset: 0, nextStepOffset: null };
+const finish = { outcome: "passed", reason: "", done: [], steps: 1, pageLoads: 0, reads: 0, clicks: 0, typed: 0, failedSteps: 0 };
+const receipt = { view: "receipt", run, live: false, latest: null, finish, steps: [{ id: "project", index: 1, label: "Enter project name", status: "passed", picturesAllowed: true }], workflow: null, handoff: null, stepOffset: 0, nextStepOffset: null };
 const history = { view: "history", runs: [run], offset: 0, nextOffset: null, skipped: 0 };
 const view = (baoViewer: unknown) => ({ jsonrpc: "2.0", method: "ui/notifications/tool-result", params: { _meta: { baoViewer } } });
 const context = (params: object) => ({ jsonrpc: "2.0", method: "ui/notifications/host-context-changed", params });
@@ -86,34 +87,34 @@ test("viewer design survives long labels, host updates, errors and text resize",
       await deliver(page, view(receipt));
       await page.getByRole("button", { name: "Inspect receipt", exact: true }).click();
       await page.locator("summary").click();
-      await page.getByRole("button", { name: "Refresh", exact: true }).focus();
+      await page.getByRole("button", { name: "Open step pictures", exact: true }).focus();
       await deliver(page, context({ theme: "dark", containerDimensions: { width: 360 } }));
-      assert.equal(await page.getByRole("button", { name: "Refresh", exact: true }).evaluate((node) => node === document.activeElement), true);
+      assert.equal(await page.getByRole("button", { name: "Open step pictures", exact: true }).evaluate((node) => node === document.activeElement), true);
       assert.equal(await page.locator("details").evaluate((node) => node instanceof HTMLDetailsElement && node.open), false);
-      await page.getByRole("button", { name: "Refresh", exact: true }).click();
+      await page.getByRole("button", { name: "Open step pictures", exact: true }).click();
       await deliver(page, { jsonrpc: "2.0", id: await lastCall(page), error: { message: "Read failed" } });
       assert.equal(await page.getByRole("alert").textContent(), "Read failed");
       await deliver(page, context({ containerDimensions: { width: 560 } }));
       assert.equal(await page.getByRole("alert").textContent(), "Read failed");
       await deliver(page, context({ locale: "en-GB" }));
       assert.equal(await page.getByRole("alert").textContent(), "Read failed");
-      assert.equal(await page.getByText(/Try Refresh/).count(), 1);
+      assert.equal(await page.getByText(/Try again\./).count(), 1);
       await deliver(page, view(history));
       assert.equal(await page.getByRole("alert").textContent(), "");
     } finally { await page.close(); }
   });
 
-  await t.test("a failed Refresh keeps focus on History when the reader moved it while waiting", async () => {
+  await t.test("a failed Refresh keeps focus on Inspect run when the reader moved it while waiting", async () => {
     const page = await mount(browser);
     try {
       await deliver(page, view(history));
       await page.getByRole("button", { name: "Refresh", exact: true }).focus();
       await page.keyboard.press("Enter");
       const pending = await lastCall(page);
-      await page.getByRole("button", { name: "History", exact: true }).focus();
+      await page.getByRole("button", { name: "Inspect run", exact: true }).focus();
       await deliver(page, { jsonrpc: "2.0", id: pending, error: { message: "Read failed" } });
       await page.waitForFunction(() => [...document.querySelectorAll("button")].some((node) => node.textContent === "Refresh" && !node.disabled));
-      assert.equal(await page.getByRole("button", { name: "History", exact: true }).evaluate((node) => node === document.activeElement), true);
+      assert.equal(await page.getByRole("button", { name: "Inspect run", exact: true }).evaluate((node) => node === document.activeElement), true);
       assert.equal(await page.getByRole("alert").textContent(), "Read failed");
     } finally { await page.close(); }
   });
@@ -133,9 +134,9 @@ test("viewer design survives long labels, host updates, errors and text resize",
       await deliver(page, { jsonrpc: "2.0", id: await lastCall(page, 3), result: { mode: "inline" } });
       await deliver(page, context({ displayMode: "inline" }));
       const inspect = page.getByRole("button", { name: "Inspect receipt", exact: true });
-      await page.getByRole("button", { name: "Refresh", exact: true }).focus();
+      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
       await page.keyboard.press("Tab");
-      assert.equal(await inspect.evaluate((node) => node === document.activeElement), true);
+      assert.equal(await inspect.evaluate((node) => node === document.activeElement), true, "Inspect receipt is the card's first stop");
     } finally { await page.close(); }
   });
 
@@ -143,13 +144,14 @@ test("viewer design survives long labels, host updates, errors and text resize",
     for (const serverTools of [true, false]) {
       const page = await mount(browser, {}, serverTools);
       try {
-        await deliver(page, view(receipt));
+        await deliver(page, view(history));
         await page.getByRole("button", { name: "Refresh", exact: true }).click();
         if (serverTools) await deliver(page, { jsonrpc: "2.0", id: await lastCall(page), result: {} });
         assert.equal(await page.getByRole("alert").textContent(), serverTools
           ? "This host did not forward Bao's viewer data. Use the text receipt or the Bao desktop app."
           : "This host cannot read more Bao data. The text receipt is still available in the conversation.");
         assert.equal(await page.locator("#error .muted").textContent(), "");
+        await deliver(page, view(receipt));
         await page.getByRole("button", { name: "Inspect receipt", exact: true }).click();
         assert.equal(await page.getByRole("alert").textContent(), "");
         await page.getByRole("button", { name: "Open step pictures", exact: true }).click();
@@ -163,25 +165,26 @@ test("viewer design survives long labels, host updates, errors and text resize",
   });
 
   await t.test("picture replies survive same-run updates without clearing newer errors", async () => {
-    for (const update of ["refresh", "host"] as const) {
+    const paged = { ...receipt, nextStepOffset: 20 };
+    for (const update of ["paging", "host"] as const) {
       const page = await mount(browser);
       try {
-        await deliver(page, view(receipt));
+        await deliver(page, view(paged));
         await page.getByRole("button", { name: "Inspect receipt", exact: true }).click();
         await page.getByRole("button", { name: "Open step pictures", exact: true }).click();
         const failedPicture = await lastCall(page);
-        await deliver(page, view(receipt));
+        await deliver(page, view(paged));
         await deliver(page, { jsonrpc: "2.0", id: failedPicture, error: { message: "Picture read failed" } });
         assert.equal(await page.getByRole("alert").textContent(), "Picture read failed");
         await page.getByRole("button", { name: "Open step pictures", exact: true }).click();
         const picture = await lastCall(page, 2);
         assert.equal(await page.getByRole("alert").textContent(), "");
-        if (update === "refresh") {
-          await page.getByRole("button", { name: "Refresh", exact: true }).click();
-          await deliver(page, { jsonrpc: "2.0", id: await lastCall(page, 3), result: { _meta: { baoViewer: receipt } } });
-        } else await deliver(page, view(receipt));
-        await page.getByRole("button", { name: "History", exact: true }).click();
-        await deliver(page, { jsonrpc: "2.0", id: await lastCall(page, update === "refresh" ? 4 : 3), error: { message: "Newer read failed" } });
+        if (update === "paging") {
+          await page.getByRole("button", { name: "Next steps", exact: true }).click();
+          await deliver(page, { jsonrpc: "2.0", id: await lastCall(page, 3), result: { _meta: { baoViewer: paged } } });
+        } else await deliver(page, view(paged));
+        await page.getByRole("button", { name: "Next steps", exact: true }).click();
+        await deliver(page, { jsonrpc: "2.0", id: await lastCall(page, update === "paging" ? 4 : 3), error: { message: "Newer read failed" } });
         await deliver(page, { jsonrpc: "2.0", id: picture, result: { _meta: { baoPictures: { runId: run.id, stepId: "project", pictures: [{ phase: "after", mimeType: "image/png", data: "iVBORw0KGgo=" }] } } } });
         assert.equal(await page.locator("img").count(), 1);
         assert.equal(await page.getByRole("alert").textContent(), "Newer read failed");
@@ -202,9 +205,10 @@ test("viewer design survives long labels, host updates, errors and text resize",
         const page = await mount(browser, { theme, styles: { variables } });
         try {
           await deliver(page, view(receipt));
-          await page.getByRole("button", { name: "Refresh", exact: true }).click();
+          await page.getByRole("button", { name: "Inspect receipt", exact: true }).click();
+          await page.getByRole("button", { name: "Open step pictures", exact: true }).click();
           await deliver(page, { jsonrpc: "2.0", id: await lastCall(page), error: { message: "Read failed" } });
-          for (const selector of ["h1", ".muted", ".mono", ".status", "button", "[role=alert]"]) {
+          for (const selector of ["h1", ".browser-caption", ".muted", ".status", "button", "[role=alert]"]) {
             const pair = await page.locator(selector).first().evaluate((node) => {
               const style = getComputedStyle(node);
               let parent: Element | null = node;
@@ -238,10 +242,10 @@ test("viewer design survives long labels, host updates, errors and text resize",
         await page.getByRole("button", { name: "Open step pictures", exact: true }).click();
         const stale = await lastCall(page, ++count);
         await deliver(page, view(history));
-        await page.getByRole("button", { name: "History", exact: true }).focus();
+        await page.getByRole("button", { name: "Inspect run", exact: true }).focus();
         await deliver(page, { jsonrpc: "2.0", id: stale, ...reply });
         assert.equal(await page.locator("h1").textContent(), "Run history");
-        assert.equal(await page.getByRole("button", { name: "History", exact: true }).evaluate((node) => node === document.activeElement), true);
+        assert.equal(await page.getByRole("button", { name: "Inspect run", exact: true }).evaluate((node) => node === document.activeElement), true);
         assert.equal(await page.getByRole("alert").textContent(), "");
       }
     } finally { await page.close(); }
