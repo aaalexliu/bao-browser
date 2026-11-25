@@ -1,5 +1,5 @@
 import type { OwnerPage } from "../cdp-live/owner-wait";
-import { describeStep, ownerOutcome, ownerReply, type OwnerHandoff, type OwnerWaitPage, type StepSummary, type SummaryPart } from "../engines/agent-browser-describe";
+import { describeStep, ownerOutcome, ownerReply, personParts, type OwnerHandoff, type OwnerWaitPage, type StepSummary, type SummaryPart } from "../engines/agent-browser-describe";
 import type { AgentBrowserCommandResult } from "../engines/agent-browser-proxy";
 import type { RecordedAgentBrowserCommand } from "../engines/agent-browser-record";
 import type { ChromeProfileQuestion } from "../engines/browser-pick";
@@ -83,7 +83,7 @@ export function stepCard(runId: string | null, step: RecordedAgentBrowserCommand
   const outcome = ownerOutcome(results);
   const summary: StepSummary = step?.summary ?? describeStep({ command, args: options.args ?? step?.native.args ?? [], results, error: options.error, owner: options.owner, current: options.current });
   const status = outcome === "halted" || outcome === "waiting" ? "waiting" : failed ? "failed" : "complete";
-  const base = { command, status, caption: summary.text, parts: summary.parts, runId, stepId: step?.id ?? null,
+  const base = { command, status, caption: summary.text, parts: personParts(summary.parts), runId, stepId: step?.id ?? null,
     ...(summary.mark ? { mark: summary.mark } : {}), ...(summary.page ? { page: summary.page } : {}) } as const;
   if (outcome) {
     return { ...base, style: outcome === "closed" ? "text" : "wait", picture: unavailable("Bao keeps no picture of sign-in and check pages."), ...(summary.owner ? { owner: summary.owner } : {}) };
@@ -244,7 +244,8 @@ export function profileQuestionResult(question: ChromeProfileQuestion, call: Rec
   const example = question.settings && question.profiles.some((profile) => profile.directory === question.settings)
     ? question.settings : question.profiles[0]!.directory;
   const retry = agentProfileRetry(call, example);
-  const card: BrowserToolCard = { command: "open", status: "waiting", style: "text", caption: summary, parts: [summary],
+  const card: BrowserToolCard = { command: "open", status: "waiting", style: "text", caption: summary,
+    parts: [`Chrome has ${question.profiles.length} profiles, so Bao opened nothing until one is picked`],
     runId: null, stepId: null, picture: unavailable("Bao opened nothing.") };
   return {
     content: [textBlock(summary), textBlock(retry)],
