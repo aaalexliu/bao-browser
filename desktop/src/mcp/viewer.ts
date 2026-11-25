@@ -28,7 +28,7 @@ interface HostContext {
   toolInfo?: { tool?: { name?: string } };
 }
 interface CardPictures { main?: { mimeType: string; data: string }; lastSeen?: { mimeType: string; data: string } }
-interface CardKey { runId: string; stepId: string | null; finish: boolean }
+interface CardKey { runId: string; stepId: string | null; finish: boolean; failed?: boolean }
 interface ToolReply {
   isError?: boolean;
   content?: { type?: string; text?: string }[];
@@ -146,9 +146,10 @@ function viewerMain(): void {
     const card = reply._meta?.baoToolCard;
     if (card?.runId) return { runId: card.runId, stepId: card.stepId, finish: card.style === "finish" };
     for (const value of parsedBlocks(reply).reverse()) {
-      if (typeof value.run_id !== "string" || Object.keys(value).length !== 2) continue;
+      const failed = value.status === "failed";
+      if (typeof value.run_id !== "string" || Object.keys(value).length !== (failed ? 3 : 2)) continue;
       if (value.card === "finish") return { runId: value.run_id, stepId: null, finish: true };
-      if (typeof value.step_id === "string" || value.step_id === null) return { runId: value.run_id, stepId: value.step_id, finish: false };
+      if (typeof value.step_id === "string" || value.step_id === null) return { runId: value.run_id, stepId: value.step_id, finish: false, failed };
     }
     return undefined;
   }
@@ -166,7 +167,7 @@ function viewerMain(): void {
     const caption = reply.content?.map((block) => block.text?.trim() || "").find(Boolean) || "Bao sent no details for this call.";
     const waiting = parsedBlocks(reply).some((value) => value.outcome === "halted" || value.outcome === "waiting");
     const command = typeof toolArgs?.command === "string" ? toolArgs.command : key?.finish ? "finish_task" : "agent_browser";
-    return { command, status: waiting ? "waiting" : reply.isError ? "failed" : "complete", style: waiting ? "wait" : key?.finish ? "finish" : "text",
+    return { command, status: waiting ? "waiting" : reply.isError || key?.failed ? "failed" : "complete", style: waiting ? "wait" : key?.finish ? "finish" : "text",
       caption, parts: [caption], runId: key?.runId ?? null, stepId: key?.stepId ?? null, picture: { kind: "unavailable", reason: "" } };
   }
   function showCard(card: BrowserToolCard, key: CardKey | undefined): void {

@@ -143,8 +143,10 @@ export function finishCard(run: StoredRun): BrowserToolCard {
   };
 }
 
+/** The block a host that drops structuredContent and _meta still forwards: which card to read, and that the step failed. */
 function cardKey(card: BrowserToolCard): { type: "text"; text: string } {
-  return { type: "text", text: JSON.stringify(card.style === "finish" ? { run_id: card.runId, card: "finish" } : { run_id: card.runId, step_id: card.stepId }) };
+  return { type: "text", text: JSON.stringify(card.style === "finish" ? { run_id: card.runId, card: "finish" }
+    : { run_id: card.runId, step_id: card.stepId, ...(card.status === "failed" ? { status: "failed" } : {}) }) };
 }
 
 const textBlock = (text: string) => ({ type: "text" as const, text });
@@ -183,7 +185,8 @@ export function browserToolResult(command: string, results: AgentBrowserCommandR
     ],
     structuredContent: { command, status: card.status, run_id: runId, step_id: card.stepId, ...(error === undefined ? {} : { error }) },
     _meta: { baoToolCard: card },
-    isError: error !== undefined || results.some((result) => result.exitCode !== 0),
+    // Claude Desktop draws no app for an error result, only the raw text. A failed step says so in its sentence, native error, and status.
+    isError: false,
   };
 }
 
