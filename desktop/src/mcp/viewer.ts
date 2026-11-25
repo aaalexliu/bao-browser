@@ -138,7 +138,7 @@ function viewerMain(): void {
       }
     }
     render();
-    root.querySelector<HTMLButtonElement>(".picture-toggle")?.focus();
+    root.querySelector<HTMLButtonElement>(".size-toggle")?.focus();
   }
   function applyContext(): void {
     document.documentElement.dataset.theme = context.theme === "dark" ? "dark" : "light";
@@ -323,7 +323,7 @@ function viewerMain(): void {
     if (card.page?.url) { const url = el("p", card.page.url, "browser-url mono"); url.title = card.page.url; text.append(url); }
     if (card.error) text.append(el("p", card.error.startsWith("✗") ? card.error : `✗ ${card.error}`, "browser-error"));
     if (hasPicture(card)) {
-      const open = button("Open picture", () => setFull(true), "picture-toggle");
+      const open = button("Open picture", () => setFull(true), "size-toggle");
       media.classList.add("opens"); media.onclick = () => open.click();
       actions.prepend(open);
     }
@@ -340,8 +340,8 @@ function viewerMain(): void {
     }
     if (card.error) root.append(el("p", card.error.startsWith("✗") ? card.error : `✗ ${card.error}`, "browser-error"));
     if (card.page?.url) root.append(el("p", card.page.url, "browser-url mono"));
-    if (context.displayMode !== "fullscreen") actions.prepend(button("Close picture", () => setFull(false), "picture-toggle"));
-    else if (context.availableDisplayModes?.includes("inline")) actions.prepend(button("Back to conversation", () => setFull(false), "picture-toggle"));
+    if (context.displayMode !== "fullscreen") actions.prepend(button("Close picture", () => setFull(false), "size-toggle"));
+    else if (context.availableDisplayModes?.includes("inline")) actions.prepend(button("Back to conversation", () => setFull(false), "size-toggle"));
     root.append(actions);
   }
   function waitBlock(card: BrowserToolCard): void {
@@ -439,15 +439,15 @@ function viewerMain(): void {
       }
       root.append(summary);
       if (!isFull()) {
-        root.append(button("Inspect receipt", () => setFull(true), "primary picture-toggle"));
+        root.append(button("Inspect receipt", () => setFull(true), "primary size-toggle"));
       } else {
         let body = root;
         if (context.displayMode !== "fullscreen") {
-          root.append(button("Close receipt", () => setFull(false), "picture-toggle"));
+          root.append(button("Close receipt", () => setFull(false), "size-toggle"));
           body = el("section", undefined, "capped");
           body.tabIndex = 0; body.setAttribute("aria-label", "Receipt");
           root.append(body);
-        } else if (context.availableDisplayModes?.includes("inline")) root.append(button("Back to conversation", () => setFull(false), "picture-toggle"));
+        } else if (context.availableDisplayModes?.includes("inline")) root.append(button("Back to conversation", () => setFull(false), "size-toggle"));
         body.append(el("h2", "Step results"));
         const missingReadBack = "No separate read-back recorded. Status does not prove a durable page change.";
         const allMissingReadBack = view.steps.length > 0 && view.steps.every((step) => !step.reason && !step.result);
