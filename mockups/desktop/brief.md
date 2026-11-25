@@ -70,7 +70,7 @@ to be kept, 1 needs you (live, waiting), 1 failed (page changed, with a clear re
 
 ## Current app and its problems (from a review of the running app)
 
-Screenshots of today's app: `/Users/owner/dev/firstmate/data/bao-desktop-redesign/current/*.png`.
+Screenshots of today's app: `/Users/owner/dev/bao-evidence/2026-11-05-desktop-redesign/current/*.png`.
 Open them. Findings to design away from:
 
 1. Nav has 9 flat items (Library, Capture, Teach, Runs, Live, Heals, Replay, Logins,
@@ -96,7 +96,7 @@ Open them. Findings to design away from:
 ## What each mock must contain
 
 One self-contained HTML file at
-`/Users/owner/dev/firstmate/data/bao-desktop-redesign/variant-<name>.html`.
+`/Users/owner/dev/bao-evidence/2026-11-05-desktop-redesign/variant-<name>.html`.
 Inline CSS and inline SVG. No JS frameworks, no build. System fonts preferred; one Google
 Fonts `<link>` is allowed if the direction depends on a typeface. No external images.
 Draw page screenshots (golden shots, filmstrip frames) as small inline-SVG or CSS
@@ -156,5 +156,5 @@ their rules and exact values (open their reference files when a rule points to o
   screenshot and fix anything that looks off: overflow, misalignment, clipped text, bad
   wrapping, weak contrast, uneven spacing. Repeat until clean.
 - Save screenshots to
-  `/Users/owner/dev/firstmate/data/bao-desktop-redesign/shots/<name>/<screen>.png`.
+  `/Users/owner/dev/bao-evidence/2026-11-05-desktop-redesign/shots/<name>/<screen>.png`.
 - Do not edit the Bao repo. Do not commit anything.
